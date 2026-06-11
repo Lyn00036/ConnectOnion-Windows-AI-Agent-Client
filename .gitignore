@@ -1,0 +1,68 @@
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Environment files
+.env
+.env.*
+!.env.example
+*.local
+
+# Node / frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/.vite/
+frontend/.turbo/
+frontend/.cache/
+frontend/node_modules/.tmp/
+
+# Python / backend
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+backend/venv/
+backend/.venv/
+backend/__pycache__/
+backend/app/__pycache__/
+
+# Database and local runtime data
+*.db
+*.sqlite
+*.sqlite3
+pgdata/
+data/
+tmp/
+temp/
+
+# Build and packaging
+dist/
+build/
+out/
+release/
+*.exe
+*.msi
+*.dmg
+*.AppImage
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

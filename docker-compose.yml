@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: connectonion-postgres
+    environment:
+      POSTGRES_USER: connectonion
+      POSTGRES_PASSWORD: connectonion_pass
+      POSTGRES_DB: connectonion_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - connectonion_pg_data:/var/lib/postgresql/data
+
+volumes:
+  connectonion_pg_data:
