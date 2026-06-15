@@ -4,13 +4,17 @@ This agent can run as a standalone HTTP service so the desktop backend can call 
 
 ## Install
 
+Run these commands from the `connectonion-desktop` repository root:
+
 ```powershell
-cd D:\COMP9900\connectonion-desktop\agent
+cd .\agent
 python -m venv venv
 .\venv\Scripts\Activate.ps1
-python -m pip install -e D:\COMP9900\connectonion
+python -m pip install -e ..\..\connectonion
 python -m pip install -r .\email-agent\requirements.txt
 ```
+
+`..\..\connectonion` is the local ConnectOnion Python framework repository relative to the `agent` directory. If you are changing the framework itself, keep the official repository as `upstream`, push your changes to your own fork as `origin`, and keep using editable install locally while testing this agent.
 
 Create `email-agent\.env`:
 
@@ -25,7 +29,7 @@ Use `https://aihubmix.com/v1` instead when the API key is from AIHubMix.
 ## Run As HTTP Service
 
 ```powershell
-cd D:\COMP9900\connectonion-desktop\agent\email-agent
+cd .\agent\email-agent
 ..\venv\Scripts\Activate.ps1
 python -m uvicorn server:app --host 127.0.0.1 --port 8010
 ```
@@ -50,7 +54,7 @@ Content-Type: application/json
 Start the desktop backend:
 
 ```powershell
-cd D:\COMP9900\connectonion-desktop\backend
+cd .\backend
 .\venv\Scripts\Activate.ps1
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
@@ -71,7 +75,7 @@ POST http://127.0.0.1:8000/agents/chat
 ## CLI Mode
 
 ```powershell
-cd D:\COMP9900\connectonion-desktop\agent\email-agent
+cd .\agent\email-agent
 ..\venv\Scripts\Activate.ps1
 python agent.py
 ```

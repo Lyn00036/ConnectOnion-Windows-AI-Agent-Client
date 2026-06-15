@@ -9,7 +9,7 @@ cffi==2.0.0
 charset-normalizer==3.4.7
 click==8.4.1
 colorama==0.4.6
--e git+ssh://git@github.com/openonion/connectonion.git@f1f486f4ccfefa13f9294256fb282a244daf137c#egg=connectonion
+-e git+ssh://git@github.com/chengjiubinggao/connectonion.git#egg=connectonion
 cryptography==49.0.0
 distro==1.9.0
 docstring_parser==0.18.0

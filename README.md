@@ -79,6 +79,55 @@ connectonion-desktop/
 - Python 3.12+
 - Docker Desktop or Docker Engine
 
+## ConnectOnion Framework Repository
+
+This desktop repository is separate from the ConnectOnion Python framework repository. The desktop app can call any HTTP agent service, while the example agent under `agent/email-agent` depends on the Python framework package.
+
+For local framework development, keep the framework repository next to this desktop repository:
+
+```text
+parent-directory/
+  connectonion-desktop/
+  connectonion/
+```
+
+Install the local framework into the agent virtual environment with editable mode:
+
+Windows PowerShell:
+
+```powershell
+python -m pip install -e ..\connectonion
+```
+
+macOS/Linux:
+
+```bash
+python -m pip install -e ../connectonion
+```
+
+If you need to modify the official framework, use a fork instead of pushing directly to the official repository. A recommended remote layout inside the framework repository is:
+
+```powershell
+cd ..\connectonion
+git remote rename origin upstream
+git remote add origin git@github.com:<your-github-user>/connectonion.git
+git fetch upstream
+```
+
+In this setup:
+
+- `upstream` points to the official framework repository.
+- `origin` points to your fork.
+- Desktop development can keep using `pip install -e ..\connectonion` to test local framework changes immediately.
+
+If a deployed environment should install your fork directly, change the framework dependency to your fork and pin a branch, tag, or commit:
+
+```text
+-e git+ssh://git@github.com:<your-github-user>/connectonion.git@<branch-or-commit>#egg=connectonion
+```
+
+Do not commit `.env`, `.co`, API keys, or local credential files.
+
 ## Cross-Platform Command Notes
 
 Most commands below are shown with Windows PowerShell paths because the project is currently developed on Windows. Use the matching shell form for your platform.
@@ -95,16 +144,16 @@ macOS/Linux virtual environment activation:
 source venv/bin/activate
 ```
 
-Windows path example:
+Windows PowerShell path example from the repository root:
 
 ```powershell
-cd D:\COMP9900\connectonion-desktop
+cd .
 ```
 
-macOS/Linux path example:
+macOS/Linux path example from the repository root:
 
 ```bash
-cd ~/COMP9900/connectonion-desktop
+cd .
 ```
 
 ## Quick Start: Local Development
@@ -118,20 +167,20 @@ The repository includes an example email agent. It runs independently from the d
 Windows PowerShell:
 
 ```powershell
-cd D:\COMP9900\connectonion-desktop\agent
+cd .\agent
 python -m venv venv
 .\venv\Scripts\Activate.ps1
-python -m pip install -e D:\COMP9900\connectonion
+python -m pip install -e ..\..\connectonion
 python -m pip install -r .\email-agent\requirements.txt
 ```
 
 macOS/Linux:
 
 ```bash
-cd ~/COMP9900/connectonion-desktop/agent
+cd ./agent
 python3 -m venv venv
 source venv/bin/activate
-python -m pip install -e ~/COMP9900/connectonion
+python -m pip install -e ../../connectonion
 python -m pip install -r ./email-agent/requirements.txt
 ```
 
@@ -148,7 +197,7 @@ Then start it:
 Windows PowerShell:
 
 ```powershell
-cd D:\COMP9900\connectonion-desktop\agent\email-agent
+cd .\agent\email-agent
 ..\venv\Scripts\Activate.ps1
 python -m uvicorn server:app --host 127.0.0.1 --port 8010
 ```
@@ -156,7 +205,7 @@ python -m uvicorn server:app --host 127.0.0.1 --port 8010
 macOS/Linux:
 
 ```bash
-cd ~/COMP9900/connectonion-desktop/agent/email-agent
+cd ./agent/email-agent
 source ../venv/bin/activate
 python -m uvicorn server:app --host 127.0.0.1 --port 8010
 ```
@@ -172,7 +221,7 @@ http://127.0.0.1:8010/health
 Windows PowerShell:
 
 ```powershell
-cd D:\COMP9900\connectonion-desktop\backend
+cd .\backend
 python -m venv venv
 .\venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
@@ -182,7 +231,7 @@ python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 macOS/Linux:
 
 ```bash
-cd ~/COMP9900/connectonion-desktop/backend
+cd ./backend
 python3 -m venv venv
 source venv/bin/activate
 python -m pip install -r requirements.txt
@@ -208,7 +257,7 @@ This opens the FastAPI Swagger UI, where frontend developers can inspect request
 Windows PowerShell:
 
 ```powershell
-cd D:\COMP9900\connectonion-desktop\frontend
+cd .\frontend
 npm install
 npm run dev
 ```
@@ -216,7 +265,7 @@ npm run dev
 macOS/Linux:
 
 ```bash
-cd ~/COMP9900/connectonion-desktop/frontend
+cd ./frontend
 npm install
 npm run dev
 ```
@@ -241,14 +290,14 @@ The Electron shell loads the same Vite frontend.
 Windows PowerShell:
 
 ```powershell
-cd D:\COMP9900\connectonion-desktop\frontend
+cd .\frontend
 npm run desktop
 ```
 
 macOS/Linux:
 
 ```bash
-cd ~/COMP9900/connectonion-desktop/frontend
+cd ./frontend
 npm run desktop
 ```
 
@@ -269,14 +318,14 @@ Docker Compose starts PostgreSQL, backend, and frontend. Agents can run separate
 Windows PowerShell:
 
 ```powershell
-cd D:\COMP9900\connectonion-desktop
+cd .
 docker compose up --build
 ```
 
 macOS/Linux:
 
 ```bash
-cd ~/COMP9900/connectonion-desktop
+cd .
 docker compose up --build
 ```
 
