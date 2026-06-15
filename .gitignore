@@ -31,10 +31,15 @@ __pycache__/
 .mypy_cache/
 .coverage
 htmlcov/
+venv/
+.venv/
 backend/venv/
 backend/.venv/
 backend/__pycache__/
 backend/app/__pycache__/
+
+# ConnectOnion agent local state and secrets
+agent/**/.co/
 
 # Database and local runtime data
 *.db
