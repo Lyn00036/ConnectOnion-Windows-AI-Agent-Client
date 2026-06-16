@@ -1,10 +1,19 @@
-import os
-from urllib.parse import urlparse
+"""FastAPI application entrypoint that configures middleware and registers backend routers."""
 
-import httpx
-from fastapi import FastAPI, HTTPException
+import logging
+
+from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+from app.core.errors import AppError
+from app.routers import agents, chat, health
+from app.schemas.error import ErrorResponse
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="ConnectOnion Desktop Backend")
 
@@ -16,71 +25,68 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/health")
-def health_check():
-    return {"status": "ok"}
+app.include_router(health.router)
+app.include_router(agents.router)
+app.include_router(chat.router)
 
 
-class ChatRequest(BaseModel):
-    message: str = Field(..., min_length=1)
-    agent_url: str | None = None
+@app.exception_handler(AppError)
+async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
+    error = ErrorResponse(
+        error_code=exc.error_code,
+        message=exc.message,
+        details=exc.details,
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=jsonable_encoder(error),
+    )
 
 
-class ChatResponse(BaseModel):
-    response: str
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(
+    request: Request,
+    exc: RequestValidationError,
+) -> JSONResponse:
+    error = ErrorResponse(
+        error_code="VALIDATION_ERROR",
+        message="Request validation failed.",
+        details={"errors": exc.errors()},
+    )
+    return JSONResponse(
+        status_code=422,
+        content=jsonable_encoder(error),
+    )
 
 
-def get_agent_url(agent_url: str | None = None) -> str:
-    url = (agent_url or os.getenv("DEFAULT_AGENT_URL", "http://127.0.0.1:8010")).strip().rstrip("/")
-    parsed = urlparse(url)
-
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        raise HTTPException(
-            status_code=400,
-            detail="Agent URL must be a valid http:// or https:// URL",
-        )
-
-    return url
-
-
-@app.get("/agents/health")
-async def agent_health(agent_url: str | None = None) -> dict:
-    agent_url = get_agent_url(agent_url)
-
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(f"{agent_url}/health")
-            response.raise_for_status()
-    except httpx.HTTPStatusError as exc:
-        raise HTTPException(status_code=502, detail=exc.response.text) from exc
-    except httpx.RequestError as exc:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Agent is unavailable at {agent_url}",
-        ) from exc
-
-    return {"status": "ok", "agent": response.json()}
+@app.exception_handler(StarletteHTTPException)
+async def http_error_handler(
+    request: Request,
+    exc: StarletteHTTPException,
+) -> JSONResponse:
+    error = ErrorResponse(
+        error_code="HTTP_ERROR",
+        message=str(exc.detail),
+        details={},
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=jsonable_encoder(error),
+    )
 
 
-@app.post("/agents/chat", response_model=ChatResponse)
-async def chat_with_agent(request: ChatRequest) -> ChatResponse:
-    agent_url = get_agent_url(request.agent_url)
-
-    try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(
-                f"{agent_url}/chat",
-                json={"message": request.message},
-            )
-            response.raise_for_status()
-    except httpx.HTTPStatusError as exc:
-        detail = exc.response.text
-        raise HTTPException(status_code=502, detail=detail) from exc
-    except httpx.RequestError as exc:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Agent is unavailable at {agent_url}",
-        ) from exc
-
-    payload = response.json()
-    return ChatResponse(response=payload.get("response", ""))
+@app.exception_handler(Exception)
+async def unexpected_error_handler(request: Request, exc: Exception) -> JSONResponse:
+    logger.error(
+        "Unhandled backend error",
+        exc_info=(type(exc), exc, exc.__traceback__),
+    )
+    error = ErrorResponse(
+        error_code="INTERNAL_ERROR",
+        message="Internal server error.",
+        details={},
+    )
+    return JSONResponse(
+        status_code=500,
+        content=jsonable_encoder(error),
+    )
