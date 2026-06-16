@@ -26,6 +26,34 @@ EMAIL_AGENT_MODEL=deepseek-v4-flash
 
 Use `https://aihubmix.com/v1` instead when the API key is from AIHubMix.
 
+## Configure ConnectOnion And Gmail
+
+The email agent uses two kinds of credentials:
+
+- `OPENAI_API_KEY` / `OPENAI_BASE_URL` for the LLM provider used by `EMAIL_AGENT_MODEL`
+- `OPENONION_API_KEY` plus `GOOGLE_*` OAuth values for Gmail tools
+
+Run the `co` commands from this `email-agent` directory so credentials are written to `email-agent\.env`:
+
+```powershell
+cd .\agent\email-agent
+..\venv\Scripts\Activate.ps1
+co auth
+co auth google
+```
+
+`co auth` creates or refreshes `OPENONION_API_KEY`. `co auth google` opens a browser Google OAuth flow and writes these values:
+
+```env
+GOOGLE_ACCESS_TOKEN=...
+GOOGLE_REFRESH_TOKEN=...
+GOOGLE_TOKEN_EXPIRES_AT=...
+GOOGLE_SCOPES=...
+GOOGLE_EMAIL=...
+```
+
+The agent loads `email-agent\.env` on startup. Restart `uvicorn` after changing API keys or Gmail credentials.
+
 ## Run As HTTP Service
 
 ```powershell

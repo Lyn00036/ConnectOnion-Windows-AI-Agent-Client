@@ -30,6 +30,8 @@ def create_email_agent() -> Agent:
         system_prompt=str(AGENT_DIR / "prompts" / "email_assistant.md"),
         model=os.getenv("EMAIL_AGENT_MODEL", "deepseek-v4-flash"),
         plugins=[re_act, gmail_plugin],
+        log=False,
+        quiet=False,
     )
 
 
