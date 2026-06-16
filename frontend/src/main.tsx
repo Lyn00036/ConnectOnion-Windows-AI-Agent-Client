@@ -1,3 +1,5 @@
+/** Browser renderer entrypoint that mounts the React desktop client into the DOM. */
+
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
