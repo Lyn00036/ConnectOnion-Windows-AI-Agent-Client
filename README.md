@@ -8,25 +8,35 @@ The current app is a developer prototype with three main parts:
 - FastAPI backend
 - PostgreSQL development database
 
-Agents are not hardcoded into the desktop app. The frontend lets users manually add any agent service URL, and the backend proxies chat requests to that agent over HTTP.
+Agents are not hardcoded into the desktop app and there is no default agent URL. Users must manually add an agent service URL in the frontend before sending messages. The frontend currently stores those manually added agent entries in local browser/Electron storage, and the backend proxies chat requests to the selected agent over HTTP.
 
 ## Current Architecture
 
 ```text
 User
-  -> Electron / React frontend
+  -> Electron BrowserWindow
+  -> React frontend
   -> FastAPI backend
-  -> External agent service by URL
+  -> External agent service selected by URL
   -> Agent LLM/tools
 
-PostgreSQL is available for future persistence, but chat/session persistence is not implemented yet.
+PostgreSQL is available for future persistence, but agent registry, chat history, and session persistence are not implemented yet.
 ```
 
 Generic agent proxy endpoints:
 
 ```text
-GET  /agents/health?agent_url=http://127.0.0.1:8010
+GET  /agents/health?agent_url=<agent-service-url>
 POST /agents/chat
+```
+
+`POST /agents/chat` requires both the message and the manually selected agent URL:
+
+```json
+{
+  "message": "hello",
+  "agent_url": "https://your-agent.example.com"
+}
 ```
 
 The expected agent service contract is:
@@ -59,14 +69,28 @@ connectonion-desktop/
   agent/
     email-agent/        Example standalone HTTP agent
   backend/
-    app/main.py         FastAPI backend and generic agent proxy
+    app/
+      main.py           FastAPI app entrypoint, router registration, error handling
+      routers/          API route modules
+      services/         Backend business logic
+      clients/          External agent HTTP client adapter
+      schemas/          Pydantic request/response models
+      db/               SQLAlchemy session and schema initialization helper
+      core/             Runtime config and application errors
     requirements.txt
   frontend/
-    src/                React Agent Console UI
+    src/
+      app/              React providers and route table
+      layouts/          Desktop shell layout
+      pages/            Top-level app views
+      features/         Agent, chat, session, and settings modules
+      shared/           Shared API client, components, hooks, and utilities
+      styles/           Split CSS by layout and feature area
     electron/           Electron shell
     Dockerfile
     nginx.conf
   db/
+    init.sql            PostgreSQL schema used by Docker initialization
   .github/workflows/ci.yml
   docker-compose.yml
 ```
@@ -192,6 +216,40 @@ OPENAI_BASE_URL=https://api.deepseek.com
 EMAIL_AGENT_MODEL=deepseek-v4-flash
 ```
 
+If you are using AIHubMix, use this base URL instead:
+
+```env
+OPENAI_BASE_URL=https://aihubmix.com/v1
+```
+
+The email agent also uses ConnectOnion/OpenOnion credentials for Gmail OAuth.
+Run these commands from `agent\email-agent` so the generated credentials are saved to `agent\email-agent\.env`, which is the file loaded by the agent:
+
+Windows PowerShell:
+
+```powershell
+cd .\agent\email-agent
+..\venv\Scripts\Activate.ps1
+co auth
+co auth google
+```
+
+macOS/Linux:
+
+```bash
+cd ./agent/email-agent
+source ../venv/bin/activate
+co auth
+co auth google
+```
+
+`co auth` creates or refreshes `OPENONION_API_KEY`. `co auth google` opens a browser Google OAuth flow and writes `GOOGLE_ACCESS_TOKEN`, `GOOGLE_REFRESH_TOKEN`, `GOOGLE_TOKEN_EXPIRES_AT`, `GOOGLE_SCOPES`, and `GOOGLE_EMAIL`.
+
+Keep the two key types separate:
+
+- `OPENAI_API_KEY` / `OPENAI_BASE_URL` are for the LLM provider used by `EMAIL_AGENT_MODEL`.
+- `OPENONION_API_KEY` is for ConnectOnion managed services, including Google OAuth token refresh.
+
 Then start it:
 
 Windows PowerShell:
@@ -276,11 +334,11 @@ Open:
 http://127.0.0.1:3000
 ```
 
-In the Agent Console, add:
+In the Agent Console, manually add the agent service you want to use. The frontend does not ship with a default agent and does not currently provide a connection-test button; sending a chat message is the active end-to-end flow.
 
 ```text
-Name: Local Agent
-URL:  http://127.0.0.1:8010
+Name: Your Agent
+URL:  <agent-service-url>
 ```
 
 ## Electron Desktop Shell
@@ -348,28 +406,13 @@ Inside Docker, frontend requests are proxied by nginx:
 /agents/chat   -> backend:8000/agents/chat
 ```
 
-If the agent is running on the Windows host machine while frontend/backend are in Docker, use this agent URL:
+If an agent is running on the Windows host machine while frontend/backend are in Docker, manually add this kind of URL in the Agent Console:
 
 ```text
 http://host.docker.internal:8010
 ```
 
 Do not use `http://127.0.0.1:8010` from inside Docker for a host-running agent. Inside a container, `127.0.0.1` means that container.
-
-Optional override:
-
-Windows PowerShell:
-
-```powershell
-$env:DEFAULT_AGENT_URL="http://host.docker.internal:8010"
-docker compose up --build
-```
-
-macOS/Linux:
-
-```bash
-DEFAULT_AGENT_URL="http://host.docker.internal:8010" docker compose up --build
-```
 
 ## Database
 
@@ -389,7 +432,100 @@ Backend container database URL:
 postgresql+asyncpg://connectonion:connectonion_pass@postgres:5432/connectonion_db
 ```
 
+The Docker database schema is stored in:
+
+```text
+db/init.sql
+```
+
+Docker mounts this file into the PostgreSQL image at `/docker-entrypoint-initdb.d/init.sql`. PostgreSQL runs it only when the database volume is created for the first time.
+
+Start the Docker database only:
+
+Windows PowerShell:
+
+```powershell
+docker compose up -d postgres
+docker compose ps
+docker exec -it connectonion-postgres psql -U connectonion -d connectonion_db -c "\dt"
+```
+
+macOS/Linux:
+
+```bash
+docker compose up -d postgres
+docker compose ps
+docker exec -it connectonion-postgres psql -U connectonion -d connectonion_db -c "\dt"
+```
+
+If the volume already existed before `db/init.sql` was added, the init script will not run automatically. For development data that can be discarded, recreate the volume:
+
+```powershell
+docker compose down -v
+docker compose up -d postgres
+```
+
+To keep existing data, run the schema manually:
+
+```powershell
+docker exec -i connectonion-postgres psql -U connectonion -d connectonion_db < db/init.sql
+```
+
 If a local Windows PostgreSQL service already uses port `5432`, either stop it or change the Compose port mapping and local `DATABASE_URL` to another port such as `5433`.
+
+For local PostgreSQL without Docker, create the user and database first:
+
+```powershell
+& "C:\Program Files\PostgreSQL\16\bin\psql.exe" -U postgres -h localhost -p 5432
+```
+
+Then run:
+
+```sql
+CREATE USER connectonion WITH PASSWORD 'connectonion_pass';
+CREATE DATABASE connectonion_db OWNER connectonion;
+GRANT ALL PRIVILEGES ON DATABASE connectonion_db TO connectonion;
+```
+
+If the user already exists, reset the password:
+
+```sql
+ALTER USER connectonion WITH PASSWORD 'connectonion_pass';
+```
+
+Local backend `.env` should point to localhost:
+
+```env
+DATABASE_URL=postgresql+asyncpg://connectonion:connectonion_pass@localhost:5432/connectonion_db
+```
+
+Initialize the schema through the backend helper:
+
+```powershell
+cd .\backend
+.\venv\Scripts\Activate.ps1
+python -m app.db.init_db
+```
+
+Test that the backend can really connect to the database:
+
+```powershell
+python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+In another terminal:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/health/db
+```
+
+Expected response:
+
+```text
+status   : ok
+database : connectonion_db
+user     : connectonion
+```
 
 ## CI
 
@@ -408,9 +544,13 @@ It runs on pushes, pull requests, and manual dispatch:
 ## Implemented
 
 - Electron window bootstrap
-- React Agent Console UI
-- Manual add/select/remove agent URLs in the frontend
+- Feature-based React frontend structure
+- Manual add/select/remove agent URLs in frontend local storage
 - Generic FastAPI agent proxy
+- Basic chat send/response flow through the selected agent URL
+- Unified backend error response format
+- Backend database connection and `/health/db` check
+- Lightweight PostgreSQL schema initialization helper
 - Example email agent HTTP service
 - PostgreSQL Docker Compose service
 - Frontend/backend Dockerfiles and nginx proxy
@@ -419,7 +559,10 @@ It runs on pushes, pull requests, and manual dispatch:
 ## Not Implemented Yet
 
 - Persistent agent registry in PostgreSQL
+- Backend Agent CRUD APIs
+- Frontend connection-test UI
 - Chat/session history persistence
+- Real Sessions, Agents, and Settings pages beyond placeholders
 - Streaming responses
 - Secure credential storage
 - Alembic migrations
