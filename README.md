@@ -208,6 +208,16 @@ npm run lint      Run ESLint
 npm run build     Type-check and build frontend
 ```
 
+## Desktop Database Location
+
+The Electron desktop app initializes its local SQLite database when the app starts. On Windows, it is created under the Electron user data directory:
+
+```text
+%APPDATA%\connectonion_destop\storage\connectonion-desktop.sqlite3
+```
+
+SQLite may also create `connectonion-desktop.sqlite3-wal` and `connectonion-desktop.sqlite3-shm` next to it; those sidecar files are normal.
+
 ## Add An Agent
 
 On the chat page, add an agent from the sidebar:
