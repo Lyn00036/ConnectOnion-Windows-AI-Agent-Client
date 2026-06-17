@@ -73,6 +73,7 @@ connectonion-desktop/
       main.py           FastAPI app entrypoint, router registration, error handling
       routers/          API route modules
       services/         Backend business logic
+      repositories/     Database access boundary for persisted entities
       clients/          External agent HTTP client adapter
       schemas/          Pydantic request/response models
       db/               SQLAlchemy session, base, and ORM models
