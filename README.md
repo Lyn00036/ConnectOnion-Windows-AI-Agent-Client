@@ -75,8 +75,9 @@ connectonion-desktop/
       services/         Backend business logic
       clients/          External agent HTTP client adapter
       schemas/          Pydantic request/response models
-      db/               SQLAlchemy session and schema initialization helper
+      db/               SQLAlchemy session, base, and ORM models
       core/             Runtime config and application errors
+    alembic/            Database migration environment and revisions
     requirements.txt
   frontend/
     src/
@@ -89,8 +90,6 @@ connectonion-desktop/
     electron/           Electron shell
     Dockerfile
     nginx.conf
-  db/
-    init.sql            PostgreSQL schema used by Docker initialization
   .github/workflows/ci.yml
   docker-compose.yml
 ```
@@ -432,13 +431,13 @@ Backend container database URL:
 postgresql+asyncpg://connectonion:connectonion_pass@postgres:5432/connectonion_db
 ```
 
-The Docker database schema is stored in:
+Database schema changes are managed by Alembic migrations:
 
 ```text
-db/init.sql
+backend/alembic/versions/
 ```
 
-Docker mounts this file into the PostgreSQL image at `/docker-entrypoint-initdb.d/init.sql`. PostgreSQL runs it only when the database volume is created for the first time.
+The backend container runs `alembic upgrade head` before starting FastAPI, so Compose applies pending migrations automatically when the backend service starts.
 
 Start the Docker database only:
 
@@ -447,7 +446,6 @@ Windows PowerShell:
 ```powershell
 docker compose up -d postgres
 docker compose ps
-docker exec -it connectonion-postgres psql -U connectonion -d connectonion_db -c "\dt"
 ```
 
 macOS/Linux:
@@ -455,20 +453,21 @@ macOS/Linux:
 ```bash
 docker compose up -d postgres
 docker compose ps
+```
+
+Apply migrations through the backend container:
+
+```powershell
+docker compose up -d backend
 docker exec -it connectonion-postgres psql -U connectonion -d connectonion_db -c "\dt"
 ```
 
-If the volume already existed before `db/init.sql` was added, the init script will not run automatically. For development data that can be discarded, recreate the volume:
+To run migrations from a local backend virtual environment instead:
 
 ```powershell
-docker compose down -v
-docker compose up -d postgres
-```
-
-To keep existing data, run the schema manually:
-
-```powershell
-docker exec -i connectonion-postgres psql -U connectonion -d connectonion_db < db/init.sql
+cd .\backend
+.\venv\Scripts\Activate.ps1
+alembic upgrade head
 ```
 
 If a local Windows PostgreSQL service already uses port `5432`, either stop it or change the Compose port mapping and local `DATABASE_URL` to another port such as `5433`.
@@ -499,12 +498,25 @@ Local backend `.env` should point to localhost:
 DATABASE_URL=postgresql+asyncpg://connectonion:connectonion_pass@localhost:5432/connectonion_db
 ```
 
-Initialize the schema through the backend helper:
+Initialize or upgrade the schema through Alembic:
 
 ```powershell
 cd .\backend
 .\venv\Scripts\Activate.ps1
+alembic upgrade head
+```
+
+The compatibility helper still delegates to Alembic:
+
+```powershell
 python -m app.db.init_db
+```
+
+After changing ORM models in `backend/app/db/models.py`, create a migration:
+
+```powershell
+alembic revision --autogenerate -m "describe schema change"
+alembic upgrade head
 ```
 
 Test that the backend can really connect to the database:
@@ -550,7 +562,7 @@ It runs on pushes, pull requests, and manual dispatch:
 - Basic chat send/response flow through the selected agent URL
 - Unified backend error response format
 - Backend database connection and `/health/db` check
-- Lightweight PostgreSQL schema initialization helper
+- SQLAlchemy ORM models and Alembic migrations
 - Example email agent HTTP service
 - PostgreSQL Docker Compose service
 - Frontend/backend Dockerfiles and nginx proxy
@@ -565,7 +577,6 @@ It runs on pushes, pull requests, and manual dispatch:
 - Real Sessions, Agents, and Settings pages beyond placeholders
 - Streaming responses
 - Secure credential storage
-- Alembic migrations
 - User authentication
 - Windows installer/package build
 - Production CD deployment
