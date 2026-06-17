@@ -1,48 +1,44 @@
 #!/usr/bin/env python3
-"""Email assistant agent shared by the CLI and HTTP server."""
+"""Email assistant agent shared by the CLI and ConnectOnion host."""
 
 import os
 import sys
-from functools import lru_cache
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 AGENT_DIR = Path(__file__).resolve().parent
-REPO_ROOT = AGENT_DIR.parents[2]
-CONNECTONION_SOURCE = REPO_ROOT.parent / "connectonion"
+LOCAL_CONNECTONION_SOURCE = (
+    AGENT_DIR.parents[2] / "connectonion"
+    if len(AGENT_DIR.parents) > 2
+    else None
+)
 
 load_dotenv(AGENT_DIR / ".env")
 
-if CONNECTONION_SOURCE.exists():
-    sys.path.insert(0, str(CONNECTONION_SOURCE))
+if LOCAL_CONNECTONION_SOURCE and LOCAL_CONNECTONION_SOURCE.exists():
+    sys.path.insert(0, str(LOCAL_CONNECTONION_SOURCE))
 
 from connectonion import Agent, Gmail
 from connectonion.useful_plugins import gmail_plugin, re_act
 
 
-@lru_cache(maxsize=1)
 def create_email_agent() -> Agent:
-    """Create one long-lived email assistant instance."""
+    """Create a fresh email assistant instance for hosted requests."""
     return Agent(
         name="email_assistant",
         tools=[Gmail()],
         system_prompt=str(AGENT_DIR / "prompts" / "email_assistant.md"),
-        model=os.getenv("EMAIL_AGENT_MODEL", "deepseek-v4-flash"),
+        model=os.getenv("EMAIL_AGENT_MODEL", "co/gemini-2.5-flash"),
         plugins=[re_act, gmail_plugin],
         log=False,
-        quiet=False,
+        quiet=True,
     )
-
-
-def ask_email_agent(message: str) -> str:
-    """Send a user message to the email assistant."""
-    return str(create_email_agent().input(message))
 
 
 def main() -> None:
     """Run the email assistant as an interactive CLI."""
-    create_email_agent()
+    agent = create_email_agent()
 
     print("Email Assistant")
     print("=" * 50)
@@ -59,7 +55,7 @@ def main() -> None:
             if not user_input.strip():
                 continue
 
-            print(f"\nAgent: {ask_email_agent(user_input)}")
+            print(f"\nAgent: {agent.input(user_input)}")
 
         except KeyboardInterrupt:
             print("\n\nEmail assistant stopped.")

@@ -1,11 +1,12 @@
 /** Message list component that displays chat history and the active pending state. */
 
-import type { ChatMessage as ChatMessageType } from '../types'
+import type { ChatItem } from 'connectonion/react'
+
 import { MessageBubble } from './MessageBubble'
 
 type MessageListProps = {
   isSending: boolean
-  messages: ChatMessageType[]
+  messages: ChatItem[]
   selectedAgentName: string
 }
 
@@ -14,12 +15,21 @@ export function MessageList({
   messages,
   selectedAgentName,
 }: MessageListProps) {
+  const visibleMessages = messages.filter(isVisibleChatItem)
+  const hasRunningThinking = visibleMessages.some(
+    (message) => message.type === 'thinking' && message.status === 'running',
+  )
+
   return (
     <div className="messages">
-      {messages.map((message) => (
-        <MessageBubble key={message.id} message={message} />
+      {visibleMessages.map((message) => (
+        <MessageBubble
+          key={message.id}
+          message={message}
+          selectedAgentName={selectedAgentName}
+        />
       ))}
-      {isSending && (
+      {isSending && !hasRunningThinking && (
         <article className="message message-agent">
           <span className="message-role">{selectedAgentName}</span>
           <p>Thinking...</p>
@@ -27,4 +37,17 @@ export function MessageList({
       )}
     </div>
   )
+}
+
+function isVisibleChatItem(message: ChatItem) {
+  if (message.type === 'thinking') {
+    return message.status === 'running' || Boolean(message.content?.trim())
+  }
+
+  if (message.type === 'agent') {
+    const content = message.content.trim()
+    return content !== '' && content.toLowerCase() !== 'done'
+  }
+
+  return true
 }

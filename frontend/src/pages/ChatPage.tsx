@@ -6,61 +6,37 @@ import { AgentForm } from '../features/agents/components/AgentForm'
 import { AgentList } from '../features/agents/components/AgentList'
 import { useAgentStore } from '../features/agents/store'
 import { ChatWindow } from '../features/chat/components/ChatWindow'
-import { sendChatMessage } from '../features/chat/api'
 import { useChatStore } from '../features/chat/store'
-import { parseUnknownError } from '../shared/api/errors'
+import { useConnectOnionAgent } from '../features/chat/useConnectOnionAgent'
 
 export function ChatPage() {
   const agents = useAgentStore((state) => state.agents)
   const selectedAgentId = useAgentStore((state) => state.selectedAgentId)
-  const error = useAgentStore((state) => state.error)
   const selectAgent = useAgentStore((state) => state.selectAgent)
   const addAgent = useAgentStore((state) => state.addAgent)
   const removeAgent = useAgentStore((state) => state.removeAgent)
-  const setError = useAgentStore((state) => state.setError)
 
-  const messages = useChatStore((state) => state.messages)
   const input = useChatStore((state) => state.input)
-  const isSending = useChatStore((state) => state.isSending)
   const setInput = useChatStore((state) => state.setInput)
-  const setSending = useChatStore((state) => state.setSending)
-  const addMessage = useChatStore((state) => state.addMessage)
 
   const selectedAgent =
     agents.find((agent) => agent.id === selectedAgentId) ?? undefined
+  const {
+    connectionState,
+    error,
+    input: sendToAgent,
+    isProcessing,
+    ui,
+  } = useConnectOnionAgent(selectedAgent)
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
     const message = input.trim()
-    if (!message || !selectedAgent || isSending) return
+    if (!message || !selectedAgent || isProcessing) return
 
-    addMessage({
-      id: Date.now(),
-      role: 'user',
-      content: message,
-    })
     setInput('')
-    setError(null)
-    setSending(true)
-
-    try {
-      const data = await sendChatMessage({
-        message,
-        agent_url: selectedAgent.url,
-      })
-
-      addMessage({
-        id: Date.now() + 1,
-        role: 'agent',
-        content: data.response || '(empty response)',
-        agentName: selectedAgent.name,
-      })
-    } catch (err) {
-      setError(parseUnknownError(err))
-    } finally {
-      setSending(false)
-    }
+    await sendToAgent(message)
   }
 
   return (
@@ -86,10 +62,11 @@ export function ChatPage() {
       </aside>
 
       <ChatWindow
-        error={error}
+        connectionState={connectionState}
+        error={error ? error.message : null}
         input={input}
-        isSending={isSending}
-        messages={messages}
+        isSending={isProcessing}
+        messages={ui}
         onInputChange={setInput}
         onSubmit={handleSubmit}
         selectedAgent={selectedAgent}

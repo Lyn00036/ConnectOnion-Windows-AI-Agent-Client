@@ -1,31 +1,25 @@
-"""HTTP server for the email assistant agent."""
+"""ConnectOnion host app for the email assistant agent."""
 
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+import os
 
-from agent import ask_email_agent
+from agent import create_email_agent
+from connectonion import create_app, host
 
-app = FastAPI(title="Email Agent Service")
+AGENT_TRUST = os.getenv("EMAIL_AGENT_TRUST", "open")
 
-
-class ChatRequest(BaseModel):
-    message: str = Field(..., min_length=1)
-
-
-class ChatResponse(BaseModel):
-    response: str
-
-
-@app.get("/health")
-def health_check() -> dict[str, str]:
-    return {"status": "ok"}
+# Native ConnectOnion ASGI app:
+#   GET  /health
+#   GET  /info
+#   POST /input
+#   WS   /ws
+app = create_app(create_email_agent, trust=AGENT_TRUST)
 
 
-@app.post("/chat", response_model=ChatResponse)
-def chat(request: ChatRequest) -> ChatResponse:
-    try:
-        response = ask_email_agent(request.message)
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+if __name__ == "__main__":
+    host_kwargs = {"trust": AGENT_TRUST}
+    if os.getenv("EMAIL_AGENT_PORT"):
+        host_kwargs["port"] = int(os.environ["EMAIL_AGENT_PORT"])
+    if os.getenv("EMAIL_AGENT_RELAY_URL"):
+        host_kwargs["relay_url"] = os.environ["EMAIL_AGENT_RELAY_URL"]
 
-    return ChatResponse(response=response)
+    host(create_email_agent, **host_kwargs)

@@ -1,5 +1,15 @@
 /** Zustand store for local agent selection and temporary agent configuration state. */
 
+// TODO(agent-storage): Move agent CRUD from localStorage to the Electron SQLite
+// repository through preload IPC. Keep this store as UI state only: selected
+// agent id, validation errors, loading state, and optimistic update state.
+// Required follow-up:
+// - Add agent repository in electron/storage/repositories.
+// - Add agent IPC channels and preload API methods.
+// - Load saved agents asynchronously on app startup.
+// - Persist create/edit/delete/select operations in SQLite.
+// - Migrate existing localStorage agent records once, then remove these keys.
+
 import { create } from 'zustand'
 
 import { normalizeUrl } from '../../shared/utils/url'
@@ -12,7 +22,7 @@ type AgentState = {
   agents: AgentConfig[]
   selectedAgentId: string | null
   error: string | null
-  addAgent: (name: string, url: string) => void
+  addAgent: (name: string, address: string, directUrl?: string) => void
   removeAgent: (agentId: string) => void
   selectAgent: (agentId: string) => void
   setError: (error: string | null) => void
@@ -23,12 +33,24 @@ function loadAgents() {
     const stored = localStorage.getItem(AGENTS_STORAGE_KEY)
     if (!stored) return []
 
-    const agents = JSON.parse(stored) as AgentConfig[]
+    const agents = JSON.parse(stored) as Array<
+      AgentConfig & { url?: string }
+    >
     if (!Array.isArray(agents)) return []
 
-    return agents.filter(
-      (agent) => agent.name && agent.url && agent.id !== 'local-agent',
-    )
+    return agents
+      .filter((agent) => agent.name && agent.id !== 'local-agent')
+      .map((agent) => {
+        if (agent.address) return agent
+
+        return {
+          id: agent.id,
+          name: agent.name,
+          address: agent.url ?? agent.name,
+          directUrl: agent.url ? normalizeUrl(agent.url) : undefined,
+        }
+      })
+      .filter((agent) => agent.address)
   } catch {
     return []
   }
@@ -49,11 +71,13 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   agents: initialAgents,
   selectedAgentId: loadSelectedAgentId(initialAgents),
   error: null,
-  addAgent: (name, url) => {
+  addAgent: (name, address, directUrl) => {
+    const trimmedDirectUrl = directUrl?.trim()
     const agent: AgentConfig = {
       id: `${Date.now()}`,
       name: name.trim(),
-      url: normalizeUrl(url),
+      address: address.trim(),
+      directUrl: trimmedDirectUrl ? normalizeUrl(trimmedDirectUrl) : undefined,
     }
     const nextAgents = [...get().agents, agent]
 

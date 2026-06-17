@@ -8,14 +8,14 @@
     "dev": "vite --host 127.0.0.1 --port 3000 --strictPort",
     "electron": "electron .",
     "desktop": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && npm run electron\"",
+    "rebuild:electron": "npm rebuild better-sqlite3 --runtime=electron --target=42.4.0 --dist-url=https://electronjs.org/headers",
     "build": "tsc -b && vite build",
-    "lint": "eslint .",
-    "preview": "vite preview"
+    "lint": "eslint ."
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.0",
-    "@tanstack/react-query": "^5.101.0",
-    "axios": "^1.17.0",
+    "better-sqlite3": "^12.11.1",
+    "connectonion": "^0.1.5",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-markdown": "^10.1.0",

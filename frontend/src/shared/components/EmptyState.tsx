@@ -1,4 +1,4 @@
-/** Shared empty state component for pages whose backend features are not connected yet. */
+/** Shared empty state component for placeholder desktop pages. */
 
 type EmptyStateProps = {
   title: string

@@ -1,14 +1,12 @@
 # ConnectOnion Desktop
 
-ConnectOnion Desktop is a Windows desktop client prototype for connecting to and chatting with external ConnectOnion-style agents.
+ConnectOnion Desktop is a Windows desktop client for chatting with external ConnectOnion agents.
 
-The current app is a developer prototype with three main parts:
+This repository is developed from the current desktop-client baseline:
 
-- Electron + React + Vite frontend
-- FastAPI backend
-- PostgreSQL development database
-
-Agents are not hardcoded into the desktop app and there is no default agent URL. Users must manually add an agent service URL in the frontend before sending messages. The frontend currently stores those manually added agent entries in local browser/Electron storage, and the backend proxies chat requests to the selected agent over HTTP.
+- Desktop-local data is stored through SQLite in the Electron process
+- Chat connects directly through the ConnectOnion TypeScript SDK
+- The example email agent runs as a separate ConnectOnion agent host
 
 ## Current Architecture
 
@@ -16,50 +14,34 @@ Agents are not hardcoded into the desktop app and there is no default agent URL.
 User
   -> Electron BrowserWindow
   -> React frontend
-  -> FastAPI backend
-  -> External agent service selected by URL
+  -> Electron preload IPC bridge
+  -> Electron main SQLite storage service
+  -> ConnectOnion TypeScript SDK
+  -> Remote or local ConnectOnion agent
   -> Agent LLM/tools
-
-PostgreSQL is available for future persistence, but agent registry, chat history, and session persistence are not implemented yet.
 ```
 
-Generic agent proxy endpoints:
+SQLite lives behind Electron IPC. React code should not import Node, Electron, or SQLite packages directly.
+
+Storage framework files:
 
 ```text
-GET  /agents/health?agent_url=<agent-service-url>
-POST /agents/chat
-```
+frontend/electron/storage/
+  connection.ts       Opens SQLite and applies database pragmas
+  migrations.ts       Versioned schema migrations
+  service.ts          Desktop storage lifecycle
 
-`POST /agents/chat` requires both the message and the manually selected agent URL:
+frontend/electron/ipc/
+  storageChannels.ts  IPC channel names
+  storageIpc.ts       Main-process IPC handlers
 
-```json
-{
-  "message": "hello",
-  "agent_url": "https://your-agent.example.com"
-}
-```
+frontend/electron/preload.ts
+  Exposes window.desktopStorage through contextBridge
 
-The expected agent service contract is:
-
-```text
-GET  /health
-POST /chat
-```
-
-`POST /chat` should accept:
-
-```json
-{
-  "message": "hello"
-}
-```
-
-and return:
-
-```json
-{
-  "response": "agent reply"
-}
+frontend/src/shared/storage/
+  types.ts            Renderer-safe storage types
+  desktopStorage.ts   Renderer adapter for the preload API
+  repository.ts       Repository interface for future feature modules
 ```
 
 ## Project Structure
@@ -67,263 +49,138 @@ and return:
 ```text
 connectonion-desktop/
   agent/
-    email-agent/        Example standalone HTTP agent
-  backend/
-    app/
-      main.py           FastAPI app entrypoint, router registration, error handling
-      routers/          API route modules
-      services/         Backend business logic
-      repositories/     Database access boundary for persisted entities
-      clients/          External agent HTTP client adapter
-      schemas/          Pydantic request/response models
-      db/               SQLAlchemy session, base, and ORM models
-      core/             Runtime config and application errors
-    alembic/            Database migration environment and revisions
-    requirements.txt
+    email-agent/        Example ConnectOnion agent for local/demo testing
   frontend/
+    electron/           Electron desktop shell
     src/
       app/              React providers and route table
       layouts/          Desktop shell layout
       pages/            Top-level app views
       features/         Agent, chat, session, and settings modules
-      shared/           Shared API client, components, hooks, and utilities
+      shared/           Shared components, hooks, storage, and utilities
       styles/           Split CSS by layout and feature area
-    electron/           Electron shell
-    Dockerfile
-    nginx.conf
   .github/workflows/ci.yml
-  docker-compose.yml
 ```
 
 ## Requirements
 
-- Windows, macOS, or Linux
 - Node.js 22+
 - npm
-- Python 3.12+
-- Docker Desktop or Docker Engine
+- Python 3.12+ only if you want to run the example email agent
 
-## ConnectOnion Framework Repository
+## Read The ConnectOnion Docs First
 
-This desktop repository is separate from the ConnectOnion Python framework repository. The desktop app can call any HTTP agent service, while the example agent under `agent/email-agent` depends on the Python framework package.
+Before changing agent connection, hosting, streaming, deployment, credentials, or local persistence behavior, read the official ConnectOnion repositories and docs in the sibling checkouts:
 
-For local framework development, keep the framework repository next to this desktop repository:
-
-```text
-parent-directory/
-  connectonion-desktop/
-  connectonion/
-```
-
-Install the local framework into the agent virtual environment with editable mode:
-
-Windows PowerShell:
-
-```powershell
-python -m pip install -e ..\connectonion
-```
-
-macOS/Linux:
-
-```bash
-python -m pip install -e ../connectonion
-```
-
-If you need to modify the official framework, use a fork instead of pushing directly to the official repository. A recommended remote layout inside the framework repository is:
-
-```powershell
-cd ..\connectonion
-git remote rename origin upstream
-git remote add origin git@github.com:<your-github-user>/connectonion.git
-git fetch upstream
-```
-
-In this setup:
-
-- `upstream` points to the official framework repository.
-- `origin` points to your fork.
-- Desktop development can keep using `pip install -e ..\connectonion` to test local framework changes immediately.
-
-If a deployed environment should install your fork directly, change the framework dependency to your fork and pin a branch, tag, or commit:
+Official repositories:
 
 ```text
--e git+ssh://git@github.com:<your-github-user>/connectonion.git@<branch-or-commit>#egg=connectonion
+https://github.com/openonion/connectonion
+https://github.com/openonion/connectonion-ts
 ```
 
-Do not commit `.env`, `.co`, API keys, or local credential files.
+Local sibling checkouts:
 
-## Cross-Platform Command Notes
-
-Most commands below are shown with Windows PowerShell paths because the project is currently developed on Windows. Use the matching shell form for your platform.
-
-Windows PowerShell virtual environment activation:
-
-```powershell
-.\venv\Scripts\Activate.ps1
+```text
+../connectonion/
+../connectonion-ts/
 ```
 
-macOS/Linux virtual environment activation:
+Use this checklist before implementation:
 
-```bash
-source venv/bin/activate
+```text
+1. Read the Python framework docs for agent hosting and deployment.
+2. Read the TypeScript SDK docs for connect(), React hooks, UI events, and session behavior.
+3. Confirm the exact SDK API from the local source before importing or calling it.
+4. Confirm whether the desktop client should connect by address, relay URL, or direct URL.
+5. Confirm which events the agent/SDK can emit before designing chat UI states.
+6. Keep Electron SQLite as the desktop source of truth for local data.
+7. Keep secrets in a secure credential layer, not plain SQLite or renderer state.
 ```
 
-Windows PowerShell path example from the repository root:
+High-priority Python framework docs:
 
-```powershell
-cd .
+```text
+../connectonion/docs/README.md
+../connectonion/docs/quickstart.md
+../connectonion/docs/api.md
+../connectonion/docs/network/host.md
+../connectonion/docs/network/deploy.md
+../connectonion/docs/network/connect.md
+../connectonion/docs/network/protocol.md
+../connectonion/docs/network/websocket-protocol.md
+../connectonion/docs/network/client-reconnection.md
+../connectonion/docs/cli/README.md
+../connectonion/docs/cli/auth.md
 ```
 
-macOS/Linux path example from the repository root:
+High-priority TypeScript SDK docs:
 
-```bash
-cd .
+```text
+../connectonion-ts/docs/getting-started.md
+../connectonion-ts/docs/connect.md
+../connectonion-ts/docs/react.md
+../connectonion-ts/docs/api.md
+../connectonion-ts/docs/tools.md
+../connectonion-ts/docs/examples.md
+../connectonion-ts/docs/troubleshooting.md
 ```
 
-## Quick Start: Local Development
+Suggested prompt for future development work:
 
-Use three terminals.
-
-### 1. Start an agent service
-
-The repository includes an example email agent. It runs independently from the desktop backend.
-
-Windows PowerShell:
-
-```powershell
-cd .\agent
-python -m venv venv
-.\venv\Scripts\Activate.ps1
-python -m pip install -e ..\..\connectonion
-python -m pip install -r .\email-agent\requirements.txt
+```text
+Before implementing this change, inspect the local connectonion and connectonion-ts repositories.
+Use their docs and source as the source of truth.
+Do not invent ConnectOnion APIs.
+Preserve the desktop architecture: React renderer -> preload IPC -> Electron main -> SQLite/secure storage, and React renderer -> ConnectOnion TS SDK -> remote/local agent.
+Call out any mismatch between the docs, installed package version, and this desktop client.
 ```
 
-macOS/Linux:
+## Useful ConnectOnion CLI Commands
 
-```bash
-cd ./agent
-python3 -m venv venv
-source venv/bin/activate
-python -m pip install -e ../../connectonion
-python -m pip install -r ./email-agent/requirements.txt
-```
-
-Create `agent\email-agent\.env`:
-
-```env
-OPENAI_API_KEY=your_api_key
-OPENAI_BASE_URL=https://api.deepseek.com
-EMAIL_AGENT_MODEL=deepseek-v4-flash
-```
-
-If you are using AIHubMix, use this base URL instead:
-
-```env
-OPENAI_BASE_URL=https://aihubmix.com/v1
-```
-
-The email agent also uses ConnectOnion/OpenOnion credentials for Gmail OAuth.
-Run these commands from `agent\email-agent` so the generated credentials are saved to `agent\email-agent\.env`, which is the file loaded by the agent:
-
-Windows PowerShell:
+Run Python `co` commands inside the relevant agent project when the generated `.env` or `.co/` files should belong to that agent. For this repository, run email-agent credentials and deploy commands from:
 
 ```powershell
 cd .\agent\email-agent
 ..\venv\Scripts\Activate.ps1
-co auth
-co auth google
 ```
 
-macOS/Linux:
-
-```bash
-cd ./agent/email-agent
-source ../venv/bin/activate
-co auth
-co auth google
-```
-
-`co auth` creates or refreshes `OPENONION_API_KEY`. `co auth google` opens a browser Google OAuth flow and writes `GOOGLE_ACCESS_TOKEN`, `GOOGLE_REFRESH_TOKEN`, `GOOGLE_TOKEN_EXPIRES_AT`, `GOOGLE_SCOPES`, and `GOOGLE_EMAIL`.
-
-Keep the two key types separate:
-
-- `OPENAI_API_KEY` / `OPENAI_BASE_URL` are for the LLM provider used by `EMAIL_AGENT_MODEL`.
-- `OPENONION_API_KEY` is for ConnectOnion managed services, including Google OAuth token refresh.
-
-Then start it:
-
-Windows PowerShell:
-
-```powershell
-cd .\agent\email-agent
-..\venv\Scripts\Activate.ps1
-python -m uvicorn server:app --host 127.0.0.1 --port 8010
-```
-
-macOS/Linux:
-
-```bash
-cd ./agent/email-agent
-source ../venv/bin/activate
-python -m uvicorn server:app --host 127.0.0.1 --port 8010
-```
-
-Health check:
+Common commands:
 
 ```text
-http://127.0.0.1:8010/health
+co auth              Authenticate with OpenOnion and refresh OPENONION_API_KEY.
+co auth google       Connect Google OAuth for Gmail/Calendar tools.
+co auth microsoft    Connect Microsoft OAuth for Outlook/Calendar tools.
+co status            Show account, balance, and deployed agents.
+co doctor            Diagnose installation, auth, environment, and connectivity.
+co create <name>     Create a new ConnectOnion agent project.
+co init              Add or refresh ConnectOnion project files in an existing directory.
+co deploy            Deploy the current agent to ConnectOnion Cloud.
+co copy --list       List built-in tools, plugins, prompts, skills, and templates.
+co copy <name>       Copy a built-in item into the current project for customization.
+co skills discover   Discover available skills from known local skill directories.
+co skills copy <n>   Copy a skill into the ConnectOnion skill library.
+co setup             Initialize global identity and skill library under ~/.co.
+co sub               Sync subscribed published agent skills.
+co browser "<task>"  Run a browser automation task.
 ```
 
-### 2. Start the backend
+Important notes:
 
-Windows PowerShell:
+- `co auth` writes managed-key credentials such as `OPENONION_API_KEY`.
+- `co auth google` and `co auth microsoft` write OAuth credentials for tool integrations.
+- `co deploy` expects a valid `.co/host.yaml`, an authenticated account, and a hostable agent entrypoint.
+- In a git repository, `co deploy` packages tracked project files and skips local-only secrets such as `.env` and `.co/keys`.
+- `co doctor` is the first command to run when auth, deployment, or environment setup looks wrong.
+- Do not commit `.env`, `.co/keys`, OAuth tokens, API keys, or recovery phrases.
+- Treat `co reset` as destructive; do not run it unless you intentionally want to replace the local account identity.
 
-```powershell
-cd .\backend
-python -m venv venv
-.\venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
-python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-```
-
-macOS/Linux:
-
-```bash
-cd ./backend
-python3 -m venv venv
-source venv/bin/activate
-python -m pip install -r requirements.txt
-python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-```
-
-Health check:
-
-```text
-http://127.0.0.1:8000/health
-```
-
-API documentation for frontend developers:
-
-```text
-http://127.0.0.1:8000/docs
-```
-
-This opens the FastAPI Swagger UI, where frontend developers can inspect request and response schemas for backend endpoints such as `/agents/health` and `/agents/chat`.
-
-### 3. Start the frontend
+## Start The Desktop Client
 
 Windows PowerShell:
 
 ```powershell
 cd .\frontend
-npm install
-npm run dev
-```
-
-macOS/Linux:
-
-```bash
-cd ./frontend
 npm install
 npm run dev
 ```
@@ -334,28 +191,10 @@ Open:
 http://127.0.0.1:3000
 ```
 
-In the Agent Console, manually add the agent service you want to use. The frontend does not ship with a default agent and does not currently provide a connection-test button; sending a chat message is the active end-to-end flow.
-
-```text
-Name: Your Agent
-URL:  <agent-service-url>
-```
-
-## Electron Desktop Shell
-
-The Electron shell loads the same Vite frontend.
-
-Windows PowerShell:
+Electron desktop shell:
 
 ```powershell
 cd .\frontend
-npm run desktop
-```
-
-macOS/Linux:
-
-```bash
-cd ./frontend
 npm run desktop
 ```
 
@@ -369,227 +208,80 @@ npm run lint      Run ESLint
 npm run build     Type-check and build frontend
 ```
 
-## Docker Compose
+## Add An Agent
 
-Docker Compose starts PostgreSQL, backend, and frontend. Agents can run separately.
+On the chat page, add an agent from the sidebar:
 
-Windows PowerShell:
+```text
+Agent name        Display name stored locally
+Agent address     0x... address or stable agent name
+Direct URL        Optional local/deployed host URL
+```
+
+For a local agent, `Direct URL` can be:
+
+```text
+http://127.0.0.1:8010
+```
+
+The agent host should expose ConnectOnion-compatible endpoints such as:
+
+```text
+GET /health
+GET /info
+WS  /ws
+```
+
+## Example Email Agent
+
+The repository keeps `agent/email-agent` as a separate ConnectOnion agent example for local and deployed testing.
+
+Install and run it from the repository root:
 
 ```powershell
-cd .
-docker compose up --build
-```
-
-macOS/Linux:
-
-```bash
-cd .
-docker compose up --build
-```
-
-Open:
-
-```text
-http://127.0.0.1:3000
-```
-
-Backend Swagger docs are still available directly through the backend port:
-
-```text
-http://127.0.0.1:8000/docs
-```
-
-Inside Docker, frontend requests are proxied by nginx:
-
-```text
-/agents/health -> backend:8000/agents/health
-/agents/chat   -> backend:8000/agents/chat
-```
-
-If an agent is running on the Windows host machine while frontend/backend are in Docker, manually add this kind of URL in the Agent Console:
-
-```text
-http://host.docker.internal:8010
-```
-
-Do not use `http://127.0.0.1:8010` from inside Docker for a host-running agent. Inside a container, `127.0.0.1` means that container.
-
-## Database
-
-The Docker Compose PostgreSQL service uses:
-
-```text
-host: localhost
-port: 5432
-database: connectonion_db
-user: connectonion
-password: connectonion_pass
-```
-
-Backend container database URL:
-
-```text
-postgresql+asyncpg://connectonion:connectonion_pass@postgres:5432/connectonion_db
-```
-
-Database schema changes are managed by Alembic migrations:
-
-```text
-backend/alembic/versions/
-```
-
-The backend container runs `alembic upgrade head` before starting FastAPI, so Compose applies pending migrations automatically when the backend service starts.
-
-Start the Docker database only:
-
-Windows PowerShell:
-
-```powershell
-docker compose up -d postgres
-docker compose ps
-```
-
-macOS/Linux:
-
-```bash
-docker compose up -d postgres
-docker compose ps
-```
-
-Apply migrations through the backend container:
-
-```powershell
-docker compose up -d backend
-docker exec -it connectonion-postgres psql -U connectonion -d connectonion_db -c "\dt"
-```
-
-To run migrations from a local backend virtual environment instead:
-
-```powershell
-cd .\backend
+cd .\agent
+python -m venv venv
 .\venv\Scripts\Activate.ps1
-alembic upgrade head
+python -m pip install -r .\email-agent\requirements.txt
+cd .\email-agent
+python -m uvicorn server:app --host 127.0.0.1 --port 8010
 ```
 
-If a local Windows PostgreSQL service already uses port `5432`, either stop it or change the Compose port mapping and local `DATABASE_URL` to another port such as `5433`.
-
-For local PostgreSQL without Docker, create the user and database first:
+If you use ConnectOnion OAuth helpers, run them from `agent/email-agent` so credentials are written to that service's `.env`:
 
 ```powershell
-& "C:\Program Files\PostgreSQL\16\bin\psql.exe" -U postgres -h localhost -p 5432
+cd .\agent\email-agent
+..\venv\Scripts\Activate.ps1
+co auth
+co auth google
 ```
 
-Then run:
+Do not commit `.env`, `.co/`, API keys, or local credential files.
 
-```sql
-CREATE USER connectonion WITH PASSWORD 'connectonion_pass';
-CREATE DATABASE connectonion_db OWNER connectonion;
-GRANT ALL PRIVILEGES ON DATABASE connectonion_db TO connectonion;
-```
+## What Is Implemented
 
-If the user already exists, reset the password:
-
-```sql
-ALTER USER connectonion WITH PASSWORD 'connectonion_pass';
-```
-
-Local backend `.env` should point to localhost:
-
-```env
-DATABASE_URL=postgresql+asyncpg://connectonion:connectonion_pass@localhost:5432/connectonion_db
-```
-
-Initialize or upgrade the schema through Alembic:
-
-```powershell
-cd .\backend
-.\venv\Scripts\Activate.ps1
-alembic upgrade head
-```
-
-The compatibility helper still delegates to Alembic:
-
-```powershell
-python -m app.db.init_db
-```
-
-After changing ORM models in `backend/app/db/models.py`, create a migration:
-
-```powershell
-alembic revision --autogenerate -m "describe schema change"
-alembic upgrade head
-```
-
-Test that the backend can really connect to the database:
-
-```powershell
-python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-```
-
-In another terminal:
-
-```powershell
-Invoke-RestMethod http://127.0.0.1:8000/health/db
-```
-
-Expected response:
-
-```text
-status   : ok
-database : connectonion_db
-user     : connectonion
-```
-
-## CI
-
-GitHub Actions workflow:
-
-```text
-.github/workflows/ci.yml
-```
-
-It runs on pushes, pull requests, and manual dispatch:
-
-- Backend dependency install and Python compile check
-- Frontend `npm ci`, lint, and build
-- Docker Compose config validation and image build
-
-## Implemented
-
-- Electron window bootstrap
-- Feature-based React frontend structure
-- Manual add/select/remove agent URLs in frontend local storage
-- Generic FastAPI agent proxy
-- Basic chat send/response flow through the selected agent URL
-- Unified backend error response format
-- Backend database connection and `/health/db` check
-- SQLAlchemy ORM models and Alembic migrations
-- Example email agent HTTP service
-- PostgreSQL Docker Compose service
-- Frontend/backend Dockerfiles and nginx proxy
-- CI workflow
+- Electron desktop shell
+- React + Vite frontend
+- ConnectOnion TypeScript SDK chat connection
+- Manual local agent add/select/remove
+- SQLite desktop storage framework
+- Example standalone email agent host
+- Frontend CI lint/build
 
 ## Not Implemented Yet
 
-- Persistent agent registry in PostgreSQL
-- Backend Agent CRUD APIs
-- Frontend connection-test UI
+- Agent/session/chat repositories backed by SQLite
 - Chat/session history persistence
-- Real Sessions, Agents, and Settings pages beyond placeholders
-- Streaming responses
-- Secure credential storage
-- User authentication
-- Windows installer/package build
-- Production CD deployment
-
-## Security Notes
-
-- Do not commit `.env` files.
-- Do not commit `.co/` agent keys or local agent state.
-- API keys should stay in local environment files or deployment secrets.
-- Frontend should call the desktop backend, not third-party LLM APIs directly.
+- Real Sessions and Settings workflows
+- Secure local credential storage
+- Packaged installer
+- Production release pipeline
 
 ## References
 
 - [Requirement-to-solution mapping](./connectonion_requirement_solution_mapping.md)
 - [Email agent example](./agent/email-agent/README.md)
+- [ConnectOnion Python repository](https://github.com/openonion/connectonion)
+- [ConnectOnion TypeScript repository](https://github.com/openonion/connectonion-ts)
+- [ConnectOnion Python docs](../connectonion/docs/README.md)
+- [ConnectOnion TypeScript docs](../connectonion-ts/docs/getting-started.md)

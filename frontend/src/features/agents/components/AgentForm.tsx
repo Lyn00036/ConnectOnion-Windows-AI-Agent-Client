@@ -7,21 +7,23 @@ import { Button } from '../../../shared/components/Button'
 import { Input } from '../../../shared/components/Input'
 
 type AgentFormProps = {
-  onAddAgent: (name: string, url: string) => void
+  onAddAgent: (name: string, address: string, directUrl?: string) => void
 }
 
 export function AgentForm({ onAddAgent }: AgentFormProps) {
   const [newAgentName, setNewAgentName] = useState('')
-  const [newAgentUrl, setNewAgentUrl] = useState('')
+  const [newAgentAddress, setNewAgentAddress] = useState('')
+  const [newAgentDirectUrl, setNewAgentDirectUrl] = useState('')
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
-    if (!newAgentName.trim() || !newAgentUrl.trim()) return
+    if (!newAgentName.trim() || !newAgentAddress.trim()) return
 
-    onAddAgent(newAgentName, newAgentUrl)
+    onAddAgent(newAgentName, newAgentAddress, newAgentDirectUrl)
     setNewAgentName('')
-    setNewAgentUrl('')
+    setNewAgentAddress('')
+    setNewAgentDirectUrl('')
   }
 
   return (
@@ -33,12 +35,18 @@ export function AgentForm({ onAddAgent }: AgentFormProps) {
         value={newAgentName}
       />
       <Input
-        aria-label="Agent URL"
-        onChange={(event) => setNewAgentUrl(event.target.value)}
-        placeholder="https://your-agent.example.com"
-        value={newAgentUrl}
+        aria-label="Agent address"
+        onChange={(event) => setNewAgentAddress(event.target.value)}
+        placeholder="0x... or agent name"
+        value={newAgentAddress}
       />
-      <Button disabled={!newAgentName.trim() || !newAgentUrl.trim()} type="submit">
+      <Input
+        aria-label="Direct URL"
+        onChange={(event) => setNewAgentDirectUrl(event.target.value)}
+        placeholder="Optional direct URL"
+        value={newAgentDirectUrl}
+      />
+      <Button disabled={!newAgentName.trim() || !newAgentAddress.trim()} type="submit">
         Add Agent
       </Button>
     </form>

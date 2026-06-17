@@ -1,39 +1,42 @@
-# Email Agent
+# Email Agent Example
 
-This agent can run as a standalone HTTP service so the desktop backend can call it over HTTP.
+This folder contains a standalone ConnectOnion email agent that can be used to test the desktop client with a real local or deployed agent.
 
-## Install
+The desktop app connects to this agent through the ConnectOnion TypeScript SDK. The agent is developed and deployed separately from the desktop client.
 
-Run these commands from the `connectonion-desktop` repository root:
+## Structure
+
+```text
+agent/email-agent/
+  agent.py             Creates the ConnectOnion email agent
+  server.py            Exposes the agent as an ASGI app/host
+  requirements.txt     Python dependencies
+  prompts/             Agent prompt files
+  .env.example         Example local environment variables
+```
+
+## Local Setup
+
+From the repository root:
 
 ```powershell
 cd .\agent
 python -m venv venv
 .\venv\Scripts\Activate.ps1
-python -m pip install -e ..\..\connectonion
 python -m pip install -r .\email-agent\requirements.txt
 ```
 
-`..\..\connectonion` is the local ConnectOnion Python framework repository relative to the `agent` directory. If you are changing the framework itself, keep the official repository as `upstream`, push your changes to your own fork as `origin`, and keep using editable install locally while testing this agent.
+Create a local `.env` file from the example:
 
-Create `email-agent\.env`:
-
-```env
-OPENAI_API_KEY=your_api_key
-OPENAI_BASE_URL=https://api.deepseek.com
-EMAIL_AGENT_MODEL=deepseek-v4-flash
+```powershell
+Copy-Item .\email-agent\.env.example .\email-agent\.env
 ```
 
-Use `https://aihubmix.com/v1` instead when the API key is from AIHubMix.
+Then fill in the required values.
 
-## Configure ConnectOnion And Gmail
+## ConnectOnion Auth
 
-The email agent uses two kinds of credentials:
-
-- `OPENAI_API_KEY` / `OPENAI_BASE_URL` for the LLM provider used by `EMAIL_AGENT_MODEL`
-- `OPENONION_API_KEY` plus `GOOGLE_*` OAuth values for Gmail tools
-
-Run the `co` commands from this `email-agent` directory so credentials are written to `email-agent\.env`:
+Run these commands from `agent/email-agent` so credentials are written to this agent's `.env` file:
 
 ```powershell
 cd .\agent\email-agent
@@ -42,19 +45,9 @@ co auth
 co auth google
 ```
 
-`co auth` creates or refreshes `OPENONION_API_KEY`. `co auth google` opens a browser Google OAuth flow and writes these values:
+Keep these credentials local. Do not commit `.env`, `.co/`, API keys, or OAuth tokens.
 
-```env
-GOOGLE_ACCESS_TOKEN=...
-GOOGLE_REFRESH_TOKEN=...
-GOOGLE_TOKEN_EXPIRES_AT=...
-GOOGLE_SCOPES=...
-GOOGLE_EMAIL=...
-```
-
-The agent loads `email-agent\.env` on startup. Restart `uvicorn` after changing API keys or Gmail credentials.
-
-## Run As HTTP Service
+## Run Locally
 
 ```powershell
 cd .\agent\email-agent
@@ -62,48 +55,28 @@ cd .\agent\email-agent
 python -m uvicorn server:app --host 127.0.0.1 --port 8010
 ```
 
-Health check:
-
-```text
-http://127.0.0.1:8010/health
-```
-
-Chat endpoint:
-
-```http
-POST http://127.0.0.1:8010/chat
-Content-Type: application/json
-
-{"message":"Check my emails"}
-```
-
-## Run Through Desktop Backend
-
-Start the desktop backend:
-
-```powershell
-cd .\backend
-.\venv\Scripts\Activate.ps1
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
-```
-
-The frontend lets you manually add this service URL:
+Use this direct URL in the desktop client:
 
 ```text
 http://127.0.0.1:8010
 ```
 
-The desktop backend exposes generic agent proxy endpoints:
-
-```text
-GET  http://127.0.0.1:8000/agents/health?agent_url=http://127.0.0.1:8010
-POST http://127.0.0.1:8000/agents/chat
-```
-
-## CLI Mode
+## Deploy
 
 ```powershell
 cd .\agent\email-agent
-..\venv\Scripts\Activate.ps1
-python agent.py
+co deploy
 ```
+
+After deployment, add the deployed agent address or direct URL in the desktop client.
+
+## Example Prompts
+
+- Check my emails
+- Search for emails about invoices
+- Send an email to john@example.com about the project update
+- Reply to email 1 saying I will attend the meeting
+
+## Current Role In This Repository
+
+This agent is a test and demonstration target for the desktop client. Desktop-local data, settings, and conversation history belong in the Electron client storage layer, not in this agent folder.

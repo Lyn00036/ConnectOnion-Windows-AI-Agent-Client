@@ -16,7 +16,7 @@ export function AgentList({
   return (
     <div className="agent-list">
       {agents.length === 0 && (
-        <div className="agent-list-empty">Add an agent URL to begin.</div>
+        <div className="agent-list-empty">Add an agent address to begin.</div>
       )}
       {agents.map((agent) => (
         <button
@@ -28,7 +28,7 @@ export function AgentList({
           type="button"
         >
           <span>{agent.name}</span>
-          <small>{agent.url}</small>
+          <small>{agent.directUrl ?? agent.address}</small>
         </button>
       ))}
     </div>

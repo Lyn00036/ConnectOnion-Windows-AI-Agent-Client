@@ -6,12 +6,3 @@ export type ChatMessage = {
   content: string
   agentName?: string
 }
-
-export type ChatRequest = {
-  message: string
-  agent_url: string
-}
-
-export type ChatResponse = {
-  response: string
-}

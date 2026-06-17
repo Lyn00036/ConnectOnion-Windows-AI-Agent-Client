@@ -1,328 +1,89 @@
 # Git Commit Convention
 
-## Purpose
+This project uses Conventional Commits.
 
-This document defines the Git commit standards used by the project team.
+## Format
 
-Goals:
-
-- Keep commit history clean and readable
-- Improve collaboration efficiency
-- Support Agile development workflow
-- Enable automated changelog generation
-- Facilitate code review and issue tracking
-
----
-
-# General Principles
-
-## One Commit = One Change
-
-Each commit should represent a single logical change.
-
-✅ Good
-
-feat(auth): add JWT authentication 
-
-❌ Bad
-
-fix everything 
-
----
-
-## Commit Frequently
-
-Do not accumulate a large number of changes before committing.
-
-Recommended:
-
-- Complete a small feature
-- Fix a bug
-- Refactor a module
-- Add tests
-
-Then commit immediately.
-
----
-
-## Commit Message Format
-
-We follow the Conventional Commits standard.
-
-text <type>(<scope>): <summary> 
-
-Example:
-
-feat(auth): implement user login endpoint 
-
----
-
-# Commit Types
-
-## Feature
-
-New functionality.
-
-feat(auth): add password reset API 
-
----
-
-## Fix
-
-Bug fixes.
-
-fix(chat): resolve websocket reconnect issue 
-
----
-
-## Refactor
-
-Code restructuring without changing behavior.
-
-refactor(database): simplify repository layer 
-
----
-
-## Docs
-
-Documentation changes.
-
-docs(readme): update installation guide 
-
----
-
-## Test
-
-Adding or modifying tests.
-
-test(auth): add login integration tests 
-
----
-
-## Style
-
-Formatting only.
-
-style(frontend): apply prettier formatting 
-
----
-
-## Chore
-
-Maintenance work.
-
-chore(deps): update dependencies 
-
----
-
-## Build
-
-Build-related changes.
-
-build(docker): update production image 
-
----
-
-## CI
-
-CI/CD configuration changes.
-
-ci(github-actions): add deployment workflow 
-
----
-
-## Perf
-
-Performance improvements.
-
-perf(api): optimize database query 
-
----
-
-## Revert
-
-Rollback a previous commit.
-
-revert(auth): revert JWT refresh token changes 
-
----
-
-# Scope Naming
-
-Recommended scopes:
-
-## Backend
-
-text auth agent chat database api websocket notification user 
+```text
+<type>(<scope>): <summary>
+```
 
 Examples:
 
-feat(agent): support agent discovery fix(database): resolve connection leak 
+```text
+feat(chat): add streaming status display
+fix(storage): handle missing SQLite database directory
+docs(readme): update desktop setup instructions
+test(agent): add connection validation coverage
+```
 
----
+## Types
 
-## Frontend
+- `feat`: new user-facing or developer-facing functionality
+- `fix`: bug fix
+- `docs`: documentation changes
+- `test`: tests or testing utilities
+- `refactor`: code restructuring without behavior changes
+- `style`: formatting-only changes
+- `chore`: dependency or maintenance work
+- `build`: packaging or build configuration
+- `ci`: CI workflow changes
 
-text ui chat settings sidebar dashboard login 
+## Recommended Scopes
 
-Examples:
-
-feat(chat): add message streaming UI fix(sidebar): correct navigation state 
-
----
-
-## Desktop Client
-
-text electron windows storage tray updater 
-
-Examples:
-
-feat(electron): implement auto update fix(storage): prevent session corruption 
-
----
-
-# Jira Integration
-
-Include Jira ticket IDs whenever possible.
-
-Format:
-
-feat(auth): add login endpoint [PROJ-123] 
-
-or
-
-PROJ-123 feat(auth): add login endpoint 
-
-Example:
-
-CON-45 feat(agent): implement agent connection workflow 
-
----
-
-# Commit Examples
+- `electron`: Electron main process, windows, preload, IPC
+- `chat`: chat UI and ConnectOnion SDK interaction
+- `agent`: agent configuration and connection management
+- `sessions`: local conversation/session history
+- `storage`: SQLite schema, repositories, migrations
+- `settings`: desktop preferences
+- `credentials`: secure credential handling
+- `files`: drag-and-drop files and attachments
+- `ui`: shared UI components and layout
+- `docs`: project documentation
+- `ci`: GitHub Actions and validation workflows
+- `build`: Windows packaging and release output
 
 ## Good Examples
 
-feat(agent): add agent connection service  feat(chat): implement streaming response support  fix(auth): handle expired refresh tokens  refactor(database): separate repository layer  test(api): add user endpoint tests  docs(readme): update setup instructions  ci(github-actions): add backend test pipeline 
+```text
+feat(agent): save agent configuration in SQLite
+feat(sessions): add local conversation list
+feat(files): add attachment drop zone
+fix(chat): show failed connection error
+refactor(electron): split storage IPC handlers
+test(storage): cover migration status query
+ci(github-actions): run frontend lint and build
+```
 
----
+## Branch Names
 
-## Bad Examples
+```text
+feature/CON-12-agent-config
+feature/CON-46-session-history
+bugfix/CON-33-connection-error
+refactor/sqlite-repositories
+```
 
-update  fix  123  work  final version  new changes  bug fixed 
+## Pull Requests
 
----
+Use the same convention for PR titles:
 
-# Branch Naming Convention
+```text
+feat(chat): display agent execution status
+```
 
-## Feature Branch
+PR descriptions should include:
 
-text feature/<ticket-id>-<description> 
+- Summary
+- Related ticket
+- Main changes
+- Testing evidence
+- Known limitations
 
-Examples:
+## Rules
 
-text feature/CON-12-agent-chat feature/CON-45-user-authentication 
-
----
-
-## Bug Fix Branch
-
-text bugfix/<ticket-id>-<description> 
-
-Examples:
-
-text bugfix/CON-33-login-error 
-
----
-
-## Hotfix Branch
-
-text hotfix/<description> 
-
-Examples:
-
-text hotfix/database-connection 
-
----
-
-## Refactor Branch
-
-text refactor/<description> 
-
-Examples:
-
-text refactor/service-layer 
-
----
-
-# Pull Request Rules
-
-## PR Title
-
-Use the same format as commit messages.
-
-Example:
-
-feat(chat): implement agent message streaming 
-
----
-
-## PR Description Template
-
-markdown ## Summary  Brief description of the changes.  ## Related Ticket  CON-45  ## Changes  - Added agent connection module - Added websocket support - Added integration tests  ## Testing  - Unit tests passed - Manual testing completed  ## Screenshots  Attach screenshots if applicable. 
-
----
-
-# Agile Workflow
-
-## Sprint Planning
-
-Create Jira tickets.
-
-Example:
-
-text CON-45 Agent Connection CON-46 Chat History CON-47 User Settings 
-
----
-
-## Development Flow
-
-text Backlog     ↓ Sprint     ↓ Create Branch     ↓ Development     ↓ Commit     ↓ Push     ↓ Pull Request     ↓ Code Review     ↓ Merge     ↓ Deploy 
-
----
-
-# Recommended Rules
-
-## Must
-
-✅ Use meaningful commit messages
-
-✅ Keep commits small
-
-✅ Reference Jira tickets
-
-✅ Open Pull Requests for review
-
-✅ Pass all CI checks
-
----
-
-## Must Not
-
-❌ Commit directly to main
-
-❌ Push broken code
-
-❌ Use vague commit messages
-
-❌ Mix unrelated changes in one commit
-
-❌ Skip code review
-
----
-
-# Example for ConnectOnion Desktop Client
-
-feat(agent): implement agent address validation  feat(chat): support streaming agent responses  feat(storage): save conversation history locally  fix(electron): resolve window restore issue  refactor(api): extract agent service layer  test(chat): add websocket integration tests  ci(github-actions): add desktop build pipeline 
-
-Following this convention ensures a clean Git history, easier collaboration, traceable Agile development, and efficient code reviews.
+- Keep commits small and focused.
+- Reference Jira tickets when available.
+- Do not mix unrelated modules in one commit.
+- Run relevant validation before opening a PR.

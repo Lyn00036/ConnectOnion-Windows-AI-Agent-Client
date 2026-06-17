@@ -8,7 +8,7 @@ export function DesktopLayout() {
       <header className="topbar">
         <div>
           <h1>Agent Console</h1>
-          <p>Connect to any agent service that exposes /health and /chat</p>
+          <p>Connect to ConnectOnion agents through the TypeScript SDK</p>
         </div>
         <nav className="layout-nav" aria-label="Primary">
           <NavLink to="/chat">Chat</NavLink>

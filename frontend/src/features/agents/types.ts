@@ -3,7 +3,8 @@
 export type AgentConfig = {
   id: string
   name: string
-  url: string
+  address: string
+  directUrl?: string
 }
 
 export type AgentHealthResponse = {
