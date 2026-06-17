@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url'
 import { registerStorageIpc } from './ipc/storageIpc.ts'
 import { createDesktopStorage } from './storage/service.ts'
 
+app.setName('connectonion_destop')
+
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
