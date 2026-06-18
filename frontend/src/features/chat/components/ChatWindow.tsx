@@ -7,7 +7,7 @@
 // - Retry/cancel controls for failed or long-running requests
 // - Attachment chips/drop zone once file support is introduced
 
-import type { FormEvent } from 'react'
+import type { SubmitEvent } from 'react'
 import type { ChatItem, ConnectionState } from 'connectonion/react'
 
 import type { AgentConfig } from '../../agents/types'
@@ -21,7 +21,7 @@ type ChatWindowProps = {
   isSending: boolean
   messages: ChatItem[]
   onInputChange: (value: string) => void
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void
+  onSubmit: (event: SubmitEvent<HTMLFormElement>) => void
   selectedAgent: AgentConfig | undefined
 }
 

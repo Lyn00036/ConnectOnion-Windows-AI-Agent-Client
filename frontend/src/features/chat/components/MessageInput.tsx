@@ -1,12 +1,12 @@
 /** Composer component for editing and submitting a chat message. */
 
-import type { FormEvent } from 'react'
+import type { SubmitEvent } from 'react'
 
 type MessageInputProps = {
   input: string
   isSending: boolean
   onInputChange: (value: string) => void
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void
+  onSubmit: (event: SubmitEvent<HTMLFormElement>) => void
   selectedAgentName?: string
 }
 

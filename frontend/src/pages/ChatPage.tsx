@@ -1,6 +1,6 @@
 /** Chat workspace page that coordinates manual agent selection and messages. */
 
-import type { FormEvent } from 'react'
+import type { SubmitEvent } from 'react'
 
 import { AgentForm } from '../features/agents/components/AgentForm'
 import { AgentList } from '../features/agents/components/AgentList'
@@ -29,7 +29,7 @@ export function ChatPage() {
     ui,
   } = useConnectOnionAgent(selectedAgent)
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault()
 
     const message = input.trim()

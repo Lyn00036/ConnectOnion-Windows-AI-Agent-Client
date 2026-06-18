@@ -1,7 +1,7 @@
 /** Agent form component for adding temporary local agent connection entries. */
 
 import { useState } from 'react'
-import type { FormEvent } from 'react'
+import type { SubmitEvent } from 'react'
 
 import { Button } from '../../../shared/components/Button'
 import { Input } from '../../../shared/components/Input'
@@ -15,7 +15,7 @@ export function AgentForm({ onAddAgent }: AgentFormProps) {
   const [newAgentAddress, setNewAgentAddress] = useState('')
   const [newAgentDirectUrl, setNewAgentDirectUrl] = useState('')
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault()
 
     if (!newAgentName.trim() || !newAgentAddress.trim()) return
