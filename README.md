@@ -213,7 +213,7 @@ npm run build     Type-check and build frontend
 The Electron desktop app initializes its local SQLite database when the app starts. On Windows, it is created under the Electron user data directory:
 
 ```text
-%APPDATA%\connectonion_destop\storage\connectonion-desktop.sqlite3
+%APPDATA%\connectonion_desktop\storage\connectonion-desktop.sqlite3
 ```
 
 SQLite may also create `connectonion-desktop.sqlite3-wal` and `connectonion-desktop.sqlite3-shm` next to it; those sidecar files are normal.
