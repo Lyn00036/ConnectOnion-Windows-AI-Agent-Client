@@ -19,9 +19,15 @@ export function MessageInput({
 }: MessageInputProps) {
   return (
     <form className="composer" onSubmit={onSubmit}>
-      <input
+      <textarea
         aria-label="Message"
         disabled={isSending || !selectedAgentName}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault()
+            event.currentTarget.form?.requestSubmit()
+          }
+        }}
         onChange={(event) => onInputChange(event.target.value)}
         placeholder={
           selectedAgentName ? `Ask ${selectedAgentName}...` : 'Add an agent first'

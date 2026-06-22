@@ -6,3 +6,8 @@ export type ChatMessage = {
   content: string
   agentName?: string
 }
+
+export type OnboardSubmission = {
+  inviteCode?: string
+  payment?: number
+}

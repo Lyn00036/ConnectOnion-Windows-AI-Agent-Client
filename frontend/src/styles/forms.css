@@ -1,8 +1,9 @@
 /** Shared form control styles for inputs, buttons, disabled states, and primary actions. */
 
-input {
+input,
+select,
+textarea {
   min-width: 0;
-  height: 40px;
   padding: 0 11px;
   border: 1px solid #cfd6e4;
   border-radius: 6px;
@@ -12,7 +13,20 @@ input {
   font-size: 14px;
 }
 
-input:focus {
+input,
+select {
+  height: 40px;
+}
+
+textarea {
+  min-height: 76px;
+  padding-block: 10px;
+  resize: vertical;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
   outline: 2px solid #98c7ff;
   border-color: #3b82f6;
 }
@@ -37,7 +51,9 @@ button {
 }
 
 button:disabled,
-input:disabled {
+input:disabled,
+select:disabled,
+textarea:disabled {
   cursor: not-allowed;
   opacity: 0.6;
 }

@@ -1,13 +1,11 @@
-/** Chat workspace page that coordinates manual agent selection and messages. */
-
-import type { SubmitEvent } from 'react'
+/** Chat workspace page that coordinates agent and SDK session selection. */
 
 import { AgentForm } from '../features/agents/components/AgentForm'
 import { AgentList } from '../features/agents/components/AgentList'
 import { useAgentStore } from '../features/agents/store'
+import { AgentConversation } from '../features/chat/components/AgentConversation'
 import { ChatWindow } from '../features/chat/components/ChatWindow'
-import { useChatStore } from '../features/chat/store'
-import { useConnectOnionAgent } from '../features/chat/useConnectOnionAgent'
+import { useSessionStore } from '../features/sessions/store'
 
 export function ChatPage() {
   const agents = useAgentStore((state) => state.agents)
@@ -16,28 +14,11 @@ export function ChatPage() {
   const addAgent = useAgentStore((state) => state.addAgent)
   const removeAgent = useAgentStore((state) => state.removeAgent)
 
-  const input = useChatStore((state) => state.input)
-  const setInput = useChatStore((state) => state.setInput)
+  const sessionId = useSessionStore((state) => state.selectedSessionId)
+  const startNewSession = useSessionStore((state) => state.startNewSession)
 
   const selectedAgent =
     agents.find((agent) => agent.id === selectedAgentId) ?? undefined
-  const {
-    connectionState,
-    error,
-    input: sendToAgent,
-    isProcessing,
-    ui,
-  } = useConnectOnionAgent(selectedAgent)
-
-  async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
-    event.preventDefault()
-
-    const message = input.trim()
-    if (!message || !selectedAgent || isProcessing) return
-
-    setInput('')
-    await sendToAgent(message)
-  }
 
   return (
     <div className="workspace">
@@ -61,16 +42,16 @@ export function ChatPage() {
         </button>
       </aside>
 
-      <ChatWindow
-        connectionState={connectionState}
-        error={error ? error.message : null}
-        input={input}
-        isSending={isProcessing}
-        messages={ui}
-        onInputChange={setInput}
-        onSubmit={handleSubmit}
-        selectedAgent={selectedAgent}
-      />
+      {selectedAgent ? (
+        <AgentConversation
+          agentConfig={selectedAgent}
+          key={`${selectedAgent.id}:${sessionId}`}
+          onNewSession={startNewSession}
+          sessionId={sessionId}
+        />
+      ) : (
+        <ChatWindow selectedAgent={undefined} />
+      )}
     </div>
   )
 }
