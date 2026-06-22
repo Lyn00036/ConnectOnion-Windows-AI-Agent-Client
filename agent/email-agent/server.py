@@ -16,7 +16,9 @@ app = create_app(create_email_agent, trust=AGENT_TRUST)
 
 
 if __name__ == "__main__":
-    host_kwargs = {"trust": AGENT_TRUST}
+    host_kwargs = { "trust": AGENT_TRUST,
+                    "relay_url": "",
+    }
     if os.getenv("EMAIL_AGENT_PORT"):
         host_kwargs["port"] = int(os.environ["EMAIL_AGENT_PORT"])
     if os.getenv("EMAIL_AGENT_RELAY_URL"):

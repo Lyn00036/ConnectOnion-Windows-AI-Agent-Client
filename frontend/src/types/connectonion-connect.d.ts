@@ -1,10 +1,7 @@
 declare module 'connectonion-connect' {
   import type {
-    AgentStatus,
-    ChatItem,
-    ConnectionState,
-    Response,
-  } from 'connectonion/react'
+    RemoteAgent,
+  } from 'connectonion'
 
   type WebSocketLike = {
     onopen: ((ev?: unknown) => unknown) | null
@@ -22,20 +19,8 @@ declare module 'connectonion-connect' {
     wsCtor?: new (url: string) => WebSocketLike
   }
 
-  export type RemoteAgentClient = {
-    readonly address: string
-    readonly agentAddress: string
-    readonly status: AgentStatus
-    readonly connectionState: ConnectionState
-    readonly ui: ChatItem[]
-    readonly error: Error | null
-    onMessage: (() => void) | null
-    input(prompt: string): Promise<Response>
-    reset(): void
-  }
-
   export function connect(
     agentAddress: string,
     options?: ConnectOptions,
-  ): RemoteAgentClient
+  ): RemoteAgent
 }

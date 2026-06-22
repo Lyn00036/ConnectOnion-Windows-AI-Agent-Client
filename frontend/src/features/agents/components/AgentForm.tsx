@@ -14,11 +14,14 @@ export function AgentForm({ onAddAgent }: AgentFormProps) {
   const [newAgentName, setNewAgentName] = useState('')
   const [newAgentAddress, setNewAgentAddress] = useState('')
   const [newAgentDirectUrl, setNewAgentDirectUrl] = useState('')
+  const hasConnectionTarget = Boolean(
+    newAgentAddress.trim() || newAgentDirectUrl.trim(),
+  )
 
   function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault()
 
-    if (!newAgentName.trim() || !newAgentAddress.trim()) return
+    if (!newAgentName.trim() || !hasConnectionTarget) return
 
     onAddAgent(newAgentName, newAgentAddress, newAgentDirectUrl)
     setNewAgentName('')
@@ -37,16 +40,19 @@ export function AgentForm({ onAddAgent }: AgentFormProps) {
       <Input
         aria-label="Agent address"
         onChange={(event) => setNewAgentAddress(event.target.value)}
-        placeholder="0x... or agent name"
+        placeholder="0x... (optional with Direct URL)"
         value={newAgentAddress}
       />
       <Input
         aria-label="Direct URL"
         onChange={(event) => setNewAgentDirectUrl(event.target.value)}
+        pattern="https?://.+"
         placeholder="Optional direct URL"
+        title="Use an http:// or https:// agent base URL"
+        type="url"
         value={newAgentDirectUrl}
       />
-      <Button disabled={!newAgentName.trim() || !newAgentAddress.trim()} type="submit">
+      <Button disabled={!newAgentName.trim() || !hasConnectionTarget} type="submit">
         Add Agent
       </Button>
     </form>

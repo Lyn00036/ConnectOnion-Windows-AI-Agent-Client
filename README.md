@@ -224,9 +224,12 @@ On the chat page, add an agent from the sidebar:
 
 ```text
 Agent name        Display name stored locally
-Agent address     0x... address or stable agent name
-Direct URL        Optional local/deployed host URL
+Agent address     0x... address; optional when Direct URL is provided
+Direct URL        Optional local/deployed host URL; can be used without an address
 ```
+
+When `Direct URL` is set, the desktop client bypasses the relay and connects to
+`{Direct URL}/ws`. Without it, the client connects through the relay by agent address.
 
 For a local agent, `Direct URL` can be:
 
@@ -246,7 +249,7 @@ WS  /ws
 
 The repository keeps `agent/email-agent` as a separate ConnectOnion agent example for local and deployed testing.
 
-Install and run it from the repository root:
+Install it from the repository root:
 
 ```powershell
 cd .\agent
@@ -254,8 +257,28 @@ python -m venv venv
 .\venv\Scripts\Activate.ps1
 python -m pip install -r .\email-agent\requirements.txt
 cd .\email-agent
+```
+
+Then choose one startup method:
+
+```powershell
+# Full ConnectOnion host; reads .env and .co/host.yaml (currently port 8000)
+python server.py
+
+# Or run the ASGI app directly for local Direct URL testing
 python -m uvicorn server:app --host 127.0.0.1 --port 8010
 ```
+
+Use `http://127.0.0.1:8000` as the Direct URL for `python server.py`, or
+`http://127.0.0.1:8010` for the Uvicorn command.
+
+Relay note: `python server.py` enables the `relay_url` configured in
+`.co/host.yaml`. On Windows machines with many physical, Docker, WSL, VPN, or
+link-local network adapters, ConnectOnion may announce more than the Relay limit
+of 10 endpoints and repeatedly report `Too many endpoints (max 10)`. This is an
+endpoint-discovery limit, not an invalid Relay URL. The local HTTP and WebSocket
+host can still be used through Direct URL. For local-only Direct URL testing,
+prefer the Uvicorn command; see the email-agent README for Relay-specific fixes.
 
 If you use ConnectOnion OAuth helpers, run them from `agent/email-agent` so credentials are written to that service's `.env`:
 

@@ -6,11 +6,13 @@ import {
   useAgentForHuman,
   type ApprovalMode,
   type OutgoingMessage,
+  type UseAgentForHumanReturn,
 } from 'connectonion/react'
 
 import type { AgentConfig } from '../../agents/types'
 import { useChatStore } from '../store'
 import type { OnboardSubmission } from '../types'
+import { useDirectAgentForHuman } from '../useDirectAgentForHuman'
 import { ChatWindow } from './ChatWindow'
 
 type AgentConversationProps = {
@@ -24,11 +26,47 @@ export function AgentConversation({
   onNewSession,
   sessionId,
 }: AgentConversationProps) {
+  if (agentConfig.directUrl) {
+    return (
+      <DirectAgentConversation
+        agentConfig={agentConfig}
+        onNewSession={onNewSession}
+        sessionId={sessionId}
+      />
+    )
+  }
+
+  return (
+    <RelayAgentConversation
+      agentConfig={agentConfig}
+      onNewSession={onNewSession}
+      sessionId={sessionId}
+    />
+  )
+}
+
+function RelayAgentConversation(props: AgentConversationProps) {
+  const agent = useAgentForHuman(props.agentConfig.address, props.sessionId)
+  return <AgentConversationContent {...props} agent={agent} />
+}
+
+function DirectAgentConversation(props: AgentConversationProps) {
+  const agent = useDirectAgentForHuman(
+    props.agentConfig.address,
+    props.sessionId,
+    props.agentConfig.directUrl!,
+  )
+  return <AgentConversationContent {...props} agent={agent} />
+}
+
+function AgentConversationContent({
+  agent,
+  agentConfig,
+  onNewSession,
+}: AgentConversationProps & { agent: UseAgentForHumanReturn }) {
   const composerInput = useChatStore((state) => state.input)
   const setComposerInput = useChatStore((state) => state.setInput)
   const [actionError, setActionError] = useState<string | null>(null)
-
-  const agent = useAgentForHuman(agentConfig.address, sessionId)
 
   function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -73,7 +111,7 @@ export function AgentConversation({
   return (
     <ChatWindow
       connectionState={agent.connectionState}
-      directUrlUnsupported={Boolean(agentConfig.directUrl)}
+      directUrl={agentConfig.directUrl}
       error={actionError ?? agent.error?.message ?? null}
       input={composerInput}
       isSending={agent.isProcessing}

@@ -73,11 +73,21 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   error: null,
   addAgent: (name, address, directUrl) => {
     const trimmedDirectUrl = directUrl?.trim()
+    const normalizedDirectUrl = trimmedDirectUrl
+      ? normalizeUrl(trimmedDirectUrl)
+      : undefined
+    const resolvedAddress = address.trim() || normalizedDirectUrl
+
+    if (!name.trim() || !resolvedAddress) {
+      set({ error: 'An agent address or Direct URL is required.' })
+      return
+    }
+
     const agent: AgentConfig = {
       id: `${Date.now()}`,
       name: name.trim(),
-      address: address.trim(),
-      directUrl: trimmedDirectUrl ? normalizeUrl(trimmedDirectUrl) : undefined,
+      address: resolvedAddress,
+      directUrl: normalizedDirectUrl,
     }
     const nextAgents = [...get().agents, agent]
 

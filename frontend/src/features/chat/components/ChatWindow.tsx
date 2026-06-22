@@ -16,7 +16,7 @@ import { MessageList } from './MessageList'
 
 type ChatWindowProps = {
   connectionState?: ConnectionState
-  directUrlUnsupported?: boolean
+  directUrl?: string
   error?: string | null
   input?: string
   isSending?: boolean
@@ -37,7 +37,7 @@ type ChatWindowProps = {
 
 export function ChatWindow({
   connectionState,
-  directUrlUnsupported = false,
+  directUrl,
   error,
   input = '',
   isSending = false,
@@ -106,10 +106,9 @@ export function ChatWindow({
         selectedAgentName={selectedAgent?.name ?? 'Agent'}
       />
 
-      {directUrlUnsupported && (
+      {directUrl && (
         <div className="notice">
-          This SDK hook connects by agent address. The saved direct URL is not used by
-          connectonion@0.1.5.
+          Direct connection: <code>{directUrl}</code>
         </div>
       )}
       {error && <div className="error">{error}</div>}
