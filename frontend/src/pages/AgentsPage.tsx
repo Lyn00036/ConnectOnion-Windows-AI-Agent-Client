@@ -1,5 +1,8 @@
 /** Agent management page for locally saved ConnectOnion connections. */
 
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+
 import { AgentForm } from '../features/agents/components/AgentForm'
 import { AgentList } from '../features/agents/components/AgentList'
 import { useAgentStore } from '../features/agents/store'
@@ -21,7 +24,7 @@ export function AgentsPage() {
           <h1 className="my-2 text-[clamp(28px,4vw,40px)] font-bold tracking-[-0.04em] text-[#17181b]">Agents</h1>
           <p className="m-0 text-sm text-[#777b84]">Choose the agent used by Chat, or add another connection.</p>
         </div>
-        <span className="rounded-full bg-[#f2eef9] px-2.5 py-2 text-[11px] font-bold text-[#755f9b]">{agents.length} saved</span>
+        <Badge className="h-auto bg-[#f2eef9] px-2.5 py-2 text-[11px] font-bold text-[#755f9b]" variant="secondary">{agents.length} saved</Badge>
       </header>
 
       <div className="mt-7 grid grid-cols-[minmax(0,1.35fr)_minmax(280px,0.65fr)] gap-7 max-[900px]:grid-cols-1">
@@ -34,9 +37,9 @@ export function AgentsPage() {
           {selectedAgent && (
             <div className="flex min-h-[58px] items-center justify-between gap-4 border-t border-[#eceef2] px-4 py-2.5 text-xs text-[#777b84]">
               <span><strong>{selectedAgent.name}</strong> is active</span>
-              <button className="min-h-[34px] rounded-md border border-[#ead1d1] bg-white px-3 text-xs font-bold text-[#a74141]" onClick={() => removeAgent(selectedAgent.id)} type="button">
+              <Button className="min-h-[34px] text-xs font-bold" onClick={() => removeAgent(selectedAgent.id)} size="sm" type="button" variant="destructive">
                 Remove
-              </button>
+              </Button>
             </div>
           )}
         </div>

@@ -128,6 +128,7 @@ class DirectAgentClient {
 
   restore(sessionId: string, persisted: PersistedAgentState | null) {
     restoreAgent(this.agent, sessionId, persisted)
+    this.listener()
   }
 
   subscribe(listener: () => void) {
@@ -229,9 +230,9 @@ export function useDirectAgentForHuman(
   }, [client, createdAt, storageKey])
 
   useEffect(() => {
+    const unsubscribe = client.subscribe(flush)
     const persisted = loadPersistedState(storageKey)
     client.restore(sessionId, persisted)
-    const unsubscribe = client.subscribe(flush)
 
     const hasStoredConversation = Boolean(
       persisted?.session || persisted?.messages?.length || persisted?.ui?.length,

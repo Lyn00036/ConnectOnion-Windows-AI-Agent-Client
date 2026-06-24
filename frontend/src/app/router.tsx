@@ -12,7 +12,7 @@ export function AppRouter() {
       <Routes>
         <Route element={<DesktopLayout />}>
           <Route index element={<Navigate replace to="/chat" />} />
-          <Route path="/chat" element={<ChatPage />} />
+          <Route path="/chat/:sessionId?" element={<ChatPage />} />
           <Route path="/agents" element={<Navigate replace to="/chat" />} />
           <Route path="/sessions" element={<Navigate replace to="/chat" />} />
           <Route path="/settings" element={<SettingsPage />} />

@@ -1,6 +1,10 @@
 /** Conversation picker scoped to the currently selected saved agent. */
 
+import { Plus } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+
+import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 import { useAgentStore } from '../features/agents/store'
 import { SessionSidebar } from '../features/sessions/components/SessionSidebar'
@@ -20,13 +24,13 @@ export function SessionsPage() {
 
   function openSession(sessionId: string) {
     setSelectedSessionId(sessionId)
-    navigate('/chat')
+    navigate(`/chat/${sessionId}`)
   }
 
   function createSession() {
     if (!selectedAgent) return
-    startNewSession(selectedAgent.id)
-    navigate('/chat')
+    const sessionId = startNewSession(selectedAgent.id)
+    navigate(`/chat/${sessionId}`)
   }
 
   return (
@@ -37,15 +41,18 @@ export function SessionsPage() {
           <h1 className="my-2 text-[clamp(28px,4vw,40px)] font-bold tracking-[-0.04em] text-[#17181b]">Sessions</h1>
           <p className="m-0 text-sm text-[#777b84]">Each agent keeps its own set of conversations.</p>
         </div>
-        {selectedAgent && <button className="min-h-[38px] rounded-md border border-[#1e1f22] bg-[#1e1f22] px-3 text-xs font-bold text-white" onClick={createSession} type="button">＋ New session</button>}
+        {selectedAgent && <Button className="min-h-[38px] text-xs font-bold" onClick={createSession} type="button"><Plus aria-hidden="true" /> New session</Button>}
       </header>
 
       {agents.length > 0 && (
         <label className="my-5 flex items-center gap-3 text-xs text-[#777b84]">
           <span>Showing conversations for</span>
-          <select className="h-10 min-w-[190px] rounded-md border border-[#cfd6e4] bg-white px-3 text-sm text-[#182230]" onChange={(event) => selectAgent(event.target.value)} value={selectedAgentId ?? ''}>
-            {agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
-          </select>
+          <Select onValueChange={(value) => value && selectAgent(value)} value={selectedAgentId ?? ''}>
+            <SelectTrigger className="h-10 min-w-[190px] bg-white text-sm text-[#182230]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {agents.map((agent) => <SelectItem key={agent.id} value={agent.id}>{agent.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </label>
       )}
 

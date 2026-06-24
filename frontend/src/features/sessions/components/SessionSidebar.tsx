@@ -1,5 +1,10 @@
 /** Session list for one agent. Message bodies remain owned by the SDK/backend. */
 
+import { MessageSquare, Trash2 } from 'lucide-react'
+
+import { Button } from '@/components/ui/button'
+import { IconButton } from '@/shared/components/IconButton'
+
 import type { AgentConfig } from '../../agents/types'
 import type { SessionSummary } from '../types'
 
@@ -32,14 +37,16 @@ export function SessionSidebar({
         .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
         .map((session) => (
           <article className={`grid grid-cols-[minmax(0,1fr)_38px] items-center rounded-xl border transition-colors ${session.id === selectedSessionId ? 'border-[#c8b9df] bg-[#faf8fd]' : 'border-[#e8e9ec] bg-white hover:border-[#c8b9df] hover:bg-[#faf8fd]'}`} key={session.id}>
-            <button className="flex min-w-0 items-center gap-3 border-0 bg-transparent px-4 py-3.5 text-left" onClick={() => onOpenSession(session.id)} type="button">
-              <span className="grid size-8 flex-none place-items-center rounded-lg bg-[#eeeaf5] text-[#78649b]">◫</span>
+            <Button className="h-auto min-w-0 justify-start gap-3 rounded-none px-4 py-3.5 text-left" onClick={() => onOpenSession(session.id)} type="button" variant="ghost">
+              <span className="grid size-8 flex-none place-items-center rounded-lg bg-[#eeeaf5] text-[#78649b]"><MessageSquare aria-hidden="true" className="size-3.5" /></span>
               <span className="min-w-0">
                 <strong className="block truncate text-[13px] text-[#28292d]">{session.title}</strong>
                 <small className="mt-1 block truncate text-[10px] text-[#9699a1]">{formatSessionDate(session.updatedAt)} · {session.id.slice(0, 8)}</small>
               </span>
-            </button>
-            <button aria-label={`Delete ${session.title}`} className="size-[30px] min-h-0 border-0 bg-transparent p-0 text-lg text-[#a74141]" onClick={() => onRemoveSession(session.id)} type="button">×</button>
+            </Button>
+            <IconButton className="size-[30px] min-h-0 p-0 text-[#a74141]" label={`Delete ${session.title}`} onClick={() => onRemoveSession(session.id)} size="icon-sm" type="button" variant="ghost">
+              <Trash2 aria-hidden="true" className="size-3.5" />
+            </IconButton>
           </article>
         ))}
     </div>

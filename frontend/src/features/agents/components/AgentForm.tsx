@@ -3,8 +3,8 @@
 import { useState } from 'react'
 import type { SubmitEvent } from 'react'
 
-import { Button } from '../../../shared/components/Button'
-import { Input } from '../../../shared/components/Input'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 
 type AgentFormProps = {
   onAddAgent: (name: string, address: string, directUrl?: string) => void
@@ -55,7 +55,7 @@ export function AgentForm({ onAddAgent }: AgentFormProps) {
         type="url"
         value={newAgentDirectUrl}
       />
-      <Button className="min-h-[38px] rounded-md border-0 bg-[#1e1f22] px-3 text-[13px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-50" disabled={!newAgentName.trim() || !hasConnectionTarget} type="submit">
+      <Button className="min-h-[38px] text-[13px] font-bold" disabled={!newAgentName.trim() || !hasConnectionTarget} type="submit">
         Add Agent
       </Button>
     </form>

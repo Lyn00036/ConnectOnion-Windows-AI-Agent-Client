@@ -1,5 +1,7 @@
 /** Agent list component for selecting the active local or remote agent. */
 
+import { Button } from '@/components/ui/button'
+
 import type { AgentConfig } from '../types'
 
 type AgentListProps = {
@@ -19,7 +21,7 @@ export function AgentList({
         <div className="p-3 text-[13px] text-[#667085]">Add an agent address to begin.</div>
       )}
       {agents.map((agent) => (
-        <button
+        <Button
           className={`flex min-h-24 w-full flex-col items-start justify-center gap-1.5 rounded-xl border p-4 text-left transition-colors ${
             agent.id === selectedAgentId
               ? 'border-[#bca8dd] bg-[#f8f5fc] shadow-[0_0_0_2px_rgb(188_168_221/14%)]'
@@ -28,10 +30,11 @@ export function AgentList({
           key={agent.id}
           onClick={() => onSelectAgent(agent.id)}
           type="button"
+          variant="outline"
         >
           <span className="max-w-full truncate text-sm font-bold text-[#182230]">{agent.name}</span>
           <small className="max-w-full truncate text-xs text-[#667085]">{agent.directUrl ?? agent.address}</small>
-        </button>
+        </Button>
       ))}
     </div>
   )

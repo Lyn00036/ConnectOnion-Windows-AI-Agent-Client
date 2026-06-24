@@ -1,6 +1,7 @@
 /** Chat panel for SDK state, agent.ui items, actions, and the composer. */
 
 import type { SubmitEvent } from 'react'
+import { Plus } from 'lucide-react'
 import type {
   AgentStatus,
   ApprovalMode,
@@ -8,6 +9,10 @@ import type {
   ConnectionState,
   OutgoingMessage,
 } from 'connectonion/react'
+
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 import type { AgentConfig } from '../../agents/types'
 import type { OnboardSubmission } from '../types'
@@ -57,9 +62,7 @@ export function ChatWindow({
 }: ChatWindowProps) {
   const canChat = Boolean(selectedAgent && onSubmit && onInputChange && onSendMessage)
   const isNewConversation = messages.length === 0 && !isSending
-  const statusClass = connectionState === 'connected'
-    ? 'bg-emerald-50 text-emerald-700'
-    : 'bg-[#f1f2f4] text-[#858891]'
+  const isConnected = connectionState === 'connected'
 
   return (
     <section className="relative flex h-svh min-w-0 flex-col overflow-hidden bg-white" aria-label="Agent chat">
@@ -73,12 +76,12 @@ export function ChatWindow({
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <span className={`rounded-full px-2 py-1 text-[9px] whitespace-nowrap max-[620px]:hidden ${statusClass}`}>
+            <Badge className={`max-[620px]:hidden ${isConnected ? 'bg-emerald-50 text-emerald-700' : 'bg-[#f1f2f4] text-[#858891]'}`} variant="secondary">
               {connectionState ?? 'disconnected'} · {status}
-            </span>
-            <button className="min-h-[30px] rounded-md border-0 bg-[#f5f5f5] px-2.5 py-1 text-[10px] font-bold text-[#555860] hover:bg-[#ededed]" onClick={onNewConversation} type="button">
-              + New chat
-            </button>
+            </Badge>
+            <Button className="min-h-[30px] bg-[#f5f5f5] px-2.5 text-[10px] font-bold text-[#555860] hover:bg-[#ededed]" onClick={onNewConversation} size="sm" type="button" variant="secondary">
+              <Plus aria-hidden="true" /> New chat
+            </Button>
           </div>
         </div>
       )}
@@ -99,9 +102,9 @@ export function ChatWindow({
         {isNewConversation && canChat && (
           <div className="mb-2.5 flex flex-wrap justify-center gap-2" aria-label="Suggested prompts">
             {['What can you do?', 'Show system info', 'List files in current directory'].map((suggestion) => (
-              <button className="min-h-[27px] rounded-full border-0 bg-[#f5f5f5] px-2.5 py-1 text-[9px] font-medium text-[#7d8088] hover:bg-[#ededed] hover:text-[#414349] last:max-[620px]:hidden" key={suggestion} onClick={() => onInputChange?.(suggestion)} type="button">
+              <Button className="min-h-[27px] rounded-full px-2.5 text-[9px] font-medium text-[#7d8088] hover:text-[#414349] last:max-[620px]:hidden" key={suggestion} onClick={() => onInputChange?.(suggestion)} size="xs" type="button" variant="secondary">
                 {suggestion}
-              </button>
+              </Button>
             ))}
           </div>
         )}
@@ -118,17 +121,17 @@ export function ChatWindow({
           <div className="flex min-h-6 items-center justify-end gap-2.5 px-1 pt-1 text-[8px] text-[#aaadb3]">
             <label className="flex items-center gap-1">
               <span className="text-[8px] text-[#aaadb3]">Mode</span>
-              <select
-                aria-label="Agent approval mode"
-                className="h-[22px] w-auto border-0 bg-transparent py-0 pl-1 pr-4 text-[8px] text-[#777a82]"
-                onChange={(event) => onModeChange?.(event.target.value as ApprovalMode)}
-                value={mode}
-              >
-                <option value="safe">Safe</option>
-                <option value="plan">Plan</option>
-                <option value="accept_edits">Accept edits</option>
-                <option value="ulw">ULW</option>
-              </select>
+              <Select onValueChange={(value) => value && onModeChange?.(value as ApprovalMode)} value={mode}>
+                <SelectTrigger aria-label="Agent approval mode" className="h-[22px] w-auto border-0 bg-transparent px-1 text-[8px] text-[#777a82] shadow-none" size="sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="safe">Safe</SelectItem>
+                  <SelectItem value="plan">Plan</SelectItem>
+                  <SelectItem value="accept_edits">Accept edits</SelectItem>
+                  <SelectItem value="ulw">ULW</SelectItem>
+                </SelectContent>
+              </Select>
             </label>
             <span className="max-[620px]:hidden">Enter to send · Shift + Enter for a new line</span>
           </div>

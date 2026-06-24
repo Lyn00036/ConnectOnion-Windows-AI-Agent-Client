@@ -5,6 +5,11 @@ import type { SubmitEvent } from 'react'
 import type { ChatItem, OutgoingMessage } from 'connectonion/react'
 import ReactMarkdown from 'react-markdown'
 
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+
 import type { OnboardSubmission } from '../types'
 
 type MessageBubbleProps = {
@@ -26,9 +31,7 @@ const preClass = 'mt-2 max-w-full overflow-x-auto whitespace-pre-wrap break-word
 const inputClass = 'h-10 min-w-0 rounded-lg border-0 bg-white px-3 text-sm text-[#182230] outline-none ring-1 ring-black/5 focus:ring-2 focus:ring-[#b9a4dc]/40'
 const textareaClass = 'min-h-24 w-full resize-y rounded-lg border-0 bg-white p-3 text-sm text-[#182230] outline-none ring-1 ring-black/5 focus:ring-2 focus:ring-[#b9a4dc]/40'
 const actionsClass = 'mt-3 flex flex-wrap gap-2'
-const primaryButtonClass = 'min-h-9 rounded-lg border-0 bg-[#202123] px-3 py-1.5 text-xs font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-50'
-const secondaryButtonClass = 'min-h-9 rounded-lg border-0 bg-white px-3 py-1.5 text-xs font-semibold text-[#374151] shadow-sm ring-1 ring-black/5 hover:bg-[#f3f4f6]'
-const dangerButtonClass = 'min-h-9 rounded-lg border-0 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100'
+const actionButtonClass = 'min-h-9 px-3 py-1.5 text-xs font-semibold'
 const markdownClass = 'min-w-0 text-sm leading-6 text-[#182230] [&_a]:text-blue-600 [&_a]:underline [&_code]:rounded [&_code]:bg-black/5 [&_code]:px-1 [&_li]:ml-5 [&_ol]:list-decimal [&_p]:my-2 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_pre]:mt-2 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-[#101828] [&_pre]:p-3 [&_pre]:text-xs [&_pre]:text-[#f2f4f7] [&_ul]:list-disc'
 
 function eventTone(status: 'running' | 'done' | 'error') {
@@ -66,7 +69,7 @@ export function MessageBubble({
           {message.type === 'user' && message.files?.length ? (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {message.files.map((file) => (
-                <span className="rounded-full bg-white px-2 py-1 text-[11px] text-[#4b5563] shadow-sm" key={`${file.name}:${file.size}`}>{file.name}</span>
+                <Badge className="bg-white text-[11px] text-[#4b5563] shadow-sm" key={`${file.name}:${file.size}`} variant="secondary">{file.name}</Badge>
               ))}
             </div>
           ) : null}
@@ -89,7 +92,7 @@ export function MessageBubble({
           <div className={cardHeaderClass}>
             <span className={eyebrowClass}>Tool</span>
             <strong className={cardTitleClass}>{message.name}</strong>
-            <small className="ml-auto text-[10px] font-semibold uppercase text-[#6b7280]">{message.status}</small>
+            <Badge className="ml-auto text-[10px] uppercase" variant="outline">{message.status}</Badge>
           </div>
           {message.args && Object.keys(message.args).length > 0 && (
             <details className={detailsClass}>
@@ -187,7 +190,7 @@ export function MessageBubble({
           </div>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {message.files.map((file) => (
-              <span className="rounded-full bg-white px-2 py-1 text-[11px] text-[#4b5563] shadow-sm" key={file.path} title={file.path}>{file.name}</span>
+              <Badge className="bg-white text-[11px] text-[#4b5563] shadow-sm" key={file.path} title={file.path} variant="secondary">{file.name}</Badge>
             ))}
           </div>
         </article>
@@ -274,7 +277,7 @@ function AskUserCard({
           {item.fields?.map((field) => (
             <label className="grid gap-1 text-xs font-semibold text-[#4b5563]" key={field.name}>
               <span>{field.label}</span>
-              <input
+              <Input
                 autoComplete={field.autocomplete}
                 className={inputClass}
                 onChange={(event) =>
@@ -294,22 +297,21 @@ function AskUserCard({
                   ? selectedOptions.includes(option)
                   : answer === option
                 return (
-                  <button
-                    className={selected
-                      ? 'min-h-9 rounded-lg border-0 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 ring-1 ring-blue-200'
-                      : secondaryButtonClass}
+                  <Button
+                    className={`${actionButtonClass} ${selected ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-200' : ''}`}
                     key={option}
                     onClick={() => toggleOption(option)}
                     type="button"
+                    variant={selected ? 'secondary' : 'outline'}
                   >
                     {option}
-                  </button>
+                  </Button>
                 )
               })}
             </div>
           )}
           {!item.fields?.length && (
-            <input
+            <Input
               aria-label="Answer"
               className={inputClass}
               onChange={(event) => setAnswer(event.target.value)}
@@ -317,7 +319,7 @@ function AskUserCard({
               value={answer}
             />
           )}
-          <button className={primaryButtonClass} type="submit">Submit answer</button>
+          <Button className={actionButtonClass} type="submit">Submit answer</Button>
         </form>
       )}
     </article>
@@ -346,22 +348,23 @@ function ApprovalCard({
         <small className={helpClass}>{item.batch_remaining.length} more tool call(s) in this batch</small>
       ) : null}
       <div className={actionsClass}>
-        <button
-          className={primaryButtonClass}
+        <Button
+          className={actionButtonClass}
           onClick={() => onSendMessage?.({ type: 'APPROVAL_RESPONSE', approved: true, scope: 'once' })}
           type="button"
         >
           Approve once
-        </button>
-        <button
-          className={secondaryButtonClass}
+        </Button>
+        <Button
+          className={actionButtonClass}
           onClick={() => onSendMessage?.({ type: 'APPROVAL_RESPONSE', approved: true, scope: 'session' })}
           type="button"
+          variant="outline"
         >
           Approve session
-        </button>
-        <button
-          className={dangerButtonClass}
+        </Button>
+        <Button
+          className={actionButtonClass}
           onClick={() => onSendMessage?.({
             type: 'APPROVAL_RESPONSE',
             approved: false,
@@ -369,9 +372,10 @@ function ApprovalCard({
             mode: 'reject_soft',
           })}
           type="button"
+          variant="destructive"
         >
           Reject
-        </button>
+        </Button>
       </div>
     </article>
   )
@@ -395,7 +399,7 @@ function PlanReviewCard({
       <div className={`${markdownClass} mb-3 max-h-80 overflow-y-auto rounded-lg bg-white p-3`}>
         <ReactMarkdown>{item.plan_content}</ReactMarkdown>
       </div>
-      <textarea
+      <Textarea
         aria-label="Plan feedback"
         className={textareaClass}
         onChange={(event) => setFeedback(event.target.value)}
@@ -403,8 +407,8 @@ function PlanReviewCard({
         value={feedback}
       />
       <div className={actionsClass}>
-        <button
-          className={primaryButtonClass}
+        <Button
+          className={actionButtonClass}
           onClick={() => onSendMessage?.({
             type: 'PLAN_REVIEW_RESPONSE',
             message: feedback.trim() || 'Plan approved. Proceed with implementation.',
@@ -412,17 +416,18 @@ function PlanReviewCard({
           type="button"
         >
           Approve plan
-        </button>
-        <button
-          className={secondaryButtonClass}
+        </Button>
+        <Button
+          className={actionButtonClass}
           onClick={() => {
             if (!feedback.trim()) return
             onSendMessage?.({ type: 'PLAN_REVIEW_RESPONSE', message: feedback.trim() })
           }}
           type="button"
+          variant="outline"
         >
           Request changes
-        </button>
+        </Button>
       </div>
     </article>
   )
@@ -443,20 +448,21 @@ function UlwCard({
       </div>
       <p className={bodyClass}>The autonomous work budget has been reached.</p>
       <div className={actionsClass}>
-        <button
-          className={primaryButtonClass}
+        <Button
+          className={actionButtonClass}
           onClick={() => onSendMessage?.({ type: 'ULW_RESPONSE', action: 'continue', turns: 10 })}
           type="button"
         >
           Continue 10 turns
-        </button>
-        <button
-          className={secondaryButtonClass}
+        </Button>
+        <Button
+          className={actionButtonClass}
           onClick={() => onSendMessage?.({ type: 'ULW_RESPONSE', action: 'switch_mode', mode: 'safe' })}
           type="button"
+          variant="outline"
         >
           Return to safe mode
-        </button>
+        </Button>
       </div>
     </article>
   )
@@ -482,7 +488,7 @@ function OnboardCard({
       {item.paymentAmount !== undefined && <p className={bodyClass}>Payment: {item.paymentAmount}</p>}
       <div className="mt-3 grid gap-2.5">
         {supportsInvite && (
-          <input
+          <Input
             aria-label="Invite code"
             className={inputClass}
             onChange={(event) => setInviteCode(event.target.value)}
@@ -490,8 +496,8 @@ function OnboardCard({
             value={inviteCode}
           />
         )}
-        <button
-          className={primaryButtonClass}
+        <Button
+          className={actionButtonClass}
           disabled={supportsInvite && !inviteCode.trim()}
           onClick={() => onSubmit?.({
             inviteCode: inviteCode.trim() || undefined,
@@ -500,7 +506,7 @@ function OnboardCard({
           type="button"
         >
           Submit access request
-        </button>
+        </Button>
       </div>
       <p className={helpClass}>The SDK signs this request with the current client identity.</p>
     </article>
