@@ -14,6 +14,29 @@ type MessageBubbleProps = {
   selectedAgentName: string
 }
 
+const cardClass =
+  'w-[min(720px,90%)] self-start rounded-xl bg-[#f7f7f8] p-3.5 text-left text-sm text-[#182230]'
+const cardHeaderClass = 'mb-2 flex items-center gap-2'
+const eyebrowClass = 'text-[10px] font-bold uppercase tracking-wide text-[#6b7280]'
+const cardTitleClass = 'min-w-0 break-words text-[13px] font-semibold text-[#182230]'
+const bodyClass = 'm-0 whitespace-pre-wrap break-words text-sm leading-6 text-[#182230]'
+const helpClass = 'mt-2 block text-[11px] text-[#6b7280]'
+const detailsClass = 'mt-2 [&>summary]:cursor-pointer [&>summary]:text-xs [&>summary]:font-semibold [&>summary]:text-[#4b5563]'
+const preClass = 'mt-2 max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-lg bg-[#101828] p-2.5 font-mono text-xs leading-5 text-[#f2f4f7]'
+const inputClass = 'h-10 min-w-0 rounded-lg border-0 bg-white px-3 text-sm text-[#182230] outline-none ring-1 ring-black/5 focus:ring-2 focus:ring-[#b9a4dc]/40'
+const textareaClass = 'min-h-24 w-full resize-y rounded-lg border-0 bg-white p-3 text-sm text-[#182230] outline-none ring-1 ring-black/5 focus:ring-2 focus:ring-[#b9a4dc]/40'
+const actionsClass = 'mt-3 flex flex-wrap gap-2'
+const primaryButtonClass = 'min-h-9 rounded-lg border-0 bg-[#202123] px-3 py-1.5 text-xs font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-50'
+const secondaryButtonClass = 'min-h-9 rounded-lg border-0 bg-white px-3 py-1.5 text-xs font-semibold text-[#374151] shadow-sm ring-1 ring-black/5 hover:bg-[#f3f4f6]'
+const dangerButtonClass = 'min-h-9 rounded-lg border-0 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100'
+const markdownClass = 'min-w-0 text-sm leading-6 text-[#182230] [&_a]:text-blue-600 [&_a]:underline [&_code]:rounded [&_code]:bg-black/5 [&_code]:px-1 [&_li]:ml-5 [&_ol]:list-decimal [&_p]:my-2 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_pre]:mt-2 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-[#101828] [&_pre]:p-3 [&_pre]:text-xs [&_pre]:text-[#f2f4f7] [&_ul]:list-disc'
+
+function eventTone(status: 'running' | 'done' | 'error') {
+  if (status === 'error') return 'bg-red-50'
+  if (status === 'running') return 'bg-blue-50'
+  return 'bg-emerald-50'
+}
+
 export function MessageBubble({
   message,
   onSendMessage,
@@ -24,24 +47,26 @@ export function MessageBubble({
     case 'user':
     case 'agent':
       return (
-        <article className={`message message-${message.type}`}>
-          <span className="message-role">
+        <article className={message.type === 'user'
+          ? 'max-w-[78%] self-end rounded-3xl bg-[#f4f4f4] px-4 py-2.5 text-left'
+          : 'w-full self-start py-3 text-left'}>
+          <span className={message.type === 'user' ? 'sr-only' : 'mb-2 block text-xs font-semibold text-[#4b5563]'}>
             {message.type === 'user' ? 'You' : selectedAgentName}
           </span>
-          <div className="message-markdown">
+          <div className={markdownClass}>
             <ReactMarkdown>{message.content}</ReactMarkdown>
           </div>
           {'images' in message && message.images?.length ? (
-            <div className="message-images">
+            <div className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-2">
               {message.images.map((image) => (
-                <img alt="Conversation attachment" key={image} src={image} />
+                <img alt="Conversation attachment" className="max-h-80 w-full rounded-xl object-contain" key={image} src={image} />
               ))}
             </div>
           ) : null}
           {message.type === 'user' && message.files?.length ? (
-            <div className="file-chips">
+            <div className="mt-2 flex flex-wrap gap-1.5">
               {message.files.map((file) => (
-                <span key={`${file.name}:${file.size}`}>{file.name}</span>
+                <span className="rounded-full bg-white px-2 py-1 text-[11px] text-[#4b5563] shadow-sm" key={`${file.name}:${file.size}`}>{file.name}</span>
               ))}
             </div>
           ) : null}
@@ -60,26 +85,26 @@ export function MessageBubble({
 
     case 'tool_call':
       return (
-        <article className={`event-card tool-card event-${message.status}`}>
-          <div className="event-card-header">
-            <span>Tool</span>
-            <strong>{message.name}</strong>
-            <small>{message.status}</small>
+        <article className={`${cardClass} ${eventTone(message.status)}`}>
+          <div className={cardHeaderClass}>
+            <span className={eyebrowClass}>Tool</span>
+            <strong className={cardTitleClass}>{message.name}</strong>
+            <small className="ml-auto text-[10px] font-semibold uppercase text-[#6b7280]">{message.status}</small>
           </div>
           {message.args && Object.keys(message.args).length > 0 && (
-            <details>
+            <details className={detailsClass}>
               <summary>Arguments</summary>
-              <pre>{formatValue(message.args)}</pre>
+              <pre className={preClass}>{formatValue(message.args)}</pre>
             </details>
           )}
           {message.result && (
-            <details open={message.status === 'error'}>
+            <details className={detailsClass} open={message.status === 'error'}>
               <summary>Result</summary>
-              <pre>{message.result}</pre>
+              <pre className={preClass}>{message.result}</pre>
             </details>
           )}
           {message.timing_ms !== undefined && (
-            <small className="event-meta">{formatDuration(message.timing_ms)}</small>
+            <small className={helpClass}>{formatDuration(message.timing_ms)}</small>
           )}
         </article>
       )
@@ -142,27 +167,27 @@ export function MessageBubble({
 
     case 'tool_blocked':
       return (
-        <article className="event-card event-error">
-          <div className="event-card-header">
-            <span>Tool blocked</span>
-            <strong>{message.tool}</strong>
+        <article className={`${cardClass} bg-red-50`}>
+          <div className={cardHeaderClass}>
+            <span className={eyebrowClass}>Tool blocked</span>
+            <strong className={cardTitleClass}>{message.tool}</strong>
           </div>
-          <p>{message.message}</p>
-          <small className="event-help">{message.reason}</small>
-          {message.command && <pre>{message.command}</pre>}
+          <p className={bodyClass}>{message.message}</p>
+          <small className={helpClass}>{message.reason}</small>
+          {message.command && <pre className={preClass}>{message.command}</pre>}
         </article>
       )
 
     case 'files_received':
       return (
-        <article className="event-card">
-          <div className="event-card-header">
-            <span>Files received</span>
-            <strong>{message.files.length} file(s)</strong>
+        <article className={cardClass}>
+          <div className={cardHeaderClass}>
+            <span className={eyebrowClass}>Files received</span>
+            <strong className={cardTitleClass}>{message.files.length} file(s)</strong>
           </div>
-          <div className="file-chips">
+          <div className="mt-2 flex flex-wrap gap-1.5">
             {message.files.map((file) => (
-              <span key={file.path} title={file.path}>{file.name}</span>
+              <span className="rounded-full bg-white px-2 py-1 text-[11px] text-[#4b5563] shadow-sm" key={file.path} title={file.path}>{file.name}</span>
             ))}
           </div>
         </article>
@@ -181,14 +206,20 @@ function ActivityCard({
   meta?: string
   status: 'running' | 'done' | 'error'
 }) {
+  const dotClass = status === 'running'
+    ? 'bg-blue-500 shadow-[0_0_0_4px_rgb(239_248_255)]'
+    : status === 'error'
+      ? 'bg-red-500'
+      : 'bg-emerald-500'
+
   return (
-    <article className={`activity-card event-${status}`}>
-      <span className="activity-dot" />
-      <div>
-        <strong>{label}</strong>
-        {detail && <p>{detail}</p>}
+    <article className={`grid w-[min(720px,90%)] grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2.5 self-start rounded-xl px-3 py-2.5 text-xs text-[#4b5563] ${eventTone(status)}`}>
+      <span className={`mt-1 size-2 rounded-full ${dotClass}`} />
+      <div className="min-w-0">
+        <strong className="block text-xs font-semibold">{label}</strong>
+        {detail && <p className="mt-1 whitespace-pre-wrap break-words text-xs text-[#6b7280]">{detail}</p>}
       </div>
-      {meta && <small>{meta}</small>}
+      {meta && <small className="text-[10px] text-[#9ca3af]">{meta}</small>}
     </article>
   )
 }
@@ -231,20 +262,21 @@ function AskUserCard({
   }
 
   return (
-    <article className="event-card interaction-card">
-      <div className="event-card-header">
-        <span>Question</span>
-        <strong>{item.text}</strong>
+    <article className={`${cardClass} shadow-sm`}>
+      <div className={cardHeaderClass}>
+        <span className={eyebrowClass}>Question</span>
+        <strong className={cardTitleClass}>{item.text}</strong>
       </div>
       {isAnswered ? (
-        <p className="answered-value">Answered: {item.answer}</p>
+        <p className="m-0 text-sm text-emerald-700">Answered: {item.answer}</p>
       ) : (
-        <form className="interaction-form" onSubmit={handleSubmit}>
+        <form className="grid gap-2.5" onSubmit={handleSubmit}>
           {item.fields?.map((field) => (
-            <label key={field.name}>
+            <label className="grid gap-1 text-xs font-semibold text-[#4b5563]" key={field.name}>
               <span>{field.label}</span>
               <input
                 autoComplete={field.autocomplete}
+                className={inputClass}
                 onChange={(event) =>
                   setFieldValues((values) => ({ ...values, [field.name]: event.target.value }))
                 }
@@ -256,14 +288,16 @@ function AskUserCard({
             </label>
           ))}
           {!item.fields?.length && item.options.length > 0 && (
-            <div className="option-grid">
+            <div className="flex flex-wrap gap-2">
               {item.options.map((option) => {
                 const selected = item.multi_select
                   ? selectedOptions.includes(option)
                   : answer === option
                 return (
                   <button
-                    className={selected ? 'option-selected' : ''}
+                    className={selected
+                      ? 'min-h-9 rounded-lg border-0 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 ring-1 ring-blue-200'
+                      : secondaryButtonClass}
                     key={option}
                     onClick={() => toggleOption(option)}
                     type="button"
@@ -277,12 +311,13 @@ function AskUserCard({
           {!item.fields?.length && (
             <input
               aria-label="Answer"
+              className={inputClass}
               onChange={(event) => setAnswer(event.target.value)}
               placeholder={item.options.length ? 'Or enter another answer' : 'Type your answer'}
               value={answer}
             />
           )}
-          <button className="primary-action" type="submit">Submit answer</button>
+          <button className={primaryButtonClass} type="submit">Submit answer</button>
         </form>
       )}
     </article>
@@ -297,35 +332,36 @@ function ApprovalCard({
   onSendMessage?: (message: OutgoingMessage) => void
 }) {
   return (
-    <article className="event-card interaction-card event-warning">
-      <div className="event-card-header">
-        <span>Approval required</span>
-        <strong>{item.tool}</strong>
+    <article className={`${cardClass} bg-amber-50 shadow-sm`}>
+      <div className={cardHeaderClass}>
+        <span className={eyebrowClass}>Approval required</span>
+        <strong className={cardTitleClass}>{item.tool}</strong>
       </div>
-      {item.description && <p>{item.description}</p>}
-      <details>
+      {item.description && <p className={bodyClass}>{item.description}</p>}
+      <details className={detailsClass}>
         <summary>Arguments</summary>
-        <pre>{formatValue(item.arguments)}</pre>
+        <pre className={preClass}>{formatValue(item.arguments)}</pre>
       </details>
       {item.batch_remaining?.length ? (
-        <small className="event-help">{item.batch_remaining.length} more tool call(s) in this batch</small>
+        <small className={helpClass}>{item.batch_remaining.length} more tool call(s) in this batch</small>
       ) : null}
-      <div className="interaction-actions">
+      <div className={actionsClass}>
         <button
-          className="primary-action"
+          className={primaryButtonClass}
           onClick={() => onSendMessage?.({ type: 'APPROVAL_RESPONSE', approved: true, scope: 'once' })}
           type="button"
         >
           Approve once
         </button>
         <button
+          className={secondaryButtonClass}
           onClick={() => onSendMessage?.({ type: 'APPROVAL_RESPONSE', approved: true, scope: 'session' })}
           type="button"
         >
           Approve session
         </button>
         <button
-          className="danger-action"
+          className={dangerButtonClass}
           onClick={() => onSendMessage?.({
             type: 'APPROVAL_RESPONSE',
             approved: false,
@@ -351,23 +387,24 @@ function PlanReviewCard({
   const [feedback, setFeedback] = useState('')
 
   return (
-    <article className="event-card interaction-card plan-card">
-      <div className="event-card-header">
-        <span>Plan review</span>
-        <strong>Review before implementation</strong>
+    <article className={`${cardClass} shadow-sm`}>
+      <div className={cardHeaderClass}>
+        <span className={eyebrowClass}>Plan review</span>
+        <strong className={cardTitleClass}>Review before implementation</strong>
       </div>
-      <div className="message-markdown plan-content">
+      <div className={`${markdownClass} mb-3 max-h-80 overflow-y-auto rounded-lg bg-white p-3`}>
         <ReactMarkdown>{item.plan_content}</ReactMarkdown>
       </div>
       <textarea
         aria-label="Plan feedback"
+        className={textareaClass}
         onChange={(event) => setFeedback(event.target.value)}
         placeholder="Optional feedback or requested changes"
         value={feedback}
       />
-      <div className="interaction-actions">
+      <div className={actionsClass}>
         <button
-          className="primary-action"
+          className={primaryButtonClass}
           onClick={() => onSendMessage?.({
             type: 'PLAN_REVIEW_RESPONSE',
             message: feedback.trim() || 'Plan approved. Proceed with implementation.',
@@ -377,6 +414,7 @@ function PlanReviewCard({
           Approve plan
         </button>
         <button
+          className={secondaryButtonClass}
           onClick={() => {
             if (!feedback.trim()) return
             onSendMessage?.({ type: 'PLAN_REVIEW_RESPONSE', message: feedback.trim() })
@@ -398,21 +436,22 @@ function UlwCard({
   onSendMessage?: (message: OutgoingMessage) => void
 }) {
   return (
-    <article className="event-card interaction-card event-warning">
-      <div className="event-card-header">
-        <span>ULW checkpoint</span>
-        <strong>{item.turns_used}/{item.max_turns} turns used</strong>
+    <article className={`${cardClass} bg-amber-50 shadow-sm`}>
+      <div className={cardHeaderClass}>
+        <span className={eyebrowClass}>ULW checkpoint</span>
+        <strong className={cardTitleClass}>{item.turns_used}/{item.max_turns} turns used</strong>
       </div>
-      <p>The autonomous work budget has been reached.</p>
-      <div className="interaction-actions">
+      <p className={bodyClass}>The autonomous work budget has been reached.</p>
+      <div className={actionsClass}>
         <button
-          className="primary-action"
+          className={primaryButtonClass}
           onClick={() => onSendMessage?.({ type: 'ULW_RESPONSE', action: 'continue', turns: 10 })}
           type="button"
         >
           Continue 10 turns
         </button>
         <button
+          className={secondaryButtonClass}
           onClick={() => onSendMessage?.({ type: 'ULW_RESPONSE', action: 'switch_mode', mode: 'safe' })}
           type="button"
         >
@@ -434,24 +473,25 @@ function OnboardCard({
   const supportsInvite = item.methods.some((method) => method.toLowerCase().includes('invite'))
 
   return (
-    <article className="event-card interaction-card event-warning">
-      <div className="event-card-header">
-        <span>Access required</span>
-        <strong>Agent onboarding</strong>
+    <article className={`${cardClass} bg-amber-50 shadow-sm`}>
+      <div className={cardHeaderClass}>
+        <span className={eyebrowClass}>Access required</span>
+        <strong className={cardTitleClass}>Agent onboarding</strong>
       </div>
-      <p>Supported methods: {item.methods.join(', ')}</p>
-      {item.paymentAmount !== undefined && <p>Payment: {item.paymentAmount}</p>}
-      <div className="interaction-form">
+      <p className={bodyClass}>Supported methods: {item.methods.join(', ')}</p>
+      {item.paymentAmount !== undefined && <p className={bodyClass}>Payment: {item.paymentAmount}</p>}
+      <div className="mt-3 grid gap-2.5">
         {supportsInvite && (
           <input
             aria-label="Invite code"
+            className={inputClass}
             onChange={(event) => setInviteCode(event.target.value)}
             placeholder="Invite code"
             value={inviteCode}
           />
         )}
         <button
-          className="primary-action"
+          className={primaryButtonClass}
           disabled={supportsInvite && !inviteCode.trim()}
           onClick={() => onSubmit?.({
             inviteCode: inviteCode.trim() || undefined,
@@ -462,7 +502,7 @@ function OnboardCard({
           Submit access request
         </button>
       </div>
-      <p className="event-help">The SDK signs this request with the current client identity.</p>
+      <p className={helpClass}>The SDK signs this request with the current client identity.</p>
     </article>
   )
 }

@@ -17,12 +17,14 @@ import { ChatWindow } from './ChatWindow'
 
 type AgentConversationProps = {
   agentConfig: AgentConfig
+  onMessageSubmitted: (prompt: string) => void
   onNewSession: () => void
   sessionId: string
 }
 
 export function AgentConversation({
   agentConfig,
+  onMessageSubmitted,
   onNewSession,
   sessionId,
 }: AgentConversationProps) {
@@ -30,6 +32,7 @@ export function AgentConversation({
     return (
       <DirectAgentConversation
         agentConfig={agentConfig}
+        onMessageSubmitted={onMessageSubmitted}
         onNewSession={onNewSession}
         sessionId={sessionId}
       />
@@ -39,6 +42,7 @@ export function AgentConversation({
   return (
     <RelayAgentConversation
       agentConfig={agentConfig}
+      onMessageSubmitted={onMessageSubmitted}
       onNewSession={onNewSession}
       sessionId={sessionId}
     />
@@ -62,6 +66,7 @@ function DirectAgentConversation(props: AgentConversationProps) {
 function AgentConversationContent({
   agent,
   agentConfig,
+  onMessageSubmitted,
   onNewSession,
 }: AgentConversationProps & { agent: UseAgentForHumanReturn }) {
   const composerInput = useChatStore((state) => state.input)
@@ -76,6 +81,7 @@ function AgentConversationContent({
 
     setActionError(null)
     setComposerInput('')
+    onMessageSubmitted(prompt)
     agent.input(prompt)
   }
 

@@ -16,6 +16,7 @@ function createWindow() {
   const win = new BrowserWindow({
     width: 1200,
     height: 800,
+    icon: join(__dirname, '../src/assets/icon.ico'),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -31,6 +32,12 @@ app.whenReady().then(() => {
   storage.initialize()
   registerStorageIpc(storage)
   createWindow()
+})
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit()
+  }
 })
 
 app.on('before-quit', () => {

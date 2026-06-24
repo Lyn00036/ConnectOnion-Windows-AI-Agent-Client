@@ -56,46 +56,35 @@ export function ChatWindow({
   ulwTurnsUsed,
 }: ChatWindowProps) {
   const canChat = Boolean(selectedAgent && onSubmit && onInputChange && onSendMessage)
+  const isNewConversation = messages.length === 0 && !isSending
+  const statusClass = connectionState === 'connected'
+    ? 'bg-emerald-50 text-emerald-700'
+    : 'bg-[#f1f2f4] text-[#858891]'
 
   return (
-    <section className="chat-panel" aria-label="Agent chat">
-      <div className="active-agent">
-        <div className="active-agent-identity">
-          <span>Active agent</span>
-          <strong>{selectedAgent?.name ?? 'No agent selected'}</strong>
-          {sessionId && <small title={sessionId}>Session {sessionId.slice(0, 8)}</small>}
-        </div>
-        {selectedAgent ? (
-          <div className="agent-controls">
-            <span className={`status-pill status-${connectionState ?? 'disconnected'}`}>
+    <section className="relative flex h-svh min-w-0 flex-col overflow-hidden bg-white" aria-label="Agent chat">
+      {selectedAgent && (
+        <div className="flex min-h-[58px] items-center justify-between gap-3.5 bg-white/90 px-[18px] py-2">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="grid size-[30px] flex-none place-items-center rounded-lg bg-[#18191c] text-xs font-extrabold text-white">{selectedAgent.name.slice(0, 1).toUpperCase()}</span>
+            <span className="min-w-0">
+              <strong className="block truncate text-xs text-[#242529]">{selectedAgent.name}</strong>
+              {sessionId && <small className="mt-0.5 block text-[9px] text-[#a0a3aa]">Session {sessionId.slice(0, 8)}</small>}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className={`rounded-full px-2 py-1 text-[9px] whitespace-nowrap max-[620px]:hidden ${statusClass}`}>
               {connectionState ?? 'disconnected'} · {status}
             </span>
-            <label className="mode-control">
-              <span>Mode</span>
-              <select
-                aria-label="Agent approval mode"
-                onChange={(event) => onModeChange?.(event.target.value as ApprovalMode)}
-                value={mode}
-              >
-                <option value="safe">Safe</option>
-                <option value="plan">Plan</option>
-                <option value="accept_edits">Accept edits</option>
-                <option value="ulw">ULW</option>
-              </select>
-            </label>
-            <button className="new-chat-button" onClick={onNewConversation} type="button">
-              New chat
+            <button className="min-h-[30px] rounded-md border-0 bg-[#f5f5f5] px-2.5 py-1 text-[10px] font-bold text-[#555860] hover:bg-[#ededed]" onClick={onNewConversation} type="button">
+              + New chat
             </button>
           </div>
-        ) : (
-          <code>Add an agent manually to start.</code>
-        )}
-      </div>
+        </div>
+      )}
 
       {mode === 'ulw' && ulwTurns !== null && ulwTurns !== undefined && (
-        <div className="ulw-progress">
-          ULW turns: {ulwTurnsUsed ?? 0}/{ulwTurns}
-        </div>
+        <div className="bg-amber-50 px-5 py-2 text-xs text-amber-800">ULW turns: {ulwTurnsUsed ?? 0}/{ulwTurns}</div>
       )}
 
       <MessageList
@@ -106,20 +95,45 @@ export function ChatWindow({
         selectedAgentName={selectedAgent?.name ?? 'Agent'}
       />
 
-      {directUrl && (
-        <div className="notice">
-          Direct connection: <code>{directUrl}</code>
-        </div>
-      )}
-      {error && <div className="error">{error}</div>}
-
-      <MessageInput
-        input={input}
-        isSending={isSending}
-        onInputChange={onInputChange ?? (() => undefined)}
-        onSubmit={onSubmit ?? ((event) => event.preventDefault())}
-        selectedAgentName={canChat ? selectedAgent?.name : undefined}
-      />
+      <div className="mx-auto w-[min(760px,calc(100%_-_40px))] pb-[18px] max-[620px]:w-[calc(100%_-_24px)] max-[620px]:pb-2.5">
+        {isNewConversation && canChat && (
+          <div className="mb-2.5 flex flex-wrap justify-center gap-2" aria-label="Suggested prompts">
+            {['What can you do?', 'Show system info', 'List files in current directory'].map((suggestion) => (
+              <button className="min-h-[27px] rounded-full border-0 bg-[#f5f5f5] px-2.5 py-1 text-[9px] font-medium text-[#7d8088] hover:bg-[#ededed] hover:text-[#414349] last:max-[620px]:hidden" key={suggestion} onClick={() => onInputChange?.(suggestion)} type="button">
+                {suggestion}
+              </button>
+            ))}
+          </div>
+        )}
+        {directUrl && <div className="mx-1 mb-1.5 truncate text-right text-[8px] text-[#9a9da5]" title={directUrl}>Direct · {directUrl}</div>}
+        {error && <div className="mb-2 rounded-lg bg-red-50 p-2.5 text-[10px] text-red-700">{error}</div>}
+        <MessageInput
+          input={input}
+          isSending={isSending}
+          onInputChange={onInputChange ?? (() => undefined)}
+          onSubmit={onSubmit ?? ((event) => event.preventDefault())}
+          selectedAgentName={canChat ? selectedAgent?.name : undefined}
+        />
+        {selectedAgent && (
+          <div className="flex min-h-6 items-center justify-end gap-2.5 px-1 pt-1 text-[8px] text-[#aaadb3]">
+            <label className="flex items-center gap-1">
+              <span className="text-[8px] text-[#aaadb3]">Mode</span>
+              <select
+                aria-label="Agent approval mode"
+                className="h-[22px] w-auto border-0 bg-transparent py-0 pl-1 pr-4 text-[8px] text-[#777a82]"
+                onChange={(event) => onModeChange?.(event.target.value as ApprovalMode)}
+                value={mode}
+              >
+                <option value="safe">Safe</option>
+                <option value="plan">Plan</option>
+                <option value="accept_edits">Accept edits</option>
+                <option value="ulw">ULW</option>
+              </select>
+            </label>
+            <span className="max-[620px]:hidden">Enter to send · Shift + Enter for a new line</span>
+          </div>
+        )}
+      </div>
     </section>
   )
 }
