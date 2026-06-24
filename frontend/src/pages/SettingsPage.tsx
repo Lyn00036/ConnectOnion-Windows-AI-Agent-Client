@@ -1,11 +1,5 @@
-/** Settings page reserved for desktop preferences and runtime configuration. */
-
-import { SettingsPanel } from '../features/settings/components/SettingsPanel'
+/** Intentionally empty until desktop settings have real behavior. */
 
 export function SettingsPage() {
-  return (
-    <section className="content-page">
-      <SettingsPanel />
-    </section>
-  )
+  return <section aria-label="Settings" className="min-h-svh w-full bg-white" />
 }

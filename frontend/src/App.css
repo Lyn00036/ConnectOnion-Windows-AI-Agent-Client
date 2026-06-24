@@ -1,7 +1,0 @@
-/** Application stylesheet entrypoint that groups feature and layout CSS files. */
-
-@import './styles/layout.css';
-@import './styles/agents.css';
-@import './styles/chat.css';
-@import './styles/forms.css';
-@import './styles/empty-state.css';
