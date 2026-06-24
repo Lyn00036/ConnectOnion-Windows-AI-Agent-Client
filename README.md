@@ -2,10 +2,11 @@
 
 ConnectOnion Desktop is a Windows desktop client for chatting with external ConnectOnion agents.
 
-This repository is developed from the current desktop-client baseline:
+Current desktop-client baseline:
 
-- Desktop-local data is stored through SQLite in the Electron process
-- Chat connects directly through the ConnectOnion TypeScript SDK
+- Chat supports ConnectOnion Relay connections and Direct URL connections
+- Saved agents, session metadata, and chat state currently persist in renderer `localStorage`
+- Electron initializes a local SQLite database, but feature CRUD is not wired to it yet
 - The example email agent runs as a separate ConnectOnion agent host
 
 ## Current Architecture
@@ -14,14 +15,18 @@ This repository is developed from the current desktop-client baseline:
 User
   -> Electron BrowserWindow
   -> React frontend
-  -> Electron preload IPC bridge
-  -> Electron main SQLite storage service
-  -> ConnectOnion TypeScript SDK
-  -> Remote or local ConnectOnion agent
-  -> Agent LLM/tools
+      -> ConnectOnion TypeScript SDK
+          -> Relay or Direct URL
+          -> Remote or local ConnectOnion agent
+          -> Agent LLM/tools
+      -> Electron preload IPC bridge
+          -> Electron main SQLite storage service
 ```
 
-SQLite lives behind Electron IPC. React code should not import Node, Electron, or SQLite packages directly.
+SQLite lives behind Electron IPC. React code should not import Node, Electron,
+or SQLite packages directly. The current IPC surface exposes storage status and
+schema metadata only; agents, sessions, and chat data have not been migrated
+from `localStorage` to SQLite.
 
 Storage framework files:
 
@@ -57,8 +62,9 @@ connectonion-desktop/
       layouts/          Desktop shell layout
       pages/            Top-level app views
       features/         Agent, chat, session, and settings modules
+      components/ui/    Shared shadcn UI primitives
       shared/           Shared components, hooks, storage, and utilities
-      styles/           Split CSS by layout and feature area
+      index.css         Tailwind theme and global styles
   .github/workflows/ci.yml
 ```
 
@@ -67,6 +73,23 @@ connectonion-desktop/
 - Node.js 22+
 - npm
 - Python 3.12+ only if you want to run the example email agent
+
+## Before Each Development Session
+
+Start from a clean working tree, then update the branch and install the current
+frontend dependencies before making changes:
+
+```powershell
+git status
+git pull
+cd .\frontend
+npm install
+```
+
+If `git status` shows unfinished work, commit or stash it before `git pull`.
+Run `npm install` again whenever `frontend/package.json` or
+`frontend/package-lock.json` changes. If PowerShell blocks `npm.ps1`, use
+`npm.cmd` instead of `npm`.
 
 ## Read The ConnectOnion Docs First
 
@@ -94,7 +117,7 @@ Use this checklist before implementation:
 3. Confirm the exact SDK API from the local source before importing or calling it.
 4. Confirm whether the desktop client should connect by address, relay URL, or direct URL.
 5. Confirm which events the agent/SDK can emit before designing chat UI states.
-6. Keep Electron SQLite as the desktop source of truth for local data.
+6. Treat Electron SQLite as the target desktop source of truth and document any feature still using localStorage.
 7. Keep secrets in a secure credential layer, not plain SQLite or renderer state.
 ```
 
@@ -177,25 +200,24 @@ Important notes:
 
 ## Start The Desktop Client
 
-Windows PowerShell:
-
-```powershell
-cd .\frontend
-npm install
-npm run dev
-```
-
-Open:
-
-```text
-http://127.0.0.1:3000
-```
-
-Electron desktop shell:
+Electron desktop shell (recommended for normal development):
 
 ```powershell
 cd .\frontend
 npm run desktop
+```
+
+Browser-only Vite development:
+
+```powershell
+cd .\frontend
+npm run dev
+```
+
+Open the browser version at:
+
+```text
+http://127.0.0.1:3000
 ```
 
 Useful frontend scripts:
@@ -217,6 +239,20 @@ The Electron desktop app initializes its local SQLite database when the app star
 ```
 
 SQLite may also create `connectonion-desktop.sqlite3-wal` and `connectonion-desktop.sqlite3-shm` next to it; those sidecar files are normal.
+
+Current persistence boundaries:
+
+```text
+connectonion.agents                         Saved agent configurations
+connectonion.selectedAgentId                Selected agent
+connectonion.sessions                       Per-agent session metadata
+connectonion.activeSessionId                Selected session
+co:agent:{address}:session:{sessionId}      Relay/direct chat state
+```
+
+These keys currently live in renderer `localStorage`. The SQLite schema already
+contains agents, sessions, messages, settings, and metadata tables, but the
+feature stores have not been connected to those tables yet.
 
 ## Add An Agent
 
@@ -253,9 +289,9 @@ Install it from the repository root:
 
 ```powershell
 cd .\agent
-python -m venv venv
+python -X utf8 -m venv venv
 .\venv\Scripts\Activate.ps1
-python -m pip install -r .\email-agent\requirements.txt
+python -X utf8 -m pip install -r .\email-agent\requirements.txt
 cd .\email-agent
 ```
 
@@ -263,16 +299,20 @@ Then choose one startup method:
 
 ```powershell
 # Full ConnectOnion host; reads .env and .co/host.yaml (currently port 8000)
-python server.py
+python -X utf8 agent.py
 
 # Or run the ASGI app directly for local Direct URL testing
-python -m uvicorn server:app --host 127.0.0.1 --port 8010
+python -X utf8 -m uvicorn agent:app --host 127.0.0.1 --port 8010
 ```
 
-Use `http://127.0.0.1:8000` as the Direct URL for `python server.py`, or
+On Windows, keep `-X utf8` in Python startup commands. It forces UTF-8 mode and
+avoids failures caused by the system GBK encoding when prompts, logs, or model
+output contain non-ASCII characters.
+
+Use `http://127.0.0.1:8000` as the Direct URL for `python -X utf8 agent.py`, or
 `http://127.0.0.1:8010` for the Uvicorn command.
 
-Relay note: `python server.py` enables the `relay_url` configured in
+Relay note: `python -X utf8 agent.py` enables the `relay_url` configured in
 `.co/host.yaml`. On Windows machines with many physical, Docker, WSL, VPN, or
 link-local network adapters, ConnectOnion may announce more than the Relay limit
 of 10 endpoints and repeatedly report `Too many endpoints (max 10)`. This is an
@@ -294,18 +334,20 @@ Do not commit `.env`, `.co/`, API keys, or local credential files.
 ## What Is Implemented
 
 - Electron desktop shell
-- React + Vite frontend
-- ConnectOnion TypeScript SDK chat connection
-- Manual local agent add/select/remove
-- SQLite desktop storage framework
-- Example standalone email agent host
+- React, Vite, Tailwind, and shadcn-based desktop UI
+- Relay and Direct URL chat through the ConnectOnion TypeScript SDK
+- Local agent add/select/remove
+- Per-agent session creation, selection, deletion, and `/chat/:sessionId` routing
+- Renderer-side agent, session, and chat persistence through `localStorage`
+- Electron SQLite initialization, migrations, and storage-status IPC
+- Standalone email agent with a single `agent.py` host/ASGI entrypoint
 - Frontend CI lint/build
 
 ## Not Implemented Yet
 
 - Agent/session/chat repositories backed by SQLite
-- Chat/session history persistence
-- Real Sessions and Settings workflows
+- Migration of existing renderer `localStorage` data into SQLite
+- Functional desktop Settings workflow
 - Secure local credential storage
 - Packaged installer
 - Production release pipeline

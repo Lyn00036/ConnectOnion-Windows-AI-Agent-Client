@@ -8,8 +8,7 @@ The desktop app connects to this agent through the ConnectOnion TypeScript SDK. 
 
 ```text
 agent/email-agent/
-  agent.py             Creates the ConnectOnion email agent
-  server.py            Exposes the agent as an ASGI app/host
+  agent.py             Creates and hosts the ConnectOnion email agent
   requirements.txt     Python dependencies
   prompts/             Agent prompt files
   .env.example         Example local environment variables
@@ -21,9 +20,9 @@ From the repository root:
 
 ```powershell
 cd .\agent
-python -m venv venv
+python -X utf8 -m venv venv
 .\venv\Scripts\Activate.ps1
-python -m pip install -r .\email-agent\requirements.txt
+python -X utf8 -m pip install -r .\email-agent\requirements.txt
 ```
 
 Create a local `.env` file from the example:
@@ -56,22 +55,26 @@ cd .\agent\email-agent
 ..\venv\Scripts\Activate.ps1
 
 # Full ConnectOnion host; reads .env and .co/host.yaml (currently port 8000)
-python server.py
+python -X utf8 agent.py
 
 # Or run the ASGI app directly for local Direct URL testing
-python -m uvicorn server:app --host 127.0.0.1 --port 8010
+python -X utf8 -m uvicorn agent:app --host 127.0.0.1 --port 8010
 ```
+
+On Windows, keep `-X utf8` in Python startup commands. It forces UTF-8 mode and
+avoids failures caused by the system GBK encoding when prompts, logs, or model
+output contain non-ASCII characters.
 
 Use the matching Direct URL in the desktop client:
 
 ```text
-python server.py  -> http://127.0.0.1:8000
-Uvicorn           -> http://127.0.0.1:8010
+python -X utf8 agent.py  -> http://127.0.0.1:8000
+Uvicorn                   -> http://127.0.0.1:8010
 ```
 
 ### Relay URL And Endpoint Limits
 
-`python server.py` starts the full ConnectOnion host and uses `relay_url` from
+`python -X utf8 agent.py` starts the full ConnectOnion host and uses `relay_url` from
 `.co/host.yaml` (currently `wss://oo.openonion.ai`). The host announces an HTTP
 and WebSocket endpoint for every detected IP address. Windows machines with
 Docker, WSL, VPN, link-local, or other virtual adapters can therefore exceed the
@@ -90,8 +93,8 @@ Choose the treatment that matches the intended connection:
 
 - For local Direct URL testing, use the Uvicorn command above. It serves the
   ASGI app without starting the Relay registration lifecycle.
-- To use `python server.py` as a local-only host, call `host(..., relay_url="")`
-  in `server.py` to disable Relay explicitly.
+- To use `python -X utf8 agent.py` as a local-only host, set
+  `EMAIL_AGENT_RELAY_URL=` to disable Relay explicitly.
 - If Relay discovery is required, filter and deduplicate unused network-adapter
   addresses in ConnectOnion endpoint discovery so no more than five IPs are
   announced (each IP produces two endpoints).
