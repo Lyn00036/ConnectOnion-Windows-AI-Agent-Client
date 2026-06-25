@@ -289,9 +289,9 @@ Install it from the repository root:
 
 ```powershell
 cd .\agent
-python -X utf8 -m venv venv
+python -m venv venv
 .\venv\Scripts\Activate.ps1
-python -X utf8 -m pip install -r .\email-agent\requirements.txt
+python -m pip install -r .\requirements.txt
 cd .\email-agent
 ```
 
@@ -302,12 +302,12 @@ Then choose one startup method:
 python -X utf8 agent.py
 
 # Or run the ASGI app directly for local Direct URL testing
-python -X utf8 -m uvicorn agent:app --host 127.0.0.1 --port 8010
+python -m uvicorn agent:app --host 127.0.0.1 --port 8010
 ```
 
-On Windows, keep `-X utf8` in Python startup commands. It forces UTF-8 mode and
-avoids failures caused by the system GBK encoding when prompts, logs, or model
-output contain non-ASCII characters.
+On Windows, start this example agent's `agent.py` with `-X utf8`. It forces
+UTF-8 mode and avoids failures caused by the system GBK encoding when prompts,
+logs, or model output contain non-ASCII characters.
 
 Use `http://127.0.0.1:8000` as the Direct URL for `python -X utf8 agent.py`, or
 `http://127.0.0.1:8010` for the Uvicorn command.

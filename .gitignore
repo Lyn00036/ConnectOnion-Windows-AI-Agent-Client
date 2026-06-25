@@ -40,6 +40,8 @@ backend/app/__pycache__/
 
 # ConnectOnion agent local state and secrets
 agent/**/.co/
+agent/**/.browser_agent_profile/
+agent/**/screenshots/
 
 # Database and local runtime data
 *.db
