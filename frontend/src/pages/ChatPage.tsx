@@ -60,7 +60,7 @@ export function ChatPage() {
   }
 
   return (
-    <div className="h-svh w-full">
+    <div className="h-full w-full">
       {selectedAgent && selectedSession ? (
         <AgentConversation
           agentConfig={selectedAgent}

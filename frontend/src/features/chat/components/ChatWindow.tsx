@@ -65,21 +65,21 @@ export function ChatWindow({
   const isConnected = connectionState === 'connected'
 
   return (
-    <section className="relative flex h-svh min-w-0 flex-col overflow-hidden bg-white" aria-label="Agent chat">
+    <section className="relative flex h-full min-w-0 flex-col overflow-hidden bg-background" aria-label="Agent chat">
       {selectedAgent && (
-        <div className="flex min-h-[58px] items-center justify-between gap-3.5 bg-white/90 px-[18px] py-2">
+        <div className="flex min-h-[58px] items-center justify-between gap-3.5 bg-background/90 px-[18px] py-2">
           <div className="flex min-w-0 items-center gap-2.5">
-            <span className="grid size-[30px] flex-none place-items-center rounded-lg bg-[#18191c] text-xs font-extrabold text-white">{selectedAgent.name.slice(0, 1).toUpperCase()}</span>
+            <span className="grid size-[30px] flex-none place-items-center rounded-lg bg-primary text-xs font-extrabold text-primary-foreground">{selectedAgent.name.slice(0, 1).toUpperCase()}</span>
             <span className="min-w-0">
-              <strong className="block truncate text-xs text-[#242529]">{selectedAgent.name}</strong>
-              {sessionId && <small className="mt-0.5 block text-[9px] text-[#a0a3aa]">Session {sessionId.slice(0, 8)}</small>}
+              <strong className="block truncate text-xs text-foreground">{selectedAgent.name}</strong>
+              {sessionId && <small className="mt-0.5 block text-[9px] text-muted-foreground">Session {sessionId.slice(0, 8)}</small>}
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <Badge className={`max-[620px]:hidden ${isConnected ? 'bg-emerald-50 text-emerald-700' : 'bg-[#f1f2f4] text-[#858891]'}`} variant="secondary">
+            <Badge className={`max-[620px]:hidden ${isConnected ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'}`} variant="secondary">
               {connectionState ?? 'disconnected'} · {status}
             </Badge>
-            <Button className="min-h-[30px] bg-[#f5f5f5] px-2.5 text-[10px] font-bold text-[#555860] hover:bg-[#ededed]" onClick={onNewConversation} size="sm" type="button" variant="secondary">
+            <Button className="min-h-[30px] bg-secondary px-2.5 text-[10px] font-bold text-secondary-foreground hover:bg-accent" onClick={onNewConversation} size="sm" type="button" variant="secondary">
               <Plus aria-hidden="true" /> New chat
             </Button>
           </div>
@@ -87,7 +87,7 @@ export function ChatWindow({
       )}
 
       {mode === 'ulw' && ulwTurns !== null && ulwTurns !== undefined && (
-        <div className="bg-amber-50 px-5 py-2 text-xs text-amber-800">ULW turns: {ulwTurnsUsed ?? 0}/{ulwTurns}</div>
+        <div className="bg-warning/10 px-5 py-2 text-xs text-warning">ULW turns: {ulwTurnsUsed ?? 0}/{ulwTurns}</div>
       )}
 
       <MessageList
@@ -102,14 +102,14 @@ export function ChatWindow({
         {isNewConversation && canChat && (
           <div className="mb-2.5 flex flex-wrap justify-center gap-2" aria-label="Suggested prompts">
             {['What can you do?', 'Show system info', 'List files in current directory'].map((suggestion) => (
-              <Button className="min-h-[27px] rounded-full px-2.5 text-[9px] font-medium text-[#7d8088] hover:text-[#414349] last:max-[620px]:hidden" key={suggestion} onClick={() => onInputChange?.(suggestion)} size="xs" type="button" variant="secondary">
+              <Button className="min-h-[27px] rounded-full px-2.5 text-[9px] font-medium text-muted-foreground hover:text-foreground last:max-[620px]:hidden" key={suggestion} onClick={() => onInputChange?.(suggestion)} size="xs" type="button" variant="secondary">
                 {suggestion}
               </Button>
             ))}
           </div>
         )}
-        {directUrl && <div className="mx-1 mb-1.5 truncate text-right text-[8px] text-[#9a9da5]" title={directUrl}>Direct · {directUrl}</div>}
-        {error && <div className="mb-2 rounded-lg bg-red-50 p-2.5 text-[10px] text-red-700">{error}</div>}
+        {directUrl && <div className="mx-1 mb-1.5 truncate text-right text-[8px] text-muted-foreground" title={directUrl}>Direct · {directUrl}</div>}
+        {error && <div className="mb-2 rounded-lg bg-destructive/10 p-2.5 text-[10px] text-destructive">{error}</div>}
         <MessageInput
           input={input}
           isSending={isSending}
@@ -118,11 +118,11 @@ export function ChatWindow({
           selectedAgentName={canChat ? selectedAgent?.name : undefined}
         />
         {selectedAgent && (
-          <div className="flex min-h-6 items-center justify-end gap-2.5 px-1 pt-1 text-[8px] text-[#aaadb3]">
+          <div className="flex min-h-6 items-center justify-end gap-2.5 px-1 pt-1 text-[8px] text-muted-foreground">
             <label className="flex items-center gap-1">
-              <span className="text-[8px] text-[#aaadb3]">Mode</span>
+              <span className="text-[8px] text-muted-foreground">Mode</span>
               <Select onValueChange={(value) => value && onModeChange?.(value as ApprovalMode)} value={mode}>
-                <SelectTrigger aria-label="Agent approval mode" className="h-[22px] w-auto border-0 bg-transparent px-1 text-[8px] text-[#777a82] shadow-none" size="sm">
+                <SelectTrigger aria-label="Agent approval mode" className="h-[22px] w-auto border-0 bg-transparent px-1 text-[8px] text-muted-foreground shadow-none" size="sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

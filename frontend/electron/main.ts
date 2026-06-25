@@ -1,8 +1,9 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, Menu } from 'electron'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { registerStorageIpc } from './ipc/storageIpc.ts'
+import { registerWindowIpc } from './ipc/windowIpc.ts'
 import { createDesktopStorage } from './storage/service.ts'
 
 app.setName('connectonion_desktop')
@@ -14,9 +15,14 @@ const storage = createDesktopStorage(() => app.getPath('userData'))
 
 function createWindow() {
   const win = new BrowserWindow({
+    autoHideMenuBar: true,
+    backgroundColor: '#fbfbfc',
+    frame: false,
     width: 1200,
     height: 800,
     icon: join(__dirname, '../src/assets/icon.ico'),
+    minHeight: 640,
+    minWidth: 960,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -25,6 +31,8 @@ function createWindow() {
     },
   })
 
+  registerWindowIpc(win)
+  win.setMenuBarVisibility(false)
   win.loadURL('http://localhost:3000')
 
   win.webContents.openDevTools()
@@ -33,6 +41,7 @@ function createWindow() {
 app.whenReady().then(() => {
   storage.initialize()
   registerStorageIpc(storage)
+  Menu.setApplicationMenu(null)
   createWindow()
 })
 
