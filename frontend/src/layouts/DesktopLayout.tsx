@@ -13,6 +13,7 @@ import { AgentForm } from '../features/agents/components/AgentForm'
 import { useAgentStore } from '../features/agents/store'
 import { useSessionStore } from '../features/sessions/store'
 import { matchesAccelerator, useShortcutsStore, type ShortcutId } from '../features/settings/shortcuts'
+import { useSettingsStore } from '../features/settings/store'
 import { DesktopTitleBar } from './DesktopTitleBar'
 
 const navigationClass = (isActive: boolean) =>
@@ -39,11 +40,12 @@ export function DesktopLayout() {
   const startNewSession = useSessionStore((state) => state.startNewSession)
   const [expandedAgentId, setExpandedAgentId] = useState<string | null>(selectedAgentId)
   const [showAddAgent, setShowAddAgent] = useState(false)
-  const [sidebarVisible, setSidebarVisible] = useState(true)
+  const sidebarVisible = useSettingsStore((state) => state.sidebarVisible)
+  const toggleSidebar = useSettingsStore((state) => state.toggleSidebar)
 
   useEffect(() => {
     const actions: Record<ShortcutId, () => void> = {
-      'toggle-sidebar': () => setSidebarVisible((visible) => !visible),
+      'toggle-sidebar': () => useSettingsStore.getState().toggleSidebar(),
     }
 
     function handleKeyDown(event: KeyboardEvent) {
@@ -104,7 +106,7 @@ export function DesktopLayout() {
 
   return (
     <div className="flex h-svh min-h-0 flex-col overflow-hidden bg-background">
-      <DesktopTitleBar onToggleSidebar={() => setSidebarVisible((visible) => !visible)} sidebarVisible={sidebarVisible} />
+      <DesktopTitleBar onToggleSidebar={toggleSidebar} sidebarVisible={sidebarVisible} />
       <main className={`grid min-h-0 flex-1 bg-background ${sidebarVisible ? 'grid-cols-[286px_minmax(0,1fr)] max-[820px]:grid-cols-[230px_minmax(0,1fr)]' : 'grid-cols-[minmax(0,1fr)]'}`}>
         {sidebarVisible && (
         <aside className="flex h-full min-w-0 flex-col bg-sidebar px-2.5 pb-2.5 pt-3.5 text-sidebar-foreground">

@@ -8,6 +8,7 @@ import { create } from 'zustand'
 export type ThemeMode = 'light' | 'dark'
 
 const THEME_STORAGE_KEY = 'connectonion.theme'
+const SIDEBAR_STORAGE_KEY = 'connectonion.sidebarVisible'
 
 function loadTheme(): ThemeMode {
   try {
@@ -17,10 +18,22 @@ function loadTheme(): ThemeMode {
   }
 }
 
+function loadSidebarVisible(): boolean {
+  try {
+    // Default to visible; only an explicit "false" hides it.
+    return localStorage.getItem(SIDEBAR_STORAGE_KEY) !== 'false'
+  } catch {
+    return true
+  }
+}
+
 type SettingsState = {
   theme: ThemeMode
   setTheme: (theme: ThemeMode) => void
   toggleTheme: () => void
+  sidebarVisible: boolean
+  setSidebarVisible: (visible: boolean) => void
+  toggleSidebar: () => void
 }
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
@@ -35,5 +48,17 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
   toggleTheme: () => {
     get().setTheme(get().theme === 'dark' ? 'light' : 'dark')
+  },
+  sidebarVisible: loadSidebarVisible(),
+  setSidebarVisible: (visible) => {
+    try {
+      localStorage.setItem(SIDEBAR_STORAGE_KEY, String(visible))
+    } catch {
+      // Keep the in-memory state working if localStorage is unavailable.
+    }
+    set({ sidebarVisible: visible })
+  },
+  toggleSidebar: () => {
+    get().setSidebarVisible(!get().sidebarVisible)
   },
 }))

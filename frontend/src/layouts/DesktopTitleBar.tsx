@@ -124,9 +124,21 @@ export function DesktopTitleBar({ onToggleSidebar, sidebarVisible }: DesktopTitl
               </Menu.Positioner>
             </Menu.Portal>
           </Menu.Root>
-          <Button className={menuButtonClass} type="button" variant="ghost">
-            Help
-          </Button>
+          <Menu.Root>
+            <Menu.Trigger render={<Button className={menuButtonClass} type="button" variant="ghost">Help</Button>} />
+            <Menu.Portal>
+              <Menu.Positioner align="start" className="z-50" side="bottom" sideOffset={4}>
+                <Menu.Popup className="min-w-44 rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-md outline-none">
+                  <Menu.Item
+                    className="relative flex w-full cursor-default items-center gap-2 rounded-md px-2.5 py-1.5 text-[13px] outline-none select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground"
+                    onClick={() => navigate('/settings')}
+                  >
+                    Keyboard shortcuts
+                  </Menu.Item>
+                </Menu.Popup>
+              </Menu.Positioner>
+            </Menu.Portal>
+          </Menu.Root>
         </nav>
       </div>
 
