@@ -1,0 +1,9 @@
+.env
+.env.*
+!.env.example
+__pycache__/
+*.py[cod]
+.co/evals/
+.co/logs/
+.co/history/
+.co/session_results.jsonl

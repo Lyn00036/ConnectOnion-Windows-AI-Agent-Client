@@ -54,7 +54,10 @@ frontend/src/shared/storage/
 ```text
 connectonion-desktop/
   agent/
-    email-agent/        Example ConnectOnion agent for local/demo testing
+    email-agent/        Example email ConnectOnion agent (local/demo)
+    browser-agent/      Example browser-automation agent (local/demo)
+    simple-agent/       Minimal connectable assistant agent (local/demo)
+    memory-agent/       Assistant with persistent memory (local/demo)
   frontend/
     electron/           Electron desktop shell
     src/
@@ -330,6 +333,36 @@ co auth google
 ```
 
 Do not commit `.env`, `.co/`, API keys, or local credential files.
+
+## Other Local Agents
+
+Besides the email agent, the repository ships additional connectable example
+agents adapted from the official ConnectOnion examples. Each one follows the
+same `create_app` + `host` pattern and exposes `/health`, `/info`, `/input`, and
+`/ws`, so the desktop client connects to them the same way.
+
+```text
+agent/simple-agent/    Minimal general assistant (lowest setup; good for multi-agent tests)
+agent/memory-agent/    Assistant with persistent local memory across turns
+```
+
+Run one of them locally with Uvicorn, then add its Direct URL in the desktop
+client:
+
+```powershell
+cd .\agent\simple-agent
+..\venv\Scripts\Activate.ps1
+python -m uvicorn agent:app --host 127.0.0.1 --port 8020   # simple-agent
+
+# or
+cd .\agent\memory-agent
+..\venv\Scripts\Activate.ps1
+python -m uvicorn agent:app --host 127.0.0.1 --port 8021   # memory-agent
+```
+
+To run several agents at once, give each a different port (for example
+email 8010, simple 8020, memory 8021) and add each as a separate agent. See each
+agent's own README for details.
 
 ## What Is Implemented
 
