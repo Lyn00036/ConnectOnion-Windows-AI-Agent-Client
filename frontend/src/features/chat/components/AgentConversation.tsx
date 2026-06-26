@@ -126,6 +126,7 @@ function AgentConversationContent({
       onInputChange={setComposerInput}
       onModeChange={handleModeChange}
       onNewConversation={handleNewConversation}
+      onReconnect={() => agent.reconnect()}
       onSendMessage={handleSendMessage}
       onSubmit={handleSubmit}
       onSubmitOnboard={handleSubmitOnboard}

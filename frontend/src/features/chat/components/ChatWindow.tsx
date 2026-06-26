@@ -1,7 +1,7 @@
 /** Chat panel for SDK state, agent.ui items, actions, and the composer. */
 
 import type { SubmitEvent } from 'react'
-import { Plus } from 'lucide-react'
+import { Plus, RefreshCw } from 'lucide-react'
 import type {
   AgentStatus,
   ApprovalMode,
@@ -10,7 +10,6 @@ import type {
   OutgoingMessage,
 } from 'connectonion/react'
 
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
@@ -30,6 +29,7 @@ type ChatWindowProps = {
   onInputChange?: (value: string) => void
   onModeChange?: (mode: ApprovalMode) => void
   onNewConversation?: () => void
+  onReconnect?: () => void
   onSendMessage?: (message: OutgoingMessage) => void
   onSubmit?: (event: SubmitEvent<HTMLFormElement>) => void
   onSubmitOnboard?: (options: OnboardSubmission) => void
@@ -51,6 +51,7 @@ export function ChatWindow({
   onInputChange,
   onModeChange,
   onNewConversation,
+  onReconnect,
   onSendMessage,
   onSubmit,
   onSubmitOnboard,
@@ -62,7 +63,8 @@ export function ChatWindow({
 }: ChatWindowProps) {
   const canChat = Boolean(selectedAgent && onSubmit && onInputChange && onSendMessage)
   const isNewConversation = messages.length === 0 && !isSending
-  const isConnected = connectionState === 'connected'
+  const connection = getConnectionMeta(connectionState)
+  const canReconnect = Boolean(onReconnect) && connectionState !== undefined && connectionState !== 'connected'
 
   return (
     <section className="relative flex h-full min-w-0 flex-col overflow-hidden bg-background" aria-label="Agent chat">
@@ -76,9 +78,17 @@ export function ChatWindow({
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <Badge className={`max-[620px]:hidden ${isConnected ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'}`} variant="secondary">
-              {connectionState ?? 'disconnected'} · {status}
-            </Badge>
+            <span className="flex items-center gap-1.5 rounded-full bg-muted/60 px-2 py-1 text-[10px] font-medium max-[620px]:hidden" title={`Connection: ${connection.label} · Agent: ${status}`}>
+              <span className={`size-2 rounded-full ${connection.dotClass}`} />
+              <span className={connection.textClass}>{connection.label}</span>
+              <span className="text-muted-foreground">· {status}</span>
+            </span>
+            {canReconnect && (
+              <Button className="min-h-[30px] px-2.5 text-[10px] font-bold" disabled={connectionState === 'reconnecting'} onClick={onReconnect} size="sm" type="button" variant="outline">
+                <RefreshCw aria-hidden="true" className={connectionState === 'reconnecting' ? 'animate-spin' : ''} />
+                {connectionState === 'reconnecting' ? 'Reconnecting' : 'Reconnect'}
+              </Button>
+            )}
             <Button className="min-h-[30px] bg-secondary px-2.5 text-[10px] font-bold text-secondary-foreground hover:bg-accent" onClick={onNewConversation} size="sm" type="button" variant="secondary">
               <Plus aria-hidden="true" /> New chat
             </Button>
@@ -139,4 +149,16 @@ export function ChatWindow({
       </div>
     </section>
   )
+}
+
+// Maps the SDK's ConnectionState ('disconnected' | 'connected' | 'reconnecting')
+// to a readable label, colored dot and text tone.
+function getConnectionMeta(state?: ConnectionState) {
+  if (state === 'connected') {
+    return { label: 'Connected', dotClass: 'bg-success', textClass: 'text-success' }
+  }
+  if (state === 'reconnecting') {
+    return { label: 'Reconnecting…', dotClass: 'bg-warning animate-pulse', textClass: 'text-warning' }
+  }
+  return { label: 'Disconnected', dotClass: 'bg-muted-foreground', textClass: 'text-muted-foreground' }
 }
