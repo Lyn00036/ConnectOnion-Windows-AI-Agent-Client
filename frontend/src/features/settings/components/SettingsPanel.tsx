@@ -11,10 +11,15 @@ import { Moon, Sun } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 import { useSettingsStore } from '../store'
+import { SHORTCUT_DEFS, useShortcutsStore } from '../shortcuts'
+import { ShortcutRecorder } from './ShortcutRecorder'
 
 export function SettingsPanel() {
   const theme = useSettingsStore((state) => state.theme)
   const setTheme = useSettingsStore((state) => state.setTheme)
+  const overrides = useShortcutsStore((state) => state.overrides)
+  const setAccelerator = useShortcutsStore((state) => state.setAccelerator)
+  const resetAccelerator = useShortcutsStore((state) => state.resetAccelerator)
 
   return (
     <div className="mx-auto w-full max-w-2xl px-6 py-8">
@@ -56,6 +61,33 @@ export function SettingsPanel() {
             </Button>
           </div>
         </div>
+      </section>
+
+      <section className="mt-6 rounded-xl border border-border bg-card p-5 text-card-foreground">
+        <h2 className="text-sm font-semibold text-foreground">Keyboard shortcuts</h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Click a shortcut, then press the keys you want. Press Esc to cancel.
+        </p>
+
+        <ul className="mt-4 divide-y divide-border">
+          {SHORTCUT_DEFS.map((def) => {
+            const accelerator = overrides[def.id] ?? def.defaultAccelerator
+            return (
+              <li className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0" key={def.id}>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground">{def.label}</p>
+                  <p className="text-xs text-muted-foreground">{def.description}</p>
+                </div>
+                <ShortcutRecorder
+                  accelerator={accelerator}
+                  isCustom={overrides[def.id] !== undefined}
+                  onChange={(next) => setAccelerator(def.id, next)}
+                  onReset={() => resetAccelerator(def.id)}
+                />
+              </li>
+            )
+          })}
+        </ul>
       </section>
     </div>
   )

@@ -1,6 +1,6 @@
 /** Shared desktop shell with an agent -> session navigation tree. */
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ChevronRight, MessageSquare, Plus, Settings, X } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { useNavigate } from 'react-router-dom'
@@ -12,6 +12,7 @@ import onionLogo from '../assets/icon.png'
 import { AgentForm } from '../features/agents/components/AgentForm'
 import { useAgentStore } from '../features/agents/store'
 import { useSessionStore } from '../features/sessions/store'
+import { matchesAccelerator, useShortcutsStore, type ShortcutId } from '../features/settings/shortcuts'
 import { DesktopTitleBar } from './DesktopTitleBar'
 
 const navigationClass = (isActive: boolean) =>
@@ -38,6 +39,30 @@ export function DesktopLayout() {
   const startNewSession = useSessionStore((state) => state.startNewSession)
   const [expandedAgentId, setExpandedAgentId] = useState<string | null>(selectedAgentId)
   const [showAddAgent, setShowAddAgent] = useState(false)
+  const [sidebarVisible, setSidebarVisible] = useState(true)
+
+  useEffect(() => {
+    const actions: Record<ShortcutId, () => void> = {
+      'toggle-sidebar': () => setSidebarVisible((visible) => !visible),
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      // A shortcut recorder is capturing keys right now; don't fire live actions.
+      if (event.defaultPrevented) return
+
+      const { getAccelerator } = useShortcutsStore.getState()
+      for (const id of Object.keys(actions) as ShortcutId[]) {
+        if (matchesAccelerator(event, getAccelerator(id))) {
+          event.preventDefault()
+          actions[id]()
+          break
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   function openAgent(agentId: string) {
     selectAgent(agentId)
@@ -79,8 +104,9 @@ export function DesktopLayout() {
 
   return (
     <div className="flex h-svh min-h-0 flex-col overflow-hidden bg-background">
-      <DesktopTitleBar />
-      <main className="grid min-h-0 flex-1 grid-cols-[286px_minmax(0,1fr)] bg-background max-[820px]:grid-cols-[230px_minmax(0,1fr)]">
+      <DesktopTitleBar onToggleSidebar={() => setSidebarVisible((visible) => !visible)} sidebarVisible={sidebarVisible} />
+      <main className={`grid min-h-0 flex-1 bg-background ${sidebarVisible ? 'grid-cols-[286px_minmax(0,1fr)] max-[820px]:grid-cols-[230px_minmax(0,1fr)]' : 'grid-cols-[minmax(0,1fr)]'}`}>
+        {sidebarVisible && (
         <aside className="flex h-full min-w-0 flex-col bg-sidebar px-2.5 pb-2.5 pt-3.5 text-sidebar-foreground">
           <Button className="h-auto min-h-[38px] justify-start gap-2.5 rounded-none px-1.5 pb-3.5 text-left" onClick={() => navigate('/chat')} type="button" variant="ghost">
             <img alt="ConnectOnion" className="size-[29px] object-contain" src={onionLogo} />
@@ -149,6 +175,7 @@ export function DesktopLayout() {
           <Settings aria-hidden="true" className="size-[18px]" /><span>Settings</span>
         </NavLink>
       </aside>
+        )}
 
         <div className="min-h-0 min-w-0 overflow-hidden"><Outlet /></div>
       </main>

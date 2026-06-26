@@ -7,17 +7,24 @@ import { Button } from '@/components/ui/button'
 import { IconButton } from '@/shared/components/IconButton'
 import type { DesktopWindowState } from '@/shared/desktopWindow'
 import { useSettingsStore } from '@/features/settings/store'
+import { useShortcutAccelerator } from '@/features/settings/shortcuts'
 
 import onionLogo from '../assets/icon.png'
 
 const menuButtonClass =
   'h-9 rounded-none px-3 text-[12px] font-medium text-titlebar-foreground hover:bg-titlebar-accent hover:text-titlebar-accent-foreground aria-expanded:bg-titlebar-accent aria-expanded:text-titlebar-accent-foreground'
 
-export function DesktopTitleBar() {
+type DesktopTitleBarProps = {
+  onToggleSidebar: () => void
+  sidebarVisible: boolean
+}
+
+export function DesktopTitleBar({ onToggleSidebar, sidebarVisible }: DesktopTitleBarProps) {
   const navigate = useNavigate()
   const [isMaximized, setIsMaximized] = useState(false)
   const theme = useSettingsStore((state) => state.theme)
   const setTheme = useSettingsStore((state) => state.setTheme)
+  const toggleSidebarAccelerator = useShortcutAccelerator('toggle-sidebar')
 
   useEffect(() => {
     let isMounted = true
@@ -96,6 +103,19 @@ export function DesktopTitleBar() {
                     onCheckedChange={(checked) => setTheme(checked ? 'dark' : 'light')}
                   >
                     Dark mode
+                    <Menu.CheckboxItemIndicator className="absolute right-2 flex items-center">
+                      <Check aria-hidden="true" className="size-4" />
+                    </Menu.CheckboxItemIndicator>
+                  </Menu.CheckboxItem>
+                  <div className="my-1 h-px bg-border" />
+                  <Menu.CheckboxItem
+                    checked={sidebarVisible}
+                    className="relative flex w-full cursor-default items-center gap-2 rounded-md py-1.5 pr-8 pl-2.5 text-[13px] outline-none select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground"
+                    closeOnClick={false}
+                    onCheckedChange={() => onToggleSidebar()}
+                  >
+                    Toggle sidebar
+                    <span className="ml-auto text-[11px] text-muted-foreground">{toggleSidebarAccelerator}</span>
                     <Menu.CheckboxItemIndicator className="absolute right-2 flex items-center">
                       <Check aria-hidden="true" className="size-4" />
                     </Menu.CheckboxItemIndicator>
