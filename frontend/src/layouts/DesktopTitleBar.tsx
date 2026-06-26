@@ -1,18 +1,23 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, ArrowRight, Copy, Minus, Square, X } from 'lucide-react'
+import { Menu } from '@base-ui/react/menu'
+import { ArrowLeft, ArrowRight, Check, Copy, Minus, Square, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/shared/components/IconButton'
 import type { DesktopWindowState } from '@/shared/desktopWindow'
+import { useSettingsStore } from '@/features/settings/store'
 
 import onionLogo from '../assets/icon.png'
 
-const menuItems = ['File', 'Edit', 'View', 'Help'] as const
+const menuButtonClass =
+  'h-9 rounded-none px-3 text-[12px] font-medium text-titlebar-foreground hover:bg-titlebar-accent hover:text-titlebar-accent-foreground aria-expanded:bg-titlebar-accent aria-expanded:text-titlebar-accent-foreground'
 
 export function DesktopTitleBar() {
   const navigate = useNavigate()
   const [isMaximized, setIsMaximized] = useState(false)
+  const theme = useSettingsStore((state) => state.theme)
+  const setTheme = useSettingsStore((state) => state.setTheme)
 
   useEffect(() => {
     let isMounted = true
@@ -73,11 +78,35 @@ export function DesktopTitleBar() {
           </IconButton>
         </div>
         <nav className="desktop-titlebar-controls ml-3 flex h-full items-center" aria-label="Application menu">
-          {menuItems.map((item) => (
-            <Button className="h-9 rounded-none px-3 text-[12px] font-medium text-titlebar-foreground hover:bg-titlebar-accent hover:text-titlebar-accent-foreground" key={item} type="button" variant="ghost">
-              {item}
-            </Button>
-          ))}
+          <Button className={menuButtonClass} type="button" variant="ghost">
+            File
+          </Button>
+          <Button className={menuButtonClass} type="button" variant="ghost">
+            Edit
+          </Button>
+          <Menu.Root>
+            <Menu.Trigger render={<Button className={menuButtonClass} type="button" variant="ghost">View</Button>} />
+            <Menu.Portal>
+              <Menu.Positioner align="start" className="z-50" side="bottom" sideOffset={4}>
+                <Menu.Popup className="min-w-44 rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-md outline-none">
+                  <Menu.CheckboxItem
+                    checked={theme === 'dark'}
+                    className="relative flex w-full cursor-default items-center gap-2 rounded-md py-1.5 pr-8 pl-2.5 text-[13px] outline-none select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground"
+                    closeOnClick={false}
+                    onCheckedChange={(checked) => setTheme(checked ? 'dark' : 'light')}
+                  >
+                    Dark mode
+                    <Menu.CheckboxItemIndicator className="absolute right-2 flex items-center">
+                      <Check aria-hidden="true" className="size-4" />
+                    </Menu.CheckboxItemIndicator>
+                  </Menu.CheckboxItem>
+                </Menu.Popup>
+              </Menu.Positioner>
+            </Menu.Portal>
+          </Menu.Root>
+          <Button className={menuButtonClass} type="button" variant="ghost">
+            Help
+          </Button>
         </nav>
       </div>
 
