@@ -35,7 +35,9 @@ function createWindow() {
   win.setMenuBarVisibility(false)
   win.loadURL('http://localhost:3000')
 
-  win.webContents.openDevTools()
+  if (!app.isPackaged) {
+    win.webContents.openDevTools()
+  }
 }
 
 app.whenReady().then(() => {
