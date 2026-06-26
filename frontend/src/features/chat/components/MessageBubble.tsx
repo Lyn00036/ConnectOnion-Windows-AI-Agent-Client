@@ -232,14 +232,26 @@ function ConversationMessage({
         )}
       </div>
 
-      {isLong && (
-        <button
-          className="mt-1 inline-flex items-center text-[11px] font-medium text-muted-foreground hover:text-foreground"
-          onClick={() => setExpanded((value) => !value)}
-          type="button"
-        >
-          {expanded ? 'Collapse' : 'Expand'}
-        </button>
+      {!isUser && (
+        <div className="mt-1.5 flex items-center gap-3 text-[11px] font-medium text-muted-foreground">
+          <button
+            className="inline-flex items-center gap-1 hover:text-foreground"
+            onClick={handleCopy}
+            type="button"
+          >
+            {copied ? <Check aria-hidden="true" className="size-3" /> : <Copy aria-hidden="true" className="size-3" />}
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+          {isLong && (
+            <button
+              className="inline-flex items-center hover:text-foreground"
+              onClick={() => setExpanded((value) => !value)}
+              type="button"
+            >
+              {expanded ? 'Collapse' : 'Expand'}
+            </button>
+          )}
+        </div>
       )}
 
       {'images' in message && message.images?.length ? (
