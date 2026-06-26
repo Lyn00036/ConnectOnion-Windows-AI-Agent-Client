@@ -6,9 +6,18 @@
 import { create } from 'zustand'
 
 export type ThemeMode = 'light' | 'dark'
+export type MessageFontSize = 'sm' | 'md' | 'lg'
+
+/** Maps the size preference to the CSS value applied via --co-msg-size. */
+export const MESSAGE_FONT_SIZES: Record<MessageFontSize, string> = {
+  sm: '0.8125rem',
+  md: '0.9375rem',
+  lg: '1.0625rem',
+}
 
 const THEME_STORAGE_KEY = 'connectonion.theme'
 const SIDEBAR_STORAGE_KEY = 'connectonion.sidebarVisible'
+const MESSAGE_FONT_SIZE_KEY = 'connectonion.messageFontSize'
 
 function loadTheme(): ThemeMode {
   try {
@@ -27,6 +36,15 @@ function loadSidebarVisible(): boolean {
   }
 }
 
+function loadMessageFontSize(): MessageFontSize {
+  try {
+    const stored = localStorage.getItem(MESSAGE_FONT_SIZE_KEY)
+    return stored === 'sm' || stored === 'lg' ? stored : 'md'
+  } catch {
+    return 'md'
+  }
+}
+
 type SettingsState = {
   theme: ThemeMode
   setTheme: (theme: ThemeMode) => void
@@ -34,6 +52,8 @@ type SettingsState = {
   sidebarVisible: boolean
   setSidebarVisible: (visible: boolean) => void
   toggleSidebar: () => void
+  messageFontSize: MessageFontSize
+  setMessageFontSize: (size: MessageFontSize) => void
 }
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
@@ -60,5 +80,14 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
   toggleSidebar: () => {
     get().setSidebarVisible(!get().sidebarVisible)
+  },
+  messageFontSize: loadMessageFontSize(),
+  setMessageFontSize: (size) => {
+    try {
+      localStorage.setItem(MESSAGE_FONT_SIZE_KEY, size)
+    } catch {
+      // Keep the in-memory preference working if localStorage is unavailable.
+    }
+    set({ messageFontSize: size })
   },
 }))

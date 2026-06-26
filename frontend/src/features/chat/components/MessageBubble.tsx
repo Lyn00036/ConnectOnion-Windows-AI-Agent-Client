@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import type { SubmitEvent } from 'react'
 import type { ChatItem, OutgoingMessage } from 'connectonion/react'
+import { Check, Copy } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 
 import { Badge } from '@/components/ui/badge'
@@ -34,6 +35,11 @@ const actionsClass = 'mt-3 flex flex-wrap gap-2'
 const actionButtonClass = 'min-h-9 px-3 py-1.5 text-xs font-semibold'
 const markdownClass = 'min-w-0 text-sm leading-6 text-[#182230] [&_a]:text-blue-600 [&_a]:underline [&_code]:rounded [&_code]:bg-black/5 [&_code]:px-1 [&_li]:ml-5 [&_ol]:list-decimal [&_p]:my-2 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_pre]:mt-2 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-[#101828] [&_pre]:p-3 [&_pre]:text-xs [&_pre]:text-[#f2f4f7] [&_ul]:list-disc'
 
+// Conversational (user/agent) text. Theme-aware tokens + user-controlled size var.
+const messageTextClass = 'min-w-0 leading-relaxed text-foreground text-[length:var(--co-msg-size,0.9375rem)] [&_a]:text-primary [&_a]:underline [&_code]:rounded [&_code]:bg-foreground/10 [&_code]:px-1 [&_li]:ml-5 [&_ol]:list-decimal [&_p]:my-2 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_pre]:mt-2 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-[#101828] [&_pre]:p-3 [&_pre]:text-xs [&_pre]:text-[#f2f4f7] [&_ul]:list-disc'
+
+const LONG_MESSAGE_THRESHOLD = 700
+
 function eventTone(status: 'running' | 'done' | 'error') {
   if (status === 'error') return 'bg-red-50'
   if (status === 'running') return 'bg-blue-50'
@@ -49,32 +55,7 @@ export function MessageBubble({
   switch (message.type) {
     case 'user':
     case 'agent':
-      return (
-        <article className={message.type === 'user'
-          ? 'max-w-[78%] self-end rounded-3xl bg-[#f4f4f4] px-4 py-2.5 text-left'
-          : 'w-full self-start py-3 text-left'}>
-          <span className={message.type === 'user' ? 'sr-only' : 'mb-2 block text-xs font-semibold text-[#4b5563]'}>
-            {message.type === 'user' ? 'You' : selectedAgentName}
-          </span>
-          <div className={markdownClass}>
-            <ReactMarkdown>{message.content}</ReactMarkdown>
-          </div>
-          {'images' in message && message.images?.length ? (
-            <div className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-2">
-              {message.images.map((image) => (
-                <img alt="Conversation attachment" className="max-h-80 w-full rounded-xl object-contain" key={image} src={image} />
-              ))}
-            </div>
-          ) : null}
-          {message.type === 'user' && message.files?.length ? (
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {message.files.map((file) => (
-                <Badge className="bg-white text-[11px] text-[#4b5563] shadow-sm" key={`${file.name}:${file.size}`} variant="secondary">{file.name}</Badge>
-              ))}
-            </div>
-          ) : null}
-        </article>
-      )
+      return <ConversationMessage message={message} selectedAgentName={selectedAgentName} />
 
     case 'thinking':
       return (
@@ -196,6 +177,88 @@ export function MessageBubble({
         </article>
       )
   }
+}
+
+function ConversationMessage({
+  message,
+  selectedAgentName,
+}: {
+  message: Extract<ChatItem, { type: 'user' | 'agent' }>
+  selectedAgentName: string
+}) {
+  const isUser = message.type === 'user'
+  const isLong = !isUser && message.content.length > LONG_MESSAGE_THRESHOLD
+  const [expanded, setExpanded] = useState(true)
+  const [copied, setCopied] = useState(false)
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(message.content)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // Clipboard may be unavailable (e.g. denied permission); ignore silently.
+    }
+  }
+
+  return (
+    <article
+      className={isUser
+        ? 'max-w-[78%] self-end rounded-3xl bg-muted px-4 py-2.5 text-left text-foreground'
+        : 'group/msg w-full self-start py-3 text-left'}
+    >
+      {isUser ? (
+        <span className="sr-only">You</span>
+      ) : (
+        <div className="mb-2 flex items-center gap-1">
+          <span className="text-xs font-semibold text-foreground">{selectedAgentName}</span>
+          <button
+            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-accent-foreground group-hover/msg:opacity-100"
+            onClick={handleCopy}
+            type="button"
+          >
+            {copied ? <Check aria-hidden="true" className="size-3" /> : <Copy aria-hidden="true" className="size-3" />}
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+        </div>
+      )}
+
+      <div className="relative">
+        <div className={`${messageTextClass} ${isLong && !expanded ? 'max-h-44 overflow-hidden' : ''}`}>
+          <ReactMarkdown>{message.content}</ReactMarkdown>
+        </div>
+        {isLong && !expanded && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-background to-transparent" />
+        )}
+      </div>
+
+      {isLong && (
+        <button
+          className="mt-1 inline-flex items-center text-[11px] font-medium text-muted-foreground hover:text-foreground"
+          onClick={() => setExpanded((value) => !value)}
+          type="button"
+        >
+          {expanded ? 'Collapse' : 'Expand'}
+        </button>
+      )}
+
+      {'images' in message && message.images?.length ? (
+        <div className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-2">
+          {message.images.map((image) => (
+            <img alt="Conversation attachment" className="max-h-80 w-full rounded-xl object-contain" key={image} src={image} />
+          ))}
+        </div>
+      ) : null}
+
+      {message.type === 'user' && message.files?.length ? (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {message.files.map((file) => (
+            <Badge className="bg-card text-[11px] text-muted-foreground shadow-sm" key={`${file.name}:${file.size}`} variant="secondary">{file.name}</Badge>
+          ))}
+        </div>
+      ) : null}
+    </article>
+  )
 }
 
 function ActivityCard({

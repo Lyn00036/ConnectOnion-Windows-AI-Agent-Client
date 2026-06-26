@@ -10,13 +10,21 @@ import { Moon, Sun } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 
-import { useSettingsStore } from '../store'
+import { useSettingsStore, type MessageFontSize } from '../store'
 import { SHORTCUT_DEFS, useShortcutsStore } from '../shortcuts'
 import { ShortcutRecorder } from './ShortcutRecorder'
+
+const FONT_SIZE_OPTIONS: { label: string; value: MessageFontSize }[] = [
+  { label: 'Small', value: 'sm' },
+  { label: 'Medium', value: 'md' },
+  { label: 'Large', value: 'lg' },
+]
 
 export function SettingsPanel() {
   const theme = useSettingsStore((state) => state.theme)
   const setTheme = useSettingsStore((state) => state.setTheme)
+  const messageFontSize = useSettingsStore((state) => state.messageFontSize)
+  const setMessageFontSize = useSettingsStore((state) => state.setMessageFontSize)
   const overrides = useShortcutsStore((state) => state.overrides)
   const setAccelerator = useShortcutsStore((state) => state.setAccelerator)
   const resetAccelerator = useShortcutsStore((state) => state.resetAccelerator)
@@ -59,6 +67,29 @@ export function SettingsPanel() {
             >
               <Moon aria-hidden="true" /> Dark
             </Button>
+          </div>
+        </div>
+
+        <div className="mt-4 flex items-center justify-between gap-4 border-t border-border pt-4">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-foreground">Message text size</p>
+            <p className="text-xs text-muted-foreground">
+              Adjust how large chat messages appear.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-1 rounded-lg border border-border p-1">
+            {FONT_SIZE_OPTIONS.map((option) => (
+              <Button
+                key={option.value}
+                onClick={() => setMessageFontSize(option.value)}
+                size="sm"
+                type="button"
+                variant={messageFontSize === option.value ? 'default' : 'ghost'}
+              >
+                {option.label}
+              </Button>
+            ))}
           </div>
         </div>
       </section>

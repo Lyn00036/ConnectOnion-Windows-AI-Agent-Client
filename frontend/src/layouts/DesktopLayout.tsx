@@ -46,6 +46,14 @@ export function DesktopLayout() {
   useEffect(() => {
     const actions: Record<ShortcutId, () => void> = {
       'toggle-sidebar': () => useSettingsStore.getState().toggleSidebar(),
+      'new-chat': () => {
+        const agentId = useAgentStore.getState().selectedAgentId
+        if (!agentId) return
+        useAgentStore.getState().selectAgent(agentId)
+        const sessionId = useSessionStore.getState().startNewSession(agentId)
+        setExpandedAgentId(agentId)
+        navigate(`/chat/${sessionId}`)
+      },
     }
 
     function handleKeyDown(event: KeyboardEvent) {
@@ -64,7 +72,7 @@ export function DesktopLayout() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [])
+  }, [navigate])
 
   function openAgent(agentId: string) {
     selectAgent(agentId)

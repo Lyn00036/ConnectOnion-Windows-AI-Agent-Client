@@ -6,7 +6,7 @@
 import { create } from 'zustand'
 
 /** Stable ids for every rebindable action in the app. */
-export type ShortcutId = 'toggle-sidebar'
+export type ShortcutId = 'toggle-sidebar' | 'new-chat'
 
 export type ShortcutDef = {
   id: ShortcutId
@@ -23,6 +23,12 @@ export const SHORTCUT_DEFS: ShortcutDef[] = [
     label: 'Toggle sidebar',
     description: 'Show or hide the left navigation panel.',
     defaultAccelerator: 'Ctrl+B',
+  },
+  {
+    id: 'new-chat',
+    label: 'New chat',
+    description: 'Start a new conversation with the current agent.',
+    defaultAccelerator: 'Ctrl+N',
   },
 ]
 
