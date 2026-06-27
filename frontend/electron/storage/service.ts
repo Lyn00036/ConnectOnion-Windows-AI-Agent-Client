@@ -25,6 +25,16 @@ export class DesktopStorageService {
     applyMigrations(this.db)
   }
 
+  getDatabase(): SqliteDatabase {
+    this.initialize()
+
+    if (!this.db) {
+      throw new Error('Desktop storage is not initialized.')
+    }
+
+    return this.db
+  }
+
   getStatus(): DesktopStorageStatus {
     this.initialize()
 

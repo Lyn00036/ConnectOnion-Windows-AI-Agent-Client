@@ -1,27 +1,29 @@
 /** Zustand store for local agent selection and temporary agent configuration state. */
 
-// TODO(agent-storage): Move agent CRUD from localStorage to the Electron SQLite
-// repository through preload IPC. Keep this store as UI state only: selected
-// agent id, validation errors, loading state, and optimistic update state.
-// Required follow-up:
-// - Add agent repository in electron/storage/repositories.
-// - Add agent IPC channels and preload API methods.
-// - Load saved agents asynchronously on app startup.
-// - Persist create/edit/delete/select operations in SQLite.
-// - Migrate existing localStorage agent records once, then remove these keys.
+// Persistence lives in `agentStorage.ts`: SQLite via the Electron bridge when
+// available, with a localStorage fallback + one-time migration. This store keeps
+// the in-memory working copy (instant reads) and writes through to storage
+// optimistically (the UI updates immediately; the durable write happens in the
+// background).
 
 import { create } from 'zustand'
 
 import { normalizeUrl } from '../../shared/utils/url'
+import {
+  persistCreateAgent,
+  persistRemoveAgent,
+  persistSelectedAgentId,
+  persistUpdateAgent,
+  readInitialAgents,
+} from './agentStorage'
 import type { AgentConfig } from './types'
-
-const AGENTS_STORAGE_KEY = 'connectonion.agents'
-const SELECTED_AGENT_STORAGE_KEY = 'connectonion.selectedAgentId'
 
 type AgentState = {
   agents: AgentConfig[]
   selectedAgentId: string | null
   error: string | null
+  hydrated: boolean
+  hydrate: () => Promise<void>
   addAgent: (name: string, address: string, directUrl?: string) => void
   updateAgent: (agentId: string, name: string, address: string, directUrl?: string) => void
   removeAgent: (agentId: string) => void
@@ -29,49 +31,23 @@ type AgentState = {
   setError: (error: string | null) => void
 }
 
-function loadAgents() {
-  try {
-    const stored = localStorage.getItem(AGENTS_STORAGE_KEY)
-    if (!stored) return []
-
-    const agents = JSON.parse(stored) as Array<
-      AgentConfig & { url?: string }
-    >
-    if (!Array.isArray(agents)) return []
-
-    return agents
-      .filter((agent) => agent.name && agent.id !== 'local-agent')
-      .map((agent) => {
-        if (agent.address) return agent
-
-        return {
-          id: agent.id,
-          name: agent.name,
-          address: agent.url ?? agent.name,
-          directUrl: agent.url ? normalizeUrl(agent.url) : undefined,
-        }
-      })
-      .filter((agent) => agent.address)
-  } catch {
-    return []
-  }
-}
-
-function saveAgents(agents: AgentConfig[]) {
-  localStorage.setItem(AGENTS_STORAGE_KEY, JSON.stringify(agents))
-}
-
-function loadSelectedAgentId(agents: AgentConfig[]) {
-  const stored = localStorage.getItem(SELECTED_AGENT_STORAGE_KEY)
-  return agents.some((agent) => agent.id === stored) ? stored! : null
-}
-
-const initialAgents = loadAgents()
+let hydrateStarted = false
 
 export const useAgentStore = create<AgentState>((set, get) => ({
-  agents: initialAgents,
-  selectedAgentId: loadSelectedAgentId(initialAgents),
+  agents: [],
+  selectedAgentId: null,
   error: null,
+  hydrated: false,
+  hydrate: async () => {
+    if (hydrateStarted) return
+    hydrateStarted = true
+    try {
+      const { agents, selectedAgentId } = await readInitialAgents()
+      set({ agents, selectedAgentId, hydrated: true })
+    } catch {
+      set({ hydrated: true, error: 'Failed to load saved agents.' })
+    }
+  },
   addAgent: (name, address, directUrl) => {
     const trimmedDirectUrl = directUrl?.trim()
     const normalizedDirectUrl = trimmedDirectUrl
@@ -92,13 +68,11 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     }
     const nextAgents = [...get().agents, agent]
 
-    saveAgents(nextAgents)
-    localStorage.setItem(SELECTED_AGENT_STORAGE_KEY, agent.id)
-    set({
-      agents: nextAgents,
-      selectedAgentId: agent.id,
-      error: null,
-    })
+    set({ agents: nextAgents, selectedAgentId: agent.id, error: null })
+    void persistCreateAgent(agent, nextAgents).catch(() =>
+      set({ error: 'Failed to save the agent.' }),
+    )
+    void persistSelectedAgentId(agent.id)
   },
   updateAgent: (agentId, name, address, directUrl) => {
     const trimmedDirectUrl = directUrl?.trim()
@@ -112,45 +86,42 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       return
     }
 
-    const nextAgents = get().agents.map((agent) =>
-      agent.id === agentId
-        ? {
-            ...agent,
-            name: name.trim(),
-            address: resolvedAddress,
-            directUrl: normalizedDirectUrl,
-          }
-        : agent,
-    )
+    let updatedAgent: AgentConfig | undefined
+    const nextAgents = get().agents.map((agent) => {
+      if (agent.id !== agentId) return agent
+      updatedAgent = {
+        ...agent,
+        name: name.trim(),
+        address: resolvedAddress,
+        directUrl: normalizedDirectUrl,
+      }
+      return updatedAgent
+    })
 
-    saveAgents(nextAgents)
+    if (!updatedAgent) return
+
     set({ agents: nextAgents, error: null })
+    void persistUpdateAgent(updatedAgent, nextAgents).catch(() =>
+      set({ error: 'Failed to update the agent.' }),
+    )
   },
   removeAgent: (agentId) => {
     const currentAgents = get().agents
-
     const nextAgents = currentAgents.filter((agent) => agent.id !== agentId)
     const selectedAgentId =
-      get().selectedAgentId === agentId ? nextAgents[0]?.id ?? null : get().selectedAgentId
+      get().selectedAgentId === agentId
+        ? nextAgents[0]?.id ?? null
+        : get().selectedAgentId
 
-    saveAgents(nextAgents)
-    if (selectedAgentId) {
-      localStorage.setItem(SELECTED_AGENT_STORAGE_KEY, selectedAgentId)
-    } else {
-      localStorage.removeItem(SELECTED_AGENT_STORAGE_KEY)
-    }
-    set({
-      agents: nextAgents,
-      selectedAgentId,
-      error: null,
-    })
+    set({ agents: nextAgents, selectedAgentId, error: null })
+    void persistRemoveAgent(agentId, nextAgents).catch(() =>
+      set({ error: 'Failed to remove the agent.' }),
+    )
+    void persistSelectedAgentId(selectedAgentId)
   },
   selectAgent: (agentId) => {
-    localStorage.setItem(SELECTED_AGENT_STORAGE_KEY, agentId)
-    set({
-      selectedAgentId: agentId,
-      error: null,
-    })
+    set({ selectedAgentId: agentId, error: null })
+    void persistSelectedAgentId(agentId)
   },
   setError: (error) => set({ error }),
 }))

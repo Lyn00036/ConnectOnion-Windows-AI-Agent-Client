@@ -2,6 +2,7 @@ import { app, BrowserWindow, Menu } from 'electron'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { registerAgentIpc } from './ipc/agentIpc.ts'
 import { registerStorageIpc } from './ipc/storageIpc.ts'
 import { registerWindowIpc } from './ipc/windowIpc.ts'
 import { createDesktopStorage } from './storage/service.ts'
@@ -43,6 +44,7 @@ function createWindow() {
 app.whenReady().then(() => {
   storage.initialize()
   registerStorageIpc(storage)
+  registerAgentIpc(storage)
   Menu.setApplicationMenu(null)
   createWindow()
 })

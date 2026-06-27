@@ -32,6 +32,7 @@ export function DesktopLayout() {
   const updateAgent = useAgentStore((state) => state.updateAgent)
   const removeAgent = useAgentStore((state) => state.removeAgent)
   const selectAgent = useAgentStore((state) => state.selectAgent)
+  const hydrated = useAgentStore((state) => state.hydrated)
   const sessions = useSessionStore((state) => state.sessions)
   const selectedSessionId = useSessionStore((state) => state.selectedSessionId)
   const ensureSession = useSessionStore((state) => state.ensureSession)
@@ -76,6 +77,12 @@ export function DesktopLayout() {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [navigate])
+
+  useEffect(() => {
+    if (hydrated) {
+      setExpandedAgentId((current) => current ?? selectedAgentId)
+    }
+  }, [hydrated, selectedAgentId])
 
   function openAgent(agentId: string) {
     selectAgent(agentId)
@@ -140,9 +147,11 @@ export function DesktopLayout() {
           </Button>
 
         <nav className="min-h-0 flex-1 overflow-y-auto" aria-label="Agents and sessions">
-          {agents.length === 0 && (
+          {!hydrated ? (
+            <p className="px-3 py-5 text-xs leading-5 text-muted-foreground">Loading agents…</p>
+          ) : agents.length === 0 ? (
             <p className="px-3 py-5 text-xs leading-5 text-muted-foreground">Add an agent to start a conversation.</p>
-          )}
+          ) : null}
           <div className="grid gap-1">
             {agents.map((agent) => {
               const isExpanded = expandedAgentId === agent.id

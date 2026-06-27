@@ -14,6 +14,7 @@ export function ChatPage() {
   const agents = useAgentStore((state) => state.agents)
   const selectedAgentId = useAgentStore((state) => state.selectedAgentId)
   const selectAgent = useAgentStore((state) => state.selectAgent)
+  const hydrated = useAgentStore((state) => state.hydrated)
   const sessions = useSessionStore((state) => state.sessions)
   const selectedSessionId = useSessionStore((state) => state.selectedSessionId)
   const ensureSession = useSessionStore((state) => state.ensureSession)
@@ -57,6 +58,14 @@ export function ChatPage() {
     if (!selectedAgent) return
     const sessionId = startNewSession(selectedAgent.id)
     navigate(`/chat/${sessionId}`)
+  }
+
+  if (!hydrated) {
+    return (
+      <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">
+        Loading…
+      </div>
+    )
   }
 
   return (
