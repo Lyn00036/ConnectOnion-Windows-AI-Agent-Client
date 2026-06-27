@@ -1,5 +1,7 @@
 /** Agent management page for locally saved ConnectOnion connections. */
 
+import { useState } from 'react'
+
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 
@@ -12,9 +14,24 @@ export function AgentsPage() {
   const selectedAgentId = useAgentStore((state) => state.selectedAgentId)
   const error = useAgentStore((state) => state.error)
   const addAgent = useAgentStore((state) => state.addAgent)
+  const updateAgent = useAgentStore((state) => state.updateAgent)
   const removeAgent = useAgentStore((state) => state.removeAgent)
   const selectAgent = useAgentStore((state) => state.selectAgent)
   const selectedAgent = agents.find((agent) => agent.id === selectedAgentId)
+
+  const [editingAgentId, setEditingAgentId] = useState<string | null>(null)
+  const editingAgent = agents.find((agent) => agent.id === editingAgentId) ?? null
+
+  function handleRemove(agentId: string) {
+    if (editingAgentId === agentId) setEditingAgentId(null)
+    removeAgent(agentId)
+  }
+
+  function handleUpdate(name: string, address: string, directUrl?: string) {
+    if (!editingAgentId) return
+    updateAgent(editingAgentId, name, address, directUrl)
+    setEditingAgentId(null)
+  }
 
   return (
     <section className="min-h-full bg-background px-[clamp(28px,5vw,72px)] py-[54px] max-[760px]:px-5 max-[760px]:py-[30px]">
@@ -37,17 +54,29 @@ export function AgentsPage() {
           {selectedAgent && (
             <div className="flex min-h-[58px] items-center justify-between gap-4 border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
               <span><strong>{selectedAgent.name}</strong> is active</span>
-              <Button className="min-h-[34px] text-xs font-bold" onClick={() => removeAgent(selectedAgent.id)} size="sm" type="button" variant="destructive">
-                Remove
-              </Button>
+              <div className="flex gap-2">
+                <Button className="min-h-[34px] text-xs font-bold" onClick={() => setEditingAgentId(selectedAgent.id)} size="sm" type="button" variant="outline">
+                  Edit
+                </Button>
+                <Button className="min-h-[34px] text-xs font-bold" onClick={() => handleRemove(selectedAgent.id)} size="sm" type="button" variant="destructive">
+                  Remove
+                </Button>
+              </div>
             </div>
           )}
         </div>
 
         <aside className="rounded-[14px] border border-border bg-muted p-[22px]">
-          <h2 className="mb-1.5 text-[17px] font-bold text-foreground">Add an agent</h2>
-          <p className="mb-[18px] text-xs text-muted-foreground">Use a relay address, a Direct URL, or both.</p>
-          <AgentForm onAddAgent={addAgent} />
+          <h2 className="mb-1.5 text-[17px] font-bold text-foreground">{editingAgent ? 'Edit agent' : 'Add an agent'}</h2>
+          <p className="mb-[18px] text-xs text-muted-foreground">
+            {editingAgent ? 'Update the name, address, or Direct URL, then save.' : 'Use a relay address, a Direct URL, or both.'}
+          </p>
+          <AgentForm
+            editingAgent={editingAgent}
+            onAddAgent={addAgent}
+            onCancelEdit={() => setEditingAgentId(null)}
+            onUpdateAgent={handleUpdate}
+          />
           {error && <div className="mt-3 rounded-lg border border-destructive/20 bg-destructive/10 p-2.5 text-xs text-destructive">{error}</div>}
         </aside>
       </div>

@@ -23,6 +23,7 @@ type AgentState = {
   selectedAgentId: string | null
   error: string | null
   addAgent: (name: string, address: string, directUrl?: string) => void
+  updateAgent: (agentId: string, name: string, address: string, directUrl?: string) => void
   removeAgent: (agentId: string) => void
   selectAgent: (agentId: string) => void
   setError: (error: string | null) => void
@@ -98,6 +99,32 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       selectedAgentId: agent.id,
       error: null,
     })
+  },
+  updateAgent: (agentId, name, address, directUrl) => {
+    const trimmedDirectUrl = directUrl?.trim()
+    const normalizedDirectUrl = trimmedDirectUrl
+      ? normalizeUrl(trimmedDirectUrl)
+      : undefined
+    const resolvedAddress = address.trim() || normalizedDirectUrl
+
+    if (!name.trim() || !resolvedAddress) {
+      set({ error: 'An agent address or Direct URL is required.' })
+      return
+    }
+
+    const nextAgents = get().agents.map((agent) =>
+      agent.id === agentId
+        ? {
+            ...agent,
+            name: name.trim(),
+            address: resolvedAddress,
+            directUrl: normalizedDirectUrl,
+          }
+        : agent,
+    )
+
+    saveAgents(nextAgents)
+    set({ agents: nextAgents, error: null })
   },
   removeAgent: (agentId) => {
     const currentAgents = get().agents

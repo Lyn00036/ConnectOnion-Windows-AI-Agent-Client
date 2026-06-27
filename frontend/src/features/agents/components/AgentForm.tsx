@@ -1,6 +1,6 @@
 /** Agent form component for adding temporary local agent connection entries. */
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { SubmitEvent } from 'react'
 import { CheckCircle2, Loader2, XCircle } from 'lucide-react'
 
@@ -8,12 +8,22 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
 import { testAgentConnection, type ConnectionTestResult } from '../connectionTest'
+import type { AgentConfig } from '../types'
 
 type AgentFormProps = {
   onAddAgent: (name: string, address: string, directUrl?: string) => void
+  editingAgent?: AgentConfig | null
+  onUpdateAgent?: (name: string, address: string, directUrl?: string) => void
+  onCancelEdit?: () => void
 }
 
-export function AgentForm({ onAddAgent }: AgentFormProps) {
+export function AgentForm({
+  onAddAgent,
+  editingAgent,
+  onUpdateAgent,
+  onCancelEdit,
+}: AgentFormProps) {
+  const isEditing = Boolean(editingAgent)
   const [newAgentName, setNewAgentName] = useState('')
   const [newAgentAddress, setNewAgentAddress] = useState('')
   const [newAgentDirectUrl, setNewAgentDirectUrl] = useState('')
@@ -23,6 +33,26 @@ export function AgentForm({ onAddAgent }: AgentFormProps) {
   const hasConnectionTarget = Boolean(
     newAgentAddress.trim() || newAgentDirectUrl.trim(),
   )
+
+  // Sync the form fields when entering/leaving edit mode (keyed by agent id).
+  useEffect(() => {
+    if (editingAgent) {
+      const directUrl = editingAgent.directUrl ?? ''
+      // Avoid duplicating the URL in both fields when address was derived from it.
+      const address =
+        editingAgent.address === editingAgent.directUrl ? '' : editingAgent.address
+      setNewAgentName(editingAgent.name)
+      setNewAgentAddress(address)
+      setNewAgentDirectUrl(directUrl)
+    } else {
+      setNewAgentName('')
+      setNewAgentAddress('')
+      setNewAgentDirectUrl('')
+    }
+    setError(null)
+    setTestResult(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingAgent?.id])
 
   function clearFeedback() {
     if (error) setError(null)
@@ -64,6 +94,12 @@ export function AgentForm({ onAddAgent }: AgentFormProps) {
 
     setError(null)
     setTestResult(null)
+
+    if (isEditing) {
+      onUpdateAgent?.(newAgentName, newAgentAddress, newAgentDirectUrl)
+      return
+    }
+
     onAddAgent(newAgentName, newAgentAddress, newAgentDirectUrl)
     setNewAgentName('')
     setNewAgentAddress('')
@@ -122,9 +158,19 @@ export function AgentForm({ onAddAgent }: AgentFormProps) {
           )}
         </Button>
         <Button className="min-h-[38px] flex-1 text-[13px] font-bold" disabled={!newAgentName.trim() || !hasConnectionTarget} type="submit">
-          Add Agent
+          {isEditing ? 'Save changes' : 'Add Agent'}
         </Button>
       </div>
+      {isEditing ? (
+        <Button
+          className="min-h-[34px] text-[13px] font-bold"
+          onClick={onCancelEdit}
+          type="button"
+          variant="ghost"
+        >
+          Cancel
+        </Button>
+      ) : null}
     </form>
   )
 }

@@ -1,7 +1,7 @@
 /** Shared desktop shell with an agent -> session navigation tree. */
 
 import { useEffect, useState } from 'react'
-import { ChevronRight, MessageSquare, Plus, Settings, X } from 'lucide-react'
+import { ChevronRight, MessageSquare, Pencil, Plus, Settings, X } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { useNavigate } from 'react-router-dom'
 
@@ -29,6 +29,7 @@ export function DesktopLayout() {
   const selectedAgentId = useAgentStore((state) => state.selectedAgentId)
   const error = useAgentStore((state) => state.error)
   const addAgent = useAgentStore((state) => state.addAgent)
+  const updateAgent = useAgentStore((state) => state.updateAgent)
   const removeAgent = useAgentStore((state) => state.removeAgent)
   const selectAgent = useAgentStore((state) => state.selectAgent)
   const sessions = useSessionStore((state) => state.sessions)
@@ -40,6 +41,8 @@ export function DesktopLayout() {
   const startNewSession = useSessionStore((state) => state.startNewSession)
   const [expandedAgentId, setExpandedAgentId] = useState<string | null>(selectedAgentId)
   const [showAddAgent, setShowAddAgent] = useState(false)
+  const [editingAgentId, setEditingAgentId] = useState<string | null>(null)
+  const editingAgent = agents.find((agent) => agent.id === editingAgentId) ?? null
   const sidebarVisible = useSettingsStore((state) => state.sidebarVisible)
   const toggleSidebar = useSettingsStore((state) => state.toggleSidebar)
 
@@ -107,9 +110,21 @@ export function DesktopLayout() {
   }
 
   function handleRemoveAgent(agentId: string) {
+    if (editingAgentId === agentId) setEditingAgentId(null)
     removeSessionsForAgent(agentId)
     removeAgent(agentId)
     setExpandedAgentId(useAgentStore.getState().selectedAgentId)
+  }
+
+  function handleEditAgent(agentId: string) {
+    setShowAddAgent(false)
+    setEditingAgentId(agentId)
+  }
+
+  function handleUpdateAgent(name: string, address: string, directUrl?: string) {
+    if (!editingAgentId) return
+    updateAgent(editingAgentId, name, address, directUrl)
+    setEditingAgentId(null)
   }
 
   return (
@@ -148,6 +163,7 @@ export function DesktopLayout() {
                       <small className="text-[10px] text-muted-foreground">{agentSessions.length}</small>
                     </Button>
                     <IconButton className="size-6 min-h-0 flex-none p-0 text-muted-foreground opacity-0 transition-opacity hover:text-sidebar-accent-foreground group-hover:opacity-100" label={`New session for ${agent.name}`} onClick={() => createSession(agent.id)} size="icon-xs" type="button" variant="ghost"><Plus aria-hidden="true" className="size-3.5" /></IconButton>
+                    <IconButton className="size-6 min-h-0 flex-none p-0 text-muted-foreground opacity-0 transition-opacity hover:text-sidebar-accent-foreground group-hover:opacity-100" label={`Edit ${agent.name}`} onClick={() => handleEditAgent(agent.id)} size="icon-xs" type="button" variant="ghost"><Pencil aria-hidden="true" className="size-3.5" /></IconButton>
                     <IconButton className="size-6 min-h-0 flex-none p-0 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100" label={`Remove ${agent.name}`} onClick={() => handleRemoveAgent(agent.id)} size="icon-xs" type="button" variant="ghost"><X aria-hidden="true" className="size-3.5" /></IconButton>
                   </div>
 
@@ -171,14 +187,14 @@ export function DesktopLayout() {
           </div>
         </nav>
 
-        {showAddAgent && (
+        {(showAddAgent || editingAgent) && (
           <div className="mb-2 rounded-xl bg-card p-3 text-card-foreground shadow-lg">
-            <div className="mb-2 flex items-center justify-between"><strong className="text-xs text-card-foreground">Add agent</strong><IconButton className="size-6 min-h-0 p-0 text-muted-foreground" label="Close add agent form" onClick={() => setShowAddAgent(false)} size="icon-xs" type="button" variant="ghost"><X aria-hidden="true" className="size-3.5" /></IconButton></div>
-            <AgentForm onAddAgent={handleAddAgent} />
+            <div className="mb-2 flex items-center justify-between"><strong className="text-xs text-card-foreground">{editingAgent ? 'Edit agent' : 'Add agent'}</strong><IconButton className="size-6 min-h-0 p-0 text-muted-foreground" label={editingAgent ? 'Close edit agent form' : 'Close add agent form'} onClick={() => (editingAgent ? setEditingAgentId(null) : setShowAddAgent(false))} size="icon-xs" type="button" variant="ghost"><X aria-hidden="true" className="size-3.5" /></IconButton></div>
+            <AgentForm editingAgent={editingAgent} onAddAgent={handleAddAgent} onCancelEdit={() => setEditingAgentId(null)} onUpdateAgent={handleUpdateAgent} />
             {error && <p className="mt-2 text-[10px] text-destructive">{error}</p>}
           </div>
         )}
-        <Button className="min-h-[38px] text-xs font-semibold text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" onClick={() => setShowAddAgent((current) => !current)} variant="ghost">
+        <Button className="min-h-[38px] text-xs font-semibold text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" onClick={() => { setEditingAgentId(null); setShowAddAgent((current) => !current) }} variant="ghost">
           <Plus aria-hidden="true" /> Add Agent
         </Button>
         <NavLink className={({ isActive }) => `${navigationClass(isActive)} mt-2`} to="/settings">
