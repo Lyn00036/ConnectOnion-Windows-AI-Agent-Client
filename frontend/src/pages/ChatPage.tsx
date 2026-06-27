@@ -15,6 +15,7 @@ export function ChatPage() {
   const selectedAgentId = useAgentStore((state) => state.selectedAgentId)
   const selectAgent = useAgentStore((state) => state.selectAgent)
   const hydrated = useAgentStore((state) => state.hydrated)
+  const sessionsHydrated = useSessionStore((state) => state.hydrated)
   const sessions = useSessionStore((state) => state.sessions)
   const selectedSessionId = useSessionStore((state) => state.selectedSessionId)
   const ensureSession = useSessionStore((state) => state.ensureSession)
@@ -60,7 +61,7 @@ export function ChatPage() {
     navigate(`/chat/${sessionId}`)
   }
 
-  if (!hydrated) {
+  if (!hydrated || !sessionsHydrated) {
     return (
       <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">
         Loading…

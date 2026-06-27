@@ -60,6 +60,15 @@ function DirectAgentConversation(props: AgentConversationProps) {
     props.sessionId,
     props.agentConfig.directUrl!,
   )
+
+  if (agent.isRestoring) {
+    return (
+      <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">
+        Loading conversation…
+      </div>
+    )
+  }
+
   return <AgentConversationContent {...props} agent={agent} />
 }
 

@@ -1,9 +1,14 @@
 /** Zustand store for desktop appearance preferences (persisted locally). */
 
-// TODO(settings-storage): Move preferences from localStorage to the Electron
-// SQLite settings table through preload IPC once the settings repository exists.
-
 import { create } from 'zustand'
+
+import {
+  persistMessageFontSize,
+  persistSidebarVisible,
+  persistTheme,
+  readInitialPreferences,
+} from './preferencesStorage'
+import { useShortcutsStore, type ShortcutId } from './shortcuts'
 
 export type ThemeMode = 'light' | 'dark'
 export type MessageFontSize = 'sm' | 'md' | 'lg'
@@ -15,79 +20,60 @@ export const MESSAGE_FONT_SIZES: Record<MessageFontSize, string> = {
   lg: '1.0625rem',
 }
 
-const THEME_STORAGE_KEY = 'connectonion.theme'
-const SIDEBAR_STORAGE_KEY = 'connectonion.sidebarVisible'
-const MESSAGE_FONT_SIZE_KEY = 'connectonion.messageFontSize'
-
-function loadTheme(): ThemeMode {
-  try {
-    return localStorage.getItem(THEME_STORAGE_KEY) === 'dark' ? 'dark' : 'light'
-  } catch {
-    return 'light'
-  }
-}
-
-function loadSidebarVisible(): boolean {
-  try {
-    // Default to visible; only an explicit "false" hides it.
-    return localStorage.getItem(SIDEBAR_STORAGE_KEY) !== 'false'
-  } catch {
-    return true
-  }
-}
-
-function loadMessageFontSize(): MessageFontSize {
-  try {
-    const stored = localStorage.getItem(MESSAGE_FONT_SIZE_KEY)
-    return stored === 'sm' || stored === 'lg' ? stored : 'md'
-  } catch {
-    return 'md'
-  }
-}
-
 type SettingsState = {
   theme: ThemeMode
+  sidebarVisible: boolean
+  messageFontSize: MessageFontSize
+  hydrated: boolean
+  hydrate: () => Promise<void>
   setTheme: (theme: ThemeMode) => void
   toggleTheme: () => void
-  sidebarVisible: boolean
   setSidebarVisible: (visible: boolean) => void
   toggleSidebar: () => void
-  messageFontSize: MessageFontSize
   setMessageFontSize: (size: MessageFontSize) => void
 }
 
+let hydrateStarted = false
+
 export const useSettingsStore = create<SettingsState>((set, get) => ({
-  theme: loadTheme(),
-  setTheme: (theme) => {
+  theme: 'light',
+  sidebarVisible: true,
+  messageFontSize: 'md',
+  hydrated: false,
+  hydrate: async () => {
+    if (hydrateStarted) return
+    hydrateStarted = true
     try {
-      localStorage.setItem(THEME_STORAGE_KEY, theme)
+      const prefs = await readInitialPreferences()
+      set({
+        theme: prefs.theme,
+        sidebarVisible: prefs.sidebarVisible,
+        messageFontSize: prefs.messageFontSize,
+        hydrated: true,
+      })
+      useShortcutsStore.setState({
+        overrides: prefs.shortcutOverrides as Partial<Record<ShortcutId, string>>,
+      })
     } catch {
-      // Keep the in-memory theme working if localStorage is unavailable.
+      set({ hydrated: true })
     }
+  },
+  setTheme: (theme) => {
     set({ theme })
+    void persistTheme(theme)
   },
   toggleTheme: () => {
     get().setTheme(get().theme === 'dark' ? 'light' : 'dark')
   },
-  sidebarVisible: loadSidebarVisible(),
   setSidebarVisible: (visible) => {
-    try {
-      localStorage.setItem(SIDEBAR_STORAGE_KEY, String(visible))
-    } catch {
-      // Keep the in-memory state working if localStorage is unavailable.
-    }
     set({ sidebarVisible: visible })
+    void persistSidebarVisible(visible)
   },
   toggleSidebar: () => {
     get().setSidebarVisible(!get().sidebarVisible)
   },
-  messageFontSize: loadMessageFontSize(),
   setMessageFontSize: (size) => {
-    try {
-      localStorage.setItem(MESSAGE_FONT_SIZE_KEY, size)
-    } catch {
-      // Keep the in-memory preference working if localStorage is unavailable.
-    }
     set({ messageFontSize: size })
+    void persistMessageFontSize(size)
   },
 }))

@@ -33,6 +33,7 @@ export function DesktopLayout() {
   const removeAgent = useAgentStore((state) => state.removeAgent)
   const selectAgent = useAgentStore((state) => state.selectAgent)
   const hydrated = useAgentStore((state) => state.hydrated)
+  const sessionsHydrated = useSessionStore((state) => state.hydrated)
   const sessions = useSessionStore((state) => state.sessions)
   const selectedSessionId = useSessionStore((state) => state.selectedSessionId)
   const ensureSession = useSessionStore((state) => state.ensureSession)
@@ -145,7 +146,7 @@ export function DesktopLayout() {
           </Button>
 
         <nav className="min-h-0 flex-1 overflow-y-auto" aria-label="Agents and sessions">
-          {!hydrated ? (
+          {!hydrated || !sessionsHydrated ? (
             <p className="px-3 py-5 text-xs leading-5 text-muted-foreground">Loading agents…</p>
           ) : agents.length === 0 ? (
             <p className="px-3 py-5 text-xs leading-5 text-muted-foreground">Add an agent to start a conversation.</p>

@@ -2,14 +2,21 @@
 
 import { create } from 'zustand'
 
+import {
+  persistRemoveSession,
+  persistRemoveSessionsForAgent,
+  persistSelectedSessionId,
+  persistSessionListChange,
+  persistSessionTouch,
+  readInitialSessions,
+} from './sessionStorage'
 import type { SessionSummary } from './types'
-
-const SESSIONS_KEY = 'connectonion.sessions'
-const ACTIVE_SESSION_KEY = 'connectonion.activeSessionId'
 
 type SessionState = {
   sessions: SessionSummary[]
   selectedSessionId: string | null
+  hydrated: boolean
+  hydrate: () => Promise<void>
   ensureSession: (agentId: string) => string
   setSelectedSessionId: (sessionId: string) => void
   startNewSession: (agentId: string) => string
@@ -20,24 +27,6 @@ type SessionState = {
 
 function createSessionId() {
   return crypto.randomUUID()
-}
-
-function loadSessions() {
-  try {
-    const stored = localStorage.getItem(SESSIONS_KEY)
-    if (!stored) return []
-
-    const sessions = JSON.parse(stored) as SessionSummary[]
-    return Array.isArray(sessions)
-      ? sessions.filter((session) => session.id && session.agentId && session.title)
-      : []
-  } catch {
-    return []
-  }
-}
-
-function saveSessions(sessions: SessionSummary[]) {
-  localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions))
 }
 
 function createSession(agentId: string, existingSessions: SessionSummary[]) {
@@ -54,17 +43,22 @@ function createSession(agentId: string, existingSessions: SessionSummary[]) {
   }
 }
 
-const initialSessions = loadSessions()
-const storedSelectedSessionId = localStorage.getItem(ACTIVE_SESSION_KEY)
-const initialSelectedSessionId = initialSessions.some(
-  (session) => session.id === storedSelectedSessionId,
-)
-  ? storedSelectedSessionId
-  : null
+let hydrateStarted = false
 
 export const useSessionStore = create<SessionState>((set, get) => ({
-  sessions: initialSessions,
-  selectedSessionId: initialSelectedSessionId,
+  sessions: [],
+  selectedSessionId: null,
+  hydrated: false,
+  hydrate: async () => {
+    if (hydrateStarted) return
+    hydrateStarted = true
+    try {
+      const { sessions, selectedSessionId } = await readInitialSessions()
+      set({ sessions, selectedSessionId, hydrated: true })
+    } catch {
+      set({ hydrated: true })
+    }
+  },
   ensureSession: (agentId) => {
     const { selectedSessionId, sessions } = get()
     const selectedSession = sessions.find(
@@ -77,32 +71,33 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0]
 
     if (recentSession) {
-      localStorage.setItem(ACTIVE_SESSION_KEY, recentSession.id)
       set({ selectedSessionId: recentSession.id })
+      void persistSelectedSessionId(recentSession.id)
       return recentSession.id
     }
 
     const session = createSession(agentId, sessions)
     const nextSessions = [...sessions, session]
-    saveSessions(nextSessions)
-    localStorage.setItem(ACTIVE_SESSION_KEY, session.id)
     set({ sessions: nextSessions, selectedSessionId: session.id })
+    void persistSessionListChange(session, nextSessions)
+    void persistSelectedSessionId(session.id)
     return session.id
   },
   setSelectedSessionId: (selectedSessionId) => {
     if (!get().sessions.some((session) => session.id === selectedSessionId)) return
-    localStorage.setItem(ACTIVE_SESSION_KEY, selectedSessionId)
     set({ selectedSessionId })
+    void persistSelectedSessionId(selectedSessionId)
   },
   startNewSession: (agentId) => {
     const session = createSession(agentId, get().sessions)
     const sessions = [...get().sessions, session]
-    saveSessions(sessions)
-    localStorage.setItem(ACTIVE_SESSION_KEY, session.id)
     set({ sessions, selectedSessionId: session.id })
+    void persistSessionListChange(session, sessions)
+    void persistSelectedSessionId(session.id)
     return session.id
   },
   touchSession: (sessionId, prompt) => {
+    let touched: SessionSummary | undefined
     const sessions = get().sessions.map((session) => {
       if (session.id !== sessionId) return session
 
@@ -112,22 +107,22 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           ? prompt.trim().replace(/\s+/g, ' ').slice(0, 48)
           : session.title
 
-      return { ...session, title, updatedAt: new Date().toISOString() }
+      touched = { ...session, title, updatedAt: new Date().toISOString() }
+      return touched
     })
-    saveSessions(sessions)
+
+    if (!touched) return
+
     set({ sessions })
+    void persistSessionTouch(touched, sessions)
   },
   removeSession: (sessionId) => {
     const sessions = get().sessions.filter((session) => session.id !== sessionId)
     const selectedSessionId =
       get().selectedSessionId === sessionId ? null : get().selectedSessionId
-    saveSessions(sessions)
-    if (selectedSessionId) {
-      localStorage.setItem(ACTIVE_SESSION_KEY, selectedSessionId)
-    } else {
-      localStorage.removeItem(ACTIVE_SESSION_KEY)
-    }
     set({ sessions, selectedSessionId })
+    void persistRemoveSession(sessionId, sessions)
+    void persistSelectedSessionId(selectedSessionId)
   },
   removeSessionsForAgent: (agentId) => {
     const removedIds = new Set(
@@ -138,12 +133,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       get().selectedSessionId && removedIds.has(get().selectedSessionId!)
         ? null
         : get().selectedSessionId
-    saveSessions(sessions)
-    if (selectedSessionId) {
-      localStorage.setItem(ACTIVE_SESSION_KEY, selectedSessionId)
-    } else {
-      localStorage.removeItem(ACTIVE_SESSION_KEY)
-    }
     set({ sessions, selectedSessionId })
+    void persistRemoveSessionsForAgent(agentId, sessions)
+    void persistSelectedSessionId(selectedSessionId)
   },
 }))

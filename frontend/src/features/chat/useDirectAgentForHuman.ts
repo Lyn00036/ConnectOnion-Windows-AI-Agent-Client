@@ -8,6 +8,12 @@ import type {
   UseAgentForHumanReturn,
 } from 'connectonion/react'
 
+import {
+  getConversationStorageKey,
+  readConversationEnvelope,
+  writeConversationEnvelope,
+} from './conversationStorage'
+
 type PersistedAgentState = {
   messages?: SessionState['messages']
   ui?: ChatItem[]
@@ -21,6 +27,10 @@ type AgentSnapshot = Pick<
   'connectionState' | 'error' | 'status' | 'ui'
 > & {
   session: SessionState | null
+}
+
+export type DirectAgentForHumanReturn = UseAgentForHumanReturn & {
+  isRestoring: boolean
 }
 
 const OMITTED_DATA_URL = '[image data omitted]'
@@ -67,30 +77,13 @@ function sanitizeForPersistence(value: unknown): unknown {
   return value
 }
 
-function getStorageKey(address: string, sessionId: string) {
-  return `co:agent:${address}:session:${sessionId}`
-}
-
-function loadPersistedState(storageKey: string): PersistedAgentState | null {
+function parsePersistedEnvelope(envelopeJson: string | null): PersistedAgentState | null {
+  if (!envelopeJson) return null
   try {
-    const stored = localStorage.getItem(storageKey)
-    if (!stored) return null
-
-    const parsed = JSON.parse(stored) as { state?: PersistedAgentState }
+    const parsed = JSON.parse(envelopeJson) as { state?: PersistedAgentState }
     return parsed.state ?? null
   } catch {
     return null
-  }
-}
-
-function persistState(storageKey: string, state: PersistedAgentState) {
-  try {
-    localStorage.setItem(
-      storageKey,
-      JSON.stringify({ state: sanitizeForPersistence(state), version: 0 }),
-    )
-  } catch {
-    // Keep the live conversation working if localStorage is unavailable or full.
   }
 }
 
@@ -208,41 +201,56 @@ export function useDirectAgentForHuman(
   address: string,
   sessionId: string,
   directUrl: string,
-): UseAgentForHumanReturn {
-  const storageKey = getStorageKey(address, sessionId)
+): DirectAgentForHumanReturn {
+  const storageKey = getConversationStorageKey(address, sessionId)
   const [client] = useState(() => new DirectAgentClient(address, directUrl))
   const [createdAt] = useState(() => Date.now())
-  const [snapshot, setSnapshot] = useState<AgentSnapshot>(() => {
-    client.restore(sessionId, loadPersistedState(storageKey))
-    return client.snapshot()
-  })
+  const [snapshot, setSnapshot] = useState<AgentSnapshot>(() => client.snapshot())
+  const [isRestoring, setIsRestoring] = useState(true)
 
   const flush = useCallback(() => {
     const nextSnapshot = client.snapshot()
     setSnapshot(nextSnapshot)
-    persistState(storageKey, {
-      messages: nextSnapshot.session?.messages ?? [],
-      ui: nextSnapshot.ui,
-      session: nextSnapshot.session,
-      createdAt,
-      updatedAt: Date.now(),
+    const envelope = JSON.stringify({
+      state: sanitizeForPersistence({
+        messages: nextSnapshot.session?.messages ?? [],
+        ui: nextSnapshot.ui,
+        session: nextSnapshot.session,
+        createdAt,
+        updatedAt: Date.now(),
+      }),
+      version: 0,
     })
-  }, [client, createdAt, storageKey])
+    void writeConversationEnvelope(address, sessionId, envelope)
+  }, [address, client, createdAt, sessionId])
 
   useEffect(() => {
+    let cancelled = false
+
     const unsubscribe = client.subscribe(flush)
-    const persisted = loadPersistedState(storageKey)
-    client.restore(sessionId, persisted)
 
-    const hasStoredConversation = Boolean(
-      persisted?.session || persisted?.messages?.length || persisted?.ui?.length,
-    )
-    if (hasStoredConversation) {
-      client.reconnect(sessionId)
+    void (async () => {
+      const envelopeJson = await readConversationEnvelope(address, sessionId)
+      if (cancelled) return
+
+      const persisted = parsePersistedEnvelope(envelopeJson)
+      client.restore(sessionId, persisted)
+      setSnapshot(client.snapshot())
+      setIsRestoring(false)
+
+      const hasStoredConversation = Boolean(
+        persisted?.session || persisted?.messages?.length || persisted?.ui?.length,
+      )
+      if (hasStoredConversation) {
+        client.reconnect(sessionId)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+      unsubscribe()
     }
-
-    return unsubscribe
-  }, [client, flush, sessionId, storageKey])
+  }, [address, client, flush, sessionId, storageKey])
 
   function input(
     prompt: string,
@@ -283,5 +291,6 @@ export function useDirectAgentForHuman(
     setMode,
     reconnect,
     reset,
+    isRestoring,
   }
 }

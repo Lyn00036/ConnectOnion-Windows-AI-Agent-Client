@@ -1,10 +1,8 @@
 /** User-customisable keyboard shortcuts (definitions, utils, persisted store). */
 
-// TODO(settings-storage): Move overrides from localStorage to the Electron SQLite
-// settings table through preload IPC once the settings repository exists.
-
 import { create } from 'zustand'
 
+import { persistShortcutOverrides } from './preferencesStorage'
 /** Stable ids for every rebindable action in the app. */
 export type ShortcutId = 'toggle-sidebar' | 'new-chat'
 
@@ -74,36 +72,7 @@ export function matchesAccelerator(event: KeyboardEvent, accelerator: string): b
   return pressed !== null && pressed.toLowerCase() === accelerator.toLowerCase()
 }
 
-const STORAGE_KEY = 'connectonion.shortcuts'
-
-function loadOverrides(): Partial<Record<ShortcutId, string>> {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return {}
-    const parsed = JSON.parse(raw) as Record<string, unknown>
-    const result: Partial<Record<ShortcutId, string>> = {}
-    for (const def of SHORTCUT_DEFS) {
-      const value = parsed[def.id]
-      if (typeof value === 'string' && value.length > 0) {
-        result[def.id] = value
-      }
-    }
-    return result
-  } catch {
-    return {}
-  }
-}
-
-function persistOverrides(overrides: Partial<Record<ShortcutId, string>>): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(overrides))
-  } catch {
-    // Keep in-memory overrides working if localStorage is unavailable.
-  }
-}
-
-type ShortcutsState = {
-  overrides: Partial<Record<ShortcutId, string>>
+type ShortcutsState = {  overrides: Partial<Record<ShortcutId, string>>
   /** Resolve the effective accelerator (override or default) for an action. */
   getAccelerator: (id: ShortcutId) => string
   setAccelerator: (id: ShortcutId, accelerator: string) => void
@@ -111,17 +80,17 @@ type ShortcutsState = {
 }
 
 export const useShortcutsStore = create<ShortcutsState>((set, get) => ({
-  overrides: loadOverrides(),
+  overrides: {},
   getAccelerator: (id) => get().overrides[id] ?? DEFAULT_ACCELERATORS[id],
   setAccelerator: (id, accelerator) => {
     const next = { ...get().overrides, [id]: accelerator }
-    persistOverrides(next)
+    void persistShortcutOverrides(next)
     set({ overrides: next })
   },
   resetAccelerator: (id) => {
     const next = { ...get().overrides }
     delete next[id]
-    persistOverrides(next)
+    void persistShortcutOverrides(next)
     set({ overrides: next })
   },
 }))
