@@ -72,6 +72,7 @@ export function AgentsPage() {
             {editingAgent ? 'Update the name, address, or Direct URL, then save.' : 'Use a relay address, a Direct URL, or both.'}
           </p>
           <AgentForm
+            key={editingAgent ? editingAgent.id : 'add'}
             editingAgent={editingAgent}
             onAddAgent={addAgent}
             onCancelEdit={() => setEditingAgentId(null)}

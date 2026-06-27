@@ -1,6 +1,6 @@
 /** Agent form component for adding temporary local agent connection entries. */
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { SubmitEvent } from 'react'
 import { CheckCircle2, Loader2, XCircle } from 'lucide-react'
 
@@ -24,35 +24,24 @@ export function AgentForm({
   onCancelEdit,
 }: AgentFormProps) {
   const isEditing = Boolean(editingAgent)
-  const [newAgentName, setNewAgentName] = useState('')
-  const [newAgentAddress, setNewAgentAddress] = useState('')
-  const [newAgentDirectUrl, setNewAgentDirectUrl] = useState('')
+  // Initial values are derived from `editingAgent`. The parent passes a `key`
+  // tied to the edit target, so switching agents remounts this form with fresh
+  // state (React's recommended alternative to syncing props in an effect).
+  const [newAgentName, setNewAgentName] = useState(editingAgent?.name ?? '')
+  const [newAgentAddress, setNewAgentAddress] = useState(() =>
+    editingAgent && editingAgent.address !== editingAgent.directUrl
+      ? editingAgent.address
+      : '',
+  )
+  const [newAgentDirectUrl, setNewAgentDirectUrl] = useState(
+    editingAgent?.directUrl ?? '',
+  )
   const [error, setError] = useState<string | null>(null)
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null)
   const hasConnectionTarget = Boolean(
     newAgentAddress.trim() || newAgentDirectUrl.trim(),
   )
-
-  // Sync the form fields when entering/leaving edit mode (keyed by agent id).
-  useEffect(() => {
-    if (editingAgent) {
-      const directUrl = editingAgent.directUrl ?? ''
-      // Avoid duplicating the URL in both fields when address was derived from it.
-      const address =
-        editingAgent.address === editingAgent.directUrl ? '' : editingAgent.address
-      setNewAgentName(editingAgent.name)
-      setNewAgentAddress(address)
-      setNewAgentDirectUrl(directUrl)
-    } else {
-      setNewAgentName('')
-      setNewAgentAddress('')
-      setNewAgentDirectUrl('')
-    }
-    setError(null)
-    setTestResult(null)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editingAgent?.id])
 
   function clearFeedback() {
     if (error) setError(null)

@@ -40,7 +40,11 @@ export function DesktopLayout() {
   const removeSessionsForAgent = useSessionStore((state) => state.removeSessionsForAgent)
   const setSelectedSessionId = useSessionStore((state) => state.setSelectedSessionId)
   const startNewSession = useSessionStore((state) => state.startNewSession)
-  const [expandedAgentId, setExpandedAgentId] = useState<string | null>(selectedAgentId)
+  // `undefined` means "user hasn't chosen": fall back to the selected agent so
+  // the active agent auto-expands once the store hydrates. `null` / a string are
+  // explicit user choices (collapsed all / a specific agent).
+  const [expandedAgentId, setExpandedAgentId] = useState<string | null | undefined>(undefined)
+  const effectiveExpandedId = expandedAgentId === undefined ? selectedAgentId : expandedAgentId
   const [showAddAgent, setShowAddAgent] = useState(false)
   const [editingAgentId, setEditingAgentId] = useState<string | null>(null)
   const editingAgent = agents.find((agent) => agent.id === editingAgentId) ?? null
@@ -77,12 +81,6 @@ export function DesktopLayout() {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [navigate])
-
-  useEffect(() => {
-    if (hydrated) {
-      setExpandedAgentId((current) => current ?? selectedAgentId)
-    }
-  }, [hydrated, selectedAgentId])
 
   function openAgent(agentId: string) {
     selectAgent(agentId)
@@ -154,7 +152,7 @@ export function DesktopLayout() {
           ) : null}
           <div className="grid gap-1">
             {agents.map((agent) => {
-              const isExpanded = expandedAgentId === agent.id
+              const isExpanded = effectiveExpandedId === agent.id
               const isSelected = selectedAgentId === agent.id
               const agentSessions = sessions
                 .filter((session) => session.agentId === agent.id)
@@ -199,7 +197,7 @@ export function DesktopLayout() {
         {(showAddAgent || editingAgent) && (
           <div className="mb-2 rounded-xl bg-card p-3 text-card-foreground shadow-lg">
             <div className="mb-2 flex items-center justify-between"><strong className="text-xs text-card-foreground">{editingAgent ? 'Edit agent' : 'Add agent'}</strong><IconButton className="size-6 min-h-0 p-0 text-muted-foreground" label={editingAgent ? 'Close edit agent form' : 'Close add agent form'} onClick={() => (editingAgent ? setEditingAgentId(null) : setShowAddAgent(false))} size="icon-xs" type="button" variant="ghost"><X aria-hidden="true" className="size-3.5" /></IconButton></div>
-            <AgentForm editingAgent={editingAgent} onAddAgent={handleAddAgent} onCancelEdit={() => setEditingAgentId(null)} onUpdateAgent={handleUpdateAgent} />
+            <AgentForm key={editingAgent ? editingAgent.id : 'add'} editingAgent={editingAgent} onAddAgent={handleAddAgent} onCancelEdit={() => setEditingAgentId(null)} onUpdateAgent={handleUpdateAgent} />
             {error && <p className="mt-2 text-[10px] text-destructive">{error}</p>}
           </div>
         )}
