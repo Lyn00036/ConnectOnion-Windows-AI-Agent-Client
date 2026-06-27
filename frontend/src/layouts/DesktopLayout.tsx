@@ -116,10 +116,30 @@ export function DesktopLayout() {
   }
 
   function handleRemoveAgent(agentId: string) {
+    const agent = agents.find((entry) => entry.id === agentId)
+    if (!agent) return
+
+    const confirmed = window.confirm(
+      `Remove "${agent.name}" and all its sessions? This cannot be undone.`,
+    )
+    if (!confirmed) return
+
     if (editingAgentId === agentId) setEditingAgentId(null)
     removeSessionsForAgent(agentId)
     removeAgent(agentId)
     setExpandedAgentId(useAgentStore.getState().selectedAgentId)
+  }
+
+  function handleRemoveSession(sessionId: string) {
+    const session = sessions.find((entry) => entry.id === sessionId)
+    if (!session) return
+
+    const confirmed = window.confirm(
+      `Delete session "${session.title}"? This cannot be undone.`,
+    )
+    if (!confirmed) return
+
+    removeSession(sessionId)
   }
 
   function handleEditAgent(agentId: string) {
@@ -184,7 +204,7 @@ export function DesktopLayout() {
                             <MessageSquare aria-hidden="true" className="size-3.5 flex-none" />
                             <span className="truncate">{session.title}</span>
                           </Button>
-                          <IconButton className="size-6 min-h-0 flex-none p-0 text-muted-foreground opacity-0 hover:text-destructive group-hover/session:opacity-100" label={`Delete ${session.title}`} onClick={() => removeSession(session.id)} size="icon-xs" type="button" variant="ghost"><X aria-hidden="true" className="size-3" /></IconButton>
+                          <IconButton className="size-6 min-h-0 flex-none p-0 text-muted-foreground opacity-0 hover:text-destructive group-hover/session:opacity-100" label={`Delete ${session.title}`} onClick={() => handleRemoveSession(session.id)} size="icon-xs" type="button" variant="ghost"><X aria-hidden="true" className="size-3" /></IconButton>
                         </div>
                       ))}
                     </div>

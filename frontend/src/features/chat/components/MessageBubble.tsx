@@ -21,19 +21,19 @@ type MessageBubbleProps = {
 }
 
 const cardClass =
-  'w-[min(720px,90%)] self-start rounded-xl bg-[#f7f7f8] p-3.5 text-left text-sm text-[#182230]'
+  'w-[min(720px,90%)] self-start rounded-xl border border-border bg-muted p-3.5 text-left text-sm text-foreground'
 const cardHeaderClass = 'mb-2 flex items-center gap-2'
-const eyebrowClass = 'text-[10px] font-bold uppercase tracking-wide text-[#6b7280]'
-const cardTitleClass = 'min-w-0 break-words text-[13px] font-semibold text-[#182230]'
-const bodyClass = 'm-0 whitespace-pre-wrap break-words text-sm leading-6 text-[#182230]'
-const helpClass = 'mt-2 block text-[11px] text-[#6b7280]'
-const detailsClass = 'mt-2 [&>summary]:cursor-pointer [&>summary]:text-xs [&>summary]:font-semibold [&>summary]:text-[#4b5563]'
+const eyebrowClass = 'text-[10px] font-bold uppercase tracking-wide text-muted-foreground'
+const cardTitleClass = 'min-w-0 break-words text-[13px] font-semibold text-foreground'
+const bodyClass = 'm-0 whitespace-pre-wrap break-words text-sm leading-6 text-foreground'
+const helpClass = 'mt-2 block text-[11px] text-muted-foreground'
+const detailsClass = 'mt-2 [&>summary]:cursor-pointer [&>summary]:text-xs [&>summary]:font-semibold [&>summary]:text-muted-foreground'
 const preClass = 'mt-2 max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-lg bg-[#101828] p-2.5 font-mono text-xs leading-5 text-[#f2f4f7]'
-const inputClass = 'h-10 min-w-0 rounded-lg border-0 bg-white px-3 text-sm text-[#182230] outline-none ring-1 ring-black/5 focus:ring-2 focus:ring-[#b9a4dc]/40'
-const textareaClass = 'min-h-24 w-full resize-y rounded-lg border-0 bg-white p-3 text-sm text-[#182230] outline-none ring-1 ring-black/5 focus:ring-2 focus:ring-[#b9a4dc]/40'
+const inputClass = 'h-10 min-w-0 rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/50'
+const textareaClass = 'min-h-24 w-full resize-y rounded-lg border border-input bg-background p-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/50'
 const actionsClass = 'mt-3 flex flex-wrap gap-2'
 const actionButtonClass = 'min-h-9 px-3 py-1.5 text-xs font-semibold'
-const markdownClass = 'min-w-0 text-sm leading-6 text-[#182230] [&_a]:text-blue-600 [&_a]:underline [&_code]:rounded [&_code]:bg-black/5 [&_code]:px-1 [&_li]:ml-5 [&_ol]:list-decimal [&_p]:my-2 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_pre]:mt-2 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-[#101828] [&_pre]:p-3 [&_pre]:text-xs [&_pre]:text-[#f2f4f7] [&_ul]:list-disc'
+const markdownClass = 'min-w-0 text-sm leading-6 text-foreground [&_a]:text-primary [&_a]:underline [&_code]:rounded [&_code]:bg-foreground/10 [&_code]:px-1 [&_li]:ml-5 [&_ol]:list-decimal [&_p]:my-2 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_pre]:mt-2 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-[#101828] [&_pre]:p-3 [&_pre]:text-xs [&_pre]:text-[#f2f4f7] [&_ul]:list-disc'
 
 // Conversational (user/agent) text. Theme-aware tokens + user-controlled size var.
 const messageTextClass = 'min-w-0 leading-relaxed text-foreground text-[length:var(--co-msg-size,0.9375rem)] [&_a]:text-primary [&_a]:underline [&_code]:rounded [&_code]:bg-foreground/10 [&_code]:px-1 [&_li]:ml-5 [&_ol]:list-decimal [&_p]:my-2 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_pre]:mt-2 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-[#101828] [&_pre]:p-3 [&_pre]:text-xs [&_pre]:text-[#f2f4f7] [&_ul]:list-disc'
@@ -41,9 +41,9 @@ const messageTextClass = 'min-w-0 leading-relaxed text-foreground text-[length:v
 const LONG_MESSAGE_THRESHOLD = 700
 
 function eventTone(status: 'running' | 'done' | 'error') {
-  if (status === 'error') return 'bg-red-50'
-  if (status === 'running') return 'bg-blue-50'
-  return 'bg-emerald-50'
+  if (status === 'error') return 'border-destructive/20 bg-destructive/10'
+  if (status === 'running') return 'border-primary/20 bg-primary/10'
+  return 'border-success/20 bg-success/10'
 }
 
 export function MessageBubble({
@@ -151,7 +151,7 @@ export function MessageBubble({
 
     case 'tool_blocked':
       return (
-        <article className={`${cardClass} bg-red-50`}>
+        <article className={`${cardClass} border-destructive/20 bg-destructive/10`}>
           <div className={cardHeaderClass}>
             <span className={eyebrowClass}>Tool blocked</span>
             <strong className={cardTitleClass}>{message.tool}</strong>
@@ -171,7 +171,7 @@ export function MessageBubble({
           </div>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {message.files.map((file) => (
-              <Badge className="bg-white text-[11px] text-[#4b5563] shadow-sm" key={file.path} title={file.path} variant="secondary">{file.name}</Badge>
+              <Badge className="bg-card text-[11px] text-muted-foreground shadow-sm" key={file.path} title={file.path} variant="secondary">{file.name}</Badge>
             ))}
           </div>
         </article>
@@ -285,19 +285,19 @@ function ActivityCard({
   status: 'running' | 'done' | 'error'
 }) {
   const dotClass = status === 'running'
-    ? 'bg-blue-500 shadow-[0_0_0_4px_rgb(239_248_255)]'
+    ? 'bg-primary ring-4 ring-primary/20'
     : status === 'error'
-      ? 'bg-red-500'
-      : 'bg-emerald-500'
+      ? 'bg-destructive'
+      : 'bg-success'
 
   return (
-    <article className={`grid w-[min(720px,90%)] grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2.5 self-start rounded-xl px-3 py-2.5 text-xs text-[#4b5563] ${eventTone(status)}`}>
+    <article className={`grid w-[min(720px,90%)] grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2.5 self-start rounded-xl border px-3 py-2.5 text-xs text-muted-foreground ${eventTone(status)}`}>
       <span className={`mt-1 size-2 rounded-full ${dotClass}`} />
       <div className="min-w-0">
-        <strong className="block text-xs font-semibold">{label}</strong>
-        {detail && <p className="mt-1 whitespace-pre-wrap break-words text-xs text-[#6b7280]">{detail}</p>}
+        <strong className="block text-xs font-semibold text-foreground">{label}</strong>
+        {detail && <p className="mt-1 whitespace-pre-wrap break-words text-xs text-muted-foreground">{detail}</p>}
       </div>
-      {meta && <small className="text-[10px] text-[#9ca3af]">{meta}</small>}
+      {meta && <small className="text-[10px] text-muted-foreground/80">{meta}</small>}
     </article>
   )
 }
@@ -346,11 +346,11 @@ function AskUserCard({
         <strong className={cardTitleClass}>{item.text}</strong>
       </div>
       {isAnswered ? (
-        <p className="m-0 text-sm text-emerald-700">Answered: {item.answer}</p>
+        <p className="m-0 text-sm text-success">Answered: {item.answer}</p>
       ) : (
         <form className="grid gap-2.5" onSubmit={handleSubmit}>
           {item.fields?.map((field) => (
-            <label className="grid gap-1 text-xs font-semibold text-[#4b5563]" key={field.name}>
+            <label className="grid gap-1 text-xs font-semibold text-muted-foreground" key={field.name}>
               <span>{field.label}</span>
               <Input
                 autoComplete={field.autocomplete}
@@ -373,7 +373,7 @@ function AskUserCard({
                   : answer === option
                 return (
                   <Button
-                    className={`${actionButtonClass} ${selected ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-200' : ''}`}
+                    className={`${actionButtonClass} ${selected ? 'bg-accent text-accent-foreground ring-1 ring-border' : ''}`}
                     key={option}
                     onClick={() => toggleOption(option)}
                     type="button"
@@ -409,7 +409,7 @@ function ApprovalCard({
   onSendMessage?: (message: OutgoingMessage) => void
 }) {
   return (
-    <article className={`${cardClass} bg-amber-50 shadow-sm`}>
+    <article className={`${cardClass} border-warning/20 bg-warning/10 shadow-sm`}>
       <div className={cardHeaderClass}>
         <span className={eyebrowClass}>Approval required</span>
         <strong className={cardTitleClass}>{item.tool}</strong>
@@ -471,7 +471,7 @@ function PlanReviewCard({
         <span className={eyebrowClass}>Plan review</span>
         <strong className={cardTitleClass}>Review before implementation</strong>
       </div>
-      <div className={`${markdownClass} mb-3 max-h-80 overflow-y-auto rounded-lg bg-white p-3`}>
+      <div className={`${markdownClass} mb-3 max-h-80 overflow-y-auto rounded-lg border border-border bg-background p-3`}>
         <ReactMarkdown>{item.plan_content}</ReactMarkdown>
       </div>
       <Textarea
@@ -516,7 +516,7 @@ function UlwCard({
   onSendMessage?: (message: OutgoingMessage) => void
 }) {
   return (
-    <article className={`${cardClass} bg-amber-50 shadow-sm`}>
+    <article className={`${cardClass} border-warning/20 bg-warning/10 shadow-sm`}>
       <div className={cardHeaderClass}>
         <span className={eyebrowClass}>ULW checkpoint</span>
         <strong className={cardTitleClass}>{item.turns_used}/{item.max_turns} turns used</strong>
@@ -554,7 +554,7 @@ function OnboardCard({
   const supportsInvite = item.methods.some((method) => method.toLowerCase().includes('invite'))
 
   return (
-    <article className={`${cardClass} bg-amber-50 shadow-sm`}>
+    <article className={`${cardClass} border-warning/20 bg-warning/10 shadow-sm`}>
       <div className={cardHeaderClass}>
         <span className={eyebrowClass}>Access required</span>
         <strong className={cardTitleClass}>Agent onboarding</strong>

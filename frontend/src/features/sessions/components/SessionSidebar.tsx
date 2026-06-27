@@ -24,11 +24,21 @@ export function SessionSidebar({
   sessions,
 }: SessionSidebarProps) {
   if (!agent) {
-    return <div className="grid min-h-[300px] place-content-center gap-2 text-center text-[#92959d]"><strong className="text-[15px] text-[#46484e]">No agent selected</strong><span className="text-xs">Add or select an agent first.</span></div>
+    return (
+      <div className="grid min-h-[300px] place-content-center gap-2 text-center text-muted-foreground">
+        <strong className="text-[15px] text-foreground">No agent selected</strong>
+        <span className="text-xs">Add or select an agent first.</span>
+      </div>
+    )
   }
 
   if (sessions.length === 0) {
-    return <div className="grid min-h-[300px] place-content-center gap-2 text-center text-[#92959d]"><strong className="text-[15px] text-[#46484e]">No sessions for {agent.name}</strong><span className="text-xs">Start a new conversation to create one.</span></div>
+    return (
+      <div className="grid min-h-[300px] place-content-center gap-2 text-center text-muted-foreground">
+        <strong className="text-[15px] text-foreground">No sessions for {agent.name}</strong>
+        <span className="text-xs">Start a new conversation to create one.</span>
+      </div>
+    )
   }
 
   return (
@@ -36,15 +46,38 @@ export function SessionSidebar({
       {[...sessions]
         .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
         .map((session) => (
-          <article className={`grid grid-cols-[minmax(0,1fr)_38px] items-center rounded-xl border transition-colors ${session.id === selectedSessionId ? 'border-[#c8b9df] bg-[#faf8fd]' : 'border-[#e8e9ec] bg-white hover:border-[#c8b9df] hover:bg-[#faf8fd]'}`} key={session.id}>
-            <Button className="h-auto min-w-0 justify-start gap-3 rounded-none px-4 py-3.5 text-left" onClick={() => onOpenSession(session.id)} type="button" variant="ghost">
-              <span className="grid size-8 flex-none place-items-center rounded-lg bg-[#eeeaf5] text-[#78649b]"><MessageSquare aria-hidden="true" className="size-3.5" /></span>
+          <article
+            className={`grid grid-cols-[minmax(0,1fr)_38px] items-center rounded-xl border transition-colors ${
+              session.id === selectedSessionId
+                ? 'border-primary/40 bg-accent'
+                : 'border-border bg-card hover:border-primary/30 hover:bg-accent/50'
+            }`}
+            key={session.id}
+          >
+            <Button
+              className="h-auto min-w-0 justify-start gap-3 rounded-none px-4 py-3.5 text-left"
+              onClick={() => onOpenSession(session.id)}
+              type="button"
+              variant="ghost"
+            >
+              <span className="grid size-8 flex-none place-items-center rounded-lg bg-muted text-muted-foreground">
+                <MessageSquare aria-hidden="true" className="size-3.5" />
+              </span>
               <span className="min-w-0">
-                <strong className="block truncate text-[13px] text-[#28292d]">{session.title}</strong>
-                <small className="mt-1 block truncate text-[10px] text-[#9699a1]">{formatSessionDate(session.updatedAt)} · {session.id.slice(0, 8)}</small>
+                <strong className="block truncate text-[13px] text-foreground">{session.title}</strong>
+                <small className="mt-1 block truncate text-[10px] text-muted-foreground">
+                  {formatSessionDate(session.updatedAt)} · {session.id.slice(0, 8)}
+                </small>
               </span>
             </Button>
-            <IconButton className="size-[30px] min-h-0 p-0 text-[#a74141]" label={`Delete ${session.title}`} onClick={() => onRemoveSession(session.id)} size="icon-sm" type="button" variant="ghost">
+            <IconButton
+              className="size-[30px] min-h-0 p-0 text-destructive"
+              label={`Delete ${session.title}`}
+              onClick={() => onRemoveSession(session.id)}
+              size="icon-sm"
+              type="button"
+              variant="ghost"
+            >
               <Trash2 aria-hidden="true" className="size-3.5" />
             </IconButton>
           </article>

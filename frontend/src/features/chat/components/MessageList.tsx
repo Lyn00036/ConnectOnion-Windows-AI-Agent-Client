@@ -57,7 +57,7 @@ export function MessageList({
         <div className="m-auto flex flex-col items-center gap-2 p-6 text-center text-muted-foreground">
           <span className="mb-0.5 grid size-[52px] place-items-center rounded-[14px] bg-primary text-base font-extrabold text-primary-foreground shadow-lg">{selectedAgentName.slice(0, 1).toUpperCase()}</span>
           <strong className="text-sm text-foreground">{selectedAgentName === 'Agent' ? 'Select an agent' : selectedAgentName}</strong>
-          <span className="text-[10px]">{selectedAgentName === 'Agent' ? 'Add or choose an agent from the Agents page.' : 'Ready for a new conversation'}</span>
+          <span className="text-[10px]">{selectedAgentName === 'Agent' ? 'Add or choose an agent from the sidebar.' : 'Ready for a new conversation'}</span>
         </div>
       )}
       {visibleMessages.map((message) => (

@@ -99,14 +99,14 @@ export function AgentForm({
     <form className="grid gap-2" onSubmit={handleSubmit}>
       <Input
         aria-label="Agent name"
-        className="h-10 min-w-0 rounded-md border-0 bg-[#f4f4f4] px-3 text-sm text-[#182230] outline-none focus:ring-2 focus:ring-[#b9a4dc]/30"
+        className="h-10"
         onChange={(event) => setNewAgentName(event.target.value)}
         placeholder="Agent name"
         value={newAgentName}
       />
       <Input
         aria-label="Agent address"
-        className="h-10 min-w-0 rounded-md border-0 bg-[#f4f4f4] px-3 text-sm text-[#182230] outline-none focus:ring-2 focus:ring-[#b9a4dc]/30"
+        className="h-10"
         onChange={(event) => {
           setNewAgentAddress(event.target.value)
           clearFeedback()
@@ -116,7 +116,7 @@ export function AgentForm({
       />
       <Input
         aria-label="Direct URL"
-        className="h-10 min-w-0 rounded-md border-0 bg-[#f4f4f4] px-3 text-sm text-[#182230] outline-none focus:ring-2 focus:ring-[#b9a4dc]/30"
+        className="h-10"
         onChange={(event) => {
           setNewAgentDirectUrl(event.target.value)
           clearFeedback()
@@ -126,7 +126,7 @@ export function AgentForm({
         value={newAgentDirectUrl}
       />
       {error ? (
-        <p className="text-[13px] text-[#d92d20]" role="alert">
+        <p className="text-[13px] text-destructive" role="alert">
           {error}
         </p>
       ) : null}
