@@ -2,9 +2,12 @@
 
 import { useState } from 'react'
 import type { SubmitEvent } from 'react'
+import { CheckCircle2, Loader2, XCircle } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+
+import { testAgentConnection, type ConnectionTestResult } from '../connectionTest'
 
 type AgentFormProps = {
   onAddAgent: (name: string, address: string, directUrl?: string) => void
@@ -15,22 +18,52 @@ export function AgentForm({ onAddAgent }: AgentFormProps) {
   const [newAgentAddress, setNewAgentAddress] = useState('')
   const [newAgentDirectUrl, setNewAgentDirectUrl] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null)
   const hasConnectionTarget = Boolean(
     newAgentAddress.trim() || newAgentDirectUrl.trim(),
   )
+
+  function clearFeedback() {
+    if (error) setError(null)
+    if (testResult) setTestResult(null)
+  }
+
+  function validateDirectUrl(): boolean {
+    const directUrl = newAgentDirectUrl.trim()
+    if (directUrl && !/^https?:\/\/.+/.test(directUrl)) {
+      setError('Please enter a valid http:// or https:// URL.')
+      return false
+    }
+    return true
+  }
+
+  async function handleTestConnection() {
+    if (!hasConnectionTarget || testing) return
+    if (!validateDirectUrl()) return
+
+    setError(null)
+    setTestResult(null)
+    setTesting(true)
+    try {
+      const result = await testAgentConnection({
+        address: newAgentAddress,
+        directUrl: newAgentDirectUrl,
+      })
+      setTestResult(result)
+    } finally {
+      setTesting(false)
+    }
+  }
 
   function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault()
 
     if (!newAgentName.trim() || !hasConnectionTarget) return
-
-    const directUrl = newAgentDirectUrl.trim()
-    if (directUrl && !/^https?:\/\/.+/.test(directUrl)) {
-      setError('Please enter a valid http:// or https:// URL.')
-      return
-    }
+    if (!validateDirectUrl()) return
 
     setError(null)
+    setTestResult(null)
     onAddAgent(newAgentName, newAgentAddress, newAgentDirectUrl)
     setNewAgentName('')
     setNewAgentAddress('')
@@ -49,7 +82,10 @@ export function AgentForm({ onAddAgent }: AgentFormProps) {
       <Input
         aria-label="Agent address"
         className="h-10 min-w-0 rounded-md border-0 bg-[#f4f4f4] px-3 text-sm text-[#182230] outline-none focus:ring-2 focus:ring-[#b9a4dc]/30"
-        onChange={(event) => setNewAgentAddress(event.target.value)}
+        onChange={(event) => {
+          setNewAgentAddress(event.target.value)
+          clearFeedback()
+        }}
         placeholder="0x address (optional)"
         value={newAgentAddress}
       />
@@ -58,7 +94,7 @@ export function AgentForm({ onAddAgent }: AgentFormProps) {
         className="h-10 min-w-0 rounded-md border-0 bg-[#f4f4f4] px-3 text-sm text-[#182230] outline-none focus:ring-2 focus:ring-[#b9a4dc]/30"
         onChange={(event) => {
           setNewAgentDirectUrl(event.target.value)
-          if (error) setError(null)
+          clearFeedback()
         }}
         placeholder="Optional direct URL"
         title="Use an http:// or https:// agent base URL"
@@ -69,9 +105,26 @@ export function AgentForm({ onAddAgent }: AgentFormProps) {
           {error}
         </p>
       ) : null}
-      <Button className="min-h-[38px] text-[13px] font-bold" disabled={!newAgentName.trim() || !hasConnectionTarget} type="submit">
-        Add Agent
-      </Button>
+      {testResult ? (
+        <p className={`flex items-center gap-1.5 text-[12px] ${testResult.ok ? 'text-success' : 'text-destructive'}`} role="status">
+          {testResult.ok ? <CheckCircle2 aria-hidden="true" className="size-3.5 flex-none" /> : <XCircle aria-hidden="true" className="size-3.5 flex-none" />}
+          <span>{testResult.detail}</span>
+        </p>
+      ) : null}
+      <div className="flex gap-2">
+        <Button className="min-h-[38px] flex-1 text-[13px] font-bold" disabled={!hasConnectionTarget || testing} onClick={handleTestConnection} type="button" variant="outline">
+          {testing ? (
+            <>
+              <Loader2 aria-hidden="true" className="animate-spin" /> Testing…
+            </>
+          ) : (
+            'Test connection'
+          )}
+        </Button>
+        <Button className="min-h-[38px] flex-1 text-[13px] font-bold" disabled={!newAgentName.trim() || !hasConnectionTarget} type="submit">
+          Add Agent
+        </Button>
+      </div>
     </form>
   )
 }

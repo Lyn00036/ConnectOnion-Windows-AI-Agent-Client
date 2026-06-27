@@ -23,4 +23,19 @@ declare module 'connectonion-connect' {
     agentAddress: string,
     options?: ConnectOptions,
   ): RemoteAgent
+
+  export interface AgentInfo {
+    address: string
+    name?: string
+    tools?: string[]
+    trust?: string
+    version?: string
+    model?: string
+    online: boolean
+  }
+
+  export function fetchAgentInfo(
+    agentAddress: string,
+    relayUrl?: string,
+  ): Promise<AgentInfo>
 }

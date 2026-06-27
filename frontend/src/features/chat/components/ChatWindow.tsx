@@ -78,10 +78,10 @@ export function ChatWindow({
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="flex items-center gap-1.5 rounded-full bg-muted/60 px-2 py-1 text-[10px] font-medium max-[620px]:hidden" title={`Connection: ${connection.label} · Agent: ${status}`}>
-              <span className={`size-2 rounded-full ${connection.dotClass}`} />
+            <span className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold ${connection.bgClass} max-[620px]:px-2`} title={`Connection: ${connection.label} · Agent: ${status}`}>
+              <span className={`size-2.5 rounded-full ${connection.dotClass}`} />
               <span className={connection.textClass}>{connection.label}</span>
-              <span className="text-muted-foreground">· {status}</span>
+              <span className="font-medium text-muted-foreground max-[620px]:hidden">· {status}</span>
             </span>
             {canReconnect && (
               <Button className="min-h-[30px] px-2.5 text-[10px] font-bold" disabled={connectionState === 'reconnecting'} onClick={onReconnect} size="sm" type="button" variant="outline">
@@ -155,10 +155,10 @@ export function ChatWindow({
 // to a readable label, colored dot and text tone.
 function getConnectionMeta(state?: ConnectionState) {
   if (state === 'connected') {
-    return { label: 'Connected', dotClass: 'bg-success', textClass: 'text-success' }
+    return { label: 'Connected', dotClass: 'bg-success', textClass: 'text-success', bgClass: 'border-success/30 bg-success/10' }
   }
   if (state === 'reconnecting') {
-    return { label: 'Reconnecting…', dotClass: 'bg-warning animate-pulse', textClass: 'text-warning' }
+    return { label: 'Reconnecting…', dotClass: 'bg-warning animate-pulse', textClass: 'text-warning', bgClass: 'border-warning/30 bg-warning/10' }
   }
-  return { label: 'Disconnected', dotClass: 'bg-muted-foreground', textClass: 'text-muted-foreground' }
+  return { label: 'Disconnected', dotClass: 'bg-muted-foreground', textClass: 'text-muted-foreground', bgClass: 'border-border bg-muted' }
 }

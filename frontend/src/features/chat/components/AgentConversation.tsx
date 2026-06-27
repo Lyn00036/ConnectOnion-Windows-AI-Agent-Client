@@ -114,11 +114,24 @@ function AgentConversationContent({
     onNewSession()
   }
 
+  function handleReconnect() {
+    // Clear any stale send error; the connection error is gated on state below.
+    setActionError(null)
+    agent.reconnect()
+  }
+
+  // A connection error (e.g. "Reconnect timed out") becomes stale once we are
+  // connected again — upstream does not clear agent.error on a later successful
+  // reconnect, so suppress it here while connected. Send errors still show.
+  const connectionError =
+    agent.connectionState === 'connected' ? null : agent.error?.message ?? null
+  const displayedError = actionError ?? connectionError
+
   return (
     <ChatWindow
       connectionState={agent.connectionState}
       directUrl={agentConfig.directUrl}
-      error={actionError ?? agent.error?.message ?? null}
+      error={displayedError}
       input={composerInput}
       isSending={agent.isProcessing}
       messages={agent.ui}
@@ -126,7 +139,7 @@ function AgentConversationContent({
       onInputChange={setComposerInput}
       onModeChange={handleModeChange}
       onNewConversation={handleNewConversation}
-      onReconnect={() => agent.reconnect()}
+      onReconnect={handleReconnect}
       onSendMessage={handleSendMessage}
       onSubmit={handleSubmit}
       onSubmitOnboard={handleSubmitOnboard}
