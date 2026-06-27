@@ -5,6 +5,8 @@
  * matching the legacy localStorage key format for one-time migration.
  */
 
+import { withDesktopFallback } from '../../shared/storage/desktopFallback'
+
 const MIGRATION_FLAG_KEY = 'connectonion.sqliteMigrated.conversations'
 
 function getDesktopSettings() {
@@ -53,14 +55,14 @@ async function migrateLegacyConversationsOnce(
 
 let migrationPromise: Promise<void> | null = null
 
-function ensureConversationsMigrated() {
+async function ensureConversationsMigrated() {
   const desktop = getDesktopSettings()
-  if (!desktop) return Promise.resolve()
-  if (localStorage.getItem(MIGRATION_FLAG_KEY)) return Promise.resolve()
+  if (!desktop) return
+  if (localStorage.getItem(MIGRATION_FLAG_KEY)) return
   if (!migrationPromise) {
     migrationPromise = migrateLegacyConversationsOnce(desktop)
   }
-  return migrationPromise
+  await migrationPromise
 }
 
 export async function readConversationEnvelope(
@@ -70,12 +72,14 @@ export async function readConversationEnvelope(
   const storageKey = getConversationStorageKey(address, sessionId)
   const desktop = getDesktopSettings()
 
-  if (!desktop) {
-    return loadEnvelopeFromLocalStorage(storageKey)
-  }
-
-  await ensureConversationsMigrated()
-  return desktop.get(storageKey)
+  return withDesktopFallback(
+    Boolean(desktop),
+    async () => {
+      await ensureConversationsMigrated()
+      return desktop!.get(storageKey)
+    },
+    () => loadEnvelopeFromLocalStorage(storageKey),
+  )
 }
 
 export async function writeConversationEnvelope(
@@ -86,22 +90,22 @@ export async function writeConversationEnvelope(
   const storageKey = getConversationStorageKey(address, sessionId)
   const desktop = getDesktopSettings()
 
-  if (desktop) {
-    await desktop.set(storageKey, envelopeJson)
-    return
-  }
-
-  saveEnvelopeToLocalStorage(storageKey, envelopeJson)
+  await withDesktopFallback(
+    Boolean(desktop),
+    () => desktop!.set(storageKey, envelopeJson).then(() => undefined),
+    () => saveEnvelopeToLocalStorage(storageKey, envelopeJson),
+  )
 }
 
 export async function removeConversationEnvelope(address: string, sessionId: string) {
   const storageKey = getConversationStorageKey(address, sessionId)
   const desktop = getDesktopSettings()
 
-  if (desktop) {
-    await desktop.remove(storageKey)
-    return
-  }
-
-  localStorage.removeItem(storageKey)
+  await withDesktopFallback(
+    Boolean(desktop),
+    () => desktop!.remove(storageKey).then(() => undefined),
+    () => {
+      localStorage.removeItem(storageKey)
+    },
+  )
 }

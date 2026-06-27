@@ -4,6 +4,8 @@
  * Uses the SQLite `settings` table when the Electron bridge is available.
  */
 
+import { withDesktopFallback } from '../../shared/storage/desktopFallback'
+
 const THEME_STORAGE_KEY = 'connectonion.theme'
 const SIDEBAR_STORAGE_KEY = 'connectonion.sidebarVisible'
 const MESSAGE_FONT_SIZE_KEY = 'connectonion.messageFontSize'
@@ -103,13 +105,9 @@ function parseJsonValue<T>(raw: string | null, fallback: T): T {
   }
 }
 
-export async function readInitialPreferences(): Promise<PreferencesSnapshot> {
-  const desktop = getDesktopSettings()
-
-  if (!desktop) {
-    return loadPreferencesFromLocalStorage()
-  }
-
+async function readFromDesktop(
+  desktop: NonNullable<ReturnType<typeof getDesktopSettings>>,
+): Promise<PreferencesSnapshot> {
   await migrateLegacyPreferencesOnce(desktop)
 
   const theme = parseJsonValue<StoredThemeMode>(
@@ -138,22 +136,32 @@ export async function readInitialPreferences(): Promise<PreferencesSnapshot> {
   }
 }
 
-async function persistSetting(key: string, valueJson: string) {
+export async function readInitialPreferences(): Promise<PreferencesSnapshot> {
   const desktop = getDesktopSettings()
-  if (desktop) {
-    await desktop.set(key, valueJson)
-    return
-  }
 
+  return withDesktopFallback(
+    Boolean(desktop),
+    () => readFromDesktop(desktop!),
+    () => loadPreferencesFromLocalStorage(),
+  )
+}
+
+function saveSettingToLocalStorage(key: string, valueJson: string) {
   try {
     const parsed: unknown = JSON.parse(valueJson)
-    localStorage.setItem(
-      key,
-      typeof parsed === 'string' ? parsed : valueJson,
-    )
+    localStorage.setItem(key, typeof parsed === 'string' ? parsed : valueJson)
   } catch {
     localStorage.setItem(key, valueJson)
   }
+}
+
+async function persistSetting(key: string, valueJson: string) {
+  const desktop = getDesktopSettings()
+  await withDesktopFallback(
+    Boolean(desktop),
+    () => desktop!.set(key, valueJson).then(() => undefined),
+    () => saveSettingToLocalStorage(key, valueJson),
+  )
 }
 
 export async function persistTheme(theme: StoredThemeMode) {
@@ -173,9 +181,11 @@ export async function persistShortcutOverrides(
 ) {
   const desktop = getDesktopSettings()
   const payload = JSON.stringify(overrides)
-  if (desktop) {
-    await desktop.set(SHORTCUTS_STORAGE_KEY, payload)
-    return
-  }
-  localStorage.setItem(SHORTCUTS_STORAGE_KEY, payload)
+  await withDesktopFallback(
+    Boolean(desktop),
+    () => desktop!.set(SHORTCUTS_STORAGE_KEY, payload).then(() => undefined),
+    () => {
+      localStorage.setItem(SHORTCUTS_STORAGE_KEY, payload)
+    },
+  )
 }

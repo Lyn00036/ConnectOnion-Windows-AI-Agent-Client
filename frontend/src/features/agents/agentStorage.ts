@@ -1,19 +1,14 @@
 /**
  * Agent persistence adapter.
  *
- * The agents store keeps the working copy in memory (Zustand) and treats this
- * module as its durable backing store:
- * - When the Electron SQLite bridge (`window.desktopAgents`) is available, all
- *   reads/writes go through it. SQLite is the single source of truth.
- * - When it is not (e.g. running the renderer in a plain browser during dev),
- *   we gracefully fall back to localStorage.
- *
- * On first launch under SQLite we run a one-time migration of any legacy
- * localStorage agents into the database, guarded by a marker so it only ever
- * happens once.
+ * - Electron + SQLite is the primary store when preload bridges exist.
+ * - localStorage is the fallback when bridges are missing (browser dev) or when
+ *   an IPC/SQLite call fails at runtime.
+ * - Legacy localStorage is migrated once, then cleared by legacyLocalStorage.ts.
  */
 
 import type { DesktopAgentRecord } from '../../shared/storage/agents'
+import { withDesktopFallback } from '../../shared/storage/desktopFallback'
 import { normalizeUrl } from '../../shared/utils/url'
 import type { AgentConfig } from './types'
 
@@ -75,14 +70,22 @@ function loadSelectedIdFromLocalStorage(agents: AgentConfig[]): string | null {
 }
 
 function saveAgentsToLocalStorage(agents: AgentConfig[]) {
-  localStorage.setItem(AGENTS_STORAGE_KEY, JSON.stringify(agents))
+  try {
+    localStorage.setItem(AGENTS_STORAGE_KEY, JSON.stringify(agents))
+  } catch {
+    // Keep in-memory state working if storage is unavailable.
+  }
 }
 
 function saveSelectedIdToLocalStorage(selectedAgentId: string | null) {
-  if (selectedAgentId) {
-    localStorage.setItem(SELECTED_AGENT_STORAGE_KEY, selectedAgentId)
-  } else {
-    localStorage.removeItem(SELECTED_AGENT_STORAGE_KEY)
+  try {
+    if (selectedAgentId) {
+      localStorage.setItem(SELECTED_AGENT_STORAGE_KEY, selectedAgentId)
+    } else {
+      localStorage.removeItem(SELECTED_AGENT_STORAGE_KEY)
+    }
+  } catch {
+    // Keep in-memory state working if storage is unavailable.
   }
 }
 
@@ -101,6 +104,19 @@ async function migrateLegacyAgentsOnce(
   localStorage.setItem(MIGRATION_FLAG_KEY, '1')
 }
 
+async function readFromDesktop(
+  desktop: NonNullable<ReturnType<typeof getDesktopAgents>>,
+): Promise<{ agents: AgentConfig[]; selectedAgentId: string | null }> {
+  await migrateLegacyAgentsOnce(desktop)
+  const records = await desktop.list()
+  const agents = records.map(toConfig)
+  const storedSelectedId = await desktop.getSelectedId()
+  const selectedAgentId = agents.some((agent) => agent.id === storedSelectedId)
+    ? storedSelectedId
+    : (agents[0]?.id ?? null)
+  return { agents, selectedAgentId }
+}
+
 export type InitialAgentsData = {
   agents: AgentConfig[]
   selectedAgentId: string | null
@@ -108,22 +124,13 @@ export type InitialAgentsData = {
 
 export async function readInitialAgents(): Promise<InitialAgentsData> {
   const desktop = getDesktopAgents()
+  const agents = loadAgentsFromLocalStorage()
 
-  if (!desktop) {
-    const agents = loadAgentsFromLocalStorage()
-    return { agents, selectedAgentId: loadSelectedIdFromLocalStorage(agents) }
-  }
-
-  await migrateLegacyAgentsOnce(desktop)
-
-  const records = await desktop.list()
-  const agents = records.map(toConfig)
-  const storedSelectedId = await desktop.getSelectedId()
-  const selectedAgentId = agents.some((agent) => agent.id === storedSelectedId)
-    ? storedSelectedId
-    : (agents[0]?.id ?? null)
-
-  return { agents, selectedAgentId }
+  return withDesktopFallback(
+    Boolean(desktop),
+    () => readFromDesktop(desktop!),
+    () => ({ agents, selectedAgentId: loadSelectedIdFromLocalStorage(agents) }),
+  )
 }
 
 export async function persistCreateAgent(
@@ -131,11 +138,11 @@ export async function persistCreateAgent(
   agentsAfter: AgentConfig[],
 ) {
   const desktop = getDesktopAgents()
-  if (desktop) {
-    await desktop.create(toRecord(agent))
-    return
-  }
-  saveAgentsToLocalStorage(agentsAfter)
+  await withDesktopFallback(
+    Boolean(desktop),
+    () => desktop!.create(toRecord(agent)).then(() => undefined),
+    () => saveAgentsToLocalStorage(agentsAfter),
+  )
 }
 
 export async function persistUpdateAgent(
@@ -143,15 +150,16 @@ export async function persistUpdateAgent(
   agentsAfter: AgentConfig[],
 ) {
   const desktop = getDesktopAgents()
-  if (desktop) {
-    await desktop.update(agent.id, {
-      name: agent.name,
-      address: agent.address,
-      directUrl: agent.directUrl ?? null,
-    })
-    return
-  }
-  saveAgentsToLocalStorage(agentsAfter)
+  await withDesktopFallback(
+    Boolean(desktop),
+    () =>
+      desktop!.update(agent.id, {
+        name: agent.name,
+        address: agent.address,
+        directUrl: agent.directUrl ?? null,
+      }).then(() => undefined),
+    () => saveAgentsToLocalStorage(agentsAfter),
+  )
 }
 
 export async function persistRemoveAgent(
@@ -159,18 +167,18 @@ export async function persistRemoveAgent(
   agentsAfter: AgentConfig[],
 ) {
   const desktop = getDesktopAgents()
-  if (desktop) {
-    await desktop.remove(agentId)
-    return
-  }
-  saveAgentsToLocalStorage(agentsAfter)
+  await withDesktopFallback(
+    Boolean(desktop),
+    () => desktop!.remove(agentId).then(() => undefined),
+    () => saveAgentsToLocalStorage(agentsAfter),
+  )
 }
 
 export async function persistSelectedAgentId(selectedAgentId: string | null) {
   const desktop = getDesktopAgents()
-  if (desktop) {
-    await desktop.setSelectedId(selectedAgentId)
-    return
-  }
-  saveSelectedIdToLocalStorage(selectedAgentId)
+  await withDesktopFallback(
+    Boolean(desktop),
+    () => desktop!.setSelectedId(selectedAgentId).then(() => undefined),
+    () => saveSelectedIdToLocalStorage(selectedAgentId),
+  )
 }

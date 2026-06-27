@@ -3,6 +3,7 @@
  */
 
 import type { DesktopSessionRecord } from '../../shared/storage/sessions'
+import { withDesktopFallback } from '../../shared/storage/desktopFallback'
 import type { SessionSummary } from './types'
 
 const SESSIONS_KEY = 'connectonion.sessions'
@@ -53,14 +54,22 @@ function loadSelectedIdFromLocalStorage(sessions: SessionSummary[]): string | nu
 }
 
 function saveSessionsToLocalStorage(sessions: SessionSummary[]) {
-  localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions))
+  try {
+    localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions))
+  } catch {
+    // Keep in-memory state working if storage is unavailable.
+  }
 }
 
 function saveSelectedIdToLocalStorage(selectedSessionId: string | null) {
-  if (selectedSessionId) {
-    localStorage.setItem(ACTIVE_SESSION_KEY, selectedSessionId)
-  } else {
-    localStorage.removeItem(ACTIVE_SESSION_KEY)
+  try {
+    if (selectedSessionId) {
+      localStorage.setItem(ACTIVE_SESSION_KEY, selectedSessionId)
+    } else {
+      localStorage.removeItem(ACTIVE_SESSION_KEY)
+    }
+  } catch {
+    // Keep in-memory state working if storage is unavailable.
   }
 }
 
@@ -79,6 +88,19 @@ async function migrateLegacySessionsOnce(
   localStorage.setItem(MIGRATION_FLAG_KEY, '1')
 }
 
+async function readFromDesktop(
+  desktop: NonNullable<ReturnType<typeof getDesktopSessions>>,
+): Promise<{ sessions: SessionSummary[]; selectedSessionId: string | null }> {
+  await migrateLegacySessionsOnce(desktop)
+  const records = await desktop.list()
+  const sessions = records.map(toSummary)
+  const storedSelectedId = await desktop.getSelectedId()
+  const selectedSessionId = sessions.some((session) => session.id === storedSelectedId)
+    ? storedSelectedId
+    : null
+  return { sessions, selectedSessionId }
+}
+
 export type InitialSessionsData = {
   sessions: SessionSummary[]
   selectedSessionId: string | null
@@ -86,75 +108,22 @@ export type InitialSessionsData = {
 
 export async function readInitialSessions(): Promise<InitialSessionsData> {
   const desktop = getDesktopSessions()
+  const sessions = loadSessionsFromLocalStorage()
 
-  if (!desktop) {
-    const sessions = loadSessionsFromLocalStorage()
-    return { sessions, selectedSessionId: loadSelectedIdFromLocalStorage(sessions) }
-  }
-
-  await migrateLegacySessionsOnce(desktop)
-
-  const records = await desktop.list()
-  const sessions = records.map(toSummary)
-  const storedSelectedId = await desktop.getSelectedId()
-  const selectedSessionId = sessions.some((session) => session.id === storedSelectedId)
-    ? storedSelectedId
-    : null
-
-  return { sessions, selectedSessionId }
-}
-
-export async function persistCreateSession(session: SessionSummary) {
-  const desktop = getDesktopSessions()
-  if (desktop) {
-    await desktop.create(toRecord(session))
-    return
-  }
-}
-
-export async function persistUpdateSession(session: SessionSummary) {
-  const desktop = getDesktopSessions()
-  if (desktop) {
-    await desktop.update(session.id, {
-      title: session.title,
-      updatedAt: session.updatedAt,
-    })
-    return
-  }
-}
-
-export async function persistTouchSessions(sessions: SessionSummary[]) {
-  const desktop = getDesktopSessions()
-  if (desktop) {
-    await Promise.all(
-      sessions.map((session) =>
-        desktop.update(session.id, {
-          title: session.title,
-          updatedAt: session.updatedAt,
-        }),
-      ),
-    )
-    return
-  }
-  saveSessionsToLocalStorage(sessions)
-}
-
-export async function persistAllSessions(sessions: SessionSummary[]) {
-  const desktop = getDesktopSessions()
-  if (desktop) {
-    // Desktop path persists individual ops; bulk replace is only for migration.
-    return
-  }
-  saveSessionsToLocalStorage(sessions)
+  return withDesktopFallback(
+    Boolean(desktop),
+    () => readFromDesktop(desktop!),
+    () => ({ sessions, selectedSessionId: loadSelectedIdFromLocalStorage(sessions) }),
+  )
 }
 
 export async function persistRemoveSession(sessionId: string, sessionsAfter: SessionSummary[]) {
   const desktop = getDesktopSessions()
-  if (desktop) {
-    await desktop.remove(sessionId)
-    return
-  }
-  saveSessionsToLocalStorage(sessionsAfter)
+  await withDesktopFallback(
+    Boolean(desktop),
+    () => desktop!.remove(sessionId).then(() => undefined),
+    () => saveSessionsToLocalStorage(sessionsAfter),
+  )
 }
 
 export async function persistRemoveSessionsForAgent(
@@ -162,44 +131,46 @@ export async function persistRemoveSessionsForAgent(
   sessionsAfter: SessionSummary[],
 ) {
   const desktop = getDesktopSessions()
-  if (desktop) {
-    await desktop.removeForAgent(agentId)
-    return
-  }
-  saveSessionsToLocalStorage(sessionsAfter)
+  await withDesktopFallback(
+    Boolean(desktop),
+    () => desktop!.removeForAgent(agentId).then(() => undefined),
+    () => saveSessionsToLocalStorage(sessionsAfter),
+  )
 }
 
 export async function persistSelectedSessionId(selectedSessionId: string | null) {
   const desktop = getDesktopSessions()
-  if (desktop) {
-    await desktop.setSelectedId(selectedSessionId)
-    return
-  }
-  saveSelectedIdToLocalStorage(selectedSessionId)
+  await withDesktopFallback(
+    Boolean(desktop),
+    () => desktop!.setSelectedId(selectedSessionId).then(() => undefined),
+    () => saveSelectedIdToLocalStorage(selectedSessionId),
+  )
 }
 
-/** Persist a newly created session and the full list (localStorage fallback). */
 export async function persistSessionListChange(
   session: SessionSummary | null,
   sessionsAfter: SessionSummary[],
 ) {
   const desktop = getDesktopSessions()
-  if (desktop) {
-    if (session) await desktop.create(toRecord(session))
-    return
-  }
-  saveSessionsToLocalStorage(sessionsAfter)
+  await withDesktopFallback(
+    Boolean(desktop),
+    () => {
+      if (!session) return Promise.resolve()
+      return desktop!.create(toRecord(session)).then(() => undefined)
+    },
+    () => saveSessionsToLocalStorage(sessionsAfter),
+  )
 }
 
-/** Persist title/timestamp updates for one session. */
 export async function persistSessionTouch(session: SessionSummary, sessionsAfter: SessionSummary[]) {
   const desktop = getDesktopSessions()
-  if (desktop) {
-    await desktop.update(session.id, {
-      title: session.title,
-      updatedAt: session.updatedAt,
-    })
-    return
-  }
-  saveSessionsToLocalStorage(sessionsAfter)
+  await withDesktopFallback(
+    Boolean(desktop),
+    () =>
+      desktop!.update(session.id, {
+        title: session.title,
+        updatedAt: session.updatedAt,
+      }).then(() => undefined),
+    () => saveSessionsToLocalStorage(sessionsAfter),
+  )
 }
