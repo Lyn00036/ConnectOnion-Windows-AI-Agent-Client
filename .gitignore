@@ -21,6 +21,8 @@ frontend/.vite/
 frontend/.turbo/
 frontend/.cache/
 frontend/node_modules/.tmp/
+frontend/playwright-report/
+frontend/test-results/
 
 # Python / backend
 __pycache__/

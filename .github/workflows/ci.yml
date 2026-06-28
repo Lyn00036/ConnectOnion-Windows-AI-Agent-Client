@@ -37,5 +37,21 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Test
+        run: npm run test
+
       - name: Build
         run: npm run build
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Start preview server
+        run: |
+          npm run preview &
+          npx wait-on http://127.0.0.1:4173
+
+      - name: End-to-end smoke test
+        run: npm run e2e
+        env:
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:4173

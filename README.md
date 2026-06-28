@@ -5,9 +5,10 @@ ConnectOnion Desktop is a Windows desktop client for chatting with external Conn
 Current desktop-client baseline:
 
 - Chat supports ConnectOnion Relay connections and Direct URL connections
-- Saved agents, session metadata, and chat state currently persist in renderer `localStorage`
-- Electron initializes a local SQLite database, but feature CRUD is not wired to it yet
-- The example email agent runs as a separate ConnectOnion agent host
+- In Electron, saved agents, session metadata, preferences, and chat conversation blobs persist through the local SQLite bridge
+- Browser-only development still falls back to renderer `localStorage`
+- Legacy `localStorage` agent/session/preference/conversation data is migrated once when the Electron bridge is available
+- Example ConnectOnion agents run as separate local/demo agent hosts
 
 ## Current Architecture
 
@@ -24,9 +25,10 @@ User
 ```
 
 SQLite lives behind Electron IPC. React code should not import Node, Electron,
-or SQLite packages directly. The current IPC surface exposes storage status and
-schema metadata only; agents, sessions, and chat data have not been migrated
-from `localStorage` to SQLite.
+or SQLite packages directly. The current IPC surface exposes storage status,
+agent CRUD, session CRUD, settings key/value persistence, and window controls.
+The renderer prefers those Electron APIs and falls back to `localStorage` for
+browser-only development or IPC/runtime failures.
 
 Storage framework files:
 
@@ -35,18 +37,29 @@ frontend/electron/storage/
   connection.ts       Opens SQLite and applies database pragmas
   migrations.ts       Versioned schema migrations
   service.ts          Desktop storage lifecycle
+  agentRepository.ts  Agent CRUD and selected-agent metadata
+  sessionRepository.ts Session CRUD and selected-session metadata
+  settingsRepository.ts Settings key/value persistence
 
 frontend/electron/ipc/
+  agentChannels.ts    Agent IPC channel names
+  agentIpc.ts         Main-process agent IPC handlers
+  sessionChannels.ts  Session IPC channel names
+  sessionIpc.ts       Main-process session IPC handlers
+  settingsChannels.ts Settings IPC channel names
+  settingsIpc.ts      Main-process settings IPC handlers
   storageChannels.ts  IPC channel names
   storageIpc.ts       Main-process IPC handlers
 
 frontend/electron/preload.ts
-  Exposes window.desktopStorage through contextBridge
+  Exposes window.desktopStorage, desktopAgents, desktopSessions, desktopSettings, and desktopWindow
 
 frontend/src/shared/storage/
   types.ts            Renderer-safe storage types
   desktopStorage.ts   Renderer adapter for the preload API
   repository.ts       Repository interface for future feature modules
+  desktopFallback.ts  SQLite-first/localStorage-fallback helper
+  legacyLocalStorage.ts One-time legacy localStorage cleanup
 ```
 
 ## Project Structure
@@ -120,7 +133,7 @@ Use this checklist before implementation:
 3. Confirm the exact SDK API from the local source before importing or calling it.
 4. Confirm whether the desktop client should connect by address, relay URL, or direct URL.
 5. Confirm which events the agent/SDK can emit before designing chat UI states.
-6. Treat Electron SQLite as the target desktop source of truth and document any feature still using localStorage.
+6. Treat Electron SQLite as the desktop source of truth and document any browser-only `localStorage` fallback.
 7. Keep secrets in a secure credential layer, not plain SQLite or renderer state.
 ```
 
@@ -229,8 +242,58 @@ Useful frontend scripts:
 npm run dev       Start Vite dev server on 127.0.0.1:3000
 npm run electron  Start Electron shell
 npm run desktop   Start Vite and Electron together
+npm run preview   Serve the production build on 127.0.0.1:4173
 npm run lint      Run ESLint
+npm run test      Run Vitest unit/integration tests
+npm run e2e       Run Playwright end-to-end smoke tests
 npm run build     Type-check and build frontend
+```
+
+## Run Frontend Checks
+
+The frontend test stack uses Vitest with jsdom and Testing Library for storage
+and UI behavior, plus Playwright for browser smoke coverage.
+
+Run the normal local checks from `frontend/`:
+
+```powershell
+cd .\frontend
+npm run lint
+npm run test
+npm run build
+```
+
+Playwright tests do not start a server by themselves. Start either the Vite dev
+server or the production preview server first, then run e2e in another terminal:
+
+```powershell
+cd .\frontend
+npm run dev
+
+# second terminal
+cd .\frontend
+npm run e2e
+```
+
+To match CI more closely, build and preview first:
+
+```powershell
+cd .\frontend
+npm run build
+npm run preview
+
+# second terminal
+cd .\frontend
+$env:PLAYWRIGHT_BASE_URL = "http://127.0.0.1:4173"
+npm run e2e
+```
+
+If Playwright's browser binaries are missing on a fresh machine, install the
+Chromium browser once:
+
+```powershell
+cd .\frontend
+npx playwright install chromium
 ```
 
 ## Desktop Database Location
@@ -243,19 +306,37 @@ The Electron desktop app initializes its local SQLite database when the app star
 
 SQLite may also create `connectonion-desktop.sqlite3-wal` and `connectonion-desktop.sqlite3-shm` next to it; those sidecar files are normal.
 
-Current persistence boundaries:
+Current Electron persistence boundaries:
 
 ```text
-connectonion.agents                         Saved agent configurations
-connectonion.selectedAgentId                Selected agent
-connectonion.sessions                       Per-agent session metadata
-connectonion.activeSessionId                Selected session
-co:agent:{address}:session:{sessionId}      Relay/direct chat state
+agents table                                Saved agent configurations
+app_metadata.agents.selectedId              Selected agent
+sessions table                              Per-agent session metadata
+app_metadata.sessions.selectedId            Selected session
+settings table                              Preferences and conversation blobs
+co:agent:{address}:session:{sessionId}      Conversation blob key in settings
 ```
 
-These keys currently live in renderer `localStorage`. The SQLite schema already
-contains agents, sessions, messages, settings, and metadata tables, but the
-feature stores have not been connected to those tables yet.
+In browser-only Vite development, and as a runtime fallback if the Electron
+bridge is unavailable, the renderer still uses legacy `localStorage` keys:
+
+```text
+connectonion.agents
+connectonion.selectedAgentId
+connectonion.sessions
+connectonion.activeSessionId
+connectonion.theme
+connectonion.sidebarVisible
+connectonion.messageFontSize
+connectonion.shortcuts
+co:agent:{address}:session:{sessionId}
+```
+
+When running inside Electron, the app migrates those legacy values into SQLite
+once and then clears the migrated legacy keys after all migration markers are
+present. The schema also includes a `messages` table, but the current chat path
+stores conversation envelopes in `settings`; there is not yet a per-message
+repository writing individual rows to `messages`.
 
 ## Add An Agent
 
@@ -337,13 +418,14 @@ Do not commit `.env`, `.co/`, API keys, or local credential files.
 ## Other Local Agents
 
 Besides the email agent, the repository ships additional connectable example
-agents adapted from the official ConnectOnion examples. Each one follows the
-same `create_app` + `host` pattern and exposes `/health`, `/info`, `/input`, and
-`/ws`, so the desktop client connects to them the same way.
+agents adapted from the official ConnectOnion examples. They expose
+ConnectOnion-compatible `/health`, `/info`, `/input`, and `/ws` endpoints, so
+the desktop client connects to them through Direct URL the same way.
 
 ```text
 agent/simple-agent/    Minimal general assistant (lowest setup; good for multi-agent tests)
 agent/memory-agent/    Assistant with persistent local memory across turns
+agent/browser-agent/   Browser automation assistant; requires browser tooling setup
 ```
 
 Run one of them locally with Uvicorn, then add its Direct URL in the desktop
@@ -358,11 +440,16 @@ python -m uvicorn agent:app --host 127.0.0.1 --port 8020   # simple-agent
 cd .\agent\memory-agent
 ..\venv\Scripts\Activate.ps1
 python -m uvicorn agent:app --host 127.0.0.1 --port 8021   # memory-agent
+
+# or
+cd .\agent\browser-agent
+..\venv\Scripts\Activate.ps1
+python -m uvicorn agent:app --host 127.0.0.1 --port 8022   # browser-agent
 ```
 
 To run several agents at once, give each a different port (for example
-email 8010, simple 8020, memory 8021) and add each as a separate agent. See each
-agent's own README for details.
+email 8010, simple 8020, memory 8021, browser 8022) and add each as a separate
+agent. See each agent's own README for details.
 
 ## What Is Implemented
 
@@ -371,16 +458,22 @@ agent's own README for details.
 - Relay and Direct URL chat through the ConnectOnion TypeScript SDK
 - Local agent add/select/remove
 - Per-agent session creation, selection, deletion, and `/chat/:sessionId` routing
-- Renderer-side agent, session, and chat persistence through `localStorage`
-- Electron SQLite initialization, migrations, and storage-status IPC
+- SQLite-backed agent, session, settings, and conversation persistence in Electron
+- Browser/local failure fallback persistence through `localStorage`
+- One-time migration and cleanup for legacy `localStorage` data
+- Electron SQLite initialization, migrations, storage-status IPC, and typed preload APIs
+- Functional settings for theme, sidebar visibility, message font size, and shortcut overrides
+- Frameless Electron window controls
+- Vitest coverage for storage adapters, feature persistence, and connection tests
+- Playwright smoke coverage for the chat shell and settings navigation
 - Standalone email agent with a single `agent.py` host/ASGI entrypoint
-- Frontend CI lint/build
+- Additional simple, memory, and browser local demo agents
+- Frontend CI lint/test/build/e2e
 
 ## Not Implemented Yet
 
-- Agent/session/chat repositories backed by SQLite
-- Migration of existing renderer `localStorage` data into SQLite
-- Functional desktop Settings workflow
+- Per-message repository backed by the SQLite `messages` table
+- File attachments and drag-and-drop metadata persistence
 - Secure local credential storage
 - Packaged installer
 - Production release pipeline
