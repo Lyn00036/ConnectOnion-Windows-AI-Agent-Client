@@ -85,12 +85,6 @@ export function DesktopTitleBar({ onToggleSidebar, sidebarVisible }: DesktopTitl
           </IconButton>
         </div>
         <nav className="desktop-titlebar-controls ml-3 flex h-full items-center" aria-label="Application menu">
-          <Button className={menuButtonClass} type="button" variant="ghost">
-            File
-          </Button>
-          <Button className={menuButtonClass} type="button" variant="ghost">
-            Edit
-          </Button>
           <Menu.Root>
             <Menu.Trigger render={<Button className={menuButtonClass} type="button" variant="ghost">View</Button>} />
             <Menu.Portal>
