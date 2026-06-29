@@ -11,6 +11,7 @@ import { IconButton } from '@/shared/components/IconButton'
 import onionLogo from '../assets/icon.png'
 import { AgentForm } from '../features/agents/components/AgentForm'
 import { useAgentStore } from '../features/agents/store'
+import { ConfirmDialog } from '../shared/components/ConfirmDialog'
 import { useSessionStore } from '../features/sessions/store'
 import { matchesAccelerator, useShortcutsStore, type ShortcutId } from '../features/settings/shortcuts'
 import { useSettingsStore } from '../features/settings/store'
@@ -49,6 +50,34 @@ export function DesktopLayout() {
   const [showAddAgent, setShowAddAgent] = useState(false)
   const [editingAgentId, setEditingAgentId] = useState<string | null>(null)
   const editingAgent = agents.find((agent) => agent.id === editingAgentId) ?? null
+
+  type PendingConfirm =
+    | { type: 'removeAgent'; agentId: string; agentName: string }
+    | { type: 'removeSession'; sessionId: string; sessionTitle: string }
+    | null
+
+  const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm>(null)
+
+  function handleConfirm() {
+    if (!pendingConfirm) return
+
+    if (pendingConfirm.type === 'removeAgent') {
+      const { agentId } = pendingConfirm
+      if (editingAgentId === agentId) setEditingAgentId(null)
+      removeSessionsForAgent(agentId)
+      removeAgent(agentId)
+      setExpandedAgentId(useAgentStore.getState().selectedAgentId)
+    } else {
+      removeSession(pendingConfirm.sessionId)
+    }
+
+    setPendingConfirm(null)
+  }
+
+  function handleCancelConfirm() {
+    setPendingConfirm(null)
+  }
+
   const sidebarVisible = useSettingsStore((state) => state.sidebarVisible)
   const toggleSidebar = useSettingsStore((state) => state.toggleSidebar)
 
@@ -119,27 +148,22 @@ export function DesktopLayout() {
     const agent = agents.find((entry) => entry.id === agentId)
     if (!agent) return
 
-    const confirmed = window.confirm(
-      `Remove "${agent.name}" and all its sessions? This cannot be undone.`,
-    )
-    if (!confirmed) return
-
-    if (editingAgentId === agentId) setEditingAgentId(null)
-    removeSessionsForAgent(agentId)
-    removeAgent(agentId)
-    setExpandedAgentId(useAgentStore.getState().selectedAgentId)
+    setPendingConfirm({
+      type: 'removeAgent',
+      agentId,
+      agentName: agent.name,
+    })
   }
 
   function handleRemoveSession(sessionId: string) {
     const session = sessions.find((entry) => entry.id === sessionId)
     if (!session) return
 
-    const confirmed = window.confirm(
-      `Delete session "${session.title}"? This cannot be undone.`,
-    )
-    if (!confirmed) return
-
-    removeSession(sessionId)
+    setPendingConfirm({
+      type: 'removeSession',
+      sessionId,
+      sessionTitle: session.title,
+    })
   }
 
   function handleEditAgent(agentId: string) {
@@ -233,6 +257,27 @@ export function DesktopLayout() {
 
         <div className="min-h-0 min-w-0 overflow-hidden"><Outlet /></div>
       </main>
+
+      <ConfirmDialog
+        confirmLabel={pendingConfirm?.type === 'removeAgent' ? 'Remove' : 'Delete'}
+        destructive
+        onCancel={handleCancelConfirm}
+        onConfirm={handleConfirm}
+        open={pendingConfirm !== null}
+        title={
+          pendingConfirm?.type === 'removeAgent'
+            ? `Remove "${pendingConfirm.agentName}"?`
+            : pendingConfirm?.type === 'removeSession'
+              ? `Delete "${pendingConfirm.sessionTitle}"?`
+              : ''
+        }
+      >
+        {pendingConfirm?.type === 'removeAgent'
+          ? 'This agent and all of its sessions will be permanently removed. This cannot be undone.'
+          : pendingConfirm?.type === 'removeSession'
+            ? 'This conversation will be permanently deleted. This cannot be undone.'
+            : ''}
+      </ConfirmDialog>
     </div>
   )
 }
