@@ -10,17 +10,18 @@ import os
 import sys
 from pathlib import Path
 
+AGENT_DIR = Path(__file__).resolve().parent
+_AGENT_ROOT = AGENT_DIR.parent
+if str(_AGENT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_AGENT_ROOT))
+
+import win_utf8
+
+win_utf8.bootstrap()
+
 from dotenv import load_dotenv
 
-AGENT_DIR = Path(__file__).resolve().parent
 load_dotenv(AGENT_DIR / ".env")
-
-# ConnectOnion's host banner contains Unicode characters that the Windows GBK
-# console cannot encode. Reconfigure this process to UTF-8 so plain `python`
-# commands work without the `-X utf8` flag.
-for stream in (sys.stdout, sys.stderr):
-    if hasattr(stream, "reconfigure"):
-        stream.reconfigure(encoding="utf-8")
 
 from connectonion import Agent, create_app, host
 

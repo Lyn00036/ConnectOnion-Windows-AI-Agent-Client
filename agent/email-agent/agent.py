@@ -2,11 +2,20 @@
 """Email assistant agent and ConnectOnion host entrypoint."""
 
 import os
+import sys
 from pathlib import Path
+
+AGENT_DIR = Path(__file__).resolve().parent
+_AGENT_ROOT = AGENT_DIR.parent
+if str(_AGENT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_AGENT_ROOT))
+
+import win_utf8
+
+win_utf8.bootstrap()
 
 from dotenv import load_dotenv
 
-AGENT_DIR = Path(__file__).resolve().parent
 load_dotenv(AGENT_DIR / ".env")
 
 from connectonion import Agent, Gmail, create_app, host
