@@ -9,7 +9,7 @@ vi.mock('connectonion-connect', () => ({
 }))
 
 describe('testAgentConnection', () => {
-  it('checks Direct URL agents through /health', async () => {
+  it('checks Direct URL agents through /health under the configured base path', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 })
     vi.stubGlobal('fetch', fetchMock)
 
@@ -18,10 +18,24 @@ describe('testAgentConnection', () => {
     ).resolves.toMatchObject({ ok: true })
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://127.0.0.1:8010/health',
+      'http://127.0.0.1:8010/base/health',
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     )
     expect(fetchAgentInfoMock).not.toHaveBeenCalled()
+  })
+
+  it('checks root Direct URL agents through /health', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(
+      testAgentConnection({ directUrl: 'http://127.0.0.1:8010' }, 50),
+    ).resolves.toMatchObject({ ok: true })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://127.0.0.1:8010/health',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    )
   })
 
   it('reports invalid Direct URLs before attempting network calls', async () => {

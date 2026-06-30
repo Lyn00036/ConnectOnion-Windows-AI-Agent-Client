@@ -26,6 +26,14 @@ export type ConnectionTestTarget = {
 
 const DEFAULT_TIMEOUT_MS = 6000
 
+function buildHealthUrl(directUrl: string): string {
+  const url = new URL(directUrl)
+  url.pathname = `${url.pathname.replace(/\/+$/, '')}/health`
+  url.search = ''
+  url.hash = ''
+  return url.toString()
+}
+
 function describeError(error: unknown): string {
   if (error instanceof DOMException && error.name === 'TimeoutError') {
     return 'Connection timed out — the agent did not respond in time.'
@@ -42,7 +50,7 @@ export async function testAgentConnection(
   if (directUrl) {
     let healthUrl: string
     try {
-      healthUrl = new URL('/health', directUrl).toString()
+      healthUrl = buildHealthUrl(directUrl)
     } catch {
       return { ok: false, detail: 'Invalid Direct URL.' }
     }
