@@ -1,10 +1,7 @@
 /** Zustand store for local agent selection and temporary agent configuration state. */
 
-// Persistence lives in `agentStorage.ts`: SQLite via the Electron bridge when
-// available, with a localStorage fallback + one-time migration. This store keeps
-// the in-memory working copy (instant reads) and writes through to storage
-// optimistically (the UI updates immediately; the durable write happens in the
-// background).
+// Persistence lives in `agentStorage.ts` and uses localStorage. This store keeps
+// the in-memory working copy and writes through optimistically.
 
 import { create } from 'zustand'
 

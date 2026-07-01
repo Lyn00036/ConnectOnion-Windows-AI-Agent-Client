@@ -1,42 +1,14 @@
 /**
  * Agent persistence adapter.
  *
- * - Electron + SQLite is the primary store when preload bridges exist.
- * - localStorage is the fallback when bridges are missing (browser dev) or when
- *   an IPC/SQLite call fails at runtime.
- * - Legacy localStorage is migrated once, then cleared by legacyLocalStorage.ts.
+ * Uses localStorage as the single durable store.
  */
 
-import type { DesktopAgentRecord } from '../../shared/storage/agents'
-import { withDesktopFallback } from '../../shared/storage/desktopFallback'
 import { normalizeUrl } from '../../shared/utils/url'
 import type { AgentConfig } from './types'
 
 const AGENTS_STORAGE_KEY = 'connectonion.agents'
 const SELECTED_AGENT_STORAGE_KEY = 'connectonion.selectedAgentId'
-const MIGRATION_FLAG_KEY = 'connectonion.sqliteMigrated.agents'
-
-function getDesktopAgents() {
-  return window.desktopAgents ?? null
-}
-
-function toRecord(agent: AgentConfig): DesktopAgentRecord {
-  return {
-    id: agent.id,
-    name: agent.name,
-    address: agent.address,
-    directUrl: agent.directUrl ?? null,
-  }
-}
-
-function toConfig(record: DesktopAgentRecord): AgentConfig {
-  return {
-    id: record.id,
-    name: record.name,
-    address: record.address,
-    directUrl: record.directUrl ?? undefined,
-  }
-}
 
 function loadAgentsFromLocalStorage(): AgentConfig[] {
   try {
@@ -89,96 +61,38 @@ function saveSelectedIdToLocalStorage(selectedAgentId: string | null) {
   }
 }
 
-async function migrateLegacyAgentsOnce(
-  desktop: NonNullable<ReturnType<typeof getDesktopAgents>>,
-) {
-  if (localStorage.getItem(MIGRATION_FLAG_KEY)) return
-
-  const legacyAgents = loadAgentsFromLocalStorage()
-  if (legacyAgents.length > 0) {
-    await desktop.bulkUpsert(legacyAgents.map(toRecord))
-    const legacySelected = loadSelectedIdFromLocalStorage(legacyAgents)
-    if (legacySelected) await desktop.setSelectedId(legacySelected)
-  }
-
-  localStorage.setItem(MIGRATION_FLAG_KEY, '1')
-}
-
-async function readFromDesktop(
-  desktop: NonNullable<ReturnType<typeof getDesktopAgents>>,
-): Promise<{ agents: AgentConfig[]; selectedAgentId: string | null }> {
-  await migrateLegacyAgentsOnce(desktop)
-  const records = await desktop.list()
-  const agents = records.map(toConfig)
-  const storedSelectedId = await desktop.getSelectedId()
-  const selectedAgentId = agents.some((agent) => agent.id === storedSelectedId)
-    ? storedSelectedId
-    : (agents[0]?.id ?? null)
-  return { agents, selectedAgentId }
-}
-
 export type InitialAgentsData = {
   agents: AgentConfig[]
   selectedAgentId: string | null
 }
 
 export async function readInitialAgents(): Promise<InitialAgentsData> {
-  const desktop = getDesktopAgents()
   const agents = loadAgentsFromLocalStorage()
 
-  return withDesktopFallback(
-    Boolean(desktop),
-    () => readFromDesktop(desktop!),
-    () => ({ agents, selectedAgentId: loadSelectedIdFromLocalStorage(agents) }),
-  )
+  return { agents, selectedAgentId: loadSelectedIdFromLocalStorage(agents) }
 }
 
 export async function persistCreateAgent(
-  agent: AgentConfig,
+  _agent: AgentConfig,
   agentsAfter: AgentConfig[],
 ) {
-  const desktop = getDesktopAgents()
-  await withDesktopFallback(
-    Boolean(desktop),
-    () => desktop!.create(toRecord(agent)).then(() => undefined),
-    () => saveAgentsToLocalStorage(agentsAfter),
-  )
+  saveAgentsToLocalStorage(agentsAfter)
 }
 
 export async function persistUpdateAgent(
-  agent: AgentConfig,
+  _agent: AgentConfig,
   agentsAfter: AgentConfig[],
 ) {
-  const desktop = getDesktopAgents()
-  await withDesktopFallback(
-    Boolean(desktop),
-    () =>
-      desktop!.update(agent.id, {
-        name: agent.name,
-        address: agent.address,
-        directUrl: agent.directUrl ?? null,
-      }).then(() => undefined),
-    () => saveAgentsToLocalStorage(agentsAfter),
-  )
+  saveAgentsToLocalStorage(agentsAfter)
 }
 
 export async function persistRemoveAgent(
-  agentId: string,
+  _agentId: string,
   agentsAfter: AgentConfig[],
 ) {
-  const desktop = getDesktopAgents()
-  await withDesktopFallback(
-    Boolean(desktop),
-    () => desktop!.remove(agentId).then(() => undefined),
-    () => saveAgentsToLocalStorage(agentsAfter),
-  )
+  saveAgentsToLocalStorage(agentsAfter)
 }
 
 export async function persistSelectedAgentId(selectedAgentId: string | null) {
-  const desktop = getDesktopAgents()
-  await withDesktopFallback(
-    Boolean(desktop),
-    () => desktop!.setSelectedId(selectedAgentId).then(() => undefined),
-    () => saveSelectedIdToLocalStorage(selectedAgentId),
-  )
+  saveSelectedIdToLocalStorage(selectedAgentId)
 }

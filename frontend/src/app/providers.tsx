@@ -6,7 +6,6 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { useAgentStore } from '@/features/agents/store'
 import { useSessionStore } from '@/features/sessions/store'
 import { MESSAGE_FONT_SIZES, useSettingsStore } from '@/features/settings/store'
-import { clearLegacyLocalStorageOnce } from '@/shared/storage/legacyLocalStorage'
 
 type AppProvidersProps = {
   children: ReactNode
@@ -22,7 +21,6 @@ export function AppProviders({ children }: AppProvidersProps) {
   useEffect(() => {
     void (async () => {
       await Promise.all([hydrateAgents(), hydrateSessions(), hydrateSettings()])
-      clearLegacyLocalStorageOnce()
     })()
   }, [hydrateAgents, hydrateSessions, hydrateSettings])
 

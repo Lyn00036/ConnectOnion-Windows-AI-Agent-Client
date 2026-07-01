@@ -42,6 +42,16 @@ export function AgentForm({
   const hasConnectionTarget = Boolean(
     newAgentAddress.trim() || newAgentDirectUrl.trim(),
   )
+  const hasSuccessfulConnectionTest = testResult?.ok === true
+  const canSubmit = Boolean(
+    newAgentName.trim() &&
+      hasConnectionTarget &&
+      hasSuccessfulConnectionTest &&
+      !testing,
+  )
+  const submitRequirementText = isEditing
+    ? 'Test connection successfully before saving this agent.'
+    : 'Test connection successfully before adding this agent.'
 
   function clearFeedback() {
     if (error) setError(null)
@@ -57,9 +67,22 @@ export function AgentForm({
     return true
   }
 
+  function validateAddress(): boolean {
+    const address = newAgentAddress.trim()
+    if (address && !/^[a-zA-Z0-9]+$/.test(address)) {
+      setError('Agent address can only contain letters and numbers.')
+      return false
+    }
+    return true
+  }
+
+  function validateConnectionInputs(): boolean {
+    return validateDirectUrl() && validateAddress()
+  }
+
   async function handleTestConnection() {
     if (!hasConnectionTarget || testing) return
-    if (!validateDirectUrl()) return
+    if (!validateConnectionInputs()) return
 
     setError(null)
     setTestResult(null)
@@ -79,7 +102,11 @@ export function AgentForm({
     event.preventDefault()
 
     if (!newAgentName.trim() || !hasConnectionTarget) return
-    if (!validateDirectUrl()) return
+    if (!validateConnectionInputs()) return
+    if (!hasSuccessfulConnectionTest) {
+      setError(submitRequirementText)
+      return
+    }
 
     setError(null)
     setTestResult(null)
@@ -136,6 +163,9 @@ export function AgentForm({
           <span>{testResult.detail}</span>
         </p>
       ) : null}
+      {!error && hasConnectionTarget && !hasSuccessfulConnectionTest ? (
+        <p className="text-[12px] text-muted-foreground">{submitRequirementText}</p>
+      ) : null}
       <div className="flex gap-2">
         <Button className="min-h-[38px] flex-1 text-[13px] font-bold" disabled={!hasConnectionTarget || testing} onClick={handleTestConnection} type="button" variant="outline">
           {testing ? (
@@ -146,7 +176,7 @@ export function AgentForm({
             'Test connection'
           )}
         </Button>
-        <Button className="min-h-[38px] flex-1 text-[13px] font-bold" disabled={!newAgentName.trim() || !hasConnectionTarget} type="submit">
+        <Button className="min-h-[38px] flex-1 text-[13px] font-bold" disabled={!canSubmit} type="submit">
           {isEditing ? 'Save changes' : 'Add Agent'}
         </Button>
       </div>

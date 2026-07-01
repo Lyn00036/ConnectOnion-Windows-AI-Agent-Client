@@ -1,16 +1,13 @@
 /** Reachability check for an agent connection target, using upstream endpoints. */
 
-// Upstream-aligned probes (confirmed against connectonion / connectonion-ts source):
-// - Direct URL agents are hosted by `host()` which exposes an unauthenticated
-//   `GET /health` route and sends `access-control-allow-origin: *`, so a plain
-//   fetch from the renderer works without CORS issues.
-// - Relay (0x address) agents are probed with the SDK's `fetchAgentInfo()`, which
-//   resolves through the relay and reports `online`.
+// Upstream-aligned probes:
+// - Direct URL agents expose an unauthenticated GET /health route.
+// - Relay agents are probed with the SDK's fetchAgentInfo(), which resolves
+//   through the relay and reports online status and metadata.
 //
 // Import from 'connectonion-connect' (the browser-safe connect bundle aliased in
-// vite.config.ts), NOT the top-level 'connectonion' entry — the latter loads the
-// full Node SDK (dotenv `config()` etc.) and throws "process is not defined" in
-// the renderer.
+// vite.config.ts), not the top-level 'connectonion' entry; the latter loads the
+// full Node SDK and throws in the renderer.
 
 import { fetchAgentInfo } from 'connectonion-connect'
 
@@ -25,6 +22,7 @@ export type ConnectionTestTarget = {
 }
 
 const DEFAULT_TIMEOUT_MS = 6000
+const ADDRESS_PATTERN = /^[a-zA-Z0-9]+$/
 
 function buildHealthUrl(directUrl: string): string {
   const url = new URL(directUrl)
@@ -36,9 +34,49 @@ function buildHealthUrl(directUrl: string): string {
 
 function describeError(error: unknown): string {
   if (error instanceof DOMException && error.name === 'TimeoutError') {
-    return 'Connection timed out — the agent did not respond in time.'
+    return 'Connection timed out - the agent did not respond in time.'
   }
   return 'Could not reach the agent (network error or invalid URL).'
+}
+
+function readStringField(
+  record: Record<string, unknown>,
+  fieldNames: string[],
+): string | null {
+  for (const fieldName of fieldNames) {
+    const value = record[fieldName]
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim()
+    }
+  }
+  return null
+}
+
+function extractAgentName(value: unknown): string | null {
+  if (typeof value === 'string') {
+    return value.trim() || null
+  }
+
+  if (!value || typeof value !== 'object') {
+    return null
+  }
+
+  const record = value as Record<string, unknown>
+  return (
+    readStringField(record, ['name', 'agentName', 'agent_name']) ??
+    extractAgentName(record.agent)
+  )
+}
+
+async function readHealthAgentName(response: Response): Promise<string | null> {
+  const json = (response as { json?: () => Promise<unknown> }).json
+  if (!json) return null
+
+  try {
+    return extractAgentName(await json.call(response))
+  } catch {
+    return null
+  }
 }
 
 export async function testAgentConnection(
@@ -56,10 +94,18 @@ export async function testAgentConnection(
     }
 
     try {
-      const response = await fetch(healthUrl, { signal: AbortSignal.timeout(timeoutMs) })
-      return response.ok
-        ? { ok: true, detail: 'Reachable — agent responded on /health.' }
-        : { ok: false, detail: `Agent responded with HTTP ${response.status}.` }
+      const response = await fetch(healthUrl, {
+        signal: AbortSignal.timeout(timeoutMs),
+      })
+      if (!response.ok) {
+        return { ok: false, detail: `Agent responded with HTTP ${response.status}.` }
+      }
+
+      const agentName = await readHealthAgentName(response)
+      return {
+        ok: true,
+        detail: `Reachable via Direct URL${agentName ? ` - ${agentName}` : ''}.`,
+      }
     } catch (error) {
       return { ok: false, detail: describeError(error) }
     }
@@ -67,10 +113,17 @@ export async function testAgentConnection(
 
   const address = target.address?.trim()
   if (address) {
+    if (!ADDRESS_PATTERN.test(address)) {
+      return {
+        ok: false,
+        detail: 'Agent address can only contain letters and numbers.',
+      }
+    }
+
     try {
       const info = await fetchAgentInfo(address)
       if (info.online) {
-        return { ok: true, detail: `Online via relay${info.name ? ` · ${info.name}` : ''}.` }
+        return { ok: true, detail: `Online via relay${info.name ? ` - ${info.name}` : ''}.` }
       }
       return { ok: false, detail: 'Registered on the relay but currently offline.' }
     } catch (error) {

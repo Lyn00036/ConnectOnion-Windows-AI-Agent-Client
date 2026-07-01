@@ -6,10 +6,10 @@ This package contains both the React renderer and the Electron desktop shell for
 
 ```text
 frontend/
-  electron/        Electron main process, preload bridge, IPC, and SQLite storage
+  electron/        Electron main process, preload bridge, and window IPC
   src/             React renderer application
   src/features/    Chat, agent, session, and settings modules
-  src/shared/      Shared UI, hooks, storage adapters, and utilities
+  src/shared/      Shared UI, hooks, and utilities
 ```
 
 ## Development
@@ -44,6 +44,6 @@ npm run build
 - Electron desktop shell
 - ConnectOnion TypeScript SDK chat integration
 - Electron preload IPC boundary
-- SQLite storage framework in the Electron main process
+- localStorage-backed agents, sessions, conversations, and settings
 
-Feature repositories for agents, sessions, messages, settings, files, and credentials are planned on top of this baseline.
+Feature repositories for agents, sessions, messages, settings, files, and credentials can be layered on top of this baseline.

@@ -1,17 +1,8 @@
 /**
  * Conversation blob persistence (chat UI + SDK session state).
  *
- * Stored in the SQLite `settings` table under keys `co:agent:{address}:session:{id}`,
- * matching the legacy localStorage key format for one-time migration.
+ * Stored in localStorage under `co:agent:{address}:session:{id}`.
  */
-
-import { withDesktopFallback } from '../../shared/storage/desktopFallback'
-
-const MIGRATION_FLAG_KEY = 'connectonion.sqliteMigrated.conversations'
-
-function getDesktopSettings() {
-  return window.desktopSettings ?? null
-}
 
 export function getConversationStorageKey(address: string, sessionId: string) {
   return `co:agent:${address}:session:${sessionId}`
@@ -33,53 +24,11 @@ function saveEnvelopeToLocalStorage(storageKey: string, envelopeJson: string) {
   }
 }
 
-async function migrateLegacyConversationsOnce(
-  desktop: NonNullable<ReturnType<typeof getDesktopSettings>>,
-) {
-  if (localStorage.getItem(MIGRATION_FLAG_KEY)) return
-
-  const entries: Array<{ key: string; valueJson: string }> = []
-  for (let index = 0; index < localStorage.length; index += 1) {
-    const key = localStorage.key(index)
-    if (!key?.startsWith('co:agent:')) continue
-    const value = localStorage.getItem(key)
-    if (value) entries.push({ key, valueJson: value })
-  }
-
-  if (entries.length > 0) {
-    await desktop.bulkUpsert(entries)
-  }
-
-  localStorage.setItem(MIGRATION_FLAG_KEY, '1')
-}
-
-let migrationPromise: Promise<void> | null = null
-
-async function ensureConversationsMigrated() {
-  const desktop = getDesktopSettings()
-  if (!desktop) return
-  if (localStorage.getItem(MIGRATION_FLAG_KEY)) return
-  if (!migrationPromise) {
-    migrationPromise = migrateLegacyConversationsOnce(desktop)
-  }
-  await migrationPromise
-}
-
 export async function readConversationEnvelope(
   address: string,
   sessionId: string,
 ): Promise<string | null> {
-  const storageKey = getConversationStorageKey(address, sessionId)
-  const desktop = getDesktopSettings()
-
-  return withDesktopFallback(
-    Boolean(desktop),
-    async () => {
-      await ensureConversationsMigrated()
-      return desktop!.get(storageKey)
-    },
-    () => loadEnvelopeFromLocalStorage(storageKey),
-  )
+  return loadEnvelopeFromLocalStorage(getConversationStorageKey(address, sessionId))
 }
 
 export async function writeConversationEnvelope(
@@ -87,25 +36,12 @@ export async function writeConversationEnvelope(
   sessionId: string,
   envelopeJson: string,
 ) {
-  const storageKey = getConversationStorageKey(address, sessionId)
-  const desktop = getDesktopSettings()
-
-  await withDesktopFallback(
-    Boolean(desktop),
-    () => desktop!.set(storageKey, envelopeJson).then(() => undefined),
-    () => saveEnvelopeToLocalStorage(storageKey, envelopeJson),
+  saveEnvelopeToLocalStorage(
+    getConversationStorageKey(address, sessionId),
+    envelopeJson,
   )
 }
 
 export async function removeConversationEnvelope(address: string, sessionId: string) {
-  const storageKey = getConversationStorageKey(address, sessionId)
-  const desktop = getDesktopSettings()
-
-  await withDesktopFallback(
-    Boolean(desktop),
-    () => desktop!.remove(storageKey).then(() => undefined),
-    () => {
-      localStorage.removeItem(storageKey)
-    },
-  )
+  localStorage.removeItem(getConversationStorageKey(address, sessionId))
 }
