@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="ConnectOnion.WinUIClient.Views.SessionsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:models="using:ConnectOnion.WinUIClient.Models"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid Margin="24" RowSpacing="12" MaxWidth="720" HorizontalAlignment="Stretch">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="Sessions" Style="{StaticResource TitleTextBlockStyle}" />
+
+        <Grid Grid.Row="1" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="AgentLabel" Grid.Column="0" VerticalAlignment="Center"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <Button x:Name="NewSessionButton" Grid.Column="1" Content="New session"
+                    Style="{StaticResource AccentButtonStyle}" Click="NewSession_Click" />
+            <Button Grid.Column="2" Content="Delete" Click="Delete_Click" />
+        </Grid>
+
+        <ListView Grid.Row="2"
+                  ItemsSource="{x:Bind Vm.Sessions, Mode=OneWay}"
+                  SelectedItem="{x:Bind Vm.Selected, Mode=TwoWay}"
+                  Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                  BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                  BorderThickness="1" CornerRadius="8">
+            <ListView.ItemTemplate>
+                <DataTemplate x:DataType="models:SessionSummary">
+                    <StackPanel Padding="4">
+                        <TextBlock Text="{x:Bind Title, Mode=OneWay}"
+                                   Style="{StaticResource BodyStrongTextBlockStyle}"
+                                   TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{x:Bind UpdatedAt, Mode=OneWay}"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+    </Grid>
+</Page>

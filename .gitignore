@@ -41,14 +41,19 @@ backend/__pycache__/
 backend/app/__pycache__/
 
 # ConnectOnion agent local state and secrets
+.co/
 agent/**/.co/
 agent/**/.browser_agent_profile/
 agent/**/screenshots/
 
 # Database and local runtime data
 *.db
+*.db-shm
+*.db-wal
 *.sqlite
 *.sqlite3
+*.sqlite-shm
+*.sqlite-wal
 pgdata/
 data/
 tmp/
@@ -61,17 +66,61 @@ out/
 release/
 *.exe
 *.msi
+*.msix
+*.msixbundle
+*.appx
+*.appxbundle
+*.appxupload
 *.dmg
 *.AppImage
+*.binlog
+
+# .NET / WinUI 3 build output
+[Bb]in/
+[Oo]bj/
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+artifacts/
+publish/
+AppPackages/
+BundleArtifacts/
+Generated Files/
+
+# NuGet
+packages/
+*.nupkg
+*.snupkg
+project.lock.json
+project.assets.json
+*.nuget.props
+*.nuget.targets
+
+# Visual Studio / Rider user state
+.vs/
+.idea/
+*.user
+*.userosscache
+*.suo
+*.rsuser
+*.sln.docstates
+*.VisualState.xml
+*.cachefile
+*.pdb
+
+# WinUI / MSIX signing and publish-local files
+*_TemporaryKey.pfx
+*.pfx
+*.p12
+*.cer
+*.pubxml.user
 
 # OS and editor files
 .DS_Store
 Thumbs.db
-.idea/
 .vscode/*
 !.vscode/extensions.json
-*.suo
 *.ntvs*
 *.njsproj
-*.sln
 *.sw?

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="ConnectOnion.WinUIClient.Views.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <ScrollViewer>
+        <StackPanel MaxWidth="640" Margin="24" HorizontalAlignment="Stretch" Spacing="8">
+            <TextBlock Text="Settings" Style="{StaticResource TitleTextBlockStyle}" />
+            <TextBlock Text="Desktop preferences for this app."
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
+            <Border Margin="0,16,0,0" Padding="20" CornerRadius="8"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                <StackPanel Spacing="20">
+                    <TextBlock Text="Appearance" Style="{StaticResource SubtitleTextBlockStyle}" />
+
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="Theme" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <TextBlock Text="Switch between light and dark mode."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                        <RadioButtons x:Name="ThemeChoice" Grid.Column="1" MaxColumns="2"
+                                      SelectionChanged="ThemeChoice_SelectionChanged">
+                            <x:String>Light</x:String>
+                            <x:String>Dark</x:String>
+                        </RadioButtons>
+                    </Grid>
+
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="Message text size" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <TextBlock Text="Adjust how large chat messages appear."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                        <RadioButtons x:Name="FontChoice" Grid.Column="1" MaxColumns="3"
+                                      SelectionChanged="FontChoice_SelectionChanged">
+                            <x:String>Small</x:String>
+                            <x:String>Medium</x:String>
+                            <x:String>Large</x:String>
+                        </RadioButtons>
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

@@ -11,47 +11,70 @@ on:
       - master
   workflow_dispatch:
 
-jobs:
-  frontend:
-    name: Frontend
-    runs-on: ubuntu-latest
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
-    defaults:
-      run:
-        working-directory: frontend
+jobs:
+  winui:
+    name: WinUI 3 / .NET
+    runs-on: windows-latest
+
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+      SOLUTION_PATH: ConnectOnion.WinUIClient/ConnectOnion.WinUIClient.sln
+      CONFIGURATION: Release
+      PLATFORM: x64
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Set up Node.js for protocol conformance
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          node-version: 22
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
 
-      - name: Lint
-        run: npm run lint
-
-      - name: Test
-        run: npm run test
-
-      - name: Build
-        run: npm run build
-
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
-
-      - name: Start preview server
+      - name: Show toolchain
+        shell: pwsh
         run: |
-          npm run preview &
-          npx wait-on http://127.0.0.1:4173
+          dotnet --info
+          node --version
 
-      - name: End-to-end smoke test
-        run: npm run e2e
-        env:
-          PLAYWRIGHT_BASE_URL: http://127.0.0.1:4173
+      - name: Restore
+        shell: pwsh
+        run: dotnet restore $env:SOLUTION_PATH -p:Platform=$env:PLATFORM
+
+      - name: Build WinUI solution
+        shell: pwsh
+        run: >
+          dotnet build $env:SOLUTION_PATH
+          --configuration $env:CONFIGURATION
+          --no-restore
+          -p:Platform=$env:PLATFORM
+          -p:AppxPackageSigningEnabled=false
+          -p:GenerateAppxPackageOnBuild=false
+          -p:PublishReadyToRun=false
+          -p:PublishTrimmed=false
+
+      - name: Run protocol conformance gate
+        shell: pwsh
+        run: >
+          dotnet run
+          --project ConnectOnion.Protocol.Conformance/ConnectOnion.Protocol.Conformance.csproj
+          --configuration $env:CONFIGURATION
+          --no-build

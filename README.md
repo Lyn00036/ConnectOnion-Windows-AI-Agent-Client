@@ -1,219 +1,248 @@
 # ConnectOnion Desktop
 
-ConnectOnion Desktop is a Windows desktop client for chatting with external
-ConnectOnion agents.
+ConnectOnion Desktop is a native Windows desktop client for chatting with
+ConnectOnion-compatible agents. The current client is built with WinUI 3, C#,
+.NET 10, SQLite, and a C# ConnectOnion protocol library.
 
-Current desktop-client baseline:
-
-- Chat supports ConnectOnion Relay connections and Direct URL connections
-- Saved agents, session metadata, preferences, and chat conversation blobs
-  persist through renderer `localStorage`
-- Shared remote agents can be added by filling in their deployed URL/address
-- The Electron shell exposes window controls through a narrow preload IPC bridge
+The old `frontend/` Electron + React implementation is kept in the repository as
+legacy reference code. New desktop work should happen in the WinUI projects.
 
 ## Current Architecture
 
 ```text
 User
-  -> Electron BrowserWindow
-  -> React frontend
-      -> ConnectOnion TypeScript SDK
-          -> Relay or Direct URL
-          -> Remote ConnectOnion agent
-          -> Agent LLM/tools
-      -> localStorage persistence
-      -> Electron preload IPC bridge
-          -> Electron window controls
+  -> WinUI 3 window
+  -> XAML pages: Chat, Agents, Sessions, Settings
+  -> ViewModels: MVVM state and commands
+  -> Services:
+      -> SQLite repositories for local app state
+      -> ConnectionTester for /health and relay checks
+      -> IdentityStore for the local Ed25519 identity
+      -> ConnectOnion.Protocol for WebSocket protocol handling
+          -> ClientWebSocket / HttpClient
+          -> canonical JSON signing
+          -> relay resolution or Direct URL connection
 ```
 
-The renderer stores agents, sessions, preferences, and conversation envelopes in
-`localStorage`. React code should not import Node or Electron packages directly.
-Electron IPC is currently limited to desktop window controls.
-
-Current `localStorage` keys:
+Local app data is stored in SQLite at:
 
 ```text
-connectonion.agents
-connectonion.selectedAgentId
-connectonion.sessions
-connectonion.activeSessionId
-connectonion.theme
-connectonion.sidebarVisible
-connectonion.messageFontSize
-connectonion.shortcuts
-co:agent:{address}:session:{sessionId}
+%AppData%\ConnectOnion\connectonion.db
+```
+
+The database is created automatically during development startup. There is no
+legacy JSON migration path at the moment because the app is still in active
+development and local data does not need to be preserved.
+
+Current SQLite tables:
+
+```text
+app_meta
+agents
+sessions
+preferences
+conversations
+identity_keys
 ```
 
 ## Project Structure
 
 ```text
 connectonion-desktop/
-  agent/
-    email-agent/        Email ConnectOnion agent source
-    browser-agent/      Browser automation agent source
-    simple-agent/       Minimal connectable assistant agent source
-    memory-agent/       Assistant with persistent memory source
-  frontend/
-    electron/           Electron desktop shell
-    src/
-      app/              React providers and route table
-      layouts/          Desktop shell layout
-      pages/            Top-level app views
-      features/         Agent, chat, session, and settings modules
-      components/ui/    Shared shadcn UI primitives
-      shared/           Shared components, hooks, and utilities
-      index.css         Tailwind theme and global styles
-  .github/workflows/ci.yml
+  ConnectOnion.WinUIClient/
+    ConnectOnion.WinUIClient.sln      Visual Studio solution
+    ConnectOnion.WinUIClient.csproj   WinUI 3 desktop app, net10.0-windows
+    App.xaml[.cs]                     App startup
+    MainWindow.xaml[.cs]              Shell window and navigation
+    Views/                            Chat, Agents, Sessions, Settings pages
+    ViewModels/                       MVVM state and commands
+    Models/                           UI and persistence models
+    Services/
+      AppDatabase.cs                  SQLite initialization and schema
+      AgentRepository.cs              Agent persistence
+      SessionRepository.cs            Session persistence
+      ConversationRepository.cs       Conversation persistence
+      PreferencesRepository.cs        Preference persistence
+      IdentityStore.cs                Local Ed25519 identity persistence
+      ConnectionTester.cs             Direct URL and relay connection tests
+      AppJsonContext.cs               System.Text.Json source-generation context
+    Properties/PublishProfiles/       win-x86, win-x64, win-arm64 profiles
+    Package.appxmanifest              MSIX package manifest
+
+  ConnectOnion.Protocol/
+    AgentConnectionService.cs         WebSocket state machine
+    AgentIdentity.cs                  Ed25519 identity and signing
+    CanonicalJson.cs                  Canonical JSON serializer
+    EndpointResolver.cs               Relay lookup and endpoint probing
+    WireMessage.cs                    Protocol message definitions
+    InteractiveModels.cs              ask_user, approval, plan review models
+    Hex.cs                            Lowercase hex helpers
+
+  ConnectOnion.Protocol.Conformance/
+    Program.cs                        C# vs JS signing conformance runner
+    ref-sign.js                       Reference JavaScript signer
+
+  ConnectOnion.Protocol.LiveTest/
+    Program.cs                        Optional live WebSocket integration test
+
+  agent/                              Python agent implementations
+  frontend/                           Legacy Electron + React client
+  .github/workflows/ci.yml            Windows/.NET CI workflow
+  global.json                         SDK selection for local builds
 ```
 
 ## Requirements
 
-- Node.js 22+
-- npm
+- Windows 10 version 1809, build 17763, or later
+- .NET 10 SDK
+- Windows App SDK runtime matching the project package line
+- Visual Studio 2022 is recommended for WinUI debugging and packaging
+- Node.js 22 is only needed for the protocol conformance test runner
 
-## Before Each Development Session
+The repository pins the SDK family through `global.json`:
 
-Start from a clean working tree, then update the branch and install the current
-frontend dependencies before making changes:
+```json
+{
+  "sdk": {
+    "version": "10.0.100",
+    "rollForward": "latestFeature"
+  }
+}
+```
+
+This means any installed .NET 10 feature-band SDK newer than `10.0.100` can be
+used automatically.
+
+## Visual Studio Workflow
+
+Open:
+
+```text
+ConnectOnion.WinUIClient\ConnectOnion.WinUIClient.sln
+```
+
+Recommended settings:
+
+- Startup project: `ConnectOnion.WinUIClient`
+- Configuration: `Debug`
+- Platform: `x64`
+- Configuration Manager: `Build` and `Deploy` enabled for the WinUI project
+
+Use Visual Studio F5 for the normal packaged WinUI debug loop. This is the most
+reliable path for XAML debugging, package deployment, and Windows App SDK
+activation.
+
+If Visual Studio says the project must be deployed before debugging, check
+Configuration Manager for the active platform you are actually running. `Deploy`
+must be checked for `ConnectOnion.WinUIClient` under that platform.
+
+## Command Line Workflow
+
+Restore and build the solution:
 
 ```powershell
-git status
-git pull
-cd .\frontend
-npm install
+dotnet restore ConnectOnion.WinUIClient\ConnectOnion.WinUIClient.sln -p:Platform=x64
+
+dotnet build ConnectOnion.WinUIClient\ConnectOnion.WinUIClient.sln `
+  --configuration Debug `
+  --no-restore `
+  -p:Platform=x64
 ```
 
-If `git status` shows unfinished work, commit or stash it before `git pull`.
-Run `npm install` again whenever `frontend/package.json` or
-`frontend/package-lock.json` changes. If PowerShell blocks `npm.ps1`, use
-`npm.cmd` instead of `npm`.
-
-## Read The ConnectOnion Docs First
-
-Before changing agent connection, hosting, streaming, deployment, credentials,
-or persistence behavior, read the official ConnectOnion repositories and docs in
-the sibling checkouts:
-
-Official repositories:
-
-```text
-https://github.com/openonion/connectonion
-https://github.com/openonion/connectonion-ts
-```
-
-Local sibling checkouts:
-
-```text
-../connectonion/
-../connectonion-ts/
-```
-
-Use this checklist before implementation:
-
-```text
-1. Read the Python framework docs for agent hosting and deployment.
-2. Read the TypeScript SDK docs for connect(), React hooks, UI events, and session behavior.
-3. Confirm the exact SDK API from the local source before importing or calling it.
-4. Confirm whether the desktop client should connect by address, relay URL, or direct URL.
-5. Confirm which events the agent/SDK can emit before designing chat UI states.
-6. Treat renderer localStorage as the current desktop persistence layer.
-7. Keep secrets out of renderer state and localStorage.
-```
-
-High-priority TypeScript SDK docs:
-
-```text
-../connectonion-ts/docs/getting-started.md
-../connectonion-ts/docs/connect.md
-../connectonion-ts/docs/react.md
-../connectonion-ts/docs/api.md
-../connectonion-ts/docs/tools.md
-../connectonion-ts/docs/examples.md
-../connectonion-ts/docs/troubleshooting.md
-```
-
-Suggested prompt for future development work:
-
-```text
-Before implementing this change, inspect the local connectonion and connectonion-ts repositories.
-Use their docs and source as the source of truth.
-Do not invent ConnectOnion APIs.
-Preserve the desktop architecture: React renderer -> ConnectOnion TS SDK -> remote agent, with renderer localStorage for current persistence.
-Call out any mismatch between the docs, installed package version, and this desktop client.
-```
-
-## Start The Desktop Client
-
-Electron desktop shell:
+Run the app from the command line in unpackaged mode:
 
 ```powershell
-cd .\frontend
-npm run desktop
+dotnet run `
+  --project ConnectOnion.WinUIClient\ConnectOnion.WinUIClient.csproj `
+  -p:Platform=x64 `
+  -p:RunUnpackaged=true
 ```
 
-Browser-only Vite development:
+For command-line unpackaged runs, make sure the Windows App SDK runtime is
+installed. If the app exits immediately or shows `REGDB_E_CLASSNOTREG`, the
+usual cause is a missing or mismatched Windows App SDK runtime for the current
+architecture.
+
+Build a Release validation shape similar to CI:
 
 ```powershell
-cd .\frontend
-npm run dev
+dotnet build ConnectOnion.WinUIClient\ConnectOnion.WinUIClient.sln `
+  --configuration Release `
+  --no-restore `
+  -p:Platform=x64 `
+  -p:AppxPackageSigningEnabled=false `
+  -p:GenerateAppxPackageOnBuild=false `
+  -p:PublishReadyToRun=false `
+  -p:PublishTrimmed=false
 ```
 
-Open the browser version at:
+## Tests And Validation
+
+Run the protocol conformance gate:
+
+```powershell
+dotnet run `
+  --project ConnectOnion.Protocol.Conformance\ConnectOnion.Protocol.Conformance.csproj `
+  --configuration Release
+```
+
+This verifies that the C# protocol implementation and the JavaScript reference
+signer produce matching canonical JSON Ed25519 signatures.
+
+Run the optional live protocol test:
+
+```powershell
+dotnet run `
+  --project ConnectOnion.Protocol.LiveTest\ConnectOnion.Protocol.LiveTest.csproj
+```
+
+The live test requires a reachable ConnectOnion-compatible agent. It is not part
+of the default CI gate.
+
+Check NuGet package vulnerability status:
+
+```powershell
+dotnet list ConnectOnion.WinUIClient\ConnectOnion.WinUIClient.csproj package `
+  --vulnerable `
+  --include-transitive
+```
+
+## CI
+
+The GitHub Actions workflow is `.github/workflows/ci.yml`.
+
+Current CI behavior:
+
+- Runs on `windows-latest`
+- Installs .NET `10.0.x`
+- Installs Node.js 22 for the JavaScript conformance signer
+- Restores NuGet packages
+- Builds `ConnectOnion.WinUIClient\ConnectOnion.WinUIClient.sln`
+- Uses `Platform=x64`
+- Disables package signing and app package generation for CI builds
+- Runs `ConnectOnion.Protocol.Conformance`
+
+The CI workflow intentionally does not build the old `frontend/` app.
+
+## Connect To An Agent
+
+Add agents from the WinUI sidebar or Agents page.
+
+Connection fields:
 
 ```text
-http://127.0.0.1:3000
+Agent name     Local display name
+Agent address  0x... address for relay lookup
+Direct URL     Optional deployed host URL
+Invite code    Optional onboarding code when the agent requires one
 ```
 
-Useful frontend scripts:
+Prefer `Direct URL` for day-to-day development when the remote host is known.
+The client probes `{Direct URL}/health` during connection testing and connects
+to `{Direct URL}/ws` for chat. If a Direct URL contains a base path, such as
+`http://host/email`, that base path is preserved.
 
-```text
-npm run dev       Start Vite dev server on 127.0.0.1:3000
-npm run electron  Start Electron shell
-npm run desktop   Start Vite and Electron together
-npm run preview   Serve the production build on 127.0.0.1:4173
-npm run lint      Run ESLint
-npm run test      Run Vitest unit/integration tests
-npm run e2e       Run Playwright end-to-end smoke tests
-npm run build     Type-check and build frontend
-```
-
-## Remote Agents
-
-The shared `email-agent` and `browers-agent` are deployed remotely. Developers
-do not need to start these agents locally. Add them from the desktop app's
-Agents page by filling in the deployed URL and address values below.
-
-| Agent | Direct URL | Address |
-| --- | --- | --- |
-| email-agent | http://124.156.170.117/email | 0x66f0bb49d47cb1859678f1e39c0d40a3b2e2e96921e7de9ca7dae8e0aacaa2ca |
-| browser-agent | http://124.156.170.117/browser | 0xf83dfaec8890059e0bc247e78449000a4d81e808ad1d45042cfcbf28406713cb |
-
-When creating an agent in the desktop app:
-
-- Prefer putting the deployed URL in the Direct URL field.
-- The relay Address can be filled in as a fallback, but relay-address
-  connections may need the remote agent to be restarted or refreshed every
-  24 hours.
-- For day-to-day desktop use, Direct URL is recommended because it bypasses the
-  relay and connects straight to the remote agent host.
-
-## Add An Agent
-
-On the chat page, add an agent from the sidebar:
-
-```text
-Agent name        Display name stored locally
-Agent address     0x... address; optional when Direct URL is provided
-Direct URL        Optional deployed host URL; can be used without an address
-```
-
-When `Direct URL` is set, the desktop client bypasses the relay and connects to
-`{Direct URL}/ws`. Without it, the client connects through the relay by agent
-address. Relay-address connections may require the remote agent to be restarted
-or refreshed every 24 hours, so prefer Direct URL whenever the remote host is
-reachable.
-
-The agent host should expose ConnectOnion-compatible endpoints such as:
+Agent hosts should expose:
 
 ```text
 GET /health
@@ -221,79 +250,55 @@ GET /info
 WS  /ws
 ```
 
-## Run Frontend Checks
+Known deployed development agents:
 
-The frontend test stack uses Vitest with jsdom and Testing Library for storage
-and UI behavior, plus Playwright for browser smoke coverage.
+| Agent | Direct URL | Address |
+| --- | --- | --- |
+| email-agent | `http://124.156.170.117/email` | `0x66f0bb49d47cb1859678f1e39c0d40a3b2e2e96921e7de9ca7dae8e0aacaa2ca` |
+| browser-agent | `http://124.156.170.117/browser` | `0xf83dfaec8890059e0bc247e78449000a4d81e808ad1d45042cfcbf28406713cb` |
 
-Run the normal local checks from `frontend/`:
+## Implemented
 
-```powershell
-cd .\frontend
-npm run lint
-npm run test
-npm run build
-```
-
-Playwright tests do not start a server by themselves. Start either the Vite dev
-server or the production preview server first, then run e2e in another terminal:
-
-```powershell
-cd .\frontend
-npm run dev
-
-# second terminal
-cd .\frontend
-npm run e2e
-```
-
-To match CI more closely, build and preview first:
-
-```powershell
-cd .\frontend
-npm run build
-npm run preview
-
-# second terminal
-cd .\frontend
-$env:PLAYWRIGHT_BASE_URL = "http://127.0.0.1:4173"
-npm run e2e
-```
-
-If Playwright's browser binaries are missing on a fresh machine, install the
-Chromium browser once:
-
-```powershell
-cd .\frontend
-npx playwright install chromium
-```
-
-## What Is Implemented
-
-- Electron desktop shell
-- React, Vite, Tailwind, and shadcn-based desktop UI
-- Relay and Direct URL chat through the ConnectOnion TypeScript SDK
-- Agent add/select/remove
-- Per-agent session creation, selection, deletion, and `/chat/:sessionId` routing
-- localStorage-backed agent, session, settings, and conversation persistence
-- Functional settings for theme, sidebar visibility, message font size, and shortcut overrides
-- Frameless Electron window controls
-- Vitest coverage for storage adapters, feature persistence, and connection tests
-- Playwright smoke coverage for the chat shell and settings navigation
-- Frontend CI lint/test/build/e2e
+- Native WinUI 3 desktop shell
+- Chat, Agents, Sessions, and Settings pages
+- Agent add, edit, delete, select, and connection testing
+- Per-agent sessions and conversation persistence
+- SQLite-backed local storage
+- Local Ed25519 identity persistence
+- Direct URL and relay connection paths
+- WebSocket protocol handling through `ConnectOnion.Protocol`
+- Canonical JSON signing compatible with the JavaScript reference implementation
+- Stream event display for thinking/tool/status events
+- User and agent message layout aligned with the current desktop UX
+- Copy action for chat messages
+- Light/dark theme and basic preferences
+- Protocol conformance test gate
+- Windows/.NET CI workflow
 
 ## Not Implemented Yet
 
-- File attachments and drag-and-drop metadata persistence
-- Secure local credential storage
-- Packaged installer
-- Production release pipeline
+- Production installer/release pipeline
+- Secure OS credential storage
+- File attachments and drag-and-drop
+- System tray behavior
+- App menu commands
+- Live protocol tests in CI
+- Full migration tooling for preserving older local app data
+
+## Notes For Development
+
+- Keep new desktop changes in the WinUI projects.
+- Treat `frontend/` as legacy reference unless a task explicitly asks for it.
+- Use `x64`, `x86`, or `ARM64` for WinUI builds. Avoid relying on `Any CPU` for
+  packaged app debugging.
+- Keep generated runtime files out of source control, including `bin/`, `obj/`,
+  `.vs/`, `.co/`, local SQLite databases, MSIX/appx output, and user-specific
+  publish files.
 
 ## References
 
+- [WinUI 3 native migration notes](./WINUI3_NATIVE_MIGRATION.md)
 - [Requirement-to-solution mapping](./connectonion_requirement_solution_mapping.md)
-- [Email agent source](./agent/email-agent/README.md)
+- [Email agent README](./agent/email-agent/README.md)
 - [ConnectOnion Python repository](https://github.com/openonion/connectonion)
 - [ConnectOnion TypeScript repository](https://github.com/openonion/connectonion-ts)
-- [ConnectOnion Python docs](../connectonion/docs/README.md)
-- [ConnectOnion TypeScript docs](../connectonion-ts/docs/getting-started.md)

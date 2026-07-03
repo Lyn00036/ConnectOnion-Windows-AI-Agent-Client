@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="ConnectOnion.WinUIClient.Views.AgentsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:models="using:ConnectOnion.WinUIClient.Models"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid Margin="24" ColumnSpacing="24">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="280" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- Left: agent list -->
+        <Grid Grid.Column="0" RowSpacing="12">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0" Text="Agents" Style="{StaticResource TitleTextBlockStyle}" />
+
+            <ListView Grid.Row="1"
+                      x:Name="AgentList"
+                      ItemsSource="{x:Bind Vm.Agents, Mode=OneWay}"
+                      SelectedItem="{x:Bind Vm.Selected, Mode=TwoWay}"
+                      Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                      BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                      BorderThickness="1"
+                      CornerRadius="8">
+                <ListView.ItemTemplate>
+                    <DataTemplate x:DataType="models:AgentConfig">
+                        <StackPanel Padding="4">
+                            <TextBlock Text="{x:Bind Name, Mode=OneWay}" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <TextBlock Text="{x:Bind Address, Mode=OneWay}"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+
+            <Button Grid.Row="2" Content="New agent" HorizontalAlignment="Stretch" Click="NewAgent_Click" />
+        </Grid>
+
+        <!-- Right: editor -->
+        <Border Grid.Column="1" Padding="24" CornerRadius="8"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+            <StackPanel x:Name="Editor" Spacing="16"
+                        Visibility="{x:Bind Vm.HasSelection, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="Edit agent" Style="{StaticResource SubtitleTextBlockStyle}" />
+
+                <TextBox Header="Name" Text="{x:Bind Vm.Selected.Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                <TextBox Header="Address" PlaceholderText="0x… relay address"
+                         Text="{x:Bind Vm.Selected.Address, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                <TextBox Header="Direct URL (optional)" PlaceholderText="http://localhost:8000"
+                         Text="{x:Bind Vm.Selected.DirectUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <Button Content="Save" Style="{StaticResource AccentButtonStyle}" Click="Save_Click" />
+                    <Button Content="Test connection" Click="Test_Click" />
+                    <Button Content="Delete" Click="Delete_Click" />
+                    <ProgressRing x:Name="TestRing" IsActive="False" Width="20" Height="20" VerticalAlignment="Center" />
+                </StackPanel>
+
+                <InfoBar x:Name="TestResult" IsOpen="False" IsClosable="True" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</Page>
