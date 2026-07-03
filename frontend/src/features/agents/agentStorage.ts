@@ -23,6 +23,9 @@ function loadAgentsFromLocalStorage(): AgentConfig[] {
       .map((agent) => {
         if (agent.address) return agent
 
+        // Older saved records used `url` instead of `address`/`directUrl`.
+        // Normalize them on read so the rest of the app only handles the new
+        // AgentConfig shape.
         return {
           id: agent.id,
           name: agent.name,
@@ -38,6 +41,7 @@ function loadAgentsFromLocalStorage(): AgentConfig[] {
 
 function loadSelectedIdFromLocalStorage(agents: AgentConfig[]): string | null {
   const stored = localStorage.getItem(SELECTED_AGENT_STORAGE_KEY)
+  // Ignore stale pointers left behind after an agent was deleted.
   return agents.some((agent) => agent.id === stored) ? stored! : null
 }
 

@@ -1,7 +1,7 @@
 /** Composer component for editing and submitting a chat message. */
 
 import type { SubmitEvent } from 'react'
-import { Paperclip, Send } from 'lucide-react'
+import { ArrowUp, Paperclip } from 'lucide-react'
 
 import { Textarea } from '@/components/ui/textarea'
 import { IconButton } from '@/shared/components/IconButton'
@@ -47,7 +47,7 @@ export function MessageInput({
         size="icon"
         type="submit"
       >
-        <Send aria-hidden="true" className="size-3.5" />
+        <ArrowUp aria-hidden="true" className="size-4 stroke-[2.6]" />
       </IconButton>
     </form>
   )

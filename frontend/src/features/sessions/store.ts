@@ -50,6 +50,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   selectedSessionId: null,
   hydrated: false,
   hydrate: async () => {
+    // React StrictMode may mount effects twice in development; only read the
+    // persisted session index once per renderer lifetime.
     if (hydrateStarted) return
     hydrateStarted = true
     try {
@@ -66,6 +68,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     )
     if (selectedSession) return selectedSession.id
 
+    // When switching agents, resume that agent's latest conversation instead
+    // of creating a fresh one on every click.
     const recentSession = sessions
       .filter((session) => session.agentId === agentId)
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0]
@@ -101,6 +105,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     const sessions = get().sessions.map((session) => {
       if (session.id !== sessionId) return session
 
+      // Replace the generic title with the first prompt once, then preserve any
+      // explicit title the user may have created later.
       const canUsePromptAsTitle = /^Conversation \d+$/.test(session.title)
       const title =
         canUsePromptAsTitle && prompt?.trim()
@@ -129,6 +135,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       get().sessions.filter((session) => session.agentId === agentId).map((session) => session.id),
     )
     const sessions = get().sessions.filter((session) => session.agentId !== agentId)
+    // If the active session belonged to the deleted agent, clear the pointer so
+    // routing cannot reopen a conversation whose index entry is gone.
     const selectedSessionId =
       get().selectedSessionId && removedIds.has(get().selectedSessionId!)
         ? null

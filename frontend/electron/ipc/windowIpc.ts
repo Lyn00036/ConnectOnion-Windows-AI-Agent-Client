@@ -11,6 +11,8 @@ function getDesktopWindowState(window: BrowserWindow): DesktopWindowState {
 }
 
 function getSenderWindow(event: IpcMainInvokeEvent, fallbackWindow: BrowserWindow) {
+  // Resolve the real window for the IPC sender so this module still works if
+  // another desktop window is added later.
   return ElectronBrowserWindow.fromWebContents(event.sender) ?? fallbackWindow
 }
 
@@ -31,6 +33,8 @@ export function registerWindowIpc(window: BrowserWindow) {
 
   ipcMain.handle(windowChannels.toggleMaximize, (event) => {
     const senderWindow = getSenderWindow(event, window)
+    // Return the fresh state so the renderer can update its maximize icon
+    // immediately, before the async maximize/unmaximize event arrives.
     if (senderWindow.isMaximized()) {
       senderWindow.unmaximize()
     } else {

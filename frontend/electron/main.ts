@@ -20,6 +20,8 @@ function createWindow() {
     minHeight: 640,
     minWidth: 960,
     webPreferences: {
+      // Keep Node APIs out of the renderer; preload exposes the narrow desktop
+      // window API used by the custom title bar.
       contextIsolation: true,
       nodeIntegration: false,
       preload: join(__dirname, 'preload.ts'),
@@ -29,6 +31,8 @@ function createWindow() {
 
   registerWindowIpc(win)
   win.setMenuBarVisibility(false)
+  // In development the Electron process is launched after the Vite server by
+  // the `desktop` script.
   win.loadURL('http://localhost:3000')
 }
 

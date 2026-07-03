@@ -22,4 +22,6 @@ const desktopWindow: DesktopWindowApi = {
   toggleMaximize: () => ipcRenderer.invoke(windowChannels.toggleMaximize),
 }
 
+// Expose only the window controls needed by the frameless title bar instead of
+// giving the renderer direct access to Electron IPC.
 contextBridge.exposeInMainWorld('desktopWindow', desktopWindow)

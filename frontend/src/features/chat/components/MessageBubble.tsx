@@ -52,6 +52,8 @@ export function MessageBubble({
   onSubmitOnboard,
   selectedAgentName,
 }: MessageBubbleProps) {
+  // ChatItem is a discriminated union from the SDK. Keep rendering decisions in
+  // one switch so new SDK message types are easy to spot and add.
   switch (message.type) {
     case 'user':
     case 'agent':
@@ -187,7 +189,7 @@ function ConversationMessage({
   selectedAgentName: string
 }) {
   const isUser = message.type === 'user'
-  const isLong = !isUser && message.content.length > LONG_MESSAGE_THRESHOLD
+  const isLong = message.content.length > LONG_MESSAGE_THRESHOLD
   const [expanded, setExpanded] = useState(true)
   const [copied, setCopied] = useState(false)
 
@@ -224,35 +226,34 @@ function ConversationMessage({
       )}
 
       <div className="relative">
+        {/* Long conversational messages start expanded but can be collapsed to keep the transcript scannable. */}
         <div className={`${messageTextClass} ${isLong && !expanded ? 'max-h-44 overflow-hidden' : ''}`}>
           <ReactMarkdown>{message.content}</ReactMarkdown>
         </div>
         {isLong && !expanded && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-background to-transparent" />
+          <div className={`pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t ${isUser ? 'from-muted' : 'from-background'} to-transparent`} />
         )}
       </div>
 
-      {!isUser && (
-        <div className="mt-1.5 flex items-center gap-3 text-[11px] font-medium text-muted-foreground">
+      <div className={`mt-1.5 flex items-center gap-3 text-[11px] font-medium text-muted-foreground ${isUser ? 'justify-end' : ''}`}>
+        <button
+          className="inline-flex items-center gap-1 hover:text-foreground"
+          onClick={handleCopy}
+          type="button"
+        >
+          {copied ? <Check aria-hidden="true" className="size-3" /> : <Copy aria-hidden="true" className="size-3" />}
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+        {isLong && (
           <button
-            className="inline-flex items-center gap-1 hover:text-foreground"
-            onClick={handleCopy}
+            className="inline-flex items-center hover:text-foreground"
+            onClick={() => setExpanded((value) => !value)}
             type="button"
           >
-            {copied ? <Check aria-hidden="true" className="size-3" /> : <Copy aria-hidden="true" className="size-3" />}
-            {copied ? 'Copied' : 'Copy'}
+            {expanded ? 'Collapse' : 'Expand'}
           </button>
-          {isLong && (
-            <button
-              className="inline-flex items-center hover:text-foreground"
-              onClick={() => setExpanded((value) => !value)}
-              type="button"
-            >
-              {expanded ? 'Collapse' : 'Expand'}
-            </button>
-          )}
-        </div>
-      )}
+        )}
+      </div>
 
       {'images' in message && message.images?.length ? (
         <div className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-2">
@@ -316,6 +317,8 @@ function AskUserCard({
   const isAnswered = Boolean(item.answered)
 
   function toggleOption(option: string) {
+    // Single-select options mirror the free-text answer field; multi-select
+    // keeps a separate list until submit joins it into the SDK response shape.
     if (!item.multi_select) {
       setAnswer(option)
       return
@@ -329,6 +332,8 @@ function AskUserCard({
 
   function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault()
+    // Dynamic field prompts are serialized as JSON so agents receive the field
+    // names as well as the user-entered values.
     const response = item.fields?.length
       ? JSON.stringify(fieldValues)
       : item.multi_select
@@ -423,6 +428,7 @@ function ApprovalCard({
         <small className={helpClass}>{item.batch_remaining.length} more tool call(s) in this batch</small>
       ) : null}
       <div className={actionsClass}>
+        {/* Approval scopes map directly to SDK control messages. */}
         <Button
           className={actionButtonClass}
           onClick={() => onSendMessage?.({ type: 'APPROVAL_RESPONSE', approved: true, scope: 'once' })}

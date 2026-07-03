@@ -35,6 +35,8 @@ export type DirectAgentForHumanReturn = UseAgentForHumanReturn & {
 
 const OMITTED_DATA_URL = '[image data omitted]'
 
+// Chat history can contain screenshots or generated image payloads. Persisting
+// raw data URLs quickly fills localStorage, so keep lightweight references only.
 function sanitizeForPersistence(value: unknown): unknown {
   if (typeof value === 'string') {
     return value.replace(
@@ -95,6 +97,8 @@ function restoreAgent(
   const storedSession = persisted?.session
   const storedMessages = persisted?.messages ?? []
 
+  // The SDK owns these fields at runtime, but restoring a desktop conversation
+  // needs to seed them before reconnecting to an existing session.
   agent._currentSession = storedSession
     ? { ...storedSession, session_id: sessionId }
     : { session_id: sessionId, messages: storedMessages }
@@ -129,6 +133,8 @@ class DirectAgentClient {
     this.agent.onMessage = listener
 
     return () => {
+      // Reset on unmount so a stale SDK instance cannot keep streaming into a
+      // route that no longer owns the session.
       this.agent.onMessage = null
       this.agent.reset()
       this.listener = () => undefined
@@ -211,6 +217,8 @@ export function useDirectAgentForHuman(
   const flush = useCallback(() => {
     const nextSnapshot = client.snapshot()
     setSnapshot(nextSnapshot)
+    // Persist both the SDK session and the rendered UI list. The SDK state is
+    // used for reconnect; the UI list avoids a blank chat while reconnecting.
     const envelope = JSON.stringify({
       state: sanitizeForPersistence({
         messages: nextSnapshot.session?.messages ?? [],
@@ -242,6 +250,8 @@ export function useDirectAgentForHuman(
         persisted?.session || persisted?.messages?.length || persisted?.ui?.length,
       )
       if (hasStoredConversation) {
+        // Reconnect only after local restore so the screen shows the last known
+        // conversation immediately, then resumes any server-side session state.
         client.reconnect(sessionId)
       }
     })()

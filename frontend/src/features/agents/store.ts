@@ -36,6 +36,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   error: null,
   hydrated: false,
   hydrate: async () => {
+    // The store is shared across routes; hydration should happen once even when
+    // multiple layouts/pages ask for it during app startup.
     if (hydrateStarted) return
     hydrateStarted = true
     try {
@@ -50,6 +52,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     const normalizedDirectUrl = trimmedDirectUrl
       ? normalizeUrl(trimmedDirectUrl)
       : undefined
+    // Direct-only agents still need an address-like key for connection and
+    // conversation storage, so fall back to the normalized Direct URL.
     const resolvedAddress = address.trim() || normalizedDirectUrl
 
     if (!name.trim() || !resolvedAddress) {
@@ -65,6 +69,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     }
     const nextAgents = [...get().agents, agent]
 
+    // Update UI immediately, then surface a persistence error if localStorage
+    // fails. This keeps the in-memory session usable.
     set({ agents: nextAgents, selectedAgentId: agent.id, error: null })
     void persistCreateAgent(agent, nextAgents).catch(() =>
       set({ error: 'Failed to save the agent.' }),
@@ -76,6 +82,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     const normalizedDirectUrl = trimmedDirectUrl
       ? normalizeUrl(trimmedDirectUrl)
       : undefined
+    // Keep the same fallback rule as addAgent so editing cannot create an
+    // agent without a usable connection key.
     const resolvedAddress = address.trim() || normalizedDirectUrl
 
     if (!name.trim() || !resolvedAddress) {
@@ -105,6 +113,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   removeAgent: (agentId) => {
     const currentAgents = get().agents
     const nextAgents = currentAgents.filter((agent) => agent.id !== agentId)
+    // Move selection to the first remaining agent to keep the sidebar and chat
+    // route from pointing at a deleted item.
     const selectedAgentId =
       get().selectedAgentId === agentId
         ? nextAgents[0]?.id ?? null

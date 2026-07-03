@@ -190,8 +190,12 @@ Agents page by filling in the deployed URL and address values below.
 
 When creating an agent in the desktop app:
 
-- Put the deployed URL in the Direct URL field.
-- Put the deployed address in the Address field.
+- Prefer putting the deployed URL in the Direct URL field.
+- The relay Address can be filled in as a fallback, but relay-address
+  connections may need the remote agent to be restarted or refreshed every
+  24 hours.
+- For day-to-day desktop use, Direct URL is recommended because it bypasses the
+  relay and connects straight to the remote agent host.
 
 ## Add An Agent
 
@@ -205,7 +209,9 @@ Direct URL        Optional deployed host URL; can be used without an address
 
 When `Direct URL` is set, the desktop client bypasses the relay and connects to
 `{Direct URL}/ws`. Without it, the client connects through the relay by agent
-address.
+address. Relay-address connections may require the remote agent to be restarted
+or refreshed every 24 hours, so prefer Direct URL whenever the remote host is
+reachable.
 
 The agent host should expose ConnectOnion-compatible endpoints such as:
 

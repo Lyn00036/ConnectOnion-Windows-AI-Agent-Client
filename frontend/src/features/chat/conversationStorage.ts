@@ -5,6 +5,8 @@
  */
 
 export function getConversationStorageKey(address: string, sessionId: string) {
+  // Include both agent and session identity so conversations for different
+  // agents can reuse the same SDK session id without colliding.
   return `co:agent:${address}:session:${sessionId}`
 }
 

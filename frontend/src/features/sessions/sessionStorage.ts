@@ -13,6 +13,8 @@ function loadSessionsFromLocalStorage(): SessionSummary[] {
     if (!stored) return []
 
     const sessions = JSON.parse(stored) as SessionSummary[]
+    // Treat localStorage as untrusted input; partial/corrupt entries are
+    // dropped so callers never need to guard every SessionSummary field.
     return Array.isArray(sessions)
       ? sessions.filter((session) => session.id && session.agentId && session.title)
       : []
@@ -23,6 +25,7 @@ function loadSessionsFromLocalStorage(): SessionSummary[] {
 
 function loadSelectedIdFromLocalStorage(sessions: SessionSummary[]): string | null {
   const stored = localStorage.getItem(ACTIVE_SESSION_KEY)
+  // Ignore stale pointers left behind after a session was deleted.
   return sessions.some((session) => session.id === stored) ? stored! : null
 }
 

@@ -25,6 +25,8 @@ const DEFAULT_TIMEOUT_MS = 6000
 const ADDRESS_PATTERN = /^[a-zA-Z0-9]+$/
 
 function buildHealthUrl(directUrl: string): string {
+  // Preserve the configured origin/base path, then append the direct agent
+  // health route without carrying user-entered query strings or fragments.
   const url = new URL(directUrl)
   url.pathname = `${url.pathname.replace(/\/+$/, '')}/health`
   url.search = ''
@@ -62,6 +64,8 @@ function extractAgentName(value: unknown): string | null {
   }
 
   const record = value as Record<string, unknown>
+  // Different SDK/server versions have exposed the display name under slightly
+  // different shapes, so read the known spellings and nested `agent` object.
   return (
     readStringField(record, ['name', 'agentName', 'agent_name']) ??
     extractAgentName(record.agent)
@@ -86,6 +90,8 @@ export async function testAgentConnection(
   const directUrl = target.directUrl?.trim()
 
   if (directUrl) {
+    // A Direct URL is the most specific target, so prefer it over a relay
+    // address when both fields are present.
     let healthUrl: string
     try {
       healthUrl = buildHealthUrl(directUrl)
@@ -113,6 +119,7 @@ export async function testAgentConnection(
 
   const address = target.address?.trim()
   if (address) {
+    // Relay addresses are account-style identifiers, not arbitrary URLs.
     if (!ADDRESS_PATTERN.test(address)) {
       return {
         ok: false,
