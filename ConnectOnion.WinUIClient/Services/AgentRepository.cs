@@ -42,7 +42,7 @@ public sealed class AgentRepository
         await using (var command = connection.CreateCommand())
         {
             command.CommandText = """
-                SELECT id, name, address, direct_url, invite_code
+                SELECT id, name, address, direct_url, invite_code, info_json, info_updated_at
                 FROM agents
                 ORDER BY sort_order, name COLLATE NOCASE, id;
                 """;
@@ -56,6 +56,8 @@ public sealed class AgentRepository
                     Address = reader.GetString(2),
                     DirectUrl = ReadNullableString(reader, 3),
                     InviteCode = ReadNullableString(reader, 4),
+                    InfoJson = ReadNullableString(reader, 5),
+                    InfoUpdatedAt = ReadNullableString(reader, 6),
                 });
             }
         }
@@ -63,7 +65,7 @@ public sealed class AgentRepository
         state.Agents = state.Agents
             .Where(a => !string.IsNullOrWhiteSpace(a.Name)
                         && a.Id != "local-agent"
-                        && !string.IsNullOrWhiteSpace(a.Address))
+                        && HasConnectionTarget(a))
             .ToList();
 
         if (state.SelectedAgentId is not null &&
@@ -92,7 +94,7 @@ public sealed class AgentRepository
             var agent = state.Agents[index];
             if (string.IsNullOrWhiteSpace(agent.Id) ||
                 string.IsNullOrWhiteSpace(agent.Name) ||
-                string.IsNullOrWhiteSpace(agent.Address) ||
+                !HasConnectionTarget(agent) ||
                 agent.Id == "local-agent")
             {
                 continue;
@@ -101,14 +103,16 @@ public sealed class AgentRepository
             await using var insert = connection.CreateCommand();
             insert.Transaction = transaction;
             insert.CommandText = """
-                INSERT INTO agents (id, name, address, direct_url, invite_code, sort_order)
-                VALUES ($id, $name, $address, $direct_url, $invite_code, $sort_order);
+                INSERT INTO agents (id, name, address, direct_url, invite_code, info_json, info_updated_at, sort_order)
+                VALUES ($id, $name, $address, $direct_url, $invite_code, $info_json, $info_updated_at, $sort_order);
                 """;
             AppDatabase.Add(insert, "$id", agent.Id);
             AppDatabase.Add(insert, "$name", agent.Name);
             AppDatabase.Add(insert, "$address", agent.Address);
             AppDatabase.Add(insert, "$direct_url", agent.DirectUrl);
             AppDatabase.Add(insert, "$invite_code", agent.InviteCode);
+            AppDatabase.Add(insert, "$info_json", agent.InfoJson);
+            AppDatabase.Add(insert, "$info_updated_at", agent.InfoUpdatedAt);
             AppDatabase.Add(insert, "$sort_order", index);
             await insert.ExecuteNonQueryAsync().ConfigureAwait(false);
         }
@@ -129,4 +133,8 @@ public sealed class AgentRepository
 
     private static string? ReadNullableString(SqliteDataReader reader, int ordinal)
         => reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);
+
+    private static bool HasConnectionTarget(AgentConfig agent)
+        => !string.IsNullOrWhiteSpace(agent.Address) ||
+           !string.IsNullOrWhiteSpace(agent.DirectUrl);
 }

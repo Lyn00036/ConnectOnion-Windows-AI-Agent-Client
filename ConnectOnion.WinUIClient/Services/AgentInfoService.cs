@@ -1,0 +1,134 @@
+using System;
+using System.Net.Http;
+using System.Text.Json;
+using System.Threading.Tasks;
+using ConnectOnion.Protocol;
+using ConnectOnion.WinUIClient.Models;
+
+namespace ConnectOnion.WinUIClient.Services;
+
+/// <summary>
+/// Fetches agent /info (from Direct URL or relay) and persists it to the
+/// agent record so the detail page can load cached data without a network call.
+/// </summary>
+public static class AgentInfoService
+{
+    /// <summary>
+    /// Fetches /info from the agent's Direct URL or relay address, then
+    /// persists the result to the agent record. Returns the info JSON string
+    /// (null if the fetch failed).
+    /// </summary>
+    public static async Task<string?> FetchAndPersistAsync(AgentConfig agent)
+    {
+        string? infoJson = null;
+
+        if (!string.IsNullOrWhiteSpace(agent.DirectUrl))
+        {
+            infoJson = await FetchFromDirectUrlAsync(agent.DirectUrl);
+        }
+        else if (!string.IsNullOrWhiteSpace(agent.Address))
+        {
+            infoJson = await FetchFromRelayAsync(agent.Address);
+        }
+
+        if (infoJson is null) return null;
+
+        // Persist to the agent record and save.
+        agent.InfoJson = infoJson;
+        agent.InfoUpdatedAt = DateTime.UtcNow.ToString("o");
+
+        var agentsState = await AppServices.Agents.LoadAsync();
+        var stored = agentsState.Agents.Find(a => a.Id == agent.Id);
+        if (stored is not null)
+        {
+            stored.InfoJson = infoJson;
+            stored.InfoUpdatedAt = agent.InfoUpdatedAt;
+            await AppServices.Agents.SaveAsync(agentsState);
+        }
+
+        return infoJson;
+    }
+
+    /// <summary>
+    /// Checks if the agent's info has changed since last persisted. Fetches
+    /// fresh info and compares with the cached value. Returns (changed, freshJson).
+    /// If the agent can't be reached, returns (false, null).
+    /// </summary>
+    public static async Task<(bool Changed, string? FreshJson)> CheckForChangesAsync(AgentConfig agent)
+    {
+        string? freshJson = null;
+
+        if (!string.IsNullOrWhiteSpace(agent.DirectUrl))
+        {
+            freshJson = await FetchFromDirectUrlAsync(agent.DirectUrl);
+        }
+        else if (!string.IsNullOrWhiteSpace(agent.Address))
+        {
+            freshJson = await FetchFromRelayAsync(agent.Address);
+        }
+
+        if (freshJson is null) return (false, null);
+
+        var changed = agent.InfoJson != freshJson;
+        if (changed)
+        {
+            agent.InfoJson = freshJson;
+            agent.InfoUpdatedAt = DateTime.UtcNow.ToString("o");
+
+            var agentsState = await AppServices.Agents.LoadAsync();
+            var stored = agentsState.Agents.Find(a => a.Id == agent.Id);
+            if (stored is not null)
+            {
+                stored.InfoJson = freshJson;
+                stored.InfoUpdatedAt = agent.InfoUpdatedAt;
+                await AppServices.Agents.SaveAsync(agentsState);
+            }
+        }
+
+        return (changed, freshJson);
+    }
+
+    private static async Task<string?> FetchFromDirectUrlAsync(string directUrl)
+    {
+        try
+        {
+            var infoUrl = directUrl.TrimEnd('/') + "/info";
+            using var cts = new System.Threading.CancellationTokenSource(8000);
+            using var response = await AppServices.Http.GetAsync(infoUrl, cts.Token);
+            if (!response.IsSuccessStatusCode) return null;
+            return await response.Content.ReadAsStringAsync(cts.Token);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static async Task<string?> FetchFromRelayAsync(string address)
+    {
+        try
+        {
+            var info = await EndpointResolver.FetchAgentInfoAsync(
+                AppServices.Http, address, EndpointResolver.DefaultRelay);
+
+            if (!info.Online) return null;
+
+            return JsonSerializer.Serialize(new
+            {
+                name = info.Name,
+                address = info.Address,
+                tools = info.Tools,
+                skills = info.Skills,
+                trust = info.Trust,
+                version = info.Version,
+                model = info.Model,
+                accepted_inputs = info.AcceptedInputs,
+                online = info.Online,
+            });
+        }
+        catch
+        {
+            return null;
+        }
+    }
+}

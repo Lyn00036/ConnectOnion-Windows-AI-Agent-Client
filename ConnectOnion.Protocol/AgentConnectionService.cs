@@ -56,6 +56,8 @@ public sealed class AgentConnectionService : IAsyncDisposable
 
     public string? SessionId { get; private set; }
 
+    public bool IsConnected => _ws is { State: WebSocketState.Open } && _authenticated;
+
     /// <summary>
     /// Invite code submitted automatically if the agent's trust gate responds
     /// with ONBOARD_REQUIRED. Null means no onboarding is attempted.
@@ -134,12 +136,19 @@ public sealed class AgentConnectionService : IAsyncDisposable
 
     private static string DirectWsUrl(string directUrl)
     {
-        var isHttps = directUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
-        var host = directUrl
-            .Replace("https://", "", StringComparison.OrdinalIgnoreCase)
-            .Replace("http://", "", StringComparison.OrdinalIgnoreCase);
-        var scheme = isHttps ? "wss" : "ws";
-        return $"{scheme}://{host}/ws";
+        if (!Uri.TryCreate(directUrl, UriKind.Absolute, out var uri))
+        {
+            throw new UriFormatException("Invalid Direct URL.");
+        }
+
+        var builder = new UriBuilder(uri)
+        {
+            Scheme = uri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase) ? "wss" : "ws",
+            Path = uri.AbsolutePath.TrimEnd('/') + "/ws",
+            Query = string.Empty,
+            Fragment = string.Empty,
+        };
+        return builder.Uri.ToString();
     }
 
     /// <summary>
@@ -180,11 +189,15 @@ public sealed class AgentConnectionService : IAsyncDisposable
     {
         if (_ws is { State: WebSocketState.Open } && _authenticated) return;
 
-        await ResolveConnectionAsync(ct).ConfigureAwait(false);
+        using var connectCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        connectCts.CancelAfter(ConnectTimeoutMs);
+        var connectToken = connectCts.Token;
+
+        await ResolveConnectionAsync(connectToken).ConfigureAwait(false);
 
         _loopCts = new CancellationTokenSource();
         _ws = new ClientWebSocket();
-        await _ws.ConnectAsync(new Uri(_wsUrl!), ct).ConfigureAwait(false);
+        await _ws.ConnectAsync(new Uri(_wsUrl!), connectToken).ConfigureAwait(false);
 
         _lastActivityUtc = DateTime.UtcNow;
         _receiveLoop = Task.Run(() => ReceiveLoopAsync(_loopCts.Token));
@@ -217,14 +230,14 @@ public sealed class AgentConnectionService : IAsyncDisposable
             connectMsg["session"] = new Dictionary<string, object?> { ["session_id"] = sessionId };
         }
 
-        await SendJsonAsync(connectMsg, ct).ConfigureAwait(false);
+        await SendJsonAsync(connectMsg, connectToken).ConfigureAwait(false);
 
         // The connect deadline is the only bounded wait; ONBOARD_REQUIRED
         // cancels it (a human/onboarding step now owns the connection).
         _connectTimeoutCts = new CancellationTokenSource(ConnectTimeoutMs);
         await using (_connectTimeoutCts.Token.Register(() =>
                          connectTcs.TrySetException(new TimeoutException("Authentication timed out"))))
-        await using (ct.Register(() => connectTcs.TrySetCanceled()))
+        await using (connectToken.Register(() => connectTcs.TrySetCanceled()))
         {
             var connected = await connectTcs.Task.ConfigureAwait(false);
             _authenticated = true;
@@ -403,7 +416,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
             case "compact":
             case "tool_blocked":
             case "files_received":
-                StreamEvent?.Invoke(new AgentStreamEvent(msg.Type, DescribeEvent(msg)));
+                StreamEvent?.Invoke(new AgentStreamEvent(msg.Type, DescribeEvent(msg), msg.Root.GetRawText()));
                 return;
 
             case "ONBOARD_REQUIRED":
@@ -411,7 +424,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
                 // 30s auth deadline. If we hold an invite code, submit it; the
                 // follow-up CONNECTED then resolves the pending connect.
                 _connectTimeoutCts?.CancelAfter(Timeout.InfiniteTimeSpan);
-                StreamEvent?.Invoke(new AgentStreamEvent(msg.Type, DescribeEvent(msg)));
+                StreamEvent?.Invoke(new AgentStreamEvent(msg.Type, DescribeEvent(msg), msg.Root.GetRawText()));
                 if (!string.IsNullOrEmpty(InviteCode))
                 {
                     await SubmitOnboardAsync(InviteCode, ct).ConfigureAwait(false);
@@ -425,7 +438,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
             case "ONBOARD_SUCCESS":
                 // No client retry: the host finishes the interrupted CONNECT and
                 // sends CONNECTED, which resolves the connect promise.
-                StreamEvent?.Invoke(new AgentStreamEvent(msg.Type, DescribeEvent(msg)));
+                StreamEvent?.Invoke(new AgentStreamEvent(msg.Type, DescribeEvent(msg), msg.Root.GetRawText()));
                 return;
 
             case "ask_user":

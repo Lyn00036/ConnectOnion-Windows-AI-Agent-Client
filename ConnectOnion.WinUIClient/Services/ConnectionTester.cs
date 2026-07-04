@@ -4,10 +4,13 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using ConnectOnion.WinUIClient.Models;
 
 namespace ConnectOnion.WinUIClient.Services;
 
-public readonly record struct ConnectionTestResult(bool Ok, string Detail);
+public readonly record struct ConnectionTestResult(
+    bool Ok, string Detail, string? AgentName = null,
+    bool InfoChanged = false, string? InfoJson = null);
 
 /// <summary>
 /// Reachability check for an agent target. Port of <c>connectionTest.ts</c>.
@@ -26,7 +29,8 @@ public static class ConnectionTester
     private static readonly Regex AddressPattern = new("^[a-zA-Z0-9]+$", RegexOptions.Compiled);
 
     public static async Task<ConnectionTestResult> TestAsync(
-        string? address, string? directUrl, int timeoutMs = DefaultTimeoutMs)
+        string? address, string? directUrl, int timeoutMs = DefaultTimeoutMs,
+        AgentConfig? existingAgent = null)
     {
         directUrl = directUrl?.Trim();
 
@@ -53,7 +57,18 @@ public static class ConnectionTester
 
                 var name = await ReadHealthAgentNameAsync(response).ConfigureAwait(false);
                 var suffix = name is null ? "" : $" - {name}";
-                return new ConnectionTestResult(true, $"Reachable via Direct URL{suffix}.");
+
+                // If we have a stored agent, check whether its /info changed.
+                var infoChanged = false;
+                string? infoJson = null;
+                if (existingAgent is not null)
+                {
+                    (infoChanged, infoJson) = await AgentInfoService.CheckForChangesAsync(existingAgent);
+                }
+
+                return new ConnectionTestResult(
+                    true, $"Reachable via Direct URL{suffix}.", AgentName: name,
+                    InfoChanged: infoChanged, InfoJson: infoJson);
             }
             catch (OperationCanceledException)
             {
@@ -81,7 +96,7 @@ public static class ConnectionTester
                 if (info.Online)
                 {
                     var suffix = string.IsNullOrEmpty(info.Name) ? "" : $" - {info.Name}";
-                    return new ConnectionTestResult(true, $"Online via relay{suffix}.");
+                    return new ConnectionTestResult(true, $"Online via relay{suffix}.", AgentName: info.Name);
                 }
                 return new ConnectionTestResult(false, "Registered on the relay but currently offline.");
             }

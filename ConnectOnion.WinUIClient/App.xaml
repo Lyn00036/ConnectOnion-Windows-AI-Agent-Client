@@ -21,6 +21,8 @@
                     <SolidColorBrush x:Key="ThinkingStatusBackgroundBrush" Color="#FFE7F7EE" />
                     <SolidColorBrush x:Key="ThinkingStatusBorderBrush" Color="#FF9BD7B8" />
                     <SolidColorBrush x:Key="ThinkingStatusDotBrush" Color="#FF078B45" />
+                    <SolidColorBrush x:Key="StatusSuccessTextBrush" Color="#FF107C10" />
+                    <SolidColorBrush x:Key="StatusErrorTextBrush" Color="#FFC42B1C" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
                     <SolidColorBrush x:Key="ShellBackgroundBrush" Color="#FF111113" />
@@ -31,12 +33,16 @@
                     <SolidColorBrush x:Key="ThinkingStatusBackgroundBrush" Color="#FF143426" />
                     <SolidColorBrush x:Key="ThinkingStatusBorderBrush" Color="#FF236F4A" />
                     <SolidColorBrush x:Key="ThinkingStatusDotBrush" Color="#FF39D98A" />
+                    <SolidColorBrush x:Key="StatusSuccessTextBrush" Color="#FF6CCB7F" />
+                    <SolidColorBrush x:Key="StatusErrorTextBrush" Color="#FFFF8A80" />
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
             <common:BoolToVisibilityConverter x:Key="BoolToVis" />
             <common:RoleToAlignmentConverter x:Key="RoleToAlignment" />
             <common:RoleToBrushConverter x:Key="RoleToBrush" />
             <common:StringToVisibilityConverter x:Key="StringToVis" />
+            <common:PresenceToBrushConverter x:Key="PresenceToBrush" />
+            <common:EventStatusToBrushConverter x:Key="EventStatusToBrush" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

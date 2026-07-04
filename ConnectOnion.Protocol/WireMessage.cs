@@ -40,5 +40,10 @@ public sealed class WireMessage
     public JsonElement Root => _root;
 }
 
-/// <summary>A streamed intermediate event surfaced to the UI while the agent works.</summary>
-public sealed record AgentStreamEvent(string Type, string Description);
+/// <summary>
+/// A streamed intermediate event surfaced to the UI while the agent works.
+/// <see cref="RawJson"/> carries the full frame so the client can read the
+/// per-type fields (tool id, status, args, result, timings, …) it needs to merge
+/// running/finished events into a single bubble.
+/// </summary>
+public sealed record AgentStreamEvent(string Type, string Description, string RawJson = "{}");

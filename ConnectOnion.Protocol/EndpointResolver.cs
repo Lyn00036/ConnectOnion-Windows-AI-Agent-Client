@@ -10,8 +10,32 @@ namespace ConnectOnion.Protocol;
 
 public sealed record ResolvedEndpoint(string HttpUrl, string WsUrl);
 
-/// <summary>Relay record for an agent: online status and display name.</summary>
-public sealed record AgentInfo(string Address, bool Online, string? Name);
+/// <summary>A single skill entry from the agent's published profile or /info.</summary>
+public sealed record SkillInfo(string Name, string Description, string? Location = null);
+
+/// <summary>Accepted file input constraints from the agent's /info.</summary>
+public sealed record AgentFileInputs(int MaxFileSizeMb, int MaxFilesPerRequest);
+
+/// <summary>Accepted input types the agent advertises.</summary>
+public sealed record AgentAcceptedInputs(
+    bool? Text = null,
+    bool? Images = null,
+    AgentFileInputs? Files = null);
+
+/// <summary>
+/// Full agent metadata returned by <c>fetchAgentInfo</c>. Port of the TypeScript
+/// <c>AgentInfo</c> interface in <c>types.ts</c>.
+/// </summary>
+public sealed record AgentInfo(
+    string Address,
+    bool Online,
+    string? Name = null,
+    IReadOnlyList<string>? Tools = null,
+    IReadOnlyList<SkillInfo>? Skills = null,
+    string? Trust = null,
+    string? Version = null,
+    string? Model = null,
+    AgentAcceptedInputs? AcceptedInputs = null);
 
 /// <summary>
 /// Relay lookup + direct-endpoint resolution. Port of <c>endpoint.ts</c>
@@ -102,10 +126,9 @@ public static class EndpointResolver
     }
 
     /// <summary>
-    /// Fetches an agent's relay record for a connection test. Port of
-    /// <c>fetchAgentInfo</c>: online iff the relay holds a live announce
-    /// connection (the <c>relay</c> field), with the name from the published
-    /// profile or a direct /info probe.
+    /// Fetches full agent metadata through the relay and optional /info probes.
+    /// Port of <c>fetchAgentInfo</c> in <c>endpoint.ts</c>: relay profile provides
+    /// the base, /info probes on direct endpoints merge richer data on top.
     /// </summary>
     public static async Task<AgentInfo> FetchAgentInfoAsync(
         HttpClient http, string agentAddress, string relayUrl, int timeoutMs = 5000)
@@ -114,55 +137,195 @@ public static class EndpointResolver
 
         var record = await GetJsonAsync(http, $"{httpsRelay}/api/relay/agents/{agentAddress}", timeoutMs)
             .ConfigureAwait(false);
-        if (record is null) return new AgentInfo(agentAddress, false, null);
+        if (record is null) return new AgentInfo(agentAddress, false);
 
-        // last_seen/endpoints persist forever in the DB, so only a non-null
-        // `relay` (a live announce connection) means online.
         var online = record.Value.TryGetProperty("relay", out var relayEl) &&
                      relayEl.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined);
 
-        string? name = null;
-        if (record.Value.TryGetProperty("profile", out var profile) &&
-            profile.ValueKind == JsonValueKind.Object)
+        var fallback = BuildAgentInfo(agentAddress, online, record.Value);
+
+        AgentInfo? profileInfo = null;
+        if (record.Value.TryGetProperty("profile", out var profileEl) &&
+            profileEl.ValueKind == JsonValueKind.Object)
         {
-            name = GetName(profile);
+            profileInfo = ParseInfoSource(profileEl);
         }
 
-        if (record.Value.TryGetProperty("endpoints", out var endpointsEl) &&
-            endpointsEl.ValueKind == JsonValueKind.Array)
+        if (!record.Value.TryGetProperty("endpoints", out var endpointsEl) ||
+            endpointsEl.ValueKind != JsonValueKind.Array)
         {
-            var httpEndpoints = endpointsEl.EnumerateArray()
-                .Select(e => e.GetString())
-                .Where(s => s is not null && s.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-                .Select(s => s!)
-                .OrderBy(Proximity);
+            return fallback;
+        }
 
-            foreach (var httpUrl in httpEndpoints)
+        var httpEndpoints = endpointsEl.EnumerateArray()
+            .Select(e => e.GetString())
+            .Where(s => s is not null && s.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            .Select(s => s!)
+            .OrderBy(Proximity);
+
+        foreach (var httpUrl in httpEndpoints)
+        {
+            var info = await GetJsonAsync(http, $"{httpUrl}/info", 3000).ConfigureAwait(false);
+            if (info is not null &&
+                info.Value.TryGetProperty("address", out var addr) &&
+                addr.GetString() == agentAddress)
             {
-                var info = await GetJsonAsync(http, $"{httpUrl}/info", 3000).ConfigureAwait(false);
-                if (info is not null &&
-                    info.Value.TryGetProperty("address", out var addr) &&
-                    addr.GetString() == agentAddress)
-                {
-                    return new AgentInfo(agentAddress, true, GetName(info.Value) ?? name);
-                }
+                var directInfo = ParseInfoSource(info.Value);
+                return MergeAgentInfo(fallback, profileInfo, directInfo, online: true);
             }
         }
 
-        return new AgentInfo(agentAddress, online, name);
+        return fallback;
     }
 
-    private static string? GetName(JsonElement el)
+    private static AgentInfo ParseInfoSource(JsonElement source)
     {
-        foreach (var key in new[] { "name", "alias" })
+        string? name = null;
+        if (TryGetString(source, "name", out var n) && !string.IsNullOrWhiteSpace(n)) name = n;
+        else if (TryGetString(source, "alias", out var a) && !string.IsNullOrWhiteSpace(a)) name = a;
+
+        return new AgentInfo(
+            Address: "",
+            Online: false,
+            Name: name,
+            Tools: NormalizeTools(source),
+            Skills: NormalizeSkills(source),
+            Trust: TryGetString(source, "trust", out var trust) ? trust : null,
+            Version: TryGetString(source, "version", out var version) ? version : null,
+            Model: TryGetString(source, "model", out var model) ? model : null,
+            AcceptedInputs: ParseAcceptedInputs(source));
+    }
+
+    private static AgentInfo MergeAgentInfo(
+        AgentInfo fallback, AgentInfo? profile, AgentInfo? direct, bool online)
+    {
+        return new AgentInfo(
+            Address: fallback.Address,
+            Online: online,
+            Name: direct?.Name ?? profile?.Name ?? fallback.Name,
+            Tools: direct?.Tools ?? profile?.Tools ?? fallback.Tools,
+            Skills: direct?.Skills ?? profile?.Skills ?? fallback.Skills,
+            Trust: direct?.Trust ?? profile?.Trust ?? fallback.Trust,
+            Version: direct?.Version ?? profile?.Version ?? fallback.Version,
+            Model: direct?.Model ?? profile?.Model ?? fallback.Model,
+            AcceptedInputs: direct?.AcceptedInputs ?? profile?.AcceptedInputs ?? fallback.AcceptedInputs);
+    }
+
+    private static AgentInfo BuildAgentInfo(string address, bool online, JsonElement record)
+    {
+        if (record.TryGetProperty("profile", out var profile) &&
+            profile.ValueKind == JsonValueKind.Object)
         {
-            if (el.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String)
+            var parsed = ParseInfoSource(profile);
+            return parsed with { Address = address, Online = online };
+        }
+        return new AgentInfo(address, online);
+    }
+
+    private static IReadOnlyList<string>? NormalizeTools(JsonElement source)
+    {
+        if (!source.TryGetProperty("tools", out var toolsEl) ||
+            toolsEl.ValueKind != JsonValueKind.Array)
+            return null;
+
+        var names = new List<string>();
+        foreach (var item in toolsEl.EnumerateArray())
+        {
+            if (item.ValueKind == JsonValueKind.String)
             {
-                var s = v.GetString();
-                if (!string.IsNullOrWhiteSpace(s)) return s;
+                var s = item.GetString();
+                if (!string.IsNullOrWhiteSpace(s)) names.Add(s!);
+            }
+            else if (item.ValueKind == JsonValueKind.Object &&
+                     item.TryGetProperty("name", out var nameEl) &&
+                     nameEl.ValueKind == JsonValueKind.String)
+            {
+                var s = nameEl.GetString();
+                if (!string.IsNullOrWhiteSpace(s)) names.Add(s!);
             }
         }
-        return null;
+        return names.Count > 0 ? names : null;
+    }
+
+    private static IReadOnlyList<SkillInfo>? NormalizeSkills(JsonElement source)
+    {
+        if (!source.TryGetProperty("skills", out var skillsEl) ||
+            skillsEl.ValueKind != JsonValueKind.Array)
+            return null;
+
+        var skills = new List<SkillInfo>();
+        foreach (var item in skillsEl.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object) continue;
+            if (!item.TryGetProperty("name", out var nameEl) ||
+                nameEl.ValueKind != JsonValueKind.String)
+                continue;
+            var name = nameEl.GetString();
+            if (string.IsNullOrWhiteSpace(name)) continue;
+
+            var desc = item.TryGetProperty("description", out var descEl) &&
+                       descEl.ValueKind == JsonValueKind.String
+                ? descEl.GetString() ?? ""
+                : "";
+
+            string? location = null;
+            if (item.TryGetProperty("location", out var locEl) &&
+                locEl.ValueKind == JsonValueKind.String)
+            {
+                var loc = locEl.GetString();
+                if (!string.IsNullOrWhiteSpace(loc)) location = loc;
+            }
+
+            skills.Add(new SkillInfo(name!, desc, location));
+        }
+        return skills.Count > 0 ? skills : null;
+    }
+
+    private static AgentAcceptedInputs? ParseAcceptedInputs(JsonElement source)
+    {
+        if (!source.TryGetProperty("accepted_inputs", out var inputsEl) ||
+            inputsEl.ValueKind != JsonValueKind.Object)
+            return null;
+
+        bool? text = null, images = null;
+        AgentFileInputs? files = null;
+
+        if (inputsEl.TryGetProperty("text", out var textEl) &&
+            textEl.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            text = textEl.ValueKind == JsonValueKind.True;
+
+        if (inputsEl.TryGetProperty("images", out var imagesEl) &&
+            imagesEl.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            images = imagesEl.ValueKind == JsonValueKind.True;
+
+        if (inputsEl.TryGetProperty("files", out var filesEl) &&
+            filesEl.ValueKind == JsonValueKind.Object)
+        {
+            var maxSize = 0;
+            var maxCount = 0;
+            if (filesEl.TryGetProperty("max_file_size_mb", out var sizeEl) &&
+                sizeEl.ValueKind == JsonValueKind.Number)
+                maxSize = (int)sizeEl.GetDouble();
+            if (filesEl.TryGetProperty("max_files_per_request", out var countEl) &&
+                countEl.ValueKind == JsonValueKind.Number)
+                maxCount = (int)countEl.GetDouble();
+            if (maxSize > 0 || maxCount > 0)
+                files = new AgentFileInputs(maxSize, maxCount);
+        }
+
+        if (text is null && images is null && files is null) return null;
+        return new AgentAcceptedInputs(text, images, files);
+    }
+
+    private static bool TryGetString(JsonElement el, string key, out string? value)
+    {
+        if (el.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String)
+        {
+            value = v.GetString();
+            return true;
+        }
+        value = null;
+        return false;
     }
 
     private static async Task<JsonElement?> GetJsonAsync(HttpClient http, string url, int timeoutMs)

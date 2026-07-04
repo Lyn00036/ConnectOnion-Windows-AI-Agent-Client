@@ -32,4 +32,12 @@ public sealed class AgentConfig : ObservableObject
     /// <summary>Invite code submitted automatically if the agent's trust gate asks for onboarding.</summary>
     [JsonPropertyName("inviteCode")]
     public string? InviteCode { get => _inviteCode; set => SetProperty(ref _inviteCode, value); }
+
+    /// <summary>Cached /info response JSON, persisted across restarts.</summary>
+    [JsonPropertyName("infoJson")]
+    public string? InfoJson { get; set; }
+
+    /// <summary>Timestamp of the last successful /info fetch.</summary>
+    [JsonPropertyName("infoUpdatedAt")]
+    public string? InfoUpdatedAt { get; set; }
 }

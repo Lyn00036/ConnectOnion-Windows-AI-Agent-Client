@@ -14,6 +14,9 @@ public static class AppServices
     public static PreferencesRepository Preferences { get; } = new();
     public static ConversationRepository Conversations { get; } = new();
 
+    /// <summary>Session-lived cache of each agent's online status.</summary>
+    public static AgentPresenceService Presence { get; } = new();
+
     /// <summary>Single shared HttpClient for health probes and endpoint resolution.</summary>
     public static HttpClient Http { get; } = new();
 }

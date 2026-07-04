@@ -42,9 +42,12 @@ backend/app/__pycache__/
 
 # ConnectOnion agent local state and secrets
 .co/
+.agents/skills/winui-app/
+.claude/skills/winui-app/
 agent/**/.co/
 agent/**/.browser_agent_profile/
 agent/**/screenshots/
+skills-lock.json
 
 # Database and local runtime data
 *.db

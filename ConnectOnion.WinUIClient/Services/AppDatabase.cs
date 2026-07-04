@@ -78,6 +78,8 @@ public static class AppDatabase
                 address TEXT NOT NULL,
                 direct_url TEXT NULL,
                 invite_code TEXT NULL,
+                info_json TEXT NULL,
+                info_updated_at TEXT NULL,
                 sort_order INTEGER NOT NULL DEFAULT 0
             );
 
