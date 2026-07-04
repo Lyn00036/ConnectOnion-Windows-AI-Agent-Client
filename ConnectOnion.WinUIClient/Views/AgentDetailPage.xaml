@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="ConnectOnion.WinUIClient.Views.AgentDetailPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:vm="using:ConnectOnion.WinUIClient.ViewModels"
+    mc:Ignorable="d">
+
+    <Grid Margin="32,24" RowSpacing="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Header: agent name + address -->
+        <StackPanel Grid.Row="0" Spacing="6"
+                    Visibility="{x:Bind Vm.HasAgent, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+            <StackPanel Orientation="Horizontal" Spacing="14">
+                <Border Width="48" Height="48"
+                        CornerRadius="12"
+                        Background="{ThemeResource AccentFillColorDefaultBrush}">
+                    <TextBlock Text="{x:Bind Vm.AgentName, Mode=OneWay}"
+                               Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                               FontSize="20" FontWeight="Bold"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <StackPanel VerticalAlignment="Center" Spacing="2">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <TextBlock Text="{x:Bind Vm.AgentName, Mode=OneWay}"
+                                   Style="{StaticResource TitleTextBlockStyle}" />
+                        <Border CornerRadius="10"
+                                Padding="9,2"
+                                VerticalAlignment="Center"
+                                Background="{ThemeResource LayerFillColorDefaultBrush}">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <Ellipse Width="9"
+                                         Height="9"
+                                         VerticalAlignment="Center"
+                                         Fill="{x:Bind Vm.Presence, Mode=OneWay, Converter={StaticResource PresenceToBrush}}" />
+                                <TextBlock Text="{x:Bind Vm.PresenceLabel, Mode=OneWay}"
+                                           FontSize="12"
+                                           VerticalAlignment="Center"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="{x:Bind Vm.ShortAddress, Mode=OneWay}"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <TextBlock Text="{x:Bind Vm.DirectUrl, Mode=OneWay}"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                   TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                </StackPanel>
+            </StackPanel>
+            <TextBlock x:Name="StatusLabel"
+                       Text="{x:Bind Vm.StatusText, Mode=OneWay}"
+                       FontSize="12"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <ProgressBar IsIndeterminate="{x:Bind Vm.IsLoading, Mode=OneWay}"
+                         Visibility="{x:Bind Vm.IsLoading, Mode=OneWay, Converter={StaticResource BoolToVis}}"
+                         Height="2" />
+        </StackPanel>
+
+        <!-- No-agent placeholder -->
+        <StackPanel Grid.Row="0" Spacing="8"
+                    Visibility="{x:Bind Vm.HasAgent, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}">
+            <TextBlock Text="No agent selected"
+                       Style="{StaticResource SubtitleTextBlockStyle}" />
+            <TextBlock Text="Select an agent from the sidebar or add a new one to get started."
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       TextWrapping="WrapWholeWords" />
+        </StackPanel>
+
+        <!-- Info fields list -->
+        <Border Grid.Row="1"
+                Padding="20" CornerRadius="8"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                Visibility="{x:Bind Vm.HasAgent, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+            <StackPanel Spacing="16">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Agent Info"
+                               Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <TextBlock Text="{x:Bind Vm.LastUpdated, Mode=OneWay}"
+                                   FontSize="11"
+                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                   VerticalAlignment="Center" />
+                        <Button Content="Refresh"
+                                Click="Refresh_Click"
+                                IsEnabled="{x:Bind Vm.CanRefresh, Mode=OneWay}"
+                                VerticalAlignment="Center" />
+                    </StackPanel>
+                </Grid>
+
+                <!-- Error banner -->
+                <InfoBar Severity="Error"
+                         Message="{x:Bind Vm.StatusText, Mode=OneWay}"
+                         IsOpen="{x:Bind Vm.HasError, Mode=OneWay}"
+                         IsClosable="False" />
+
+                <!-- Field list -->
+                <ListView ItemsSource="{x:Bind Vm.InfoFields, Mode=OneWay}"
+                          SelectionMode="None"
+                          Background="Transparent"
+                          BorderThickness="0">
+                    <ListView.ItemTemplate>
+                        <DataTemplate x:DataType="vm:InfoField">
+                            <Grid Padding="0,4" ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="180" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0"
+                                           Text="{x:Bind Name}"
+                                           FontWeight="SemiBold"
+                                           FontSize="13"
+                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Grid.Column="1"
+                                           Text="{x:Bind Value}"
+                                           FontSize="13"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap"
+                                           IsTextSelectionEnabled="True" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+
+                <!-- Raw JSON expander -->
+                <Expander Header="Raw JSON"
+                          IsExpanded="False"
+                          Visibility="{x:Bind Vm.HasInfoJson, Mode=OneWay, Converter={StaticResource BoolToVis}}"
+                          HorizontalAlignment="Stretch"
+                          HorizontalContentAlignment="Stretch">
+                    <ScrollViewer MaxHeight="300" HorizontalScrollBarVisibility="Auto">
+                        <TextBlock Text="{x:Bind Vm.InfoJson, Mode=OneWay}"
+                                   FontFamily="Consolas"
+                                   FontSize="12"
+                                   IsTextSelectionEnabled="True"
+                                   TextWrapping="NoWrap" />
+                    </ScrollViewer>
+                </Expander>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Page>

@@ -1,6 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -24,6 +27,7 @@ public sealed class ChatViewModel : ObservableObject
     private static readonly Regex Whitespace = new(@"\s+", RegexOptions.Compiled);
 
     private readonly DispatcherQueue _dispatcher = DispatcherQueue.GetForCurrentThread();
+    private readonly AgentPresenceService _presence = AppServices.Presence;
 
     private AgentConfig? _agent;
     private SessionSummary? _session;
@@ -36,8 +40,31 @@ public sealed class ChatViewModel : ObservableObject
 
     public ObservableCollection<ChatMessage> Messages { get; } = new();
 
+    public ChatViewModel()
+    {
+        _presence.PresenceChanged += OnPresenceChanged;
+    }
+
+    /// <summary>Detaches from the shared presence service. Call when the page unloads.</summary>
+    public void Cleanup() => _presence.PresenceChanged -= OnPresenceChanged;
+
+    private void OnPresenceChanged(string agentId)
+    {
+        if (_agent is null || agentId != _agent.Id) return;
+        _dispatcher.TryEnqueue(RaisePresenceProperties);
+    }
+
     private bool _hasAgent;
-    public bool HasAgent { get => _hasAgent; private set => SetProperty(ref _hasAgent, value); }
+    public bool HasAgent
+    {
+        get => _hasAgent;
+        private set
+        {
+            if (!SetProperty(ref _hasAgent, value)) return;
+            OnPropertyChanged(nameof(CanSend));
+            OnPropertyChanged(nameof(CanReconnect));
+        }
+    }
 
     private bool _isProcessing;
     public bool IsProcessing
@@ -47,23 +74,62 @@ public sealed class ChatViewModel : ObservableObject
         {
             if (!SetProperty(ref _isProcessing, value)) return;
             OnPropertyChanged(nameof(CanSend));
+            OnPropertyChanged(nameof(CanReconnect));
             OnPropertyChanged(nameof(ConnectionDetail));
         }
     }
 
-    public bool CanSend => HasAgent && !IsProcessing;
-    public bool HasConnection => _connection is not null;
+    private bool _isConnecting;
+    public bool IsConnecting
+    {
+        get => _isConnecting;
+        private set
+        {
+            if (!SetProperty(ref _isConnecting, value)) return;
+            OnPropertyChanged(nameof(CanSend));
+            OnPropertyChanged(nameof(CanReconnect));
+            OnPropertyChanged(nameof(ConnectionDetail));
+        }
+    }
+
+    // Sending is gated on the agent being confirmed online — matching the "green
+    // dot means you can chat" model — not on holding a live socket (the transport
+    // connects lazily on the first send).
+    public bool CanSend => HasAgent && IsOnline && !IsProcessing && !IsConnecting;
+    public bool CanReconnect => HasAgent && !IsProcessing && !IsConnecting && Presence != AgentPresence.Checking;
+    public bool HasEndpoint => _connection is not null;
+    public bool HasConnection => _connection?.IsConnected == true;
+
+    public AgentPresence Presence => _agent is null ? AgentPresence.Unknown : _presence.GetPresence(_agent.Id);
+    public bool IsOnline => Presence == AgentPresence.Online;
+    public string PresenceLabel => Presence switch
+    {
+        AgentPresence.Online => "Online",
+        AgentPresence.Checking => "Checking...",
+        AgentPresence.Offline => "Offline",
+        _ => "Unknown",
+    };
+
     public string SelectedAgentName => _agent?.Name ?? "Agent";
     public string SelectedAgentInitial => string.IsNullOrWhiteSpace(_agent?.Name) ? "?" : _agent!.Name[..1].ToUpperInvariant();
     public string SessionShortId => _session is null ? "" : _session.Id[..Math.Min(8, _session.Id.Length)];
-    public string ConnectionLabel => HasConnection ? "Connected" : "Disconnected";
-    public string ConnectionDetail => IsProcessing ? "working" : "idle";
+    public string ConnectionDetail => IsConnecting ? "connecting" : IsProcessing ? "working" : "idle";
 
     private string _headerText = "Chat";
     public string HeaderText { get => _headerText; private set => SetProperty(ref _headerText, value); }
 
     private string _statusText = "";
-    public string StatusText { get => _statusText; private set => SetProperty(ref _statusText, value); }
+    public string StatusText
+    {
+        get => _statusText;
+        private set
+        {
+            if (!SetProperty(ref _statusText, value)) return;
+            OnPropertyChanged(nameof(HasStatusText));
+        }
+    }
+
+    public bool HasStatusText => !string.IsNullOrWhiteSpace(StatusText);
 
     // Interactive turns, re-raised on the UI thread for the page to show dialogs.
     public event Action<AskUserRequest>? AskUserRequested;
@@ -110,7 +176,16 @@ public sealed class ChatViewModel : ObservableObject
 
         SetupConnection();
         await RestoreConversationAsync();
+
+        // Reflect any cached presence immediately, then confirm online if we
+        // haven't already this session.
+        RaisePresenceProperties();
+        _ = _presence.EnsureCheckedAsync(_agent);
     }
+
+    /// <summary>Re-probes the agent's online status (bound to the header button).</summary>
+    public Task RecheckPresenceAsync()
+        => _agent is null ? Task.CompletedTask : _presence.RefreshAsync(_agent);
 
     // Wire the real transport when the agent has a Direct URL. Stream events and
     // connection-loss callbacks arrive on the receive-loop thread, so marshal
@@ -125,9 +200,13 @@ public sealed class ChatViewModel : ObservableObject
         var identity = IdentityStore.EnsureIdentity();
         _connection = new AgentConnectionService(_agent.Address, _agent.DirectUrl, identity, AppServices.Http);
         _connection.StreamEvent += e =>
-            _dispatcher.TryEnqueue(() => AddEventBubble(e));
+            _dispatcher.TryEnqueue(() => ApplyStreamEvent(e));
         _connection.ConnectionLost += ex =>
-            _dispatcher.TryEnqueue(() => StatusText = $"Disconnected: {ex.Message}");
+            _dispatcher.TryEnqueue(() =>
+            {
+                StatusText = $"Disconnected: {ex.Message}";
+                RaiseConnectionProperties();
+            });
         _connection.OnboardRequired += () =>
             _dispatcher.TryEnqueue(AddOnboardingBubble);
         _connection.AskUserRequested += r =>
@@ -136,8 +215,7 @@ public sealed class ChatViewModel : ObservableObject
             _dispatcher.TryEnqueue(() => ApprovalRequested?.Invoke(r));
         _connection.PlanReviewRequested += r =>
             _dispatcher.TryEnqueue(() => PlanReviewRequested?.Invoke(r));
-        OnPropertyChanged(nameof(HasConnection));
-        OnPropertyChanged(nameof(ConnectionLabel));
+        RaiseConnectionProperties();
     }
 
     /// <summary>
@@ -215,29 +293,44 @@ public sealed class ChatViewModel : ObservableObject
         await PersistConversationAsync();
 
         IsProcessing = true;
-        StatusText = "Working...";
+        StatusText = _connection is null ? "Working..." : "Connecting...";
+        var sent = false;
         try
         {
             var reply = _connection is not null
                 ? await _connection.SendInputAsync(text, _session.Id)
                 : await SimulateReplyAsync(text);
+            sent = true;
+            RaiseConnectionProperties();
 
-            Messages.Add(new ChatMessage
+            // The agent may have already streamed this text via an `assistant`
+            // event. Match the SDK: add the final reply only if it differs from
+            // the last agent bubble, so the same text never renders twice.
+            if (!string.IsNullOrEmpty(reply))
             {
-                Id = NextId(),
-                Role = ChatRole.Agent,
-                Content = reply,
-                AgentName = _agent.Name,
-            });
+                var lastAgent = Messages.LastOrDefault(m => m.Role == ChatRole.Agent);
+                if (lastAgent is null || lastAgent.Content != reply)
+                {
+                    Messages.Add(new ChatMessage
+                    {
+                        Id = NextId(),
+                        Role = ChatRole.Agent,
+                        Content = reply,
+                        AgentName = _agent.Name,
+                    });
+                }
+            }
             await PersistConversationAsync();
         }
         catch (Exception ex)
         {
+            StatusText = $"Send failed: {UserFacingError(ex)}";
+            RaiseConnectionProperties();
             Messages.Add(new ChatMessage
             {
                 Id = NextId(),
                 Role = ChatRole.Agent,
-                Content = $"[connection error] {ex.Message}",
+                Content = $"[connection error] {UserFacingError(ex)}",
                 AgentName = _agent.Name,
             });
             await PersistConversationAsync();
@@ -245,7 +338,8 @@ public sealed class ChatViewModel : ObservableObject
         finally
         {
             IsProcessing = false;
-            StatusText = "";
+            if (sent) StatusText = "";
+            RaiseConnectionProperties();
         }
     }
 
@@ -273,14 +367,40 @@ public sealed class ChatViewModel : ObservableObject
         RaiseHeaderProperties();
     }
 
-    public Task ReconnectAsync()
+    public async Task ReconnectAsync()
     {
-        if (_agent is null) return Task.CompletedTask;
+        if (_agent is null || _session is null) return;
 
+        if (_connection is null)
+        {
+            SetupConnection();
+        }
+
+        if (_connection is null)
+        {
+            StatusText = "No agent endpoint configured.";
+            RaiseConnectionProperties();
+            return;
+        }
+
+        IsConnecting = true;
         StatusText = "Reconnecting...";
-        SetupConnection();
-        StatusText = HasConnection ? "" : "No agent endpoint configured";
-        return Task.CompletedTask;
+        RaiseConnectionProperties();
+
+        try
+        {
+            await _connection.ReconnectAsync(_session.Id);
+            StatusText = "Connected.";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Reconnect failed: {UserFacingError(ex)}";
+        }
+        finally
+        {
+            IsConnecting = false;
+            RaiseConnectionProperties();
+        }
     }
 
     public async Task SubmitOnboardInviteCodeAsync(ChatMessage message)
@@ -332,29 +452,254 @@ public sealed class ChatViewModel : ObservableObject
         StatusText = "Waiting for invite code...";
     }
 
-    private void AddEventBubble(AgentStreamEvent e)
+    /// <summary>
+    /// Maps a streamed event onto the message list, C# port of the SDK's
+    /// <c>chat-item-mapper.ts</c>. Paired events merge by id into one bubble that
+    /// transitions running → done/error (tool_call+tool_result, llm_call+llm_result),
+    /// so a tool shows its arguments, result, and timing in a single card.
+    /// </summary>
+    private void ApplyStreamEvent(AgentStreamEvent e)
     {
-        var title = e.Type switch
-        {
-            "thinking" => "Thinking",
-            "llm_call" => "Model call",
-            "llm_result" => "Model response",
-            "tool_call" => "Tool call",
-            "tool_result" => "Tool result",
-            "assistant" => "Assistant update",
-            "ONBOARD_REQUIRED" => "Waiting for invite code",
-            "ONBOARD_SUCCESS" => "Onboarding complete",
-            _ => e.Type.Replace('_', ' '),
-        };
-
         StatusText = e.Description;
-        Messages.Add(new ChatMessage
+
+        JsonElement root;
+        try
         {
-            Id = NextId(),
-            Role = ChatRole.Event,
-            EventTitle = title,
-            EventDetail = e.Description,
-        });
+            using var doc = JsonDocument.Parse(e.RawJson);
+            root = doc.RootElement.Clone();
+        }
+        catch
+        {
+            root = default;
+        }
+
+        string? Str(string name) => root.ValueKind == JsonValueKind.Object
+            && root.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String
+                ? v.GetString() : null;
+        double? Num(string name) => root.ValueKind == JsonValueKind.Object
+            && root.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number
+                ? v.GetDouble() : null;
+        bool? Flag(string name) => root.ValueKind == JsonValueKind.Object
+            && root.TryGetProperty(name, out var v)
+                ? v.ValueKind == JsonValueKind.True ? true
+                    : v.ValueKind == JsonValueKind.False ? false : (bool?)null
+                : null;
+        string? RawObj(string name) => root.ValueKind == JsonValueKind.Object
+            && root.TryGetProperty(name, out var v) && v.ValueKind is JsonValueKind.Object or JsonValueKind.Array
+                ? PrettyJson(v.GetRawText()) : null;
+
+        switch (e.Type)
+        {
+            case "tool_call":
+                Messages.Add(new ChatMessage
+                {
+                    Id = NextId(),
+                    Role = ChatRole.Event,
+                    EventKind = "tool",
+                    EventKey = Str("tool_id") ?? Str("id"),
+                    EventEyebrow = "Tool",
+                    EventTitle = Str("name") ?? "tool",
+                    EventArgs = RawObj("args"),
+                    Status = EventStatus.Running,
+                });
+                break;
+
+            case "tool_result":
+            {
+                var existing = FindEvent(Str("tool_id") ?? Str("id"), "tool");
+                if (existing is not null)
+                {
+                    existing.Status = Str("status") == "error" ? EventStatus.Error : EventStatus.Done;
+                    existing.EventResult = Str("result");
+                    if (Num("timing_ms") is { } timing) existing.EventMeta = FormatDuration(timing);
+                }
+                break;
+            }
+
+            case "llm_call":
+                Messages.Add(new ChatMessage
+                {
+                    Id = NextId(),
+                    Role = ChatRole.Event,
+                    EventKind = "activity",
+                    EventKey = Str("id"),
+                    EventTitle = "Thinking...",
+                    EventDetail = Str("model"),
+                    Status = EventStatus.Running,
+                });
+                break;
+
+            case "llm_result":
+            {
+                var existing = FindEvent(Str("id"), "activity");
+                if (existing is not null)
+                {
+                    existing.Status = Str("status") == "error" ? EventStatus.Error : EventStatus.Done;
+                    existing.EventTitle = "Thinking complete";
+                    if (Str("model") is { } model) existing.EventDetail = model;
+                    if (Num("duration_ms") is { } duration) existing.EventMeta = FormatDuration(duration);
+                }
+                break;
+            }
+
+            case "thinking":
+                Messages.Add(new ChatMessage
+                {
+                    Id = NextId(),
+                    Role = ChatRole.Event,
+                    EventKind = "activity",
+                    EventTitle = "Thinking",
+                    EventDetail = Str("content"),
+                    Status = EventStatus.Done,
+                });
+                break;
+
+            case "intent":
+            {
+                var id = Str("id");
+                if (Str("status") == "analyzing")
+                {
+                    Messages.Add(NewActivity(id, "Understanding request...", EventStatus.Running));
+                }
+                else if (FindEvent(id, "activity") is { } existing)
+                {
+                    existing.EventTitle = "Request understood";
+                    existing.EventDetail = Str("ack");
+                    existing.Status = EventStatus.Done;
+                }
+                break;
+            }
+
+            case "eval":
+            {
+                var id = Str("id");
+                if (Str("status") == "evaluating")
+                {
+                    var item = NewActivity(id, "Evaluating result...", EventStatus.Running);
+                    item.EventDetail = Str("expected");
+                    Messages.Add(item);
+                }
+                else if (FindEvent(id, "activity") is { } existing)
+                {
+                    existing.EventTitle = "Evaluation complete";
+                    existing.EventDetail = Str("summary") ?? Str("expected");
+                    existing.Status = Flag("passed") == false ? EventStatus.Error : EventStatus.Done;
+                }
+                break;
+            }
+
+            case "compact":
+            {
+                var id = Str("id");
+                if (Str("status") == "compacting")
+                {
+                    Messages.Add(NewActivity(id, "Compacting context...", EventStatus.Running));
+                }
+                else if (FindEvent(id, "activity") is { } existing)
+                {
+                    existing.EventTitle = "Context compacted";
+                    existing.Status = Str("status") == "error" ? EventStatus.Error : EventStatus.Done;
+                    existing.EventDetail = Str("message") ?? Str("error");
+                    if (Num("context_before") is { } before && Num("context_after") is { } after)
+                        existing.EventMeta = $"{before:0} → {after:0}";
+                }
+                break;
+            }
+
+            case "tool_blocked":
+                Messages.Add(new ChatMessage
+                {
+                    Id = NextId(),
+                    Role = ChatRole.Event,
+                    EventKind = "tool",
+                    EventEyebrow = "Tool blocked",
+                    EventTitle = Str("tool") ?? "tool",
+                    EventDetail = Str("message"),
+                    EventMeta = Str("reason"),
+                    EventResult = Str("command"),
+                    Status = EventStatus.Error,
+                });
+                break;
+
+            case "files_received":
+            {
+                var names = new List<string>();
+                if (root.ValueKind == JsonValueKind.Object
+                    && root.TryGetProperty("files", out var files) && files.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var file in files.EnumerateArray())
+                        if (file.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String)
+                            names.Add(n.GetString()!);
+                }
+                var item = NewActivity(null, $"Files received - {names.Count} file(s)", EventStatus.Done);
+                if (names.Count > 0) item.EventDetail = string.Join(", ", names);
+                Messages.Add(item);
+                break;
+            }
+
+            case "assistant":
+            {
+                // Streamed agent text. The final OUTPUT dedups against the last
+                // agent bubble, so rendering these here does not double the reply.
+                var content = Str("content");
+                if (!string.IsNullOrEmpty(content))
+                {
+                    Messages.Add(new ChatMessage
+                    {
+                        Id = NextId(),
+                        Role = ChatRole.Agent,
+                        Content = content,
+                        AgentName = _agent?.Name,
+                    });
+                }
+                break;
+            }
+
+            case "ONBOARD_SUCCESS":
+                Messages.Add(NewActivity(null, "Onboarding complete", EventStatus.Done));
+                break;
+
+            // "agent_image" and "ONBOARD_REQUIRED" are handled by their own flows.
+        }
+    }
+
+    private ChatMessage NewActivity(string? key, string title, EventStatus status) => new()
+    {
+        Id = NextId(),
+        Role = ChatRole.Event,
+        EventKind = "activity",
+        EventKey = key,
+        EventTitle = title,
+        Status = status,
+    };
+
+    // Most-recent event bubble of this kind still awaiting its finishing frame.
+    private ChatMessage? FindEvent(string? key, string kind)
+        => string.IsNullOrEmpty(key)
+            ? null
+            : Messages.LastOrDefault(m => m.IsEvent && m.EventKind == kind && m.EventKey == key);
+
+    private static string FormatDuration(double ms)
+        => ms < 1000 ? $"{ms:0} ms" : $"{ms / 1000:0.0} s";
+
+    // Re-indents a JSON fragment for display without reflection (trim-safe).
+    private static string? PrettyJson(string? raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(raw);
+            using var stream = new MemoryStream();
+            using (var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
+            {
+                doc.RootElement.WriteTo(writer);
+            }
+            return Encoding.UTF8.GetString(stream.ToArray());
+        }
+        catch
+        {
+            return raw;
+        }
     }
 
     private void TouchSession(string prompt)
@@ -379,6 +724,27 @@ public sealed class ChatViewModel : ObservableObject
         OnPropertyChanged(nameof(SessionShortId));
     }
 
+    private void RaiseConnectionProperties()
+    {
+        OnPropertyChanged(nameof(HasEndpoint));
+        OnPropertyChanged(nameof(HasConnection));
+        OnPropertyChanged(nameof(ConnectionDetail));
+    }
+
+    private void RaisePresenceProperties()
+    {
+        OnPropertyChanged(nameof(Presence));
+        OnPropertyChanged(nameof(IsOnline));
+        OnPropertyChanged(nameof(PresenceLabel));
+        OnPropertyChanged(nameof(CanSend));
+        OnPropertyChanged(nameof(CanReconnect));
+    }
+
+    private static string UserFacingError(Exception ex)
+        => ex is OperationCanceledException
+            ? "Connection timed out."
+            : ex.Message;
+
     private Task PersistConversationAsync()
     {
         if (_agent is null || _session is null) return Task.CompletedTask;
@@ -388,7 +754,10 @@ public sealed class ChatViewModel : ObservableObject
             Version = 0,
             State = new ChatEnvelopeState
             {
-                Messages = Messages.Where(message => !message.IsOnboarding && !message.IsEvent).ToList(),
+                // Persist the intermediate event bubbles (tool calls, model calls, …)
+                // alongside user/agent turns so the full flow survives a reload. Only
+                // the transient onboarding invite-code prompt stays unsaved.
+                Messages = Messages.Where(message => !message.IsOnboarding).ToList(),
                 CreatedAt = _createdAt,
                 UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
             },

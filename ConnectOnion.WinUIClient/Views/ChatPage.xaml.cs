@@ -1,30 +1,61 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.Text.Json;
 using ConnectOnion.Protocol;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
 using ConnectOnion.WinUIClient.ViewModels;
+using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.System;
+using Windows.UI.Core;
 
 namespace ConnectOnion.WinUIClient.Views;
 
 public sealed partial class ChatPage : Page
 {
     public ChatViewModel Vm { get; } = new();
+    private ScrollViewer? _messageScrollViewer;
+    private bool _isLoadingConversation;
+    private bool _isAutoScrollQueued;
+    private bool _stickToBottom = true;
 
     public ChatPage()
     {
         InitializeComponent();
-        Vm.Messages.CollectionChanged += (_, _) => ScrollToEnd();
+        Vm.Messages.CollectionChanged += Messages_CollectionChanged;
         Vm.AskUserRequested += OnAskUserRequested;
         Vm.ApprovalRequested += OnApprovalRequested;
         Vm.PlanReviewRequested += OnPlanReviewRequested;
-        Loaded += async (_, _) => await Vm.LoadAsync();
+        Loaded += OnLoaded;
+        Unloaded += (_, _) => Vm.Cleanup();
+    }
+
+    private async void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        _messageScrollViewer ??= FindDescendant<ScrollViewer>(MessageList);
+        if (_messageScrollViewer is not null)
+        {
+            _messageScrollViewer.ViewChanged -= MessageScrollViewer_ViewChanged;
+            _messageScrollViewer.ViewChanged += MessageScrollViewer_ViewChanged;
+        }
+
+        _isLoadingConversation = true;
+        try
+        {
+            await Vm.LoadAsync();
+        }
+        finally
+        {
+            _isLoadingConversation = false;
+        }
+
+        QueueScrollToEnd(force: true);
     }
 
     private async void Send_Click(object sender, RoutedEventArgs e) => await SendAsync();
@@ -35,9 +66,9 @@ public sealed partial class ChatPage : Page
         InputBox.Text = "";
     }
 
-    private async void Reconnect_Click(object sender, RoutedEventArgs e)
+    private async void Recheck_Click(object sender, RoutedEventArgs e)
     {
-        await Vm.ReconnectAsync();
+        await Vm.RecheckPresenceAsync();
     }
 
     private async void SubmitOnboard_Click(object sender, RoutedEventArgs e)
@@ -79,11 +110,30 @@ public sealed partial class ChatPage : Page
 
     private async void InputBox_KeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (e.Key == VirtualKey.Enter)
+        var isShiftDown = InputKeyboardSource
+            .GetKeyStateForCurrentThread(VirtualKey.Shift)
+            .HasFlag(CoreVirtualKeyStates.Down);
+
+        if (e.Key == VirtualKey.Enter && !isShiftDown)
         {
             e.Handled = true;
             await SendAsync();
         }
+    }
+
+    private void ChatRoot_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var isNarrow = e.NewSize.Width < 760;
+        Grid.SetRow(ChatHeaderActions, isNarrow ? 1 : 0);
+        Grid.SetColumn(ChatHeaderActions, isNarrow ? 0 : 1);
+        Grid.SetColumnSpan(ChatHeaderActions, isNarrow ? 2 : 1);
+        ChatHeaderActions.Margin = isNarrow ? new Thickness(40, 0, 0, 0) : new Thickness(0);
+        ChatHeaderActions.Orientation = isNarrow ? Orientation.Vertical : Orientation.Horizontal;
+        ChatHeaderActions.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Right;
+
+        var horizontalInset = e.NewSize.Width < 640 ? 20 : 52;
+        MessageList.Padding = new Thickness(horizontalInset, 18, horizontalInset, 22);
+        ComposerPanel.Width = Math.Max(280, Math.Min(1104, e.NewSize.Width - 48));
     }
 
     private async System.Threading.Tasks.Task SendAsync()
@@ -93,15 +143,67 @@ public sealed partial class ChatPage : Page
 
         InputBox.Text = "";
         await Vm.SendAsync(text);
-        ScrollToEnd();
+        QueueScrollToEnd(force: true);
+    }
+
+    private void Messages_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (_isLoadingConversation) return;
+        if (e.Action is not (NotifyCollectionChangedAction.Add or NotifyCollectionChangedAction.Replace))
+        {
+            return;
+        }
+
+        QueueScrollToEnd(force: false);
+    }
+
+    private void QueueScrollToEnd(bool force)
+    {
+        if (Vm.Messages.Count == 0) return;
+        if (!force && !_stickToBottom) return;
+        if (_isAutoScrollQueued) return;
+
+        _isAutoScrollQueued = true;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            _isAutoScrollQueued = false;
+            ScrollToEnd();
+        });
     }
 
     private void ScrollToEnd()
     {
-        if (Vm.Messages.Count > 0)
+        if (Vm.Messages.Count == 0) return;
+
+        _messageScrollViewer ??= FindDescendant<ScrollViewer>(MessageList);
+        if (_messageScrollViewer is not null)
         {
-            MessageList.ScrollIntoView(Vm.Messages[^1]);
+            _messageScrollViewer.ChangeView(null, _messageScrollViewer.ScrollableHeight, null, disableAnimation: true);
+            return;
         }
+
+        MessageList.ScrollIntoView(Vm.Messages[^1]);
+    }
+
+    private void MessageScrollViewer_ViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
+    {
+        if (_messageScrollViewer is null) return;
+
+        var distanceFromBottom = _messageScrollViewer.ScrollableHeight - _messageScrollViewer.VerticalOffset;
+        _stickToBottom = distanceFromBottom < 96;
+    }
+
+    private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T match) return match;
+            var nested = FindDescendant<T>(child);
+            if (nested is not null) return nested;
+        }
+
+        return null;
     }
 
     // --- Interactive turns ---

@@ -75,5 +75,5 @@ public sealed class AgentsViewModel : ObservableObject
         });
 
     public Task<ConnectionTestResult> TestConnectionAsync(AgentConfig agent)
-        => ConnectionTester.TestAsync(agent.Address, agent.DirectUrl);
+        => ConnectionTester.TestAsync(agent.Address, agent.DirectUrl, existingAgent: agent);
 }
