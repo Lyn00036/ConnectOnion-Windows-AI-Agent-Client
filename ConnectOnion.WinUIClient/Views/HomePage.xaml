@@ -100,7 +100,8 @@
                                             <FontIcon Glyph="&#xE704;"
                                                       FontSize="15"
                                                       Foreground="{ThemeResource StatusSuccessTextBrush}"
-                                                      VerticalAlignment="Center" />
+                                                      VerticalAlignment="Center"
+                                                      Visibility="{x:Bind IsOnline, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                                         </StackPanel>
                                         <TextBlock Text="{x:Bind ShortAddress}"
                                                    FontSize="14"

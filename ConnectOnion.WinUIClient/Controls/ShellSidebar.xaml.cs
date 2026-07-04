@@ -1,6 +1,8 @@
 using System;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
 using ConnectOnion.WinUIClient.Views;
@@ -10,19 +12,37 @@ using Microsoft.UI.Xaml.Input;
 
 namespace ConnectOnion.WinUIClient.Controls;
 
-public sealed partial class ShellSidebar : UserControl
+public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
 {
     public ObservableCollection<ShellAgentItem> ShellAgents { get; } = new();
 
     public event Action<Type, bool>? NavigationRequested;
+    public event PropertyChangedEventHandler? PropertyChanged;
 
+    private readonly AgentPresenceService _presence = AppServices.Presence;
     private bool _addAgentConnectionTested;
     private string? _addAgentDetectedName;
+    private int _onlineAgentCount;
+
+    public int OnlineAgentCount
+    {
+        get => _onlineAgentCount;
+        private set
+        {
+            if (_onlineAgentCount == value) return;
+            _onlineAgentCount = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(OnlineAgentCountText));
+        }
+    }
+
+    public string OnlineAgentCountText => $"{OnlineAgentCount} online";
 
     public ShellSidebar()
     {
         InitializeComponent();
         DataContext = this;
+        _presence.PresenceChanged += OnPresenceChanged;
     }
 
     public async System.Threading.Tasks.Task RefreshAsync()
@@ -54,7 +74,25 @@ public sealed partial class ShellSidebar : UserControl
 
             ShellAgents.Add(item);
         }
+
+        UpdateOnlineAgentCount();
+        foreach (var agent in agentsState.Agents)
+        {
+            if (_presence.GetPresence(agent.Id) == AgentPresence.Unknown)
+            {
+                _ = _presence.EnsureCheckedAsync(agent);
+            }
+        }
     }
+
+    private void OnPresenceChanged(string _)
+        => DispatcherQueue.TryEnqueue(UpdateOnlineAgentCount);
+
+    private void UpdateOnlineAgentCount()
+        => OnlineAgentCount = ShellAgents.Count(agent => _presence.GetPresence(agent.Id) == AgentPresence.Online);
+
+    private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+        => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 
     private void RequestNavigation(Type page, bool forceReload = false)
         => NavigationRequested?.Invoke(page, forceReload);
@@ -406,13 +444,9 @@ public sealed partial class ShellSidebar : UserControl
         agentsState.Agents.Add(agent);
         agentsState.SelectedAgentId = agent.Id;
         await AppServices.Agents.SaveAsync(agentsState);
-        await EnsureSessionAsync(agent.Id);
-        await RefreshAsync();
-
-        // Fetch /info now so the detail page loads from cache instantly.
-        await AgentInfoService.FetchAndPersistAsync(agent);
         ResetAddAgentPanel(collapse: true);
-        RequestNavigation(typeof(ChatPage), forceReload: true);
+        await RefreshAsync();
+        RequestNavigation(typeof(AgentDetailPage), forceReload: true);
     }
 
     private async System.Threading.Tasks.Task<bool> TestAddAgentConnectionAsync()

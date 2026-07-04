@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
@@ -51,11 +52,14 @@ public sealed class AgentDetailViewModel : ObservableObject
             OnPropertyChanged(nameof(AgentAddress));
             OnPropertyChanged(nameof(DirectUrl));
             OnPropertyChanged(nameof(HasAgent));
+            OnPropertyChanged(nameof(AgentInitial));
             RaisePresenceProperties();
+            RaiseProfileSummaryProperties();
         }
     }
 
     public string AgentName => _agent?.Name ?? "";
+    public string AgentInitial => string.IsNullOrWhiteSpace(AgentName) ? "?" : AgentName[..1].ToUpperInvariant();
     public string AgentAddress => _agent?.Address ?? "";
     public string? DirectUrl => _agent?.DirectUrl;
     public bool HasAgent => _agent is not null;
@@ -99,6 +103,32 @@ public sealed class AgentDetailViewModel : ObservableObject
 
     public ObservableCollection<InfoField> InfoFields { get; } = new();
 
+    public string DisplayModel => GetInfoValue("model") ?? "deepseek-v4-pro";
+
+    public bool HasToolSummary => !string.IsNullOrWhiteSpace(ToolSummaryLineOne);
+
+    public string ToolSummaryLineOne
+    {
+        get
+        {
+            var tools = GetToolNames().Take(5).Select(FormatToolName).ToList();
+            return tools.Count == 0 ? "" : string.Join(" · ", tools) + " ·";
+        }
+    }
+
+    public string ToolSummaryLineTwo
+    {
+        get
+        {
+            var tools = GetToolNames().Skip(5).Select(FormatToolName).ToList();
+            if (tools.Count == 0) return "";
+
+            var line = string.Join(" · ", tools.Take(3));
+            var remaining = tools.Count - 3;
+            return remaining > 0 ? $"{line} +{remaining} more" : line;
+        }
+    }
+
     public string ShortAddress
         => string.IsNullOrWhiteSpace(AgentAddress)
             ? ""
@@ -109,6 +139,30 @@ public sealed class AgentDetailViewModel : ObservableObject
     public string? LastUpdated => Agent?.InfoUpdatedAt is { } ts
         ? $"Last updated {ts}"
         : null;
+
+    public async Task<bool> StartConversationAsync(string prompt)
+    {
+        if (Agent is null || string.IsNullOrWhiteSpace(prompt)) return false;
+
+        var agentsState = await AppServices.Agents.LoadAsync();
+        agentsState.SelectedAgentId = Agent.Id;
+        await AppServices.Agents.SaveAsync(agentsState);
+
+        var sessionsState = await AppServices.Sessions.LoadAsync();
+        var timestamp = DateTime.UtcNow.ToString("o");
+        var count = sessionsState.Sessions.Count(s => s.AgentId == Agent.Id) + 1;
+        sessionsState.Sessions.Add(new SessionSummary
+        {
+            Id = Guid.NewGuid().ToString(),
+            AgentId = Agent.Id,
+            Title = $"Conversation {count}",
+            CreatedAt = timestamp,
+            UpdatedAt = timestamp,
+        });
+        sessionsState.ActiveSessionId = sessionsState.Sessions[^1].Id;
+        await AppServices.Sessions.SaveAsync(sessionsState);
+        return true;
+    }
 
     /// <summary>Loads agent info from cache or fetches fresh data.</summary>
     public async Task LoadAsync()
@@ -311,6 +365,7 @@ public sealed class AgentDetailViewModel : ObservableObject
                 InfoFields.Add(new InfoField("accepted_inputs.files.max_files_per_request", f.MaxFilesPerRequest.ToString()));
             }
         }
+        RaiseProfileSummaryProperties();
     }
 
     /// <summary>
@@ -325,6 +380,7 @@ public sealed class AgentDetailViewModel : ObservableObject
         {
             using var doc = JsonDocument.Parse(json);
             FlattenObject(doc.RootElement, "", InfoFields);
+            RaiseProfileSummaryProperties();
         }
         catch
         {
@@ -394,6 +450,44 @@ public sealed class AgentDetailViewModel : ObservableObject
                 }
                 break;
         }
+    }
+
+    private void RaiseProfileSummaryProperties()
+    {
+        OnPropertyChanged(nameof(DisplayModel));
+        OnPropertyChanged(nameof(HasToolSummary));
+        OnPropertyChanged(nameof(ToolSummaryLineOne));
+        OnPropertyChanged(nameof(ToolSummaryLineTwo));
+    }
+
+    private string? GetInfoValue(string name)
+        => InfoFields.FirstOrDefault(field => string.Equals(field.Name, name, StringComparison.OrdinalIgnoreCase))?.Value;
+
+    private List<string> GetToolNames()
+    {
+        var direct = GetInfoValue("tools");
+        if (!string.IsNullOrWhiteSpace(direct))
+        {
+            return direct
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(tool => tool.Length > 0)
+                .ToList();
+        }
+
+        return InfoFields
+            .Where(field => field.Name.StartsWith("tools[", StringComparison.OrdinalIgnoreCase)
+                            && (field.Name.EndsWith(".name", StringComparison.OrdinalIgnoreCase)
+                                || !field.Name.Contains("].", StringComparison.OrdinalIgnoreCase)))
+            .Select(field => field.Value)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static string FormatToolName(string value)
+    {
+        var normalized = value.Replace('_', ' ').Replace('-', ' ').Trim();
+        return CultureInfo.InvariantCulture.TextInfo.ToTitleCase(normalized.ToLowerInvariant());
     }
 
     private static string ElementToString(JsonElement element) => element.ValueKind switch

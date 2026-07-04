@@ -1,6 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
+using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
 using Microsoft.UI.Xaml;
@@ -8,22 +9,44 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace ConnectOnion.WinUIClient.Views;
 
-public sealed class HomeAgentItem
+public sealed class HomeAgentItem : ObservableObject
 {
+    private bool _isOnline;
+
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
     public string Initial { get; set; } = "?";
     public string ShortAddress { get; set; } = "";
+    public bool IsOnline
+    {
+        get => _isOnline;
+        set => SetProperty(ref _isOnline, value);
+    }
 }
 
 public sealed partial class HomePage : Page
 {
+    private readonly AgentPresenceService _presence = AppServices.Presence;
+
     public ObservableCollection<HomeAgentItem> Agents { get; } = new();
 
     public HomePage()
     {
         InitializeComponent();
-        Loaded += async (_, _) => await LoadAsync();
+        Loaded += HomePage_Loaded;
+        Unloaded += HomePage_Unloaded;
+    }
+
+    private async void HomePage_Loaded(object sender, RoutedEventArgs e)
+    {
+        _presence.PresenceChanged -= OnPresenceChanged;
+        _presence.PresenceChanged += OnPresenceChanged;
+        await LoadAsync();
+    }
+
+    private void HomePage_Unloaded(object sender, RoutedEventArgs e)
+    {
+        _presence.PresenceChanged -= OnPresenceChanged;
     }
 
     private async System.Threading.Tasks.Task LoadAsync()
@@ -41,8 +64,23 @@ public sealed partial class HomePage : Page
                     ? "?"
                     : agent.Name[..1].ToUpperInvariant(),
                 ShortAddress = ShortenAddress(agent),
+                IsOnline = _presence.GetPresence(agent.Id) == AgentPresence.Online,
             });
+
+            _ = _presence.EnsureCheckedAsync(agent);
         }
+    }
+
+    private void OnPresenceChanged(string agentId)
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            var item = Agents.FirstOrDefault(agent => agent.Id == agentId);
+            if (item is not null)
+            {
+                item.IsOnline = _presence.GetPresence(agentId) == AgentPresence.Online;
+            }
+        });
     }
 
     private async void AgentCard_Click(object sender, RoutedEventArgs e)

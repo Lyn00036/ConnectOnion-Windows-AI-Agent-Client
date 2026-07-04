@@ -22,6 +22,7 @@ public sealed partial class MainWindow : Window
         _appWindow = GetAppWindow();
         ConfigureCustomTitleBar();
         ShellSidebar.NavigationRequested += NavigateTo;
+        ContentFrame.Navigated += async (_, _) => await ShellSidebar.RefreshAsync();
         ThemeService.ThemeApplied += ApplyTitleBarTheme;
         Closed += (_, _) => ThemeService.ThemeApplied -= ApplyTitleBarTheme;
         ThemeService.RegisterRoot(RootGrid);

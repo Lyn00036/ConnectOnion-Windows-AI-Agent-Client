@@ -5,154 +5,259 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:vm="using:ConnectOnion.WinUIClient.ViewModels"
     mc:Ignorable="d">
 
-    <Grid Margin="32,24" RowSpacing="20">
+    <Grid x:Name="AgentRoot"
+          Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
+          SizeChanged="AgentRoot_SizeChanged">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Header: agent name + address -->
-        <StackPanel Grid.Row="0" Spacing="6"
+        <StackPanel Grid.Row="0"
+                    Width="620"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Margin="32,0,32,108"
+                    Spacing="18"
                     Visibility="{x:Bind Vm.HasAgent, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-            <StackPanel Orientation="Horizontal" Spacing="14">
-                <Border Width="48" Height="48"
-                        CornerRadius="12"
-                        Background="{ThemeResource AccentFillColorDefaultBrush}">
+            <Border Width="58"
+                    Height="58"
+                    CornerRadius="8"
+                    HorizontalAlignment="Center"
+                    Background="{ThemeResource TextFillColorPrimaryBrush}">
+                <TextBlock Text="{x:Bind Vm.AgentInitial, Mode=OneWay}"
+                           Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                           FontSize="20"
+                           FontWeight="Bold"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center" />
+            </Border>
+
+            <StackPanel HorizontalAlignment="Center" Spacing="8">
+                <StackPanel Orientation="Horizontal"
+                            HorizontalAlignment="Center"
+                            Spacing="8">
                     <TextBlock Text="{x:Bind Vm.AgentName, Mode=OneWay}"
-                               Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
-                               FontSize="20" FontWeight="Bold"
-                               HorizontalAlignment="Center" VerticalAlignment="Center" />
-                </Border>
-                <StackPanel VerticalAlignment="Center" Spacing="2">
-                    <StackPanel Orientation="Horizontal" Spacing="10">
-                        <TextBlock Text="{x:Bind Vm.AgentName, Mode=OneWay}"
-                                   Style="{StaticResource TitleTextBlockStyle}" />
-                        <Border CornerRadius="10"
-                                Padding="9,2"
-                                VerticalAlignment="Center"
-                                Background="{ThemeResource LayerFillColorDefaultBrush}">
-                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                <Ellipse Width="9"
-                                         Height="9"
-                                         VerticalAlignment="Center"
-                                         Fill="{x:Bind Vm.Presence, Mode=OneWay, Converter={StaticResource PresenceToBrush}}" />
-                                <TextBlock Text="{x:Bind Vm.PresenceLabel, Mode=OneWay}"
-                                           FontSize="12"
-                                           VerticalAlignment="Center"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <TextBlock Text="{x:Bind Vm.ShortAddress, Mode=OneWay}"
-                                   Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <TextBlock Text="{x:Bind Vm.DirectUrl, Mode=OneWay}"
-                                   Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                   TextTrimming="CharacterEllipsis" />
-                    </StackPanel>
+                               FontFamily="Georgia"
+                               FontSize="28"
+                               FontWeight="Bold"
+                               TextAlignment="Center" />
+                    <Ellipse Width="7"
+                             Height="7"
+                             Fill="{x:Bind Vm.Presence, Mode=OneWay, Converter={StaticResource PresenceToBrush}}"
+                             VerticalAlignment="Center" />
+                    <TextBlock Text="{x:Bind Vm.PresenceLabel, Mode=OneWay}"
+                               FontSize="9"
+                               FontWeight="Bold"
+                               Foreground="{x:Bind Vm.Presence, Mode=OneWay, Converter={StaticResource PresenceToBrush}}"
+                               VerticalAlignment="Center" />
                 </StackPanel>
+
+                <TextBlock Text="{x:Bind Vm.DisplayModel, Mode=OneWay}"
+                           FontSize="12"
+                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                           HorizontalAlignment="Center" />
             </StackPanel>
-            <TextBlock x:Name="StatusLabel"
-                       Text="{x:Bind Vm.StatusText, Mode=OneWay}"
-                       FontSize="12"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-            <ProgressBar IsIndeterminate="{x:Bind Vm.IsLoading, Mode=OneWay}"
-                         Visibility="{x:Bind Vm.IsLoading, Mode=OneWay, Converter={StaticResource BoolToVis}}"
-                         Height="2" />
+
+            <Border HorizontalAlignment="Center"
+                    CornerRadius="18"
+                    Padding="14,6"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1">
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <TextBlock Text="BALANCE"
+                               FontSize="10"
+                               FontWeight="Bold"
+                               Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                    <TextBlock Text="$5.00"
+                               FontSize="11"
+                               FontWeight="Bold" />
+                    <TextBlock Text="Top up ->"
+                               FontSize="11"
+                               FontWeight="SemiBold"
+                               Foreground="{ThemeResource StatusSuccessTextBrush}" />
+                </StackPanel>
+            </Border>
+
+            <StackPanel Spacing="4"
+                        HorizontalAlignment="Center"
+                        Visibility="{x:Bind Vm.HasToolSummary, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="{x:Bind Vm.ToolSummaryLineOne, Mode=OneWay}"
+                           FontFamily="Consolas"
+                           FontSize="11"
+                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                           TextAlignment="Center"
+                           TextWrapping="Wrap"
+                           HorizontalAlignment="Center" />
+                <TextBlock Text="{x:Bind Vm.ToolSummaryLineTwo, Mode=OneWay}"
+                           FontFamily="Consolas"
+                           FontSize="11"
+                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                           TextAlignment="Center"
+                           TextWrapping="Wrap"
+                           HorizontalAlignment="Center"
+                           Visibility="{x:Bind Vm.ToolSummaryLineTwo, Mode=OneWay, Converter={StaticResource StringToVis}}" />
+            </StackPanel>
+
+            <ProgressRing Width="20"
+                          Height="20"
+                          IsActive="{x:Bind Vm.IsLoading, Mode=OneWay}"
+                          Visibility="{x:Bind Vm.IsLoading, Mode=OneWay, Converter={StaticResource BoolToVis}}"
+                          HorizontalAlignment="Center" />
+
+            <InfoBar Severity="Error"
+                     Message="{x:Bind Vm.StatusText, Mode=OneWay}"
+                     IsOpen="{x:Bind Vm.HasError, Mode=OneWay}"
+                     IsClosable="False" />
         </StackPanel>
 
-        <!-- No-agent placeholder -->
-        <StackPanel Grid.Row="0" Spacing="8"
+        <StackPanel Grid.Row="0"
+                    Spacing="8"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
                     Visibility="{x:Bind Vm.HasAgent, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}">
             <TextBlock Text="No agent selected"
-                       Style="{StaticResource SubtitleTextBlockStyle}" />
+                       Style="{StaticResource SubtitleTextBlockStyle}"
+                       TextAlignment="Center" />
             <TextBlock Text="Select an agent from the sidebar or add a new one to get started."
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       TextAlignment="Center"
                        TextWrapping="WrapWholeWords" />
         </StackPanel>
 
-        <!-- Info fields list -->
-        <Border Grid.Row="1"
-                Padding="20" CornerRadius="8"
-                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                BorderThickness="1"
-                Visibility="{x:Bind Vm.HasAgent, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-            <StackPanel Spacing="16">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Agent Info"
-                               Style="{StaticResource SubtitleTextBlockStyle}" />
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                        <TextBlock Text="{x:Bind Vm.LastUpdated, Mode=OneWay}"
-                                   FontSize="11"
-                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                   VerticalAlignment="Center" />
-                        <Button Content="Refresh"
-                                Click="Refresh_Click"
-                                IsEnabled="{x:Bind Vm.CanRefresh, Mode=OneWay}"
-                                VerticalAlignment="Center" />
-                    </StackPanel>
-                </Grid>
-
-                <!-- Error banner -->
-                <InfoBar Severity="Error"
-                         Message="{x:Bind Vm.StatusText, Mode=OneWay}"
-                         IsOpen="{x:Bind Vm.HasError, Mode=OneWay}"
-                         IsClosable="False" />
-
-                <!-- Field list -->
-                <ListView ItemsSource="{x:Bind Vm.InfoFields, Mode=OneWay}"
-                          SelectionMode="None"
-                          Background="Transparent"
-                          BorderThickness="0">
-                    <ListView.ItemTemplate>
-                        <DataTemplate x:DataType="vm:InfoField">
-                            <Grid Padding="0,4" ColumnSpacing="12">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="180" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0"
-                                           Text="{x:Bind Name}"
-                                           FontWeight="SemiBold"
-                                           FontSize="13"
-                                           TextTrimming="CharacterEllipsis" />
-                                <TextBlock Grid.Column="1"
-                                           Text="{x:Bind Value}"
-                                           FontSize="13"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                           TextWrapping="Wrap"
-                                           IsTextSelectionEnabled="True" />
-                            </Grid>
-                        </DataTemplate>
-                    </ListView.ItemTemplate>
-                </ListView>
-
-                <!-- Raw JSON expander -->
-                <Expander Header="Raw JSON"
-                          IsExpanded="False"
-                          Visibility="{x:Bind Vm.HasInfoJson, Mode=OneWay, Converter={StaticResource BoolToVis}}"
-                          HorizontalAlignment="Stretch"
-                          HorizontalContentAlignment="Stretch">
-                    <ScrollViewer MaxHeight="300" HorizontalScrollBarVisibility="Auto">
-                        <TextBlock Text="{x:Bind Vm.InfoJson, Mode=OneWay}"
-                                   FontFamily="Consolas"
-                                   FontSize="12"
-                                   IsTextSelectionEnabled="True"
-                                   TextWrapping="NoWrap" />
-                    </ScrollViewer>
-                </Expander>
+        <StackPanel Grid.Row="1"
+                    x:Name="PromptPanel"
+                    Width="656"
+                    HorizontalAlignment="Center"
+                    Margin="24,0,24,24"
+                    Spacing="14"
+                    Visibility="{x:Bind Vm.HasAgent, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+            <StackPanel Orientation="Horizontal"
+                        HorizontalAlignment="Center"
+                        Spacing="8">
+                <Button Content="What can you do?"
+                        Padding="16,6"
+                        CornerRadius="16"
+                        Tag="What can you do?"
+                        Click="Suggestion_Click" />
+                <Button Content="Show system info"
+                        Padding="16,6"
+                        CornerRadius="16"
+                        Tag="Show system info"
+                        Click="Suggestion_Click" />
+                <Button Content="List files in current directory"
+                        Padding="16,6"
+                        CornerRadius="16"
+                        Tag="List files in current directory"
+                        Click="Suggestion_Click" />
             </StackPanel>
-        </Border>
+
+            <Border CornerRadius="12"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1">
+                <Grid MinHeight="84">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="56" />
+                        <RowDefinition Height="1" />
+                        <RowDefinition Height="28" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0"
+                          Padding="14,10,14,8"
+                          ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <Button Grid.Column="0"
+                                Width="36"
+                                Height="36"
+                                Padding="0"
+                                CornerRadius="18"
+                                Background="Transparent"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                ToolTipService.ToolTip="Add attachment">
+                            <FontIcon Glyph="&#xE710;"
+                                      FontSize="18"
+                                      Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </Button>
+
+                        <TextBox x:Name="PromptBox"
+                                 Grid.Column="1"
+                                 MinHeight="36"
+                                 Padding="0,6,0,0"
+                                 PlaceholderText="Message this agent..."
+                                 PlaceholderForeground="{ThemeResource TextFillColorTertiaryBrush}"
+                                 FontSize="14"
+                                 FontWeight="SemiBold"
+                                 AcceptsReturn="True"
+                                 BorderThickness="0"
+                                 Background="Transparent"
+                                 VerticalAlignment="Center"
+                                 KeyDown="PromptBox_KeyDown" />
+
+                        <Button Grid.Column="2"
+                                Width="36"
+                                Height="36"
+                                Padding="0"
+                                CornerRadius="18"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                ToolTipService.ToolTip="Voice input">
+                            <FontIcon Glyph="&#xE720;"
+                                      FontSize="18"
+                                      Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                        </Button>
+
+                        <Button Grid.Column="3"
+                                Width="40"
+                                Height="40"
+                                Padding="0"
+                                CornerRadius="10"
+                                Background="{ThemeResource LayerFillColorDefaultBrush}"
+                                BorderThickness="0"
+                                Click="StartConversation_Click"
+                                ToolTipService.ToolTip="Start conversation">
+                            <FontIcon Glyph="&#xE74A;"
+                                      FontSize="20"
+                                      Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                        </Button>
+                    </Grid>
+
+                    <Border Grid.Row="1"
+                            Background="{ThemeResource CardStrokeColorDefaultBrush}" />
+
+                    <TextBlock Grid.Row="2"
+                               HorizontalAlignment="Right"
+                               VerticalAlignment="Center"
+                               Margin="0,0,14,0"
+                               FontSize="11">
+                        <Run Text="safe"
+                             FontWeight="SemiBold"
+                             Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                        <Run Text=" &#x00B7; "
+                             Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <Run Text="plan"
+                             Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <Run Text=" &#x00B7; "
+                             Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <Run Text="accept"
+                             Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <Run Text=" &#x00B7; "
+                             Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <Run Text="ultra"
+                             Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </TextBlock>
+                </Grid>
+            </Border>
+        </StackPanel>
     </Grid>
 </Page>

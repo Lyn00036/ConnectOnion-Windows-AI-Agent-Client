@@ -11,6 +11,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Navigation;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.System;
 using Windows.UI.Core;
@@ -24,6 +25,7 @@ public sealed partial class ChatPage : Page
     private bool _isLoadingConversation;
     private bool _isAutoScrollQueued;
     private bool _stickToBottom = true;
+    private string? _pendingInitialPrompt;
 
     public ChatPage()
     {
@@ -34,6 +36,12 @@ public sealed partial class ChatPage : Page
         Vm.PlanReviewRequested += OnPlanReviewRequested;
         Loaded += OnLoaded;
         Unloaded += (_, _) => Vm.Cleanup();
+    }
+
+    protected override void OnNavigatedTo(NavigationEventArgs e)
+    {
+        base.OnNavigatedTo(e);
+        _pendingInitialPrompt = e.Parameter as string;
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -56,6 +64,14 @@ public sealed partial class ChatPage : Page
         }
 
         QueueScrollToEnd(force: true);
+
+        if (!string.IsNullOrWhiteSpace(_pendingInitialPrompt))
+        {
+            var prompt = _pendingInitialPrompt;
+            _pendingInitialPrompt = null;
+            await Vm.SendAsync(prompt);
+            QueueScrollToEnd(force: true);
+        }
     }
 
     private async void Send_Click(object sender, RoutedEventArgs e) => await SendAsync();
