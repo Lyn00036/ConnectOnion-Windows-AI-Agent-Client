@@ -3,6 +3,7 @@
     x:Class="ConnectOnion.WinUIClient.Controls.AddAgentForm"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:ic="using:FluentIcons.WinUI"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
@@ -35,9 +36,10 @@
                         HorizontalAlignment="Right"
                         Click="Close_Click"
                         ToolTipService.ToolTip="Close add agent form">
-                    <FontIcon Glyph="&#xE711;"
-                              FontSize="12"
-                              Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <ic:FluentIcon Icon="Dismiss"
+                                   IconVariant="Regular"
+                                   IconSize="Size16"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 </Button>
             </Grid>
 
