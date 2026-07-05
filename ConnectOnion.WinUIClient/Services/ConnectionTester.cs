@@ -22,6 +22,10 @@ public readonly record struct ConnectionTestResult(
 public static class ConnectionTester
 {
     private const int DefaultTimeoutMs = 6000;
+
+    // Relay-address probes make an extra hop through the relay server before the
+    // agent is reached, so they need a longer budget than a direct /health hit.
+    private const int RelayTimeoutMs = 12000;
     private static readonly JsonDocumentOptions JsonOptions = new()
     {
         AllowDuplicateProperties = false,
@@ -91,7 +95,7 @@ public static class ConnectionTester
             try
             {
                 var info = await ConnectOnion.Protocol.EndpointResolver
-                    .FetchAgentInfoAsync(AppServices.Http, address, ConnectOnion.Protocol.EndpointResolver.DefaultRelay)
+                    .FetchAgentInfoAsync(AppServices.Http, address, ConnectOnion.Protocol.EndpointResolver.DefaultRelay, RelayTimeoutMs)
                     .ConfigureAwait(false);
                 if (info.Online)
                 {
