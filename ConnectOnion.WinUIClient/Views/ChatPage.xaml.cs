@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Collections.Specialized;
 using System.Text.Json;
 using ConnectOnion.Protocol;
@@ -34,8 +35,23 @@ public sealed partial class ChatPage : Page
         Vm.AskUserRequested += OnAskUserRequested;
         Vm.ApprovalRequested += OnApprovalRequested;
         Vm.PlanReviewRequested += OnPlanReviewRequested;
+        Vm.PropertyChanged += Vm_PropertyChanged;
         Loaded += OnLoaded;
-        Unloaded += (_, _) => Vm.Cleanup();
+        Unloaded += OnUnloaded;
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        Vm.PropertyChanged -= Vm_PropertyChanged;
+        Vm.Cleanup();
+    }
+
+    private void Vm_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(Vm.CanSend))
+        {
+            DispatcherQueue.TryEnqueue(RefreshSendButtonState);
+        }
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -64,6 +80,8 @@ public sealed partial class ChatPage : Page
         }
 
         QueueScrollToEnd(force: true);
+        RefreshSendButtonState();
+        InputBox.Focus(FocusState.Programmatic);
 
         if (!string.IsNullOrWhiteSpace(_pendingInitialPrompt))
         {
@@ -75,6 +93,17 @@ public sealed partial class ChatPage : Page
     }
 
     private async void Send_Click(object sender, RoutedEventArgs e) => await SendAsync();
+
+    private async void Suggestion_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not string prompt) return;
+        InputBox.Text = prompt;
+        InputBox.Focus(FocusState.Programmatic);
+        await SendAsync();
+    }
+
+    private void InputBox_TextChanged(object sender, TextChangedEventArgs e)
+        => RefreshSendButtonState();
 
     private async void SubmitOnboard_Click(object sender, RoutedEventArgs e)
     {
@@ -138,7 +167,8 @@ public sealed partial class ChatPage : Page
 
         var horizontalInset = e.NewSize.Width < 640 ? 20 : 52;
         MessageList.Padding = new Thickness(horizontalInset, 18, horizontalInset, 22);
-        ComposerPanel.Width = Math.Max(280, Math.Min(1104, e.NewSize.Width - 48));
+        ComposerPanel.Width = Math.Max(280, Math.Min(880, e.NewSize.Width - 48));
+        SuggestionPanel.Visibility = e.NewSize.Width < 620 ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private async System.Threading.Tasks.Task SendAsync()
@@ -147,9 +177,14 @@ public sealed partial class ChatPage : Page
         if (string.IsNullOrWhiteSpace(text) || !Vm.CanSend) return;
 
         InputBox.Text = "";
+        RefreshSendButtonState();
         await Vm.SendAsync(text);
         QueueScrollToEnd(force: true);
+        InputBox.Focus(FocusState.Programmatic);
     }
+
+    private void RefreshSendButtonState()
+        => SendButton.IsEnabled = Vm.CanSend && !string.IsNullOrWhiteSpace(InputBox.Text);
 
     private void Messages_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
