@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Collections.Specialized;
@@ -6,6 +7,7 @@ using System.Text.Json;
 using ConnectOnion.Protocol;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
+using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.ViewModels;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
@@ -21,6 +23,9 @@ namespace ConnectOnion.WinUIClient.Views;
 
 public sealed partial class ChatPage : Page
 {
+    /// <summary>Persisted scroll positions keyed by session id, survives page recreation.</summary>
+    private static readonly ConcurrentDictionary<string, double> ScrollPositions = new();
+
     public ChatViewModel Vm { get; } = new();
     private ScrollViewer? _messageScrollViewer;
     private bool _isLoadingConversation;
@@ -42,6 +47,10 @@ public sealed partial class ChatPage : Page
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        // Persist scroll position so returning to this conversation restores it.
+        if (Vm.SessionId is { } sid && _messageScrollViewer is not null)
+            ScrollPositions[sid] = _messageScrollViewer.VerticalOffset;
+
         Vm.PropertyChanged -= Vm_PropertyChanged;
         Vm.Cleanup();
     }
@@ -79,7 +88,17 @@ public sealed partial class ChatPage : Page
             _isLoadingConversation = false;
         }
 
-        QueueScrollToEnd(force: true);
+        // Restore cached scroll position for this conversation, or default to bottom.
+        if (Vm.SessionId is { } sid
+            && ScrollPositions.TryRemove(sid, out var offset)
+            && _messageScrollViewer is not null)
+        {
+            _messageScrollViewer.ChangeView(null, offset, null, disableAnimation: true);
+        }
+        else
+        {
+            QueueScrollToEnd(force: true);
+        }
         RefreshSendButtonState();
         InputBox.Focus(FocusState.Programmatic);
 

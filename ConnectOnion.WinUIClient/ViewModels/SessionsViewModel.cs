@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
+using ConnectOnion.WinUIClient.Data;
 
 namespace ConnectOnion.WinUIClient.ViewModels;
 
@@ -95,6 +96,8 @@ public sealed class SessionsViewModel : ObservableObject
     public async Task RemoveSessionAsync(SessionSummary session)
     {
         Sessions.Remove(session);
+        await AppServices.Conversations.DeleteMessagesAsync(session.Id);
+        await AppServices.Conversations.DeleteExecutionsAndTracesAsync(session.Id);
         if (ReferenceEquals(_selected, session))
         {
             _selected = null;
@@ -108,7 +111,12 @@ public sealed class SessionsViewModel : ObservableObject
     public async Task RemoveSessionsForAgentAsync(string agentId)
     {
         var removed = Sessions.Where(s => s.AgentId == agentId).ToList();
-        foreach (var session in removed) Sessions.Remove(session);
+        foreach (var session in removed)
+        {
+            Sessions.Remove(session);
+            await AppServices.Conversations.DeleteMessagesAsync(session.Id);
+            await AppServices.Conversations.DeleteExecutionsAndTracesAsync(session.Id);
+        }
 
         if (_selected is not null && removed.Contains(_selected))
         {

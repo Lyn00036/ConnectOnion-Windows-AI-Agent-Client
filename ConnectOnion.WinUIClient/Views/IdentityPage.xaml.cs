@@ -1,5 +1,6 @@
 using ConnectOnion.Protocol;
 using ConnectOnion.WinUIClient.Services;
+using ConnectOnion.WinUIClient.Data;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Windows.ApplicationModel.DataTransfer;

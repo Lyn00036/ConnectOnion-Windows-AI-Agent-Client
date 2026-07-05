@@ -147,6 +147,12 @@ public sealed partial class MainWindow : Window
         if (forceReload || ContentFrame.CurrentSourcePageType != page)
         {
             ContentFrame.Navigate(page);
+
+            // Navigate pushes the old page onto the BackStack. When
+            // force-reloading, remove it so the old instance (with its
+            // ViewModel, WebSocket, and bindings) can be garbage collected.
+            if (forceReload && ContentFrame.BackStack.Count > 0)
+                ContentFrame.BackStack.RemoveAt(ContentFrame.BackStack.Count - 1);
         }
     }
 }

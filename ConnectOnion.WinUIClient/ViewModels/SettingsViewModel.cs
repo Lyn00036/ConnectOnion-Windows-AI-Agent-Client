@@ -2,6 +2,7 @@ using System.Threading.Tasks;
 using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
+using ConnectOnion.WinUIClient.Data;
 
 namespace ConnectOnion.WinUIClient.ViewModels;
 

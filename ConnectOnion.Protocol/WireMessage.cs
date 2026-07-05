@@ -46,4 +46,6 @@ public sealed class WireMessage
 /// per-type fields (tool id, status, args, result, timings, …) it needs to merge
 /// running/finished events into a single bubble.
 /// </summary>
-public sealed record AgentStreamEvent(string Type, string Description, string RawJson = "{}");
+/// <param name="EventId">Server-assigned event identifier, used as
+/// <c>last_msg_id</c> on reconnect so the server can replay only missed events.</param>
+public sealed record AgentStreamEvent(string Type, string Description, string? EventId, string RawJson = "{}");

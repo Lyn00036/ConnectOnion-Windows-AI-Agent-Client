@@ -11,6 +11,7 @@ using ConnectOnion.Protocol;
 using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
+using ConnectOnion.WinUIClient.Data;
 using Microsoft.UI.Dispatching;
 
 namespace ConnectOnion.WinUIClient.ViewModels;
@@ -33,6 +34,10 @@ public sealed class ChatViewModel : ObservableObject
     private SessionSummary? _session;
     private SessionsState _sessionsState = new();
     private long _createdAt;
+    private string? _currentExecutionId;
+
+    // Trace events buffered in memory during execution, flushed to DB on OUTPUT.
+    private readonly List<(string EventId, string Type, string RawJson, double? Ts)> _pendingTraces = new();
 
     // Real transport when the agent exposes a Direct URL; null falls back to the
     // simulated reply so the UI still works for agents without one.
@@ -120,6 +125,8 @@ public sealed class ChatViewModel : ObservableObject
     public string SelectedAgentName => _agent?.Name ?? "Agent";
     public string SelectedAgentInitial => string.IsNullOrWhiteSpace(_agent?.Name) ? "?" : _agent!.Name[..1].ToUpperInvariant();
     public string SessionShortId => _session is null ? "" : _session.Id[..Math.Min(8, _session.Id.Length)];
+    /// <summary>The current conversation id, exposed for scroll-position caching.</summary>
+    public string? SessionId => _session?.Id;
     public string ConnectionDetail => IsConnecting ? "connecting" : IsProcessing ? "working" : "idle";
 
     private string _headerText = "Chat";
@@ -268,24 +275,13 @@ public sealed class ChatViewModel : ObservableObject
         Messages.Clear();
         if (_agent is null || _session is null) return;
 
-        var json = await AppServices.Conversations.ReadEnvelopeAsync(_agent.Address, _session.Id);
+        var messages = await AppServices.Conversations.LoadMessagesAsync(_session.Id);
         _createdAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
-        if (json is null) return;
+        if (messages.Count == 0) return;
 
-        try
-        {
-            var envelope = JsonSerializer.Deserialize(json, AppJsonContext.Default.ChatEnvelope);
-            if (envelope?.State.Messages is { } messages)
-            {
-                foreach (var message in messages) Messages.Add(message);
-                if (envelope.State.CreatedAt > 0) _createdAt = envelope.State.CreatedAt;
-            }
-        }
-        catch
-        {
-            // Corrupt blob: start clean rather than block the conversation.
-        }
+        foreach (var message in messages) Messages.Add(message);
+        _createdAt = messages[0].Id > 0 ? messages[0].Id : _createdAt;
     }
 
     public async Task SendAsync(string text)
@@ -300,6 +296,11 @@ public sealed class ChatViewModel : ObservableObject
         IsProcessing = true;
         StatusText = _connection is null ? "Working..." : "Connecting...";
         var sent = false;
+        var executionId = Guid.NewGuid().ToString();
+        _currentExecutionId = executionId;
+        _pendingTraces.Clear();
+        await AppServices.Conversations.InsertExecutionAsync(
+            executionId, _session.Id, null, text, "running");
         try
         {
             var reply = _connection is not null
@@ -326,6 +327,11 @@ public sealed class ChatViewModel : ObservableObject
                 }
             }
             await PersistConversationAsync();
+            await PersistSessionMetadataAsync();
+            await FlushPendingTracesAsync();
+            await AppServices.Conversations.FinalizeExecutionAsync(
+                executionId, _session.Id, reply, "done",
+                _connection?.LastExecutionDurationMs ?? 0);
         }
         catch (Exception ex)
         {
@@ -339,9 +345,12 @@ public sealed class ChatViewModel : ObservableObject
                 AgentName = _agent.Name,
             });
             await PersistConversationAsync();
+            await AppServices.Conversations.FinalizeExecutionAsync(
+                executionId, _session.Id, ex.Message, "error", 0);
         }
         finally
         {
+            _currentExecutionId = null;
             IsProcessing = false;
             if (sent) StatusText = "";
             RaiseConnectionProperties();
@@ -467,6 +476,12 @@ public sealed class ChatViewModel : ObservableObject
     {
         StatusText = e.Description;
 
+        // Buffer trace event in memory; flushed to DB on OUTPUT.
+        if (_session is not null && _currentExecutionId is not null)
+        {
+            _pendingTraces.Add((e.EventId ?? Guid.NewGuid().ToString(), e.Type, e.RawJson, TryParseTs(e.RawJson)));
+        }
+
         JsonElement root;
         try
         {
@@ -522,17 +537,25 @@ public sealed class ChatViewModel : ObservableObject
             }
 
             case "llm_call":
+            {
+                var id = Str("id");
+                var iteration = Num("iteration");
+                var model = Str("model");
+                var title = iteration is not null
+                    ? $"Iteration {iteration:0}"
+                    : "Thinking...";
                 Messages.Add(new ChatMessage
                 {
                     Id = NextId(),
                     Role = ChatRole.Event,
                     EventKind = "activity",
-                    EventKey = Str("id"),
-                    EventTitle = "Thinking...",
-                    EventDetail = Str("model"),
+                    EventKey = id,
+                    EventTitle = title,
+                    EventDetail = model,
                     Status = EventStatus.Running,
                 });
                 break;
+            }
 
             case "llm_result":
             {
@@ -540,9 +563,22 @@ public sealed class ChatViewModel : ObservableObject
                 if (existing is not null)
                 {
                     existing.Status = Str("status") == "error" ? EventStatus.Error : EventStatus.Done;
-                    existing.EventTitle = "Thinking complete";
-                    if (Str("model") is { } model) existing.EventDetail = model;
-                    if (Num("duration_ms") is { } duration) existing.EventMeta = FormatDuration(duration);
+                    var iteration = Num("iteration");
+                    existing.EventTitle = iteration is not null
+                        ? $"Iteration {iteration:0} complete"
+                        : "Thinking complete";
+
+                    var parts = new List<string>();
+                    if (Num("duration_ms") is { } dur) parts.Add(FormatDuration(dur));
+                    if (ParseTokenUsage(root) is (var tokIn, var tokOut) && tokIn is not null)
+                        parts.Add($"{tokIn}→{tokOut} tok");
+                    if (Num("context_percent") is { } ctx)
+                        parts.Add($"ctx {ctx:0.#}%");
+                    if (Num("tool_calls_count") is { } tcc and > 0)
+                        parts.Add($"{tcc:0} tools");
+                    existing.EventMeta = string.Join(" · ", parts);
+
+                    existing.EventDetail = Str("model") ?? existing.EventDetail;
                 }
                 break;
             }
@@ -736,6 +772,53 @@ public sealed class ChatViewModel : ObservableObject
         OnPropertyChanged(nameof(ConnectionDetail));
     }
 
+    private async Task FlushPendingTracesAsync()
+    {
+        if (_session is null || _pendingTraces.Count == 0) return;
+        var snap = _pendingTraces.ToList();
+        _pendingTraces.Clear();
+
+        foreach (var (eventId, type, rawJson, ts) in snap)
+        {
+            await AppServices.Conversations.InsertTraceEventAsync(
+                eventId, _session.Id, _currentExecutionId,
+                _connection?.SessionId, type, rawJson, ts);
+        }
+    }
+
+    private static double? TryParseTs(string rawJson)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(rawJson);
+            if (doc.RootElement.TryGetProperty("ts", out var v) && v.ValueKind == JsonValueKind.Number)
+                return v.GetDouble();
+        }
+        catch { }
+        return null;
+    }
+
+    private static (string? input, string? output) ParseTokenUsage(JsonElement root)
+    {
+        if (root.TryGetProperty("usage", out var u) && u.ValueKind == JsonValueKind.Object)
+        {
+            var input = u.TryGetProperty("input_tokens", out var i) && i.TryGetInt64(out var iv)
+                ? FormatTokenCount(iv) : null;
+            var output = u.TryGetProperty("output_tokens", out var o) && o.TryGetInt64(out var ov)
+                ? FormatTokenCount(ov) : null;
+            return (input, output);
+        }
+        return (null, null);
+    }
+
+    private static string FormatTokenCount(long tokens) =>
+        tokens switch
+        {
+            >= 1_000_000 => $"{tokens / 1_000_000.0:0.#}M",
+            >= 1_000 => $"{tokens / 1000.0:0.#}K",
+            _ => tokens.ToString(),
+        };
+
     private void RaisePresenceProperties()
     {
         OnPropertyChanged(nameof(Presence));
@@ -754,20 +837,21 @@ public sealed class ChatViewModel : ObservableObject
     {
         if (_agent is null || _session is null) return Task.CompletedTask;
 
-        var envelope = new ChatEnvelope
-        {
-            Version = 0,
-            State = new ChatEnvelopeState
-            {
-                // Persist the intermediate event bubbles (tool calls, model calls, …)
-                // alongside user/agent turns so the full flow survives a reload. Only
-                // the transient onboarding invite-code prompt stays unsaved.
-                Messages = Messages.Where(message => !message.IsOnboarding).ToList(),
-                CreatedAt = _createdAt,
-                UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-            },
-        };
-        var json = JsonSerializer.Serialize(envelope, AppJsonContext.Default.ChatEnvelope);
-        return AppServices.Conversations.WriteEnvelopeAsync(_agent.Address, _session.Id, json);
+        var toSave = Messages.Where(m => !m.IsOnboarding).ToList();
+        return AppServices.Conversations.SaveMessagesAsync(_session.Id, toSave);
+    }
+
+    /// <summary>
+    /// Persists the remote session id and last processed event id so reconnect
+    /// can skip already-seen events after a disconnect.
+    /// </summary>
+    private async Task PersistSessionMetadataAsync()
+    {
+        if (_agent is null || _session is null || _connection is null) return;
+
+        _session.RemoteSessionId = _connection.SessionId;
+        _session.LastProcessedEventId = _connection.LastProcessedEventId;
+        _session.UpdatedAt = DateTime.UtcNow.ToString("o");
+        await AppServices.Sessions.SaveAsync(_sessionsState);
     }
 }

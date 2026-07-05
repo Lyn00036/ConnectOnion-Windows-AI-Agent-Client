@@ -13,6 +13,8 @@ public sealed class SessionSummary : ObservableObject
     private string _id = "";
     private string _agentId = "";
     private string _title = "";
+    private string? _remoteSessionId;
+    private string? _lastProcessedEventId;
     private string _createdAt = "";
     private string _updatedAt = "";
 
@@ -24,6 +26,12 @@ public sealed class SessionSummary : ObservableObject
 
     [JsonPropertyName("title")]
     public string Title { get => _title; set => SetProperty(ref _title, value); }
+
+    [JsonPropertyName("remoteSessionId")]
+    public string? RemoteSessionId { get => _remoteSessionId; set => SetProperty(ref _remoteSessionId, value); }
+
+    [JsonPropertyName("lastProcessedEventId")]
+    public string? LastProcessedEventId { get => _lastProcessedEventId; set => SetProperty(ref _lastProcessedEventId, value); }
 
     [JsonPropertyName("createdAt")]
     public string CreatedAt { get => _createdAt; set => SetProperty(ref _createdAt, value); }

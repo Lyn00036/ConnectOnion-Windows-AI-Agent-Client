@@ -56,6 +56,15 @@ public sealed class AgentConnectionService : IAsyncDisposable
 
     public string? SessionId { get; private set; }
 
+    /// <summary>
+    /// Last fully-processed stream event ID. Sent as <c>last_msg_id</c> on
+    /// reconnect so the server can replay only events the client hasn't seen.
+    /// </summary>
+    public string? LastProcessedEventId { get; private set; }
+
+    /// <summary>The duration (ms) of the most recent execution, from the OUTPUT frame.</summary>
+    public double LastExecutionDurationMs { get; private set; }
+
     public bool IsConnected => _ws is { State: WebSocketState.Open } && _authenticated;
 
     /// <summary>
@@ -228,6 +237,8 @@ public sealed class AgentConnectionService : IAsyncDisposable
         {
             connectMsg["session_id"] = sessionId;
             connectMsg["session"] = new Dictionary<string, object?> { ["session_id"] = sessionId };
+            if (!string.IsNullOrEmpty(LastProcessedEventId))
+                connectMsg["last_msg_id"] = LastProcessedEventId;
         }
 
         await SendJsonAsync(connectMsg, connectToken).ConfigureAwait(false);
@@ -392,9 +403,13 @@ public sealed class AgentConnectionService : IAsyncDisposable
                 return;
 
             case "OUTPUT":
+            {
                 var result = msg.GetString("result") ?? "";
+                if (msg.TryGet("duration_ms", out var d) && d.ValueKind == JsonValueKind.Number)
+                    LastExecutionDurationMs = d.GetDouble();
                 _inputTcs?.TrySetResult(result);
                 return;
+            }
 
             case "ERROR":
                 var message = msg.GetString("message") ?? msg.GetString("error") ?? "Unknown error";
@@ -416,15 +431,20 @@ public sealed class AgentConnectionService : IAsyncDisposable
             case "compact":
             case "tool_blocked":
             case "files_received":
-                StreamEvent?.Invoke(new AgentStreamEvent(msg.Type, DescribeEvent(msg), msg.Root.GetRawText()));
+            {
+                var eventId = msg.GetString("id");
+                if (!string.IsNullOrEmpty(eventId))
+                    LastProcessedEventId = eventId;
+                StreamEvent?.Invoke(new AgentStreamEvent(msg.Type, DescribeEvent(msg), eventId, msg.Root.GetRawText()));
                 return;
+            }
 
             case "ONBOARD_REQUIRED":
                 // A human/onboarding step now owns the connection, so stop the
                 // 30s auth deadline. If we hold an invite code, submit it; the
                 // follow-up CONNECTED then resolves the pending connect.
                 _connectTimeoutCts?.CancelAfter(Timeout.InfiniteTimeSpan);
-                StreamEvent?.Invoke(new AgentStreamEvent(msg.Type, DescribeEvent(msg), msg.Root.GetRawText()));
+                StreamEvent?.Invoke(new AgentStreamEvent(msg.Type, DescribeEvent(msg), null, msg.Root.GetRawText()));
                 if (!string.IsNullOrEmpty(InviteCode))
                 {
                     await SubmitOnboardAsync(InviteCode, ct).ConfigureAwait(false);
@@ -438,7 +458,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
             case "ONBOARD_SUCCESS":
                 // No client retry: the host finishes the interrupted CONNECT and
                 // sends CONNECTED, which resolves the connect promise.
-                StreamEvent?.Invoke(new AgentStreamEvent(msg.Type, DescribeEvent(msg), msg.Root.GetRawText()));
+                StreamEvent?.Invoke(new AgentStreamEvent(msg.Type, DescribeEvent(msg), null, msg.Root.GetRawText()));
                 return;
 
             case "ask_user":
@@ -509,6 +529,16 @@ public sealed class AgentConnectionService : IAsyncDisposable
     {
         _loopCts?.Cancel();
         _authenticated = false;
+
+        // Clear event subscribers so the old connection can be GC'd even
+        // if the subscriber (ChatViewModel) is still alive.
+        StreamEvent = null;
+        ConnectionLost = null;
+        AskUserRequested = null;
+        ApprovalRequested = null;
+        PlanReviewRequested = null;
+        OnboardRequired = null;
+
         if (_ws is not null)
         {
             try

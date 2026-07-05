@@ -5,6 +5,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
+using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Views;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -372,6 +373,8 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
 
         sessionsState.Sessions.Remove(session);
+        await AppServices.Conversations.DeleteMessagesAsync(sessionId);
+        await AppServices.Conversations.DeleteExecutionsAndTracesAsync(sessionId);
         if (sessionsState.ActiveSessionId == sessionId)
         {
             sessionsState.ActiveSessionId = sessionsState.Sessions
