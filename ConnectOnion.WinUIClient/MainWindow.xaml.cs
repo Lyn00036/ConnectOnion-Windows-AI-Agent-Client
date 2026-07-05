@@ -15,6 +15,7 @@ namespace ConnectOnion.WinUIClient;
 public sealed partial class MainWindow : Window
 {
     private readonly AppWindow _appWindow;
+    private bool _isSidebarVisible = true;
 
     public MainWindow()
     {
@@ -22,7 +23,11 @@ public sealed partial class MainWindow : Window
         _appWindow = GetAppWindow();
         ConfigureCustomTitleBar();
         ShellSidebar.NavigationRequested += NavigateTo;
-        ContentFrame.Navigated += async (_, _) => await ShellSidebar.RefreshAsync();
+        ContentFrame.Navigated += async (_, _) =>
+        {
+            UpdateNavigationButtons();
+            await ShellSidebar.RefreshAsync();
+        };
         ThemeService.ThemeApplied += ApplyTitleBarTheme;
         Closed += (_, _) => ThemeService.ThemeApplied -= ApplyTitleBarTheme;
         ThemeService.RegisterRoot(RootGrid);
@@ -31,6 +36,7 @@ public sealed partial class MainWindow : Window
         {
             await ShellSidebar.RefreshAsync();
             NavigateTo(typeof(HomePage));
+            UpdateNavigationButtons();
         };
     }
 
@@ -51,13 +57,52 @@ public sealed partial class MainWindow : Window
     }
 
     private void RootGrid_SizeChanged(object sender, SizeChangedEventArgs e)
+        => ApplySidebarWidth(e.NewSize.Width);
+
+    private void ApplySidebarWidth(double windowWidth)
     {
-        ShellSidebarColumn.Width = e.NewSize.Width switch
+        if (!_isSidebarVisible)
+        {
+            ShellSidebarColumn.Width = new GridLength(0);
+            return;
+        }
+
+        ShellSidebarColumn.Width = windowWidth switch
         {
             < 720 => new GridLength(220),
             < 980 => new GridLength(248),
             _ => new GridLength(286),
         };
+    }
+
+    private void SidebarToggle_Click(object sender, RoutedEventArgs e)
+    {
+        _isSidebarVisible = !_isSidebarVisible;
+        ShellSidebar.Visibility = _isSidebarVisible ? Visibility.Visible : Visibility.Collapsed;
+        ApplySidebarWidth(RootGrid.ActualWidth);
+        SidebarToggleButton.Opacity = _isSidebarVisible ? 1 : 0.65;
+    }
+
+    private void Back_Click(object sender, RoutedEventArgs e)
+    {
+        if (ContentFrame.CanGoBack)
+        {
+            ContentFrame.GoBack();
+        }
+    }
+
+    private void Forward_Click(object sender, RoutedEventArgs e)
+    {
+        if (ContentFrame.CanGoForward)
+        {
+            ContentFrame.GoForward();
+        }
+    }
+
+    private void UpdateNavigationButtons()
+    {
+        BackButton.IsEnabled = ContentFrame.CanGoBack;
+        ForwardButton.IsEnabled = ContentFrame.CanGoForward;
     }
 
     private void ApplyTitleBarTheme(ThemeMode theme)

@@ -24,6 +24,17 @@
                 <Setter Property="FontSize" Value="14" />
                 <Setter Property="HorizontalAlignment" Value="Left" />
             </Style>
+
+            <Style x:Key="TitleIconButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="CornerRadius" Value="6" />
+                <Setter Property="Width" Value="28" />
+                <Setter Property="Height" Value="28" />
+                <Setter Property="MinWidth" Value="0" />
+                <Setter Property="MinHeight" Value="0" />
+                <Setter Property="Padding" Value="0" />
+            </Style>
         </Grid.Resources>
 
         <Grid.RowDefinitions>
@@ -44,6 +55,36 @@
 
             <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="2" Padding="10,0,0,0">
                 <Image Width="17" Height="17" Source="/Assets/icon.png" VerticalAlignment="Center" />
+                <Button x:Name="SidebarToggleButton"
+                        Style="{StaticResource TitleIconButtonStyle}"
+                        Click="SidebarToggle_Click"
+                        AutomationProperties.Name="Toggle sidebar"
+                        ToolTipService.ToolTip="Toggle sidebar">
+                    <ic:FluentIcon Icon="PanelLeft"
+                                   IconVariant="Regular"
+                                   IconSize="Size20"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </Button>
+                <Button x:Name="BackButton"
+                        Style="{StaticResource TitleIconButtonStyle}"
+                        Click="Back_Click"
+                        AutomationProperties.Name="Back"
+                        ToolTipService.ToolTip="Back">
+                    <ic:FluentIcon Icon="ArrowLeft"
+                                   IconVariant="Regular"
+                                   IconSize="Size20"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </Button>
+                <Button x:Name="ForwardButton"
+                        Style="{StaticResource TitleIconButtonStyle}"
+                        Click="Forward_Click"
+                        AutomationProperties.Name="Forward"
+                        ToolTipService.ToolTip="Forward">
+                    <ic:FluentIcon Icon="ArrowRight"
+                                   IconVariant="Regular"
+                                   IconSize="Size20"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </Button>
                 <Button Style="{StaticResource ShellMenuButtonStyle}" Content="File" />
                 <Button Style="{StaticResource ShellMenuButtonStyle}" Content="Edit" />
                 <Button Style="{StaticResource ShellMenuButtonStyle}" Content="View" />
