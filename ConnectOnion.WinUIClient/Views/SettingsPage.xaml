@@ -56,6 +56,24 @@
                             <x:String>Large</x:String>
                         </RadioButtons>
                     </Grid>
+
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="Local identity" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <TextBlock Text="View this desktop client's ConnectOnion address and public key."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                        <Button Grid.Column="1"
+                                Content="View identity"
+                                Padding="14,6"
+                                VerticalAlignment="Center"
+                                Click="Identity_Click" />
+                    </Grid>
                 </StackPanel>
             </Border>
         </StackPanel>

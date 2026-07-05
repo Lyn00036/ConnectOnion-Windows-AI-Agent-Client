@@ -52,4 +52,7 @@ public sealed partial class SettingsPage : Page
         };
         await _vm.SetMessageFontSizeAsync(size);
     }
+
+    private void Identity_Click(object sender, RoutedEventArgs e)
+        => Frame.Navigate(typeof(IdentityPage));
 }
