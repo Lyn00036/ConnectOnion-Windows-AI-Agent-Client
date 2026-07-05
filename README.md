@@ -11,13 +11,17 @@ legacy reference code. New desktop work should happen in the WinUI projects.
 
 ```text
 User
-  -> WinUI 3 window
-  -> XAML pages: Chat, Agents, Sessions, Settings
+  -> WinUI 3 window (MainWindow with Mica backdrop and custom title bar)
+  -> ShellSidebar: agent list + session list navigation
+  -> XAML pages: Home, Chat, AgentDetail, Sessions, Identity, Settings
   -> ViewModels: MVVM state and commands
   -> Services:
       -> SQLite repositories for local app state
-      -> ConnectionTester for /health and relay checks
+      -> ConnectionTester for /health and relay reachability probes
+      -> AgentPresenceService for in-memory online status caching
+      -> AgentInfoService for /info fetch, caching, and change detection
       -> IdentityStore for the local Ed25519 identity
+      -> ThemeService for light/dark theme management
       -> ConnectOnion.Protocol for WebSocket protocol handling
           -> ClientWebSocket / HttpClient
           -> canonical JSON signing
@@ -36,14 +40,16 @@ development and local data does not need to be preserved.
 
 Current SQLite tables:
 
-```text
-app_meta
-agents
-sessions
-preferences
-conversations
-identity_keys
-```
+| Table | Key columns |
+| --- | --- |
+| `app_meta` | key, value |
+| `agents` | id, name, address, direct_url, invite_code, info_json, info_updated_at, sort_order |
+| `sessions` | id, agent_id, title, created_at, updated_at, sort_order |
+| `preferences` | theme, sidebar_visible, message_font_size, shortcut_overrides_json |
+| `conversations` | storage_key, address, session_id, envelope_json, updated_at |
+| `identity_keys` | address, private_seed |
+
+The database uses WAL journal mode and enforces foreign keys.
 
 ## Project Structure
 
@@ -53,19 +59,51 @@ connectonion-desktop/
     ConnectOnion.WinUIClient.sln      Visual Studio solution
     ConnectOnion.WinUIClient.csproj   WinUI 3 desktop app, net10.0-windows
     App.xaml[.cs]                     App startup
-    MainWindow.xaml[.cs]              Shell window and navigation
-    Views/                            Chat, Agents, Sessions, Settings pages
-    ViewModels/                       MVVM state and commands
-    Models/                           UI and persistence models
+    MainWindow.xaml[.cs]              Shell window with Mica backdrop, custom title bar
+    Views/
+      HomePage                        Agent selection landing page
+      ChatPage                        Real-time chat with streaming events
+      AgentDetailPage                 Agent edit, /info display, connection test, delete
+      SessionsPage                    Per-agent session management
+      IdentityPage                    Local Ed25519 identity display
+      SettingsPage                    Theme, sidebar, font size, shortcuts
+    ViewModels/
+      ChatViewModel.cs                Send input, stream events, message rendering
+      SessionsViewModel.cs            Session CRUD, active session tracking
+      AgentDetailViewModel.cs         Agent form state, /info loading, connection testing
+      SettingsViewModel.cs            Preference read/write
+    Controls/
+      ShellSidebar.xaml[.cs]          Agent list + session list navigation
+      AddAgentForm.xaml[.cs]          Inline agent creation form
+    Models/
+      AgentConfig.cs                  Saved agent connection
+      AgentHealthResponse.cs          /health endpoint shape
+      ChatEnvelope.cs                 Serialized conversation payload
+      ChatMessage.cs                  Chat bubble (user/agent/event)
+      OnboardSubmission.cs            Onboarding invite code payload
+      PreferencesSnapshot.cs          Theme, font size, sidebar, shortcuts
+      SessionSummary.cs               Indexed conversation metadata
+      ShellAgentItem.cs               Sidebar agent list item
+      ShellSessionItem.cs             Sidebar session list item
     Services/
       AppDatabase.cs                  SQLite initialization and schema
-      AgentRepository.cs              Agent persistence
-      SessionRepository.cs            Session persistence
-      ConversationRepository.cs       Conversation persistence
-      PreferencesRepository.cs        Preference persistence
-      IdentityStore.cs                Local Ed25519 identity persistence
-      ConnectionTester.cs             Direct URL and relay connection tests
+      AppServices.cs                  Process-wide singleton service locator
+      AppStorage.cs                   Local filesystem directory setup
+      AgentRepository.cs              Agent CRUD (SQLite)
+      SessionRepository.cs            Session CRUD (SQLite)
+      ConversationRepository.cs       Conversation envelope persistence (SQLite)
+      PreferencesRepository.cs        Preference persistence (SQLite)
+      IdentityStore.cs                Local Ed25519 identity persistence (SQLite)
+      ConnectionTester.cs             Direct URL and relay reachability probes
+      AgentInfoService.cs             /info fetch, 5-minute cache, change detection
+      AgentPresenceService.cs         In-memory online status cache with TTL
+      ThemeService.cs                 Light/dark theme management
       AppJsonContext.cs               System.Text.Json source-generation context
+    Common/
+      ObservableObject.cs             INotifyPropertyChanged base class
+      RelayCommand.cs                 ICommand implementation
+      BoolToVisibilityConverter.cs    XAML value converters
+      ChatRoleConverters.cs           Role-based alignment and color converters
     Properties/PublishProfiles/       win-x86, win-x64, win-arm64 profiles
     Package.appxmanifest              MSIX package manifest
 
@@ -85,7 +123,7 @@ connectonion-desktop/
   ConnectOnion.Protocol.LiveTest/
     Program.cs                        Optional live WebSocket integration test
 
-  agent/                              Python agent implementations
+  agent/                              Python agent implementations (email, browser, memory, simple)
   frontend/                           Legacy Electron + React client
   .github/workflows/ci.yml            Windows/.NET CI workflow
   global.json                         SDK selection for local builds
@@ -226,7 +264,8 @@ The CI workflow intentionally does not build the old `frontend/` app.
 
 ## Connect To An Agent
 
-Add agents from the WinUI sidebar or Agents page.
+Add agents from the Home page or sidebar. Click **"Add another agent"** or use the
+`+` button in the sidebar to create a new agent connection.
 
 Connection fields:
 
@@ -241,6 +280,10 @@ Prefer `Direct URL` for day-to-day development when the remote host is known.
 The client probes `{Direct URL}/health` during connection testing and connects
 to `{Direct URL}/ws` for chat. If a Direct URL contains a base path, such as
 `http://host/email`, that base path is preserved.
+
+Select an agent from the sidebar to open its detail page, see `/info` data,
+and start a new chat session. The client auto-creates a session when you
+select an agent and begin chatting.
 
 Agent hosts should expose:
 
@@ -259,29 +302,37 @@ Known deployed development agents:
 
 ## Implemented
 
-- Native WinUI 3 desktop shell
-- Chat, Agents, Sessions, and Settings pages
-- Agent add, edit, delete, select, and connection testing
+- Native WinUI 3 desktop shell with Mica backdrop and custom title bar
+- Home, Chat, Agent Detail, Sessions, Identity, and Settings pages
+- Agent add, edit, delete, select, and connection testing (Direct URL + relay)
+- Agent /info fetch with 5-minute cache and change detection
+- Agent online presence with TTL-based caching and per-agent status indicators
 - Per-agent sessions and conversation persistence
-- SQLite-backed local storage
-- Local Ed25519 identity persistence
+- Local Ed25519 identity display (Identity page)
+- SQLite-backed local storage with WAL journal mode and foreign keys
 - Direct URL and relay connection paths
 - WebSocket protocol handling through `ConnectOnion.Protocol`
 - Canonical JSON signing compatible with the JavaScript reference implementation
-- Stream event display for thinking/tool/status events
+- Stream event display for thinking/tool/status events with collapsible cards
 - User and agent message layout aligned with the current desktop UX
 - Copy action for chat messages
-- Light/dark theme and basic preferences
+- Collapse/expand for long responses
+- Light/dark theme with shell-aware title bar colors
+- Configurable message font size (S/M/L)
+- Keyboard shortcuts (sidebar toggle, new chat) with user-customizable bindings
+- Responsive sidebar with agent list and session list navigation
+- Back/forward navigation in the title bar
+- Suggested prompts for new conversations
 - Protocol conformance test gate
 - Windows/.NET CI workflow
 
 ## Not Implemented Yet
 
-- Production installer/release pipeline
-- Secure OS credential storage
+- Production installer/release pipeline (MSIX packaging is configured but not yet automated)
+- Secure OS credential storage (keys are currently stored in SQLite)
 - File attachments and drag-and-drop
 - System tray behavior
-- App menu commands
+- App menu commands (File/Edit menus are placeholders)
 - Live protocol tests in CI
 - Full migration tooling for preserving older local app data
 
@@ -297,7 +348,9 @@ Known deployed development agents:
 
 ## References
 
+- [WinUIClient project README](./ConnectOnion.WinUIClient/README.md)
 - [WinUI 3 native migration notes](./WINUI3_NATIVE_MIGRATION.md)
+- [Team progress notes](./TEAM_PROGRESS.md)
 - [Requirement-to-solution mapping](./connectonion_requirement_solution_mapping.md)
 - [Email agent README](./agent/email-agent/README.md)
 - [ConnectOnion Python repository](https://github.com/openonion/connectonion)
