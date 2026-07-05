@@ -530,6 +530,16 @@ public sealed class AgentConnectionService : IAsyncDisposable
         _loopCts?.Cancel();
         _authenticated = false;
 
+        // Drain the receive loop so it cannot race with the socket close
+        // below and spuriously call HandleConnectionLoss (which would
+        // fault the pending TCS instances and re-cancel the loop CTS).
+        if (_receiveLoop is not null)
+        {
+            try { await _receiveLoop.ConfigureAwait(false); }
+            catch { /* expected: loop exits via cancellation or close */ }
+            _receiveLoop = null;
+        }
+
         // Clear event subscribers so the old connection can be GC'd even
         // if the subscriber (ChatViewModel) is still alive.
         StreamEvent = null;
