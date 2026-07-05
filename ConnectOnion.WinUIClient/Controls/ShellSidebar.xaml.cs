@@ -57,6 +57,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
                 Name = agent.Name,
                 IsSelected = agent.Id == agentsState.SelectedAgentId,
                 IsExpanded = agent.Id == agentsState.SelectedAgentId,
+                Presence = _presence.GetPresence(agent.Id),
             };
 
             foreach (var session in sessionsState.Sessions
@@ -80,8 +81,15 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         }
     }
 
-    private void OnPresenceChanged(string _)
-        => DispatcherQueue.TryEnqueue(UpdateOnlineAgentCount);
+    private void OnPresenceChanged(string agentId)
+        => DispatcherQueue.TryEnqueue(() =>
+        {
+            if (FindShellAgent(agentId) is { } agent)
+            {
+                agent.Presence = _presence.GetPresence(agentId);
+            }
+            UpdateOnlineAgentCount();
+        });
 
     private void UpdateOnlineAgentCount()
         => OnlineAgentCount = ShellAgents.Count(agent => _presence.GetPresence(agent.Id) == AgentPresence.Online);

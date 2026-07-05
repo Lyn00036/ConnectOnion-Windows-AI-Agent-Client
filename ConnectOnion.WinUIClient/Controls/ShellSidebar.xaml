@@ -154,10 +154,28 @@
                                             Tag="{Binding Id}"
                                             Padding="0"
                                             MinHeight="0">
-                                        <TextBlock Text="{Binding Name}"
-                                                   FontWeight="SemiBold"
-                                                   TextTrimming="CharacterEllipsis"
-                                                   VerticalAlignment="Center" />
+                                        <Grid ColumnSpacing="7">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0"
+                                                       Text="{Binding Name}"
+                                                       FontWeight="SemiBold"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       VerticalAlignment="Center" />
+                                            <Grid Grid.Column="1"
+                                                  Width="10"
+                                                  Height="10"
+                                                  VerticalAlignment="Center"
+                                                  ToolTipService.ToolTip="{Binding PresenceLabel}">
+                                                <Ellipse Fill="{ThemeResource StatusSuccessTextBrush}"
+                                                         Visibility="{Binding IsOnline, Converter={StaticResource BoolToVis}}" />
+                                                <Ellipse Stroke="{ThemeResource ShellMutedTextBrush}"
+                                                         StrokeThickness="1.5"
+                                                         Visibility="{Binding IsOfflineIconVisible, Converter={StaticResource BoolToVis}}" />
+                                            </Grid>
+                                        </Grid>
                                     </Button>
                                     <StackPanel Grid.Column="3"
                                                 Orientation="Horizontal"
