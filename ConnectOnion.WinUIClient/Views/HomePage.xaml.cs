@@ -66,8 +66,6 @@ public sealed partial class HomePage : Page
                 ShortAddress = ShortenAddress(agent),
                 IsOnline = _presence.GetPresence(agent.Id) == AgentPresence.Online,
             });
-
-            _ = _presence.EnsureCheckedAsync(agent);
         }
     }
 
@@ -97,7 +95,26 @@ public sealed partial class HomePage : Page
     }
 
     private void AddAnotherAgent_Click(object sender, RoutedEventArgs e)
-        => Frame.Navigate(typeof(AgentsPage));
+    {
+        AddAgentPanel.Visibility = AddAgentPanel.Visibility == Visibility.Visible
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+
+        if (AddAgentPanel.Visibility == Visibility.Visible)
+        {
+            AddAgentPanel.FocusFirstField();
+        }
+    }
+
+    private void AddAgentForm_CloseRequested()
+        => AddAgentPanel.Visibility = Visibility.Collapsed;
+
+    private async void AddAgentForm_AgentAdded(AgentConfig _)
+    {
+        AddAgentPanel.Visibility = Visibility.Collapsed;
+        await LoadAsync();
+        Frame.Navigate(typeof(AgentDetailPage));
+    }
 
     private static async System.Threading.Tasks.Task EnsureSessionAsync(string agentId)
     {

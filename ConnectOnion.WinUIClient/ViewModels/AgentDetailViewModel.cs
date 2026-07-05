@@ -84,14 +84,8 @@ public sealed class AgentDetailViewModel : ObservableObject
     public bool IsLoading
     {
         get => _isLoading;
-        private set
-        {
-            if (!SetProperty(ref _isLoading, value)) return;
-            OnPropertyChanged(nameof(CanRefresh));
-        }
+        private set => SetProperty(ref _isLoading, value);
     }
-
-    public bool CanRefresh => !IsLoading;
 
     public string InfoJson { get => _infoJson; private set { if (SetProperty(ref _infoJson, value)) OnPropertyChanged(nameof(HasInfoJson)); } }
 
@@ -173,50 +167,54 @@ public sealed class AgentDetailViewModel : ObservableObject
         Agent = selected;
         if (Agent is null) return;
 
-        // Confirm online status (green dot) if we haven't already this session.
-        _ = _presence.EnsureCheckedAsync(Agent);
-
+        // Use cached /info immediately; only fetch when the cache is missing or stale.
         if (!string.IsNullOrWhiteSpace(Agent.InfoJson))
         {
             PopulateFromCachedJson(Agent.InfoJson);
             StatusText = $"Cached — {LastUpdated}";
+            if (AgentInfoService.IsCacheFresh(Agent)) return;
+        }
+
+        IsLoading = true;
+        await FetchInfoWithCacheAsync();
+    }
+
+    private async Task FetchInfoWithCacheAsync()
+    {
+        var agent = Agent;
+        if (agent is null)
+        {
+            IsLoading = false;
             return;
         }
 
-        IsLoading = true;
-        await FetchInfoAsync();
-    }
+        var hadCache = !string.IsNullOrWhiteSpace(agent.InfoJson);
+        var freshJson = await AgentInfoService.FetchAndPersistAsync(agent, forceRefresh: true);
 
-    /// <summary>Force-refreshes agent info from the network.</summary>
-    public async Task RefreshAsync()
-    {
-        if (Agent is null) return;
-
-        // Refresh the online indicator alongside the /info re-fetch.
-        _ = _presence.RefreshAsync(Agent);
-
-        IsLoading = true;
-        try
+        _dispatcher.TryEnqueue(() =>
         {
-            var (changed, freshJson) = await AgentInfoService.CheckForChangesAsync(Agent);
-
-            _dispatcher.TryEnqueue(() =>
+            if (!string.IsNullOrWhiteSpace(freshJson))
             {
-                if (changed && freshJson is not null)
-                {
-                    PopulateFromCachedJson(freshJson);
-                    OnPropertyChanged(nameof(LastUpdated));
-                }
-                if (freshJson is not null)
-                {
-                    StatusText = $"Updated — {LastUpdated}";
-                }
-            });
-        }
-        finally
-        {
+                HasError = false;
+                PopulateFromCachedJson(freshJson);
+                OnPropertyChanged(nameof(LastUpdated));
+                StatusText = $"Updated - {LastUpdated}";
+            }
+            else if (hadCache)
+            {
+                HasError = false;
+                StatusText = $"Cached - {LastUpdated}";
+            }
+            else
+            {
+                InfoFields.Clear();
+                InfoJson = "";
+                HasError = true;
+                StatusText = "Could not load agent info.";
+            }
+
             IsLoading = false;
-        }
+        });
     }
 
     private async Task FetchInfoAsync()

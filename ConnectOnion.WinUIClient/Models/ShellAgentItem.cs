@@ -18,7 +18,7 @@ public sealed class ShellAgentItem : ObservableObject
     public int SessionCount => Sessions.Count;
     public ObservableCollection<ShellSessionItem> Sessions { get; } = new();
 
-    public double ChevronAngle => IsExpanded ? 270 : 180;
+    public double ChevronAngle => IsExpanded ? 0 : 270;
 
     public bool IsExpanded
     {

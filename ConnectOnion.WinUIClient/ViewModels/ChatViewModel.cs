@@ -37,6 +37,7 @@ public sealed class ChatViewModel : ObservableObject
     // Real transport when the agent exposes a Direct URL; null falls back to the
     // simulated reply so the UI still works for agents without one.
     private AgentConnectionService? _connection;
+    private string? _connectedAgentId;
 
     public ObservableCollection<ChatMessage> Messages { get; } = new();
 
@@ -45,8 +46,14 @@ public sealed class ChatViewModel : ObservableObject
         _presence.PresenceChanged += OnPresenceChanged;
     }
 
-    /// <summary>Detaches from the shared presence service. Call when the page unloads.</summary>
-    public void Cleanup() => _presence.PresenceChanged -= OnPresenceChanged;
+    /// <summary>Detaches from the shared presence service and disposes the connection. Call when the page unloads.</summary>
+    public void Cleanup()
+    {
+        _presence.PresenceChanged -= OnPresenceChanged;
+        var old = _connection;
+        _connection = null;
+        _ = old?.DisposeAsync();
+    }
 
     private void OnPresenceChanged(string agentId)
     {
@@ -177,10 +184,9 @@ public sealed class ChatViewModel : ObservableObject
         SetupConnection();
         await RestoreConversationAsync();
 
-        // Reflect any cached presence immediately, then confirm online if we
-        // haven't already this session.
+        // Reflect cached presence immediately. The sidebar owns automatic
+        // probing; the header button can still force a recheck.
         RaisePresenceProperties();
-        _ = _presence.EnsureCheckedAsync(_agent);
     }
 
     /// <summary>Re-probes the agent's online status (bound to the header button).</summary>
@@ -197,8 +203,18 @@ public sealed class ChatViewModel : ObservableObject
         var hasAddress = !string.IsNullOrWhiteSpace(_agent.Address);
         if (!hasDirect && !hasAddress) return;
 
+        // Already connected to this agent — nothing to do.
+        if (_connectedAgentId == _agent.Id && _connection is not null) return;
+
+        // Dispose the old connection (WebSocket + receive loop + watchdog).
+        var old = _connection;
+        _connection = null;
+        _connectedAgentId = null;
+        _ = old?.DisposeAsync();
+
         var identity = IdentityStore.EnsureIdentity();
         _connection = new AgentConnectionService(_agent.Address, _agent.DirectUrl, identity, AppServices.Http);
+        _connectedAgentId = _agent.Id;
         _connection.StreamEvent += e =>
             _dispatcher.TryEnqueue(() => ApplyStreamEvent(e));
         _connection.ConnectionLost += ex =>
@@ -230,17 +246,6 @@ public sealed class ChatViewModel : ObservableObject
         var active = _sessionsState.Sessions
             .FirstOrDefault(s => s.Id == _sessionsState.ActiveSessionId && s.AgentId == agentId);
         if (active is not null) return active;
-
-        var recent = _sessionsState.Sessions
-            .Where(s => s.AgentId == agentId)
-            .OrderByDescending(s => s.UpdatedAt, StringComparer.Ordinal)
-            .FirstOrDefault();
-        if (recent is not null)
-        {
-            _sessionsState.ActiveSessionId = recent.Id;
-            await AppServices.Sessions.SaveAsync(_sessionsState);
-            return recent;
-        }
 
         var timestamp = DateTime.UtcNow.ToString("o");
         var count = _sessionsState.Sessions.Count(s => s.AgentId == agentId) + 1;

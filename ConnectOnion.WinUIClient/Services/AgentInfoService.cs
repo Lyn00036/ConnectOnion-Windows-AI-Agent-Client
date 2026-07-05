@@ -13,13 +13,29 @@ namespace ConnectOnion.WinUIClient.Services;
 /// </summary>
 public static class AgentInfoService
 {
+    private static readonly TimeSpan DefaultCacheTtl = TimeSpan.FromMinutes(5);
+
+    public static bool IsCacheFresh(AgentConfig agent)
+    {
+        if (string.IsNullOrWhiteSpace(agent.InfoJson) ||
+            string.IsNullOrWhiteSpace(agent.InfoUpdatedAt) ||
+            !DateTimeOffset.TryParse(agent.InfoUpdatedAt, out var updatedAt))
+        {
+            return false;
+        }
+
+        return DateTimeOffset.UtcNow - updatedAt.ToUniversalTime() < DefaultCacheTtl;
+    }
+
     /// <summary>
     /// Fetches /info from the agent's Direct URL or relay address, then
     /// persists the result to the agent record. Returns the info JSON string
     /// (null if the fetch failed).
     /// </summary>
-    public static async Task<string?> FetchAndPersistAsync(AgentConfig agent)
+    public static async Task<string?> FetchAndPersistAsync(AgentConfig agent, bool forceRefresh = false)
     {
+        if (!forceRefresh && IsCacheFresh(agent)) return agent.InfoJson;
+
         string? infoJson = null;
 
         if (!string.IsNullOrWhiteSpace(agent.DirectUrl))
@@ -28,7 +44,7 @@ public static class AgentInfoService
         }
         else if (!string.IsNullOrWhiteSpace(agent.Address))
         {
-            infoJson = await FetchFromRelayAsync(agent.Address);
+            infoJson = await FetchFromRelayAsync(agent.Address, forceRefresh);
         }
 
         if (infoJson is null) return null;
@@ -64,7 +80,7 @@ public static class AgentInfoService
         }
         else if (!string.IsNullOrWhiteSpace(agent.Address))
         {
-            freshJson = await FetchFromRelayAsync(agent.Address);
+            freshJson = await FetchFromRelayAsync(agent.Address, forceRefresh: true);
         }
 
         if (freshJson is null) return (false, null);
@@ -104,12 +120,12 @@ public static class AgentInfoService
         }
     }
 
-    private static async Task<string?> FetchFromRelayAsync(string address)
+    private static async Task<string?> FetchFromRelayAsync(string address, bool forceRefresh = false)
     {
         try
         {
             var info = await EndpointResolver.FetchAgentInfoAsync(
-                AppServices.Http, address, EndpointResolver.DefaultRelay);
+                AppServices.Http, address, EndpointResolver.DefaultRelay, forceRefresh: forceRefresh);
 
             if (!info.Online) return null;
 

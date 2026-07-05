@@ -31,9 +31,13 @@ public enum AgentPresence
 /// </summary>
 public sealed class AgentPresenceService
 {
+    private static readonly TimeSpan OnlineTtl = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan OfflineTtl = TimeSpan.FromSeconds(30);
+
     private readonly object _gate = new();
     private readonly Dictionary<string, AgentPresence> _presence = new();
     private readonly Dictionary<string, string> _details = new();
+    private readonly Dictionary<string, DateTimeOffset> _checkedAt = new();
     private readonly Dictionary<string, Task> _inflight = new();
 
     /// <summary>Raised (possibly off the UI thread) when an agent's presence changes. Carries the agent id.</summary>
@@ -50,14 +54,19 @@ public sealed class AgentPresenceService
     }
 
     /// <summary>
-    /// Confirms the agent is online unless we already know it is. A no-op when the
-    /// agent is already <see cref="AgentPresence.Online"/>; otherwise probes once,
-    /// coalescing concurrent callers onto a single probe.
+    /// Confirms the agent is online if the cached answer is missing or stale.
+    /// Recent Online and Offline answers are reused, and concurrent callers are
+    /// coalesced onto a single probe.
     /// </summary>
     public Task EnsureCheckedAsync(AgentConfig agent)
-        => GetPresence(agent.Id) == AgentPresence.Online
-            ? Task.CompletedTask
-            : RefreshAsync(agent);
+    {
+        lock (_gate)
+        {
+            if (_inflight.TryGetValue(agent.Id, out var running)) return running;
+            if (!ShouldProbeLocked(agent.Id, DateTimeOffset.UtcNow)) return Task.CompletedTask;
+            return StartProbeLocked(agent);
+        }
+    }
 
     /// <summary>Forces a fresh reachability probe, reusing any probe already running for this agent.</summary>
     public Task RefreshAsync(AgentConfig agent)
@@ -65,10 +74,30 @@ public sealed class AgentPresenceService
         lock (_gate)
         {
             if (_inflight.TryGetValue(agent.Id, out var running)) return running;
-            var task = ProbeAsync(agent);
-            _inflight[agent.Id] = task;
-            return task;
+            return StartProbeLocked(agent);
         }
+    }
+
+    private Task StartProbeLocked(AgentConfig agent)
+    {
+        var task = ProbeAsync(agent);
+        _inflight[agent.Id] = task;
+        return task;
+    }
+
+    private bool ShouldProbeLocked(string agentId, DateTimeOffset now)
+    {
+        if (!_presence.TryGetValue(agentId, out var presence)) return true;
+        if (!_checkedAt.TryGetValue(agentId, out var checkedAt)) return true;
+
+        var ttl = presence switch
+        {
+            AgentPresence.Online => OnlineTtl,
+            AgentPresence.Offline => OfflineTtl,
+            AgentPresence.Checking => TimeSpan.FromSeconds(10),
+            _ => TimeSpan.Zero,
+        };
+        return ttl == TimeSpan.Zero || now - checkedAt >= ttl;
     }
 
     private async Task ProbeAsync(AgentConfig agent)
@@ -101,6 +130,7 @@ public sealed class AgentPresenceService
         {
             _presence[agentId] = presence;
             _details[agentId] = detail;
+            _checkedAt[agentId] = DateTimeOffset.UtcNow;
         }
         PresenceChanged?.Invoke(agentId);
     }

@@ -3,6 +3,7 @@
     x:Class="ConnectOnion.WinUIClient.Views.HomePage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:ConnectOnion.WinUIClient.Controls"
     xmlns:views="using:ConnectOnion.WinUIClient.Views"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -130,6 +131,14 @@
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 </StackPanel>
             </Button>
+
+            <controls:AddAgentForm x:Name="AddAgentPanel"
+                                   Width="420"
+                                   MaxWidth="620"
+                                   HorizontalAlignment="Center"
+                                   Visibility="Collapsed"
+                                   CloseRequested="AddAgentForm_CloseRequested"
+                                   AgentAdded="AddAgentForm_AgentAdded" />
         </StackPanel>
     </Grid>
 </Page>

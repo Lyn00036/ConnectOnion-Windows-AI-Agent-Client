@@ -20,8 +20,6 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     private readonly AgentPresenceService _presence = AppServices.Presence;
-    private bool _addAgentConnectionTested;
-    private string? _addAgentDetectedName;
     private int _onlineAgentCount;
 
     public int OnlineAgentCount
@@ -78,10 +76,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         UpdateOnlineAgentCount();
         foreach (var agent in agentsState.Agents)
         {
-            if (_presence.GetPresence(agent.Id) == AgentPresence.Unknown)
-            {
-                _ = _presence.EnsureCheckedAsync(agent);
-            }
+            _ = _presence.EnsureCheckedAsync(agent);
         }
     }
 
@@ -154,7 +149,6 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         var agentsState = await AppServices.Agents.LoadAsync();
         agentsState.SelectedAgentId = agentId;
         await AppServices.Agents.SaveAsync(agentsState);
-        await EnsureSessionAsync(agentId);
         await RefreshAsync();
         RequestNavigation(typeof(ChatPage), forceReload: true);
     }
@@ -181,6 +175,17 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
 
     private async void ChatHome_Click(object sender, RoutedEventArgs e)
     {
+        var sessionsState = await AppServices.Sessions.LoadAsync();
+        var recent = sessionsState.Sessions
+            .OrderByDescending(s => s.UpdatedAt, StringComparer.Ordinal)
+            .FirstOrDefault();
+
+        if (recent is not null)
+        {
+            await SelectSessionAsync(recent.Id);
+            return;
+        }
+
         await RefreshAsync();
         RequestNavigation(typeof(HomePage), forceReload: true);
     }
@@ -254,17 +259,6 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         await CreateSessionAsync(agentId);
         await RefreshAsync();
         RequestNavigation(typeof(ChatPage), forceReload: true);
-    }
-
-    private async void EditAgent_Click(object sender, RoutedEventArgs e)
-    {
-        if ((sender as FrameworkElement)?.Tag is not string agentId) return;
-
-        var agentsState = await AppServices.Agents.LoadAsync();
-        agentsState.SelectedAgentId = agentId;
-        await AppServices.Agents.SaveAsync(agentsState);
-        await RefreshAsync();
-        RequestNavigation(typeof(AgentsPage));
     }
 
     private async void DeleteAgent_Click(object sender, RoutedEventArgs e)
@@ -393,124 +387,19 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
             : Visibility.Visible;
         if (AddAgentPanel.Visibility == Visibility.Visible)
         {
-            AddAgentAddressBox.Focus(FocusState.Programmatic);
+            AddAgentPanel.FocusFirstField();
         }
         await RefreshAsync();
     }
 
-    private void CloseAddAgentPanel_Click(object sender, RoutedEventArgs e)
-        => ResetAddAgentPanel(collapse: true);
+    private void AddAgentForm_CloseRequested()
+        => AddAgentPanel.Visibility = Visibility.Collapsed;
 
-    private void AddAgentField_TextChanged(object sender, TextChangedEventArgs e)
+    private async void AddAgentForm_AgentAdded(AgentConfig _)
     {
-        SetAddAgentConnectionTested(false);
-        AddAgentStatusText.Visibility = Visibility.Collapsed;
-    }
-
-    private async void TestAddAgentConnection_Click(object sender, RoutedEventArgs e)
-    {
-        await TestAddAgentConnectionAsync();
-    }
-
-    private async void SubmitAddAgent_Click(object sender, RoutedEventArgs e)
-    {
-        var address = AddAgentAddressBox.Text.Trim();
-        var directUrl = AddAgentDirectUrlBox.Text.Trim();
-
-        if (string.IsNullOrWhiteSpace(address) && string.IsNullOrWhiteSpace(directUrl))
-        {
-            ShowAddAgentStatus("Enter a 0x address or Direct URL.", isError: true);
-            AddAgentAddressBox.Focus(FocusState.Programmatic);
-            return;
-        }
-
-        if (!_addAgentConnectionTested)
-        {
-            ShowAddAgentStatus("Test connection successfully before adding this agent.", isError: true);
-            return;
-        }
-
-        var name = _addAgentDetectedName ?? $"Agent {address[..Math.Min(8, address.Length)]}";
-
-        var agentsState = await AppServices.Agents.LoadAsync();
-        var agent = new AgentConfig
-        {
-            Id = Guid.NewGuid().ToString(),
-            Name = name,
-            Address = address,
-            DirectUrl = string.IsNullOrWhiteSpace(directUrl) ? null : directUrl,
-        };
-
-        agentsState.Agents.Add(agent);
-        agentsState.SelectedAgentId = agent.Id;
-        await AppServices.Agents.SaveAsync(agentsState);
-        ResetAddAgentPanel(collapse: true);
+        AddAgentPanel.Visibility = Visibility.Collapsed;
         await RefreshAsync();
         RequestNavigation(typeof(AgentDetailPage), forceReload: true);
-    }
-
-    private async System.Threading.Tasks.Task<bool> TestAddAgentConnectionAsync()
-    {
-        var address = AddAgentAddressBox.Text.Trim();
-        var directUrl = AddAgentDirectUrlBox.Text.Trim();
-        if (string.IsNullOrWhiteSpace(address) && string.IsNullOrWhiteSpace(directUrl))
-        {
-            ShowAddAgentStatus("Enter a 0x address or Direct URL first.", isError: true);
-            return false;
-        }
-
-        SetAddAgentBusy(true);
-        try
-        {
-            var result = await ConnectionTester.TestAsync(address, directUrl);
-            SetAddAgentConnectionTested(result.Ok);
-            if (result.Ok && result.AgentName is not null)
-                _addAgentDetectedName = result.AgentName;
-            ShowAddAgentStatus(result.Detail, !result.Ok);
-            return result.Ok;
-        }
-        finally
-        {
-            SetAddAgentBusy(false);
-        }
-    }
-
-    private void SetAddAgentBusy(bool isBusy)
-    {
-        AddAgentTestButton.IsEnabled = !isBusy;
-        AddAgentSubmitButton.IsEnabled = !isBusy && _addAgentConnectionTested;
-        AddAgentTestRing.IsActive = isBusy;
-        AddAgentTestRing.Visibility = isBusy ? Visibility.Visible : Visibility.Collapsed;
-    }
-
-    private void SetAddAgentConnectionTested(bool isTested)
-    {
-        _addAgentConnectionTested = isTested;
-        AddAgentSubmitButton.IsEnabled = isTested;
-    }
-
-    private void ShowAddAgentStatus(string message, bool isError)
-    {
-        AddAgentStatusText.Text = message;
-        AddAgentStatusText.Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[
-            isError ? "StatusErrorTextBrush" : "StatusSuccessTextBrush"];
-        AddAgentStatusText.Visibility = Visibility.Visible;
-    }
-
-    private void ResetAddAgentPanel(bool collapse)
-    {
-        AddAgentAddressBox.Text = "";
-        AddAgentDirectUrlBox.Text = "";
-        _addAgentDetectedName = null;
-        SetAddAgentConnectionTested(false);
-        AddAgentStatusText.Visibility = Visibility.Collapsed;
-        AddAgentTestRing.IsActive = false;
-        AddAgentTestRing.Visibility = Visibility.Collapsed;
-        AddAgentTestButton.IsEnabled = true;
-        if (collapse)
-        {
-            AddAgentPanel.Visibility = Visibility.Collapsed;
-        }
     }
 
     private async void Settings_Click(object sender, RoutedEventArgs e)

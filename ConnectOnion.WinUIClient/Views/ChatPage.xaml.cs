@@ -76,17 +76,6 @@ public sealed partial class ChatPage : Page
 
     private async void Send_Click(object sender, RoutedEventArgs e) => await SendAsync();
 
-    private async void NewChat_Click(object sender, RoutedEventArgs e)
-    {
-        await Vm.NewConversationAsync();
-        InputBox.Text = "";
-    }
-
-    private async void Recheck_Click(object sender, RoutedEventArgs e)
-    {
-        await Vm.RecheckPresenceAsync();
-    }
-
     private async void SubmitOnboard_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.DataContext is ChatMessage message)

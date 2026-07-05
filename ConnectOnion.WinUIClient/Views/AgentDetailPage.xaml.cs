@@ -20,9 +20,6 @@ public sealed partial class AgentDetailPage : Page
         Unloaded += (_, _) => Vm.Cleanup();
     }
 
-    private async void Refresh_Click(object sender, RoutedEventArgs e)
-        => await Vm.RefreshAsync();
-
     private async void StartConversation_Click(object sender, RoutedEventArgs e)
         => await StartConversationAsync(PromptBox.Text);
 

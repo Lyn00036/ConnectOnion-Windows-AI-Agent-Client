@@ -46,10 +46,21 @@ public sealed record AgentInfo(
 public static class EndpointResolver
 {
     public const string DefaultRelay = "wss://oo.openonion.ai";
+    private static readonly TimeSpan EndpointCacheTtl = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan AgentInfoOnlineCacheTtl = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan AgentInfoOfflineCacheTtl = TimeSpan.FromSeconds(30);
+    private static readonly object CacheGate = new();
+    private static readonly Dictionary<string, EndpointCacheEntry> EndpointCache = new();
+    private static readonly Dictionary<string, AgentInfoCacheEntry> AgentInfoCache = new();
+    private static readonly Dictionary<string, Task<ResolvedEndpoint?>> EndpointInflight = new();
+    private static readonly Dictionary<string, Task<AgentInfo>> AgentInfoInflight = new();
     private static readonly JsonDocumentOptions JsonOptions = new()
     {
         AllowDuplicateProperties = false,
     };
+
+    private sealed record EndpointCacheEntry(ResolvedEndpoint? Endpoint, DateTimeOffset CheckedAt);
+    private sealed record AgentInfoCacheEntry(AgentInfo Info, DateTimeOffset CheckedAt);
 
     public static string NormalizeRelayUrl(string relayUrl)
     {
@@ -85,7 +96,54 @@ public static class EndpointResolver
     /// or null if none is reachable (caller then uses the relay /ws/input path).
     /// </summary>
     public static async Task<ResolvedEndpoint?> ResolveEndpointAsync(
-        HttpClient http, string agentAddress, string relayUrl, int timeoutMs = 3000)
+        HttpClient http, string agentAddress, string relayUrl, int timeoutMs = 3000,
+        bool forceRefresh = false)
+    {
+        var key = $"{NormalizeRelayUrl(relayUrl)}|{agentAddress}";
+        Task<ResolvedEndpoint?> task;
+        var ownsTask = false;
+
+        lock (CacheGate)
+        {
+            if (!forceRefresh &&
+                EndpointCache.TryGetValue(key, out var cached) &&
+                DateTimeOffset.UtcNow - cached.CheckedAt < EndpointCacheTtl)
+            {
+                return cached.Endpoint;
+            }
+
+            if (EndpointInflight.TryGetValue(key, out var running))
+            {
+                task = running;
+            }
+            else
+            {
+                task = ResolveEndpointUncachedAsync(http, agentAddress, relayUrl, timeoutMs);
+                EndpointInflight[key] = task;
+                ownsTask = true;
+            }
+        }
+
+        if (!ownsTask) return await task.ConfigureAwait(false);
+        return await CompleteEndpointAsync(key, task).ConfigureAwait(false);
+    }
+
+    private static async Task<ResolvedEndpoint?> CompleteEndpointAsync(string key, Task<ResolvedEndpoint?> task)
+    {
+        try
+        {
+            var endpoint = await task.ConfigureAwait(false);
+            lock (CacheGate) EndpointCache[key] = new EndpointCacheEntry(endpoint, DateTimeOffset.UtcNow);
+            return endpoint;
+        }
+        finally
+        {
+            lock (CacheGate) EndpointInflight.Remove(key);
+        }
+    }
+
+    private static async Task<ResolvedEndpoint?> ResolveEndpointUncachedAsync(
+        HttpClient http, string agentAddress, string relayUrl, int timeoutMs)
     {
         var httpsRelay = ToHttps(relayUrl);
 
@@ -131,7 +189,54 @@ public static class EndpointResolver
     /// the base, /info probes on direct endpoints merge richer data on top.
     /// </summary>
     public static async Task<AgentInfo> FetchAgentInfoAsync(
-        HttpClient http, string agentAddress, string relayUrl, int timeoutMs = 5000)
+        HttpClient http, string agentAddress, string relayUrl, int timeoutMs = 5000,
+        bool forceRefresh = false)
+    {
+        var key = $"{NormalizeRelayUrl(relayUrl)}|{agentAddress}";
+        Task<AgentInfo> task;
+        var ownsTask = false;
+
+        lock (CacheGate)
+        {
+            if (!forceRefresh &&
+                AgentInfoCache.TryGetValue(key, out var cached) &&
+                DateTimeOffset.UtcNow - cached.CheckedAt < (cached.Info.Online ? AgentInfoOnlineCacheTtl : AgentInfoOfflineCacheTtl))
+            {
+                return cached.Info;
+            }
+
+            if (AgentInfoInflight.TryGetValue(key, out var running))
+            {
+                task = running;
+            }
+            else
+            {
+                task = FetchAgentInfoUncachedAsync(http, agentAddress, relayUrl, timeoutMs);
+                AgentInfoInflight[key] = task;
+                ownsTask = true;
+            }
+        }
+
+        if (!ownsTask) return await task.ConfigureAwait(false);
+        return await CompleteAgentInfoAsync(key, task).ConfigureAwait(false);
+    }
+
+    private static async Task<AgentInfo> CompleteAgentInfoAsync(string key, Task<AgentInfo> task)
+    {
+        try
+        {
+            var info = await task.ConfigureAwait(false);
+            lock (CacheGate) AgentInfoCache[key] = new AgentInfoCacheEntry(info, DateTimeOffset.UtcNow);
+            return info;
+        }
+        finally
+        {
+            lock (CacheGate) AgentInfoInflight.Remove(key);
+        }
+    }
+
+    private static async Task<AgentInfo> FetchAgentInfoUncachedAsync(
+        HttpClient http, string agentAddress, string relayUrl, int timeoutMs)
     {
         var httpsRelay = ToHttps(relayUrl);
 
