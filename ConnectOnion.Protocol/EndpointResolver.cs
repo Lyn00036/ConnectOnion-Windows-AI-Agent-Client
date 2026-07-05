@@ -268,9 +268,22 @@ public static class EndpointResolver
             .Select(s => s!)
             .OrderBy(Proximity);
 
-        foreach (var httpUrl in httpEndpoints)
+        // Probe all endpoints in parallel; return on the first match so the
+        // worst case is ~3 s instead of N × 3 s when most endpoints are
+        // unreachable from the caller's network.
+        var pending = httpEndpoints
+            .Select(async httpUrl =>
+            {
+                var info = await GetJsonAsync(http, $"{httpUrl}/info", 3000).ConfigureAwait(false);
+                return (httpUrl, info);
+            })
+            .ToList();
+
+        while (pending.Count > 0)
         {
-            var info = await GetJsonAsync(http, $"{httpUrl}/info", 3000).ConfigureAwait(false);
+            var done = await Task.WhenAny(pending).ConfigureAwait(false);
+            pending.Remove(done);
+            var (httpUrl, info) = await done.ConfigureAwait(false);
             if (info is not null &&
                 info.Value.TryGetProperty("address", out var addr) &&
                 addr.GetString() == agentAddress)
