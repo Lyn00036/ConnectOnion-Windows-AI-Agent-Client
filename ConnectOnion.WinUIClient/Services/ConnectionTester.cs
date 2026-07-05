@@ -15,16 +15,15 @@ public readonly record struct ConnectionTestResult(
 /// <summary>
 /// Reachability check for an agent target. Port of <c>connectionTest.ts</c>.
 ///
-/// Direct URL agents expose an unauthenticated <c>GET /health</c> route and are
-/// probed here. Relay-address agents require the SDK's endpoint resolution and
-/// are handled once the protocol layer lands (Step 9).
+/// Both Direct URL and relay-address paths probe <c>GET /info</c> so the
+/// online check and metadata fetch happen in a single request.
 /// </summary>
 public static class ConnectionTester
 {
     private const int DefaultTimeoutMs = 6000;
 
     // Relay-address probes make an extra hop through the relay server before the
-    // agent is reached, so they need a longer budget than a direct /health hit.
+    // agent is reached, so they need a longer budget than a direct /info hit.
     private const int RelayTimeoutMs = 12000;
     private static readonly JsonDocumentOptions JsonOptions = new()
     {
@@ -42,7 +41,7 @@ public static class ConnectionTester
         {
             // A Direct URL is the most specific target, so prefer it over a relay
             // address when both are present.
-            if (!TryBuildHealthUrl(directUrl, out var healthUrl))
+            if (!TryBuildInfoUrl(directUrl, out var infoUrl))
             {
                 return new ConnectionTestResult(false, "Invalid Direct URL.");
             }
@@ -51,7 +50,7 @@ public static class ConnectionTester
             {
                 using var cts = new CancellationTokenSource(timeoutMs);
                 using var response = await AppServices.Http
-                    .GetAsync(healthUrl, cts.Token)
+                    .GetAsync(infoUrl, cts.Token)
                     .ConfigureAwait(false);
 
                 if (!response.IsSuccessStatusCode)
@@ -59,20 +58,21 @@ public static class ConnectionTester
                     return new ConnectionTestResult(false, $"Agent responded with HTTP {(int)response.StatusCode}.");
                 }
 
-                var name = await ReadHealthAgentNameAsync(response).ConfigureAwait(false);
+                var body = await response.Content.ReadAsStringAsync(cts.Token).ConfigureAwait(false);
+                var name = ExtractAgentNameFromJson(body);
                 var suffix = name is null ? "" : $" - {name}";
 
-                // If we have a stored agent, check whether its /info changed.
+                // The /info response is already the freshest data — compare
+                // directly instead of making a separate fetch.
                 var infoChanged = false;
-                string? infoJson = null;
                 if (existingAgent is not null)
                 {
-                    (infoChanged, infoJson) = await AgentInfoService.CheckForChangesAsync(existingAgent);
+                    infoChanged = existingAgent.InfoJson != body;
                 }
 
                 return new ConnectionTestResult(
                     true, $"Reachable via Direct URL{suffix}.", AgentName: name,
-                    InfoChanged: infoChanged, InfoJson: infoJson);
+                    InfoChanged: infoChanged, InfoJson: body);
             }
             catch (OperationCanceledException)
             {
@@ -113,29 +113,28 @@ public static class ConnectionTester
         return new ConnectionTestResult(false, "Enter a Direct URL or agent address first.");
     }
 
-    // Preserve the configured origin/base path, append /health, drop any
+    // Preserve the configured origin/base path, append /info, drop any
     // user-entered query string or fragment.
-    private static bool TryBuildHealthUrl(string directUrl, out Uri healthUrl)
+    private static bool TryBuildInfoUrl(string directUrl, out Uri infoUrl)
     {
-        healthUrl = null!;
+        infoUrl = null!;
         if (!Uri.TryCreate(directUrl, UriKind.Absolute, out var uri)) return false;
 
         var builder = new UriBuilder(uri)
         {
-            Path = uri.AbsolutePath.TrimEnd('/') + "/health",
+            Path = uri.AbsolutePath.TrimEnd('/') + "/info",
             Query = string.Empty,
             Fragment = string.Empty,
         };
-        healthUrl = builder.Uri;
+        infoUrl = builder.Uri;
         return true;
     }
 
-    private static async Task<string?> ReadHealthAgentNameAsync(HttpResponseMessage response)
+    private static string? ExtractAgentNameFromJson(string body)
     {
         try
         {
-            await using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
-            using var doc = await JsonDocument.ParseAsync(stream, JsonOptions).ConfigureAwait(false);
+            using var doc = JsonDocument.Parse(body, JsonOptions);
             return ExtractAgentName(doc.RootElement);
         }
         catch
