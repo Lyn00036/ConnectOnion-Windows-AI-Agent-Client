@@ -58,7 +58,7 @@ skills-lock.json
 *.sqlite-shm
 *.sqlite-wal
 pgdata/
-data/
+/data/
 tmp/
 temp/
 

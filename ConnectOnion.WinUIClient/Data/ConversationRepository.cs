@@ -1,0 +1,271 @@
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Threading.Tasks;
+using ConnectOnion.WinUIClient.Models;
+using Microsoft.Data.Sqlite;
+
+namespace ConnectOnion.WinUIClient.Data;
+
+/// <summary>
+/// Row-level message persistence. Each chat bubble is a row in the
+/// <c>messages</c> table, keyed by <c>(conversation_id, id)</c>.
+/// Replaces the previous JSON blob approach so messages can be queried,
+/// paged, and written incrementally.
+/// </summary>
+public sealed class ConversationRepository
+{
+    public async Task<IReadOnlyList<ChatMessage>> LoadMessagesAsync(string conversationId)
+    {
+        var messages = new List<ChatMessage>();
+        try
+        {
+            await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT id, role, content, agent_name,
+                       event_kind, event_key, event_eyebrow, event_title,
+                       event_detail, event_meta, event_args, event_result,
+                       event_status, is_onboarding, created_at
+                FROM messages
+                WHERE conversation_id = $conversation_id
+                ORDER BY id;
+                """;
+            AppDatabase.Add(command, "$conversation_id", conversationId);
+            await using var reader = await command.ExecuteReaderAsync().ConfigureAwait(false);
+            while (await reader.ReadAsync().ConfigureAwait(false))
+            {
+                messages.Add(RowToMessage(reader));
+            }
+        }
+        catch
+        {
+            // Missing / corrupt table → start fresh.
+        }
+        return messages;
+    }
+
+    public async Task SaveMessagesAsync(string conversationId, IReadOnlyList<ChatMessage> messages)
+    {
+        if (messages.Count == 0)
+        {
+            await DeleteMessagesAsync(conversationId).ConfigureAwait(false);
+            return;
+        }
+
+        try
+        {
+            await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
+            await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync().ConfigureAwait(false);
+
+            // Remove old rows then re-insert the full list.
+            await using (var del = connection.CreateCommand())
+            {
+                del.Transaction = transaction;
+                del.CommandText = "DELETE FROM messages WHERE conversation_id = $conversation_id;";
+                AppDatabase.Add(del, "$conversation_id", conversationId);
+                await del.ExecuteNonQueryAsync().ConfigureAwait(false);
+            }
+
+            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            foreach (var message in messages)
+            {
+                await using var insert = connection.CreateCommand();
+                insert.Transaction = transaction;
+                insert.CommandText = """
+                    INSERT INTO messages
+                      (id, conversation_id, role, content, agent_name,
+                       event_kind, event_key, event_eyebrow, event_title,
+                       event_detail, event_meta, event_args, event_result,
+                       event_status, is_onboarding, created_at)
+                    VALUES
+                      ($id, $conversation_id, $role, $content, $agent_name,
+                       $event_kind, $event_key, $event_eyebrow, $event_title,
+                       $event_detail, $event_meta, $event_args, $event_result,
+                       $event_status, $is_onboarding, $created_at);
+                    """;
+                BindMessage(insert, message, conversationId, now);
+                await insert.ExecuteNonQueryAsync().ConfigureAwait(false);
+            }
+
+            await transaction.CommitAsync().ConfigureAwait(false);
+        }
+        catch
+        {
+            // Best-effort: keep the live conversation working if the write fails.
+        }
+    }
+
+    public async Task DeleteMessagesAsync(string conversationId)
+    {
+        try
+        {
+            await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
+            await using var command = connection.CreateCommand();
+            command.CommandText = "DELETE FROM messages WHERE conversation_id = $conversation_id;";
+            AppDatabase.Add(command, "$conversation_id", conversationId);
+            await command.ExecuteNonQueryAsync().ConfigureAwait(false);
+        }
+        catch
+        {
+            // Ignore delete failures.
+        }
+    }
+
+    // --- helpers ---
+
+    private static ChatMessage RowToMessage(SqliteDataReader reader)
+    {
+        var m = new ChatMessage
+        {
+            Id = reader.GetInt64(0),
+            Role = ParseRole(reader.GetString(1)),
+            Content = ReadNullableString(reader, 2) ?? "",
+            AgentName = ReadNullableString(reader, 3),
+            EventKind = ReadNullableString(reader, 4) ?? "",
+            EventKey = ReadNullableString(reader, 5),
+            EventEyebrow = ReadNullableString(reader, 6) ?? "",
+            EventTitle = ReadNullableString(reader, 7) ?? "",
+            EventDetail = ReadNullableString(reader, 8),
+            EventMeta = ReadNullableString(reader, 9),
+            EventArgs = ReadNullableString(reader, 10),
+            EventResult = ReadNullableString(reader, 11),
+            Status = ParseEventStatus(ReadNullableString(reader, 12)),
+            IsOnboarding = reader.GetInt32(13) != 0,
+        };
+        return m;
+    }
+
+    private static void BindMessage(SqliteCommand cmd, ChatMessage m, string conversationId, long now)
+    {
+        AppDatabase.Add(cmd, "$id", m.Id);
+        AppDatabase.Add(cmd, "$conversation_id", conversationId);
+        AppDatabase.Add(cmd, "$role", m.Role.ToString().ToLowerInvariant());
+        AppDatabase.Add(cmd, "$content", string.IsNullOrEmpty(m.Content) ? DBNull.Value : m.Content);
+        AppDatabase.Add(cmd, "$agent_name", m.AgentName ?? (object)DBNull.Value);
+        AppDatabase.Add(cmd, "$event_kind", string.IsNullOrEmpty(m.EventKind) ? DBNull.Value : m.EventKind);
+        AppDatabase.Add(cmd, "$event_key", m.EventKey ?? (object)DBNull.Value);
+        AppDatabase.Add(cmd, "$event_eyebrow", string.IsNullOrEmpty(m.EventEyebrow) ? DBNull.Value : m.EventEyebrow);
+        AppDatabase.Add(cmd, "$event_title", string.IsNullOrEmpty(m.EventTitle) ? DBNull.Value : m.EventTitle);
+        AppDatabase.Add(cmd, "$event_detail", m.EventDetail ?? (object)DBNull.Value);
+        AppDatabase.Add(cmd, "$event_meta", m.EventMeta ?? (object)DBNull.Value);
+        AppDatabase.Add(cmd, "$event_args", m.EventArgs ?? (object)DBNull.Value);
+        AppDatabase.Add(cmd, "$event_result", m.EventResult ?? (object)DBNull.Value);
+        AppDatabase.Add(cmd, "$event_status", m.Status switch
+        {
+            EventStatus.Running => "running",
+            EventStatus.Error => "error",
+            _ => "done",
+        });
+        AppDatabase.Add(cmd, "$is_onboarding", m.IsOnboarding ? 1 : 0);
+        AppDatabase.Add(cmd, "$created_at", now);
+    }
+
+    private static ChatRole ParseRole(string value)
+        => value switch
+        {
+            "agent" => ChatRole.Agent,
+            "event" => ChatRole.Event,
+            _ => ChatRole.User,
+        };
+
+    private static EventStatus ParseEventStatus(string? value)
+        => value switch
+        {
+            "running" => EventStatus.Running,
+            "error" => EventStatus.Error,
+            _ => EventStatus.Done,
+        };
+
+    private static string? ReadNullableString(SqliteDataReader reader, int ordinal)
+        => reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);
+
+    // ---- executions ----
+
+    public async Task InsertExecutionAsync(
+        string executionId, string conversationId, string? remoteSessionId,
+        string prompt, string status)
+    {
+        try
+        {
+            await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
+            await using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO executions (id, conversation_id, remote_session_id, prompt, status, created_at)
+                VALUES ($id, $conv, $remote, $prompt, $status, $ts);
+                """;
+            AppDatabase.Add(cmd, "$id", executionId);
+            AppDatabase.Add(cmd, "$conv", conversationId);
+            AppDatabase.Add(cmd, "$remote", remoteSessionId ?? (object)DBNull.Value);
+            AppDatabase.Add(cmd, "$prompt", prompt);
+            AppDatabase.Add(cmd, "$status", status);
+            AppDatabase.Add(cmd, "$ts", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+            await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+        }
+        catch { /* best-effort */ }
+    }
+
+    public async Task FinalizeExecutionAsync(
+        string executionId, string conversationId, string result, string status, double durationMs)
+    {
+        try
+        {
+            await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
+            await using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                UPDATE executions
+                SET result = $result, status = $status, duration_ms = $dur
+                WHERE id = $id AND conversation_id = $conv;
+                """;
+            AppDatabase.Add(cmd, "$result", result);
+            AppDatabase.Add(cmd, "$status", status);
+            AppDatabase.Add(cmd, "$dur", durationMs);
+            AppDatabase.Add(cmd, "$id", executionId);
+            AppDatabase.Add(cmd, "$conv", conversationId);
+            await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+        }
+        catch { /* best-effort */ }
+    }
+
+    // ---- trace events ----
+
+    public async Task InsertTraceEventAsync(
+        string eventId, string conversationId, string? executionId,
+        string? sessionId, string type, string payloadJson, double? ts)
+    {
+        try
+        {
+            await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
+            await using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                INSERT OR REPLACE INTO trace_events (id, conversation_id, execution_id, session_id, type, payload_json, ts)
+                VALUES ($id, $conv, $exec, $sess, $type, $payload, $ts);
+                """;
+            AppDatabase.Add(cmd, "$id", eventId);
+            AppDatabase.Add(cmd, "$conv", conversationId);
+            AppDatabase.Add(cmd, "$exec", executionId ?? (object)DBNull.Value);
+            AppDatabase.Add(cmd, "$sess", sessionId ?? (object)DBNull.Value);
+            AppDatabase.Add(cmd, "$type", type);
+            AppDatabase.Add(cmd, "$payload", payloadJson);
+            AppDatabase.Add(cmd, "$ts", ts ?? (object)DBNull.Value);
+            await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+        }
+        catch { /* best-effort */ }
+    }
+
+    public async Task DeleteExecutionsAndTracesAsync(string conversationId)
+    {
+        try
+        {
+            await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
+            await using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                DELETE FROM trace_events WHERE conversation_id = $conv;
+                DELETE FROM executions WHERE conversation_id = $conv;
+                """;
+            AppDatabase.Add(cmd, "$conv", conversationId);
+            await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+        }
+        catch { /* best-effort */ }
+    }
+}

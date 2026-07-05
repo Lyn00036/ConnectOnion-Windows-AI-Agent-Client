@@ -1,0 +1,217 @@
+using System;
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.Data.Sqlite;
+
+namespace ConnectOnion.WinUIClient.Data;
+
+/// <summary>
+/// SQLite backing store for local app state. The schema keeps structured index
+/// data queryable while retaining conversation envelopes as JSON blobs.
+/// </summary>
+public static class AppDatabase
+{
+    private static readonly SemaphoreSlim InitGate = new(1, 1);
+    private static bool _initialized;
+
+    public static string DatabasePath => Path.Combine(AppStorage.RootDir, "connectonion.db");
+
+    public static async Task<SqliteConnection> OpenAsync()
+    {
+        await EnsureInitializedAsync().ConfigureAwait(false);
+
+        var connection = new SqliteConnection(ConnectionString());
+        await connection.OpenAsync().ConfigureAwait(false);
+        await ExecuteAsync(connection, "PRAGMA foreign_keys = ON;").ConfigureAwait(false);
+        return connection;
+    }
+
+    private static async Task EnsureInitializedAsync()
+    {
+        if (_initialized) return;
+
+        await InitGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (_initialized) return;
+
+            SQLitePCL.raw.SetProvider(new SQLitePCL.SQLite3Provider_winsqlite3());
+            AppStorage.EnsureDirectories();
+            await using var connection = new SqliteConnection(ConnectionString());
+            await connection.OpenAsync().ConfigureAwait(false);
+
+            await ExecuteAsync(connection, "PRAGMA journal_mode = WAL;").ConfigureAwait(false);
+            await ExecuteAsync(connection, "PRAGMA foreign_keys = ON;").ConfigureAwait(false);
+            await CreateSchemaAsync(connection).ConfigureAwait(false);
+
+            _initialized = true;
+        }
+        finally
+        {
+            InitGate.Release();
+        }
+    }
+
+    private static string ConnectionString()
+    {
+        var builder = new SqliteConnectionStringBuilder
+        {
+            DataSource = DatabasePath,
+            Mode = SqliteOpenMode.ReadWriteCreate,
+            Cache = SqliteCacheMode.Shared,
+        };
+        return builder.ToString();
+    }
+
+    private static async Task CreateSchemaAsync(SqliteConnection connection)
+    {
+        await ExecuteAsync(connection, """
+            CREATE TABLE IF NOT EXISTS app_meta (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS agents (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                address TEXT NOT NULL,
+                direct_url TEXT NULL,
+                invite_code TEXT NULL,
+                info_json TEXT NULL,
+                info_updated_at TEXT NULL,
+                sort_order INTEGER NOT NULL DEFAULT 0
+            );
+
+            CREATE TABLE IF NOT EXISTS sessions (
+                id TEXT PRIMARY KEY,
+                agent_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                remote_session_id TEXT NULL,
+                last_processed_event_id TEXT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                sort_order INTEGER NOT NULL DEFAULT 0
+            );
+
+            CREATE INDEX IF NOT EXISTS ix_sessions_agent_updated
+                ON sessions(agent_id, updated_at DESC);
+
+            CREATE TABLE IF NOT EXISTS preferences (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                theme TEXT NOT NULL,
+                sidebar_visible INTEGER NOT NULL,
+                message_font_size TEXT NOT NULL,
+                shortcut_overrides_json TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS messages (
+                id INTEGER NOT NULL,
+                conversation_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT,
+                agent_name TEXT,
+                event_kind TEXT,
+                event_key TEXT,
+                event_eyebrow TEXT,
+                event_title TEXT,
+                event_detail TEXT,
+                event_meta TEXT,
+                event_args TEXT,
+                event_result TEXT,
+                event_status TEXT,
+                is_onboarding INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL,
+                PRIMARY KEY (conversation_id, id),
+                FOREIGN KEY (conversation_id) REFERENCES sessions(id)
+            );
+
+            CREATE INDEX IF NOT EXISTS ix_messages_conversation
+                ON messages(conversation_id, id);
+
+            CREATE TABLE IF NOT EXISTS executions (
+                id TEXT PRIMARY KEY,
+                conversation_id TEXT NOT NULL,
+                remote_session_id TEXT,
+                prompt TEXT NOT NULL,
+                result TEXT,
+                status TEXT NOT NULL,
+                duration_ms REAL,
+                created_at INTEGER NOT NULL,
+                FOREIGN KEY (conversation_id) REFERENCES sessions(id)
+            );
+
+            CREATE INDEX IF NOT EXISTS ix_executions_conversation
+                ON executions(conversation_id, created_at DESC);
+
+            CREATE TABLE IF NOT EXISTS trace_events (
+                id TEXT PRIMARY KEY,
+                conversation_id TEXT NOT NULL,
+                execution_id TEXT,
+                session_id TEXT,
+                type TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                ts REAL,
+                FOREIGN KEY (conversation_id) REFERENCES sessions(id)
+            );
+
+            CREATE INDEX IF NOT EXISTS ix_trace_events_conversation
+                ON trace_events(conversation_id, ts);
+
+            CREATE TABLE IF NOT EXISTS identity_keys (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                address TEXT NOT NULL,
+                private_seed TEXT NOT NULL
+            );
+            """).ConfigureAwait(false);
+    }
+
+    public static async Task<string?> GetMetaAsync(SqliteConnection connection, string key)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT value FROM app_meta WHERE key = $key;";
+        Add(command, "$key", key);
+        var value = await command.ExecuteScalarAsync().ConfigureAwait(false);
+        return value as string;
+    }
+
+    public static async Task SetMetaAsync(
+        SqliteConnection connection,
+        SqliteTransaction? transaction,
+        string key,
+        string value)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            INSERT INTO app_meta (key, value)
+            VALUES ($key, $value)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value;
+            """;
+        Add(command, "$key", key);
+        Add(command, "$value", value);
+        await command.ExecuteNonQueryAsync().ConfigureAwait(false);
+    }
+
+    public static async Task DeleteMetaAsync(
+        SqliteConnection connection,
+        SqliteTransaction? transaction,
+        string key)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "DELETE FROM app_meta WHERE key = $key;";
+        Add(command, "$key", key);
+        await command.ExecuteNonQueryAsync().ConfigureAwait(false);
+    }
+
+    public static void Add(SqliteCommand command, string name, object? value)
+        => command.Parameters.AddWithValue(name, value ?? DBNull.Value);
+
+    private static async Task ExecuteAsync(SqliteConnection connection, string sql)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        await command.ExecuteNonQueryAsync().ConfigureAwait(false);
+    }
+}
