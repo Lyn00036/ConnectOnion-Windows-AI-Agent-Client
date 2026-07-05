@@ -49,9 +49,11 @@ public static class EndpointResolver
     private static readonly TimeSpan EndpointCacheTtl = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan AgentInfoOnlineCacheTtl = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan AgentInfoOfflineCacheTtl = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan DirectInfoCacheTtl = TimeSpan.FromMinutes(5);
     private static readonly object CacheGate = new();
     private static readonly Dictionary<string, EndpointCacheEntry> EndpointCache = new();
     private static readonly Dictionary<string, AgentInfoCacheEntry> AgentInfoCache = new();
+    private static readonly Dictionary<string, DirectInfoCacheEntry> DirectInfoCache = new();
     private static readonly Dictionary<string, Task<ResolvedEndpoint?>> EndpointInflight = new();
     private static readonly Dictionary<string, Task<AgentInfo>> AgentInfoInflight = new();
     private static readonly JsonDocumentOptions JsonOptions = new()
@@ -61,6 +63,7 @@ public static class EndpointResolver
 
     private sealed record EndpointCacheEntry(ResolvedEndpoint? Endpoint, DateTimeOffset CheckedAt);
     private sealed record AgentInfoCacheEntry(AgentInfo Info, DateTimeOffset CheckedAt);
+    private sealed record DirectInfoCacheEntry(string EndpointUrl, DateTimeOffset CheckedAt);
 
     public static string NormalizeRelayUrl(string relayUrl)
     {
@@ -268,6 +271,31 @@ public static class EndpointResolver
             .Select(s => s!)
             .OrderBy(Proximity);
 
+        // Try the last-known-good endpoint first (cached, 5 min TTL) so a
+        // repeat info fetch against the same agent skips the parallel probe
+        // entirely when the cached endpoint is still reachable.
+        string? cachedEndpoint = null;
+        lock (CacheGate)
+        {
+            if (DirectInfoCache.TryGetValue(agentAddress, out var cached) &&
+                DateTimeOffset.UtcNow - cached.CheckedAt < DirectInfoCacheTtl)
+            {
+                cachedEndpoint = cached.EndpointUrl;
+            }
+        }
+
+        if (cachedEndpoint is not null)
+        {
+            var cachedInfo = await GetJsonAsync(http, $"{cachedEndpoint}/info", 3000).ConfigureAwait(false);
+            if (cachedInfo is not null &&
+                cachedInfo.Value.TryGetProperty("address", out var cachedAddr) &&
+                cachedAddr.GetString() == agentAddress)
+            {
+                var directInfo = ParseInfoSource(cachedInfo.Value);
+                return MergeAgentInfo(fallback, profileInfo, directInfo, online: true);
+            }
+        }
+
         // Probe all endpoints in parallel; return on the first match so the
         // worst case is ~3 s instead of N × 3 s when most endpoints are
         // unreachable from the caller's network.
@@ -288,6 +316,10 @@ public static class EndpointResolver
                 info.Value.TryGetProperty("address", out var addr) &&
                 addr.GetString() == agentAddress)
             {
+                lock (CacheGate)
+                {
+                    DirectInfoCache[agentAddress] = new DirectInfoCacheEntry(httpUrl, DateTimeOffset.UtcNow);
+                }
                 var directInfo = ParseInfoSource(info.Value);
                 return MergeAgentInfo(fallback, profileInfo, directInfo, online: true);
             }
