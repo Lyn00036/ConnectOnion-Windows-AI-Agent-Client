@@ -29,6 +29,8 @@ public sealed class SessionRepository
     private const string ActiveSessionMetaKey = "active_session_id";
     private const string PinnedSessionsMetaKey = "pinned_session_ids";
 
+    public event System.Action? SessionsChanged;
+
     /// <summary>
     /// Loads sessions, dropping partial/corrupt rows (id, agentId and title all
     /// required) and clearing a stale active pointer.
@@ -182,6 +184,7 @@ public sealed class SessionRepository
         }
 
         await transaction.CommitAsync().ConfigureAwait(false);
+        SessionsChanged?.Invoke();
     }
 
     private static string? ReadNullableString(SqliteDataReader reader, int ordinal)

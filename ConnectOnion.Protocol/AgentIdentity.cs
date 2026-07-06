@@ -18,9 +18,19 @@ namespace ConnectOnion.Protocol;
 /// </summary>
 public sealed class AgentIdentity
 {
+    private readonly byte[] _publicKey;
+    private readonly byte[] _privateSeed;
+
     public string Address { get; }
-    public byte[] PublicKey { get; }
-    public byte[] PrivateSeed { get; }
+
+    /// <summary>The 32-byte Ed25519 public key, as a read-only view (callers cannot mutate it).</summary>
+    public ReadOnlySpan<byte> PublicKey => _publicKey;
+
+    /// <summary>
+    /// The raw 32-byte private seed, as a read-only view. This is secret material —
+    /// exposed as a span so callers cannot hold or mutate the backing array.
+    /// </summary>
+    public ReadOnlySpan<byte> PrivateSeed => _privateSeed;
 
     public string ShortAddress =>
         Address.Length >= 10 ? $"{Address[..6]}...{Address[^4..]}" : Address;
@@ -28,8 +38,8 @@ public sealed class AgentIdentity
     private AgentIdentity(string address, byte[] publicKey, byte[] privateSeed)
     {
         Address = address;
-        PublicKey = publicKey;
-        PrivateSeed = privateSeed;
+        _publicKey = publicKey;
+        _privateSeed = privateSeed;
     }
 
     public static AgentIdentity Generate()
@@ -43,6 +53,7 @@ public sealed class AgentIdentity
     /// <summary>Reconstructs an identity from its stored 32-byte private seed.</summary>
     public static AgentIdentity FromSeed(byte[] seed)
     {
+        ArgumentNullException.ThrowIfNull(seed);
         if (seed.Length != 32)
             throw new ArgumentException("Ed25519 seed must be 32 bytes.", nameof(seed));
 
@@ -56,7 +67,7 @@ public sealed class AgentIdentity
     public string Sign(string message)
     {
         var messageBytes = Encoding.UTF8.GetBytes(message);
-        var privateKey = new Ed25519PrivateKeyParameters(PrivateSeed, 0);
+        var privateKey = new Ed25519PrivateKeyParameters(_privateSeed, 0);
         var signer = new Ed25519Signer();
         signer.Init(true, privateKey);
         signer.BlockUpdate(messageBytes, 0, messageBytes.Length);
@@ -69,23 +80,36 @@ public sealed class AgentIdentity
     /// </summary>
     public static bool Verify(string address, string message, string signatureHex)
     {
+        if (address is null || message is null || signatureHex is null)
+            return false;
+
+        if (!address.StartsWith("0x", StringComparison.Ordinal) || address.Length != 66)
+            return false;
+
         try
         {
-            if (!address.StartsWith("0x", StringComparison.Ordinal) || address.Length != 66)
-                return false;
-
             var publicKeyBytes = Convert.FromHexString(address[2..]);
-            var messageBytes = Encoding.UTF8.GetBytes(message);
             var signature = Convert.FromHexString(signatureHex);
 
+            // An Ed25519 signature is always exactly 64 bytes.
+            if (signature.Length != 64)
+                return false;
+
+            var messageBytes = Encoding.UTF8.GetBytes(message);
             var publicKey = new Ed25519PublicKeyParameters(publicKeyBytes, 0);
             var verifier = new Ed25519Signer();
             verifier.Init(false, publicKey);
             verifier.BlockUpdate(messageBytes, 0, messageBytes.Length);
             return verifier.VerifySignature(signature);
         }
-        catch
+        catch (FormatException)
         {
+            // Malformed hex in the address or signature.
+            return false;
+        }
+        catch (ArgumentException)
+        {
+            // Wrong-length public key rejected by BouncyCastle.
             return false;
         }
     }
@@ -98,6 +122,18 @@ public sealed class AgentIdentity
     /// </summary>
     public SignedEnvelope SignPayload(IReadOnlyList<KeyValuePair<string, object?>> payload)
     {
+        ArgumentNullException.ThrowIfNull(payload);
+
+        // A signed payload maps to a JS object, which cannot hold duplicate keys.
+        // Reject them up front so the canonical JSON (and thus the signature) is
+        // never silently derived from a malformed, order-dependent payload.
+        var payloadMap = new Dictionary<string, object?>(payload.Count);
+        foreach (var pair in payload)
+        {
+            if (!payloadMap.TryAdd(pair.Key, pair.Value))
+                throw new ArgumentException($"Duplicate payload key: '{pair.Key}'.", nameof(payload));
+        }
+
         var canonical = CanonicalJson.Serialize(payload);
         var signature = Sign(canonical);
 
@@ -106,9 +142,6 @@ public sealed class AgentIdentity
         {
             if (pair.Key == "timestamp") { timestamp = pair.Value; break; }
         }
-
-        var payloadMap = new Dictionary<string, object?>(payload.Count);
-        foreach (var pair in payload) payloadMap[pair.Key] = pair.Value;
 
         return new SignedEnvelope
         {

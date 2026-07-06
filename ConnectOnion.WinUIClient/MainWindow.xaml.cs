@@ -5,6 +5,7 @@ using ConnectOnion.WinUIClient.Views;
 using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Windows.System;
 using Windows.UI;
 
 namespace ConnectOnion.WinUIClient;
@@ -15,13 +16,17 @@ namespace ConnectOnion.WinUIClient;
 public sealed partial class MainWindow : Window
 {
     private readonly AppWindow _appWindow;
+    private readonly IntPtr _hwnd;
     private bool _isSidebarVisible = true;
 
     public MainWindow()
     {
         InitializeComponent();
-        _appWindow = GetAppWindow();
+        TrackWindowLifetime();
+        _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        _appWindow = GetAppWindow(_hwnd);
         ConfigureCustomTitleBar();
+        InitializeTrayBehavior();
         ShellSidebar.NavigationRequested += NavigateTo;
         ContentFrame.Navigated += async (_, _) =>
         {
@@ -30,7 +35,13 @@ public sealed partial class MainWindow : Window
             await ShellSidebar.RefreshAsync();
         };
         ThemeService.ThemeApplied += ApplyTitleBarTheme;
-        Closed += (_, _) => ThemeService.ThemeApplied -= ApplyTitleBarTheme;
+        AppServices.Sessions.SessionsChanged += OnSessionsChanged;
+        Closed += (_, _) =>
+        {
+            DisposeTrayBehavior();
+            ThemeService.ThemeApplied -= ApplyTitleBarTheme;
+            AppServices.Sessions.SessionsChanged -= OnSessionsChanged;
+        };
         ThemeService.RegisterRoot(RootGrid);
         _ = ApplyStartupThemeAsync();
         RootGrid.Loaded += async (_, _) =>
@@ -41,9 +52,8 @@ public sealed partial class MainWindow : Window
         };
     }
 
-    private AppWindow GetAppWindow()
+    private static AppWindow GetAppWindow(IntPtr hwnd)
     {
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
         return AppWindow.GetFromWindowId(windowId);
     }
@@ -100,11 +110,17 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private async void AboutConnectOnion_Click(object sender, RoutedEventArgs e)
+        => await Launcher.LaunchUriAsync(new Uri("https://docs.connectonion.com/"));
+
     private void UpdateNavigationButtons()
     {
         BackButton.IsEnabled = ContentFrame.CanGoBack;
         ForwardButton.IsEnabled = ContentFrame.CanGoForward;
     }
+
+    private void OnSessionsChanged()
+        => DispatcherQueue.TryEnqueue(async () => await ShellSidebar.RefreshAsync());
 
     private void ApplyTitleBarTheme(ThemeMode theme)
     {

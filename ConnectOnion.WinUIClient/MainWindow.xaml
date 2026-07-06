@@ -84,10 +84,32 @@
                                    IconSize="Size20"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 </Button>
-                <Button Style="{StaticResource ShellMenuButtonStyle}" Content="File" />
-                <Button Style="{StaticResource ShellMenuButtonStyle}" Content="Edit" />
-                <Button Style="{StaticResource ShellMenuButtonStyle}" Content="View" />
-                <Button Style="{StaticResource ShellMenuButtonStyle}" Content="Help" />
+                <MenuBar Background="Transparent"
+                         BorderThickness="0"
+                         VerticalAlignment="Center">
+                    <MenuBarItem Title="File">
+                        <MenuFlyoutItem Text="New Window        Ctrl+Shift+N"
+                                        Click="NewWindow_Click" />
+                        <MenuFlyoutItem Text="New Chat          Ctrl+N"
+                                        Click="NewChat_Click" />
+                        <MenuFlyoutItem Text="Open Folder...    Ctrl+O"
+                                        Click="OpenFolder_Click" />
+                        <MenuFlyoutItem Text="Close             Ctrl+W"
+                                        Click="CloseWindow_Click" />
+                        <MenuFlyoutSeparator />
+                        <MenuFlyoutItem Text="Settings...       Ctrl+,"
+                                        Click="SettingsMenu_Click" />
+                        <MenuFlyoutSeparator />
+                        <MenuFlyoutItem Text="Exit              Ctrl+Q"
+                                        Click="Exit_Click" />
+                    </MenuBarItem>
+                    <MenuBarItem Title="Edit" />
+                    <MenuBarItem Title="View" />
+                    <MenuBarItem Title="Help">
+                        <MenuFlyoutItem Text="About ConnectOnion"
+                                        Click="AboutConnectOnion_Click" />
+                    </MenuBarItem>
+                </MenuBar>
             </StackPanel>
 
             <Grid x:Name="TitleBarDragRegion"

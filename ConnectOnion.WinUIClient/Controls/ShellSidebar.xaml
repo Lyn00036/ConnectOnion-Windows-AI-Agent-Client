@@ -271,10 +271,12 @@
                                     <StackPanel Grid.Column="3"
                                                 Orientation="Horizontal"
                                                 Spacing="2"
+                                                Width="54"
                                                 HorizontalAlignment="Right"
                                                 VerticalAlignment="Center">
                                         <StackPanel Orientation="Horizontal"
                                                     Spacing="2"
+                                                    HorizontalAlignment="Right"
                                                     Visibility="{Binding AreActionsVisible, Converter={StaticResource BoolToVis}}">
                                             <Button Style="{StaticResource ShellIconButtonStyle}"
                                                     Click="AddChat_Click"

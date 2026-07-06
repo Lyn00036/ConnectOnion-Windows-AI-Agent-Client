@@ -117,6 +117,23 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         _hasExpansionState = true;
     }
 
+    public async System.Threading.Tasks.Task<bool> StartNewChatAsync()
+    {
+        var agentsState = await AppServices.Agents.LoadAsync();
+        var agent = agentsState.Agents.FirstOrDefault(entry => entry.Id == agentsState.SelectedAgentId)
+            ?? agentsState.Agents.FirstOrDefault();
+        if (agent is null) return false;
+
+        agentsState.SelectedAgentId = agent.Id;
+        await AppServices.Agents.SaveAsync(agentsState);
+
+        await CreateSessionAsync(agent.Id);
+        FocusAgentInSidebar(agent.Id);
+        await RefreshAsync();
+        RequestNavigation(typeof(ChatPage), forceReload: true);
+        return true;
+    }
+
     private void OnPresenceChanged(string agentId)
         => DispatcherQueue.TryEnqueue(() =>
         {
