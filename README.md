@@ -60,6 +60,8 @@ connectonion-desktop/
     ConnectOnion.WinUIClient.csproj   WinUI 3 desktop app, net10.0-windows
     App.xaml[.cs]                     App startup
     MainWindow.xaml[.cs]              Shell window with Mica backdrop, custom title bar
+    MainWindow.Tray.cs               System tray icon, close dialog, minimize/restore
+    MainWindow.FileMenu.cs           File menu handlers and keyboard shortcuts
     Views/
       HomePage                        Agent selection landing page
       ChatPage                        Real-time chat with streaming events
@@ -323,6 +325,9 @@ Known deployed development agents:
 - Responsive sidebar with agent list and session list navigation
 - Back/forward navigation in the title bar
 - Suggested prompts for new conversations
+- System tray icon with left-click restore, right-click menu (Open Window / Exit)
+- Close button (X) dialog with Minimize to tray / Exit / Cancel options
+- File menu with keyboard shortcuts (Ctrl+N new chat, Ctrl+Shift+N new window, Ctrl+W close)
 - Protocol conformance test gate
 - Windows/.NET CI workflow
 
@@ -331,8 +336,7 @@ Known deployed development agents:
 - Production installer/release pipeline (MSIX packaging is configured but not yet automated)
 - Secure OS credential storage (keys are currently stored in SQLite)
 - File attachments and drag-and-drop
-- System tray behavior
-- App menu commands (File/Edit menus are placeholders)
+- Edit and View menu commands (currently placeholders)
 - Live protocol tests in CI
 - Full migration tooling for preserving older local app data
 
