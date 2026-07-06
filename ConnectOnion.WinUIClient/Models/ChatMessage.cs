@@ -23,6 +23,9 @@ public enum EventStatus
 /// </summary>
 public sealed class ChatMessage : ObservableObject
 {
+    private const int CollapseThreshold = 600;
+    private const int CollapsedMaxLines = 12;
+
     private string _onboardInviteCode = "";
     private string _content = "";
     private string _eventTitle = "";
@@ -34,6 +37,7 @@ public sealed class ChatMessage : ObservableObject
     private string? _eventMeta;
     private string? _eventArgs;
     private string? _eventResult;
+    private bool _isContentExpanded;
 
     [JsonPropertyName("id")]
     public long Id { get; set; }
@@ -42,7 +46,18 @@ public sealed class ChatMessage : ObservableObject
     public ChatRole Role { get; set; }
 
     [JsonPropertyName("content")]
-    public string Content { get => _content; set => SetProperty(ref _content, value); }
+    public string Content
+    {
+        get => _content;
+        set
+        {
+            if (!SetProperty(ref _content, value)) return;
+            OnPropertyChanged(nameof(IsCollapsible));
+            OnPropertyChanged(nameof(IsContentCollapsed));
+            OnPropertyChanged(nameof(CollapseButtonText));
+            OnPropertyChanged(nameof(RenderedMaxLines));
+        }
+    }
 
     [JsonPropertyName("eventTitle")]
     public string EventTitle { get => _eventTitle; set => SetProperty(ref _eventTitle, value); }
@@ -131,6 +146,18 @@ public sealed class ChatMessage : ObservableObject
     [JsonIgnore]
     public bool IsEvent => Role == ChatRole.Event;
 
+    [JsonIgnore]
+    public bool IsCollapsible => IsAgent && !string.IsNullOrWhiteSpace(Content) && Content.Length > CollapseThreshold;
+
+    [JsonIgnore]
+    public bool IsContentCollapsed => IsCollapsible && !_isContentExpanded;
+
+    [JsonIgnore]
+    public string CollapseButtonText => IsContentCollapsed ? "Expand" : "Collapse";
+
+    [JsonIgnore]
+    public int RenderedMaxLines => IsContentCollapsed ? CollapsedMaxLines : 0;
+
     /// <summary>Compact card with a colored status dot (thinking, intent, eval, compact, …).</summary>
     [JsonIgnore]
     public bool IsActivityEvent => EventKind == "activity";
@@ -168,6 +195,19 @@ public sealed class ChatMessage : ObservableObject
         {
             if (!SetProperty(ref _isOnboardingSubmitted, value)) return;
             OnPropertyChanged(nameof(IsOnboardingInputEnabled));
+        }
+    }
+
+    [JsonIgnore]
+    public bool IsContentExpanded
+    {
+        get => _isContentExpanded;
+        set
+        {
+            if (!SetProperty(ref _isContentExpanded, value)) return;
+            OnPropertyChanged(nameof(IsContentCollapsed));
+            OnPropertyChanged(nameof(CollapseButtonText));
+            OnPropertyChanged(nameof(RenderedMaxLines));
         }
     }
 }

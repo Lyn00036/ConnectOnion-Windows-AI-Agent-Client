@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
@@ -21,7 +22,10 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     private readonly AgentPresenceService _presence = AppServices.Presence;
+    private readonly HashSet<string> _expandedAgentIds = new(StringComparer.Ordinal);
+    private Type? _currentPageType;
     private int _onlineAgentCount;
+    private bool _hasExpansionState;
 
     public int OnlineAgentCount
     {
@@ -44,10 +48,15 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         _presence.PresenceChanged += OnPresenceChanged;
     }
 
+    public void SetCurrentPage(Type? pageType)
+        => _currentPageType = pageType;
+
     public async System.Threading.Tasks.Task RefreshAsync()
     {
         var agentsState = await AppServices.Agents.LoadAsync();
         var sessionsState = await AppServices.Sessions.LoadAsync();
+
+        RememberExpandedAgentsFromUi();
 
         ShellAgents.Clear();
         foreach (var agent in agentsState.Agents)
@@ -56,8 +65,10 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
             {
                 Id = agent.Id,
                 Name = agent.Name,
-                IsSelected = agent.Id == agentsState.SelectedAgentId,
-                IsExpanded = agent.Id == agentsState.SelectedAgentId,
+                IsSelected = IsAgentSelected(agent.Id, agentsState.SelectedAgentId),
+                IsExpanded = _hasExpansionState
+                    ? _expandedAgentIds.Contains(agent.Id)
+                    : agent.Id == agentsState.SelectedAgentId,
                 Presence = _presence.GetPresence(agent.Id),
             };
 
@@ -69,6 +80,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
                 {
                     Id = session.Id,
                     Title = session.Title,
+                    IsSelected = IsSessionSelected(session.Id, sessionsState.ActiveSessionId),
                 });
             }
 
@@ -80,6 +92,8 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         {
             _ = _presence.EnsureCheckedAsync(agent);
         }
+
+        _hasExpansionState = true;
     }
 
     private void OnPresenceChanged(string agentId)
@@ -100,6 +114,35 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
 
     private void RequestNavigation(Type page, bool forceReload = false)
         => NavigationRequested?.Invoke(page, forceReload);
+
+    private bool IsAgentSelected(string agentId, string? selectedAgentId)
+        => _currentPageType == typeof(ChatPage)
+            || _currentPageType == typeof(AgentDetailPage)
+            || _currentPageType == typeof(SessionsPage)
+            ? agentId == selectedAgentId
+            : false;
+
+    private bool IsSessionSelected(string sessionId, string? activeSessionId)
+        => _currentPageType == typeof(ChatPage) && sessionId == activeSessionId;
+
+    private void RememberExpandedAgentsFromUi()
+    {
+        if (ShellAgents.Count == 0) return;
+
+        _expandedAgentIds.Clear();
+        foreach (var agent in ShellAgents.Where(agent => agent.IsExpanded))
+        {
+            _expandedAgentIds.Add(agent.Id);
+        }
+        _hasExpansionState = true;
+    }
+
+    private void FocusAgentInSidebar(string agentId)
+    {
+        _expandedAgentIds.Clear();
+        _expandedAgentIds.Add(agentId);
+        _hasExpansionState = true;
+    }
 
     private async System.Threading.Tasks.Task<string> EnsureSessionAsync(string agentId)
     {
@@ -162,7 +205,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         RequestNavigation(typeof(ChatPage), forceReload: true);
     }
 
-    private async System.Threading.Tasks.Task SelectSessionAsync(string sessionId)
+    private async System.Threading.Tasks.Task SelectSessionAsync(string sessionId, bool preserveSidebarState = false)
     {
         var sessionsState = await AppServices.Sessions.LoadAsync();
         var session = sessionsState.Sessions.FirstOrDefault(s => s.Id == sessionId);
@@ -175,7 +218,11 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         agentsState.SelectedAgentId = session.AgentId;
         await AppServices.Agents.SaveAsync(agentsState);
 
-        await RefreshAsync();
+        if (!preserveSidebarState)
+        {
+            FocusAgentInSidebar(session.AgentId);
+            await RefreshAsync();
+        }
         RequestNavigation(typeof(ChatPage), forceReload: true);
     }
 
@@ -184,6 +231,12 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
 
     private async void ChatHome_Click(object sender, RoutedEventArgs e)
     {
+        await RefreshAsync();
+        RequestNavigation(typeof(HomePage), forceReload: true);
+    }
+
+    private async void Chat_Click(object sender, RoutedEventArgs e)
+    {
         var sessionsState = await AppServices.Sessions.LoadAsync();
         var recent = sessionsState.Sessions
             .OrderByDescending(s => s.UpdatedAt, StringComparer.Ordinal)
@@ -191,18 +244,12 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
 
         if (recent is not null)
         {
-            await SelectSessionAsync(recent.Id);
+            await SelectSessionAsync(recent.Id, preserveSidebarState: true);
             return;
         }
 
         await RefreshAsync();
         RequestNavigation(typeof(HomePage), forceReload: true);
-    }
-
-    private async void Chat_Click(object sender, RoutedEventArgs e)
-    {
-        await RefreshAsync();
-        RequestNavigation(typeof(ChatPage), forceReload: true);
     }
 
     private async void Agent_Click(object sender, RoutedEventArgs e)
@@ -212,6 +259,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
             var agentsState = await AppServices.Agents.LoadAsync();
             agentsState.SelectedAgentId = agentId;
             await AppServices.Agents.SaveAsync(agentsState);
+            FocusAgentInSidebar(agentId);
             await RefreshAsync();
             RequestNavigation(typeof(AgentDetailPage), forceReload: true);
         }
@@ -223,6 +271,15 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
             FindShellAgent(agentId) is { } agent)
         {
             agent.IsExpanded = !agent.IsExpanded;
+            if (agent.IsExpanded)
+            {
+                _expandedAgentIds.Add(agentId);
+            }
+            else
+            {
+                _expandedAgentIds.Remove(agentId);
+            }
+            _hasExpansionState = true;
         }
     }
 
@@ -266,6 +323,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         agentsState.SelectedAgentId = agentId;
         await AppServices.Agents.SaveAsync(agentsState);
         await CreateSessionAsync(agentId);
+        FocusAgentInSidebar(agentId);
         await RefreshAsync();
         RequestNavigation(typeof(ChatPage), forceReload: true);
     }

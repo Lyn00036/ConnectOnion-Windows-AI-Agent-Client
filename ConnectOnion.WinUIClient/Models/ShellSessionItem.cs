@@ -8,9 +8,11 @@ namespace ConnectOnion.WinUIClient.Models;
 public sealed class ShellSessionItem : ObservableObject
 {
     private bool _areActionsVisible;
+    private bool _isSelected;
 
     public string Id { get; set; } = "";
     public string Title { get; set; } = "";
 
     public bool AreActionsVisible { get => _areActionsVisible; set => SetProperty(ref _areActionsVisible, value); }
+    public bool IsSelected { get => _isSelected; set => SetProperty(ref _isSelected, value); }
 }

@@ -67,6 +67,8 @@ public sealed partial class HomePage : Page
                 IsOnline = _presence.GetPresence(agent.Id) == AgentPresence.Online,
             });
         }
+
+        UpdateAddAgentLabels();
     }
 
     private void OnPresenceChanged(string agentId)
@@ -155,5 +157,13 @@ public sealed partial class HomePage : Page
 
         if (value.Length <= 14) return value;
         return $"{value[..8]}...{value[^4..]}";
+    }
+
+    private void UpdateAddAgentLabels()
+    {
+        var label = Agents.Count > 0 ? "Add another agent" : "Add agent";
+        AddAgentActionLabel.Text = label;
+        AddAgentPanel.FormTitle = label;
+        AddAgentPanel.SubmitLabel = label;
     }
 }

@@ -129,7 +129,7 @@
                                    IconVariant="Regular"
                                    IconSize="Size20"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                    <TextBlock Text="Add another agent"
+                    <TextBlock x:Name="AddAgentActionLabel"
                                FontSize="16"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 </StackPanel>

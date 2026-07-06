@@ -54,7 +54,6 @@
             </Grid.ColumnDefinitions>
 
             <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="2" Padding="10,0,0,0">
-                <Image Width="17" Height="17" Source="/Assets/icon.png" VerticalAlignment="Center" />
                 <Button x:Name="SidebarToggleButton"
                         Style="{StaticResource TitleIconButtonStyle}"
                         Click="SidebarToggle_Click"

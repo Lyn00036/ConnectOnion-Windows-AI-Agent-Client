@@ -161,6 +161,16 @@ public sealed partial class ChatPage : Page
         }
     }
 
+    private void ToggleMessageCollapse_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not ChatMessage message)
+        {
+            return;
+        }
+
+        message.IsContentExpanded = !message.IsContentExpanded;
+    }
+
     private async void InputBox_KeyDown(object sender, KeyRoutedEventArgs e)
     {
         var isShiftDown = InputKeyboardSource

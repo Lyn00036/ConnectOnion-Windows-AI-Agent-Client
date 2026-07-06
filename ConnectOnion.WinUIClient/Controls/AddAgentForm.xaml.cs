@@ -8,6 +8,20 @@ namespace ConnectOnion.WinUIClient.Controls;
 
 public sealed partial class AddAgentForm : UserControl
 {
+    public static readonly DependencyProperty FormTitleProperty =
+        DependencyProperty.Register(
+            nameof(FormTitle),
+            typeof(string),
+            typeof(AddAgentForm),
+            new PropertyMetadata("Add agent"));
+
+    public static readonly DependencyProperty SubmitLabelProperty =
+        DependencyProperty.Register(
+            nameof(SubmitLabel),
+            typeof(string),
+            typeof(AddAgentForm),
+            new PropertyMetadata("Add agent"));
+
     private bool _connectionTested;
     private string? _detectedName;
 
@@ -17,6 +31,18 @@ public sealed partial class AddAgentForm : UserControl
     public AddAgentForm()
     {
         InitializeComponent();
+    }
+
+    public string FormTitle
+    {
+        get => (string)GetValue(FormTitleProperty);
+        set => SetValue(FormTitleProperty, value);
+    }
+
+    public string SubmitLabel
+    {
+        get => (string)GetValue(SubmitLabelProperty);
+        set => SetValue(SubmitLabelProperty, value);
     }
 
     public void FocusFirstField()

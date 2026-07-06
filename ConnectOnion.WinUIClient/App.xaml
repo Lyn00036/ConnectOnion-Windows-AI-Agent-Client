@@ -13,6 +13,25 @@
             </ResourceDictionary.MergedDictionaries>
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Light">
+                    <Color x:Key="BrandAccentColor">#FFA58BDB</Color>
+                    <Color x:Key="BrandAccentColorSecondary">#FF9679D4</Color>
+                    <Color x:Key="BrandAccentColorTertiary">#FF8768CC</Color>
+                    <Color x:Key="BrandAccentColorQuaternary">#FF7456B6</Color>
+                    <Color x:Key="SystemAccentColor">#FFA58BDB</Color>
+                    <Color x:Key="SystemAccentColorDark1">#FF9679D4</Color>
+                    <Color x:Key="SystemAccentColorDark2">#FF8768CC</Color>
+                    <Color x:Key="SystemAccentColorDark3">#FF7456B6</Color>
+                    <Color x:Key="SystemAccentColorLight1">#FFB7A1E4</Color>
+                    <Color x:Key="SystemAccentColorLight2">#FFCAB9EC</Color>
+                    <Color x:Key="SystemAccentColorLight3">#FFDDD2F5</Color>
+                    <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="{StaticResource BrandAccentColor}" />
+                    <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="{StaticResource BrandAccentColorSecondary}" />
+                    <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="{StaticResource BrandAccentColorTertiary}" />
+                    <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#FF6C50AA" />
+                    <SolidColorBrush x:Key="AccentTextFillColorSecondaryBrush" Color="#FF8265BE" />
+                    <SolidColorBrush x:Key="AccentTextFillColorTertiaryBrush" Color="#FF9C88D1" />
+                    <SolidColorBrush x:Key="TextOnAccentFillColorPrimaryBrush" Color="#FFFFFFFF" />
+                    <SolidColorBrush x:Key="TextOnAccentFillSecondaryBrush" Color="#FFF7F3FF" />
                     <SolidColorBrush x:Key="ShellBackgroundBrush" Color="#FFFFFFFF" />
                     <SolidColorBrush x:Key="ShellSidebarBrush" Color="#FFF7F7F8" />
                     <SolidColorBrush x:Key="ShellRowBrush" Color="#FFF4F4F5" />
@@ -25,6 +44,25 @@
                     <SolidColorBrush x:Key="StatusErrorTextBrush" Color="#FFC42B1C" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
+                    <Color x:Key="BrandAccentColor">#FFB59BEB</Color>
+                    <Color x:Key="BrandAccentColorSecondary">#FFA58BDB</Color>
+                    <Color x:Key="BrandAccentColorTertiary">#FF9379CC</Color>
+                    <Color x:Key="BrandAccentColorQuaternary">#FF7F67B6</Color>
+                    <Color x:Key="SystemAccentColor">#FFB59BEB</Color>
+                    <Color x:Key="SystemAccentColorDark1">#FFA58BDB</Color>
+                    <Color x:Key="SystemAccentColorDark2">#FF9379CC</Color>
+                    <Color x:Key="SystemAccentColorDark3">#FF7F67B6</Color>
+                    <Color x:Key="SystemAccentColorLight1">#FFC5B1F3</Color>
+                    <Color x:Key="SystemAccentColorLight2">#FFD8CAF8</Color>
+                    <Color x:Key="SystemAccentColorLight3">#FFE9E2FC</Color>
+                    <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="{StaticResource BrandAccentColor}" />
+                    <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="{StaticResource BrandAccentColorSecondary}" />
+                    <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="{StaticResource BrandAccentColorTertiary}" />
+                    <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#FFE9E0FF" />
+                    <SolidColorBrush x:Key="AccentTextFillColorSecondaryBrush" Color="#FFD9CAFF" />
+                    <SolidColorBrush x:Key="AccentTextFillColorTertiaryBrush" Color="#FFC8B5F5" />
+                    <SolidColorBrush x:Key="TextOnAccentFillColorPrimaryBrush" Color="#FFFFFFFF" />
+                    <SolidColorBrush x:Key="TextOnAccentFillSecondaryBrush" Color="#FFF8F4FF" />
                     <SolidColorBrush x:Key="ShellBackgroundBrush" Color="#FF111113" />
                     <SolidColorBrush x:Key="ShellSidebarBrush" Color="#FF1B1B1F" />
                     <SolidColorBrush x:Key="ShellRowBrush" Color="#FF242428" />

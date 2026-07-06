@@ -25,6 +25,7 @@ public sealed partial class MainWindow : Window
         ShellSidebar.NavigationRequested += NavigateTo;
         ContentFrame.Navigated += async (_, _) =>
         {
+            ShellSidebar.SetCurrentPage(ContentFrame.CurrentSourcePageType);
             UpdateNavigationButtons();
             await ShellSidebar.RefreshAsync();
         };
