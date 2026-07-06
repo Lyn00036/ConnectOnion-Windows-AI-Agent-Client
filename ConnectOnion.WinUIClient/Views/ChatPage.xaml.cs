@@ -9,15 +9,11 @@ using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
 using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.ViewModels;
-using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using Windows.ApplicationModel.DataTransfer;
-using Windows.System;
-using Windows.UI.Core;
 
 namespace ConnectOnion.WinUIClient.Views;
 
@@ -57,9 +53,13 @@ public sealed partial class ChatPage : Page
 
     private void Vm_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(Vm.CanSend))
+        if (e.PropertyName is nameof(Vm.CanSend) or nameof(Vm.IsProcessing))
         {
-            DispatcherQueue.TryEnqueue(RefreshSendButtonState);
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                Composer.CanSubmit = Vm.CanSend;
+                Composer.IsBusy = Vm.IsProcessing;
+            });
         }
     }
 
@@ -99,8 +99,9 @@ public sealed partial class ChatPage : Page
         {
             QueueScrollToEnd(force: true);
         }
-        RefreshSendButtonState();
-        InputBox.Focus(FocusState.Programmatic);
+        Composer.CanSubmit = Vm.CanSend;
+        Composer.IsBusy = Vm.IsProcessing;
+        Composer.FocusInput();
 
         if (!string.IsNullOrWhiteSpace(_pendingInitialPrompt))
         {
@@ -111,18 +112,8 @@ public sealed partial class ChatPage : Page
         }
     }
 
-    private async void Send_Click(object sender, RoutedEventArgs e) => await SendAsync();
-
-    private async void Suggestion_Click(object sender, RoutedEventArgs e)
-    {
-        if ((sender as FrameworkElement)?.Tag is not string prompt) return;
-        InputBox.Text = prompt;
-        InputBox.Focus(FocusState.Programmatic);
-        await SendAsync();
-    }
-
-    private void InputBox_TextChanged(object sender, TextChangedEventArgs e)
-        => RefreshSendButtonState();
+    private async void Composer_SubmitRequested(object? sender, string text)
+        => await SendAsync(text);
 
     private async void SubmitOnboard_Click(object sender, RoutedEventArgs e)
     {
@@ -171,19 +162,6 @@ public sealed partial class ChatPage : Page
         message.IsContentExpanded = !message.IsContentExpanded;
     }
 
-    private async void InputBox_KeyDown(object sender, KeyRoutedEventArgs e)
-    {
-        var isShiftDown = InputKeyboardSource
-            .GetKeyStateForCurrentThread(VirtualKey.Shift)
-            .HasFlag(CoreVirtualKeyStates.Down);
-
-        if (e.Key == VirtualKey.Enter && !isShiftDown)
-        {
-            e.Handled = true;
-            await SendAsync();
-        }
-    }
-
     private void ChatRoot_SizeChanged(object sender, SizeChangedEventArgs e)
     {
         var isNarrow = e.NewSize.Width < 760;
@@ -196,24 +174,16 @@ public sealed partial class ChatPage : Page
 
         var horizontalInset = e.NewSize.Width < 640 ? 20 : 52;
         MessageList.Padding = new Thickness(horizontalInset, 18, horizontalInset, 22);
-        ComposerPanel.Width = Math.Max(280, Math.Min(880, e.NewSize.Width - 48));
-        SuggestionPanel.Visibility = e.NewSize.Width < 620 ? Visibility.Collapsed : Visibility.Visible;
     }
 
-    private async System.Threading.Tasks.Task SendAsync()
+    private async System.Threading.Tasks.Task SendAsync(string text)
     {
-        var text = InputBox.Text;
         if (string.IsNullOrWhiteSpace(text) || !Vm.CanSend) return;
 
-        InputBox.Text = "";
-        RefreshSendButtonState();
         await Vm.SendAsync(text);
         QueueScrollToEnd(force: true);
-        InputBox.Focus(FocusState.Programmatic);
+        Composer.FocusInput();
     }
-
-    private void RefreshSendButtonState()
-        => SendButton.IsEnabled = Vm.CanSend && !string.IsNullOrWhiteSpace(InputBox.Text);
 
     private void Messages_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {

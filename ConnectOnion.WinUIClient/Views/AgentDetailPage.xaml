@@ -3,14 +3,13 @@
     x:Class="ConnectOnion.WinUIClient.Views.AgentDetailPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:ic="using:FluentIcons.WinUI"
+    xmlns:controls="using:ConnectOnion.WinUIClient.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
     <Grid x:Name="AgentRoot"
-          Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
-          SizeChanged="AgentRoot_SizeChanged">
+          Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
@@ -108,139 +107,11 @@
                        TextWrapping="WrapWholeWords" />
         </StackPanel>
 
-        <StackPanel Grid.Row="1"
-                    x:Name="PromptPanel"
-                    Width="656"
-                    HorizontalAlignment="Center"
-                    Margin="24,0,24,24"
-                    Spacing="14"
-                    Visibility="{x:Bind Vm.HasAgent, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-            <StackPanel Orientation="Horizontal"
-                        HorizontalAlignment="Center"
-                        Spacing="8">
-                <Button Content="What can you do?"
-                        Padding="16,6"
-                        CornerRadius="16"
-                        Tag="What can you do?"
-                        Click="Suggestion_Click" />
-                <Button Content="Show system info"
-                        Padding="16,6"
-                        CornerRadius="16"
-                        Tag="Show system info"
-                        Click="Suggestion_Click" />
-                <Button Content="List files in current directory"
-                        Padding="16,6"
-                        CornerRadius="16"
-                        Tag="List files in current directory"
-                        Click="Suggestion_Click" />
-            </StackPanel>
-
-            <Border CornerRadius="12"
-                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1">
-                <Grid MinHeight="84">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="56" />
-                        <RowDefinition Height="1" />
-                        <RowDefinition Height="28" />
-                    </Grid.RowDefinitions>
-
-                    <Grid Grid.Row="0"
-                          Padding="14,10,14,8"
-                          ColumnSpacing="10">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-
-                        <Button Grid.Column="0"
-                                Width="36"
-                                Height="36"
-                                Padding="0"
-                                CornerRadius="18"
-                                Background="Transparent"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                BorderThickness="1"
-                                ToolTipService.ToolTip="Add attachment">
-                            <ic:FluentIcon Icon="Add"
-                                           IconVariant="Regular"
-                                           IconSize="Size20"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        </Button>
-
-                        <TextBox x:Name="PromptBox"
-                                 Grid.Column="1"
-                                 MinHeight="36"
-                                 Padding="0,6,0,0"
-                                 PlaceholderText="Message this agent..."
-                                 PlaceholderForeground="{ThemeResource TextFillColorTertiaryBrush}"
-                                 FontSize="14"
-                                 FontWeight="SemiBold"
-                                 AcceptsReturn="True"
-                                 BorderThickness="0"
-                                 Background="Transparent"
-                                 VerticalAlignment="Center"
-                                 KeyDown="PromptBox_KeyDown" />
-
-                        <Button Grid.Column="2"
-                                Width="36"
-                                Height="36"
-                                Padding="0"
-                                CornerRadius="18"
-                                Background="Transparent"
-                                BorderThickness="0"
-                                ToolTipService.ToolTip="Voice input">
-                            <ic:FluentIcon Icon="Mic"
-                                           IconVariant="Regular"
-                                           IconSize="Size20"
-                                           Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
-                        </Button>
-
-                        <Button Grid.Column="3"
-                                Width="40"
-                                Height="40"
-                                Padding="0"
-                                CornerRadius="10"
-                                Background="{ThemeResource LayerFillColorDefaultBrush}"
-                                BorderThickness="0"
-                                Click="StartConversation_Click"
-                                ToolTipService.ToolTip="Start conversation">
-                            <ic:FluentIcon Icon="Send"
-                                           IconVariant="Regular"
-                                           IconSize="Size24"
-                                           Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
-                        </Button>
-                    </Grid>
-
-                    <Border Grid.Row="1"
-                            Background="{ThemeResource CardStrokeColorDefaultBrush}" />
-
-                    <TextBlock Grid.Row="2"
-                               HorizontalAlignment="Right"
-                               VerticalAlignment="Center"
-                               Margin="0,0,14,0"
-                               FontSize="11">
-                        <Run Text="safe"
-                             FontWeight="SemiBold"
-                             Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
-                        <Run Text=" &#x00B7; "
-                             Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <Run Text="plan"
-                             Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <Run Text=" &#x00B7; "
-                             Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <Run Text="accept"
-                             Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <Run Text=" &#x00B7; "
-                             Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <Run Text="ultra"
-                             Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                    </TextBlock>
-                </Grid>
-            </Border>
-        </StackPanel>
+        <controls:ChatComposer x:Name="Composer"
+                               Grid.Row="1"
+                               CanSubmit="{x:Bind Vm.HasAgent, Mode=OneWay}"
+                               EnterToSubmit="{x:Bind Vm.EnterToSend, Mode=OneWay}"
+                               SubmitRequested="Composer_SubmitRequested"
+                               Visibility="{x:Bind Vm.HasAgent, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
     </Grid>
 </Page>

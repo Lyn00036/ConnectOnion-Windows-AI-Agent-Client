@@ -17,6 +17,7 @@ namespace ConnectOnion.WinUIClient.Controls;
 public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
 {
     public ObservableCollection<ShellAgentItem> ShellAgents { get; } = new();
+    public ObservableCollection<ShellSessionItem> PinnedSessions { get; } = new();
 
     public event Action<Type, bool>? NavigationRequested;
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -26,6 +27,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     private Type? _currentPageType;
     private int _onlineAgentCount;
     private bool _hasExpansionState;
+    private bool _isPinnedExpanded = true;
 
     public int OnlineAgentCount
     {
@@ -40,6 +42,20 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     }
 
     public string OnlineAgentCountText => $"{OnlineAgentCount} online";
+    public bool HasPinnedSessions => PinnedSessions.Count > 0;
+    public double PinnedChevronAngle => IsPinnedExpanded ? 0 : 270;
+
+    public bool IsPinnedExpanded
+    {
+        get => _isPinnedExpanded;
+        private set
+        {
+            if (_isPinnedExpanded == value) return;
+            _isPinnedExpanded = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(PinnedChevronAngle));
+        }
+    }
 
     public ShellSidebar()
     {
@@ -58,7 +74,16 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
 
         RememberExpandedAgentsFromUi();
 
+        PinnedSessions.Clear();
         ShellAgents.Clear();
+        var agentNames = agentsState.Agents.ToDictionary(agent => agent.Id, agent => agent.Name, StringComparer.Ordinal);
+        foreach (var session in sessionsState.Sessions
+                     .Where(session => session.IsPinned)
+                     .OrderByDescending(session => session.UpdatedAt, StringComparer.Ordinal))
+        {
+            PinnedSessions.Add(CreateShellSessionItem(session, sessionsState.ActiveSessionId, agentNames));
+        }
+
         foreach (var agent in agentsState.Agents)
         {
             var item = new ShellAgentItem
@@ -76,17 +101,13 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
                          .Where(s => s.AgentId == agent.Id)
                          .OrderByDescending(s => s.UpdatedAt, StringComparer.Ordinal))
             {
-                item.Sessions.Add(new ShellSessionItem
-                {
-                    Id = session.Id,
-                    Title = session.Title,
-                    IsSelected = IsSessionSelected(session.Id, sessionsState.ActiveSessionId),
-                });
+                item.Sessions.Add(CreateShellSessionItem(session, sessionsState.ActiveSessionId, agentNames));
             }
 
             ShellAgents.Add(item);
         }
 
+        OnPropertyChanged(nameof(HasPinnedSessions));
         UpdateOnlineAgentCount();
         foreach (var agent in agentsState.Agents)
         {
@@ -114,6 +135,19 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
 
     private void RequestNavigation(Type page, bool forceReload = false)
         => NavigationRequested?.Invoke(page, forceReload);
+
+    private ShellSessionItem CreateShellSessionItem(
+        SessionSummary session,
+        string? activeSessionId,
+        IReadOnlyDictionary<string, string> agentNames)
+        => new()
+        {
+            Id = session.Id,
+            Title = session.Title,
+            AgentName = agentNames.TryGetValue(session.AgentId, out var agentName) ? agentName : "",
+            IsPinned = session.IsPinned,
+            IsSelected = IsSessionSelected(session.Id, activeSessionId),
+        };
 
     private bool IsAgentSelected(string agentId, string? selectedAgentId)
         => _currentPageType == typeof(ChatPage)
@@ -235,23 +269,6 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         RequestNavigation(typeof(HomePage), forceReload: true);
     }
 
-    private async void Chat_Click(object sender, RoutedEventArgs e)
-    {
-        var sessionsState = await AppServices.Sessions.LoadAsync();
-        var recent = sessionsState.Sessions
-            .OrderByDescending(s => s.UpdatedAt, StringComparer.Ordinal)
-            .FirstOrDefault();
-
-        if (recent is not null)
-        {
-            await SelectSessionAsync(recent.Id, preserveSidebarState: true);
-            return;
-        }
-
-        await RefreshAsync();
-        RequestNavigation(typeof(HomePage), forceReload: true);
-    }
-
     private async void Agent_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.Tag is string agentId)
@@ -282,6 +299,9 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
             _hasExpansionState = true;
         }
     }
+
+    private void TogglePinned_Click(object sender, RoutedEventArgs e)
+        => IsPinnedExpanded = !IsPinnedExpanded;
 
     private void AgentRow_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
@@ -376,6 +396,19 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         {
             await SelectSessionAsync(sessionId);
         }
+    }
+
+    private async void TogglePinSession_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not string sessionId) return;
+
+        var sessionsState = await AppServices.Sessions.LoadAsync();
+        var session = sessionsState.Sessions.FirstOrDefault(entry => entry.Id == sessionId);
+        if (session is null) return;
+
+        session.IsPinned = !session.IsPinned;
+        await AppServices.Sessions.SaveAsync(sessionsState);
+        await RefreshAsync();
     }
 
     private void SessionRow_PointerEntered(object sender, PointerRoutedEventArgs e)

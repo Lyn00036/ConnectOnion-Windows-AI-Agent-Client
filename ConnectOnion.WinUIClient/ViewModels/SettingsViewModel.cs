@@ -19,6 +19,7 @@ public sealed class SettingsViewModel : ObservableObject
 
     public ThemeMode Theme => _prefs.Theme;
     public MessageFontSize MessageFontSize => _prefs.MessageFontSize;
+    public bool EnterToSend => _prefs.EnterToSend;
 
     public async Task LoadAsync()
     {
@@ -26,6 +27,7 @@ public sealed class SettingsViewModel : ObservableObject
         _loaded = true;
         OnPropertyChanged(nameof(Theme));
         OnPropertyChanged(nameof(MessageFontSize));
+        OnPropertyChanged(nameof(EnterToSend));
     }
 
     public async Task SetThemeAsync(ThemeMode theme)
@@ -42,6 +44,14 @@ public sealed class SettingsViewModel : ObservableObject
         if (!_loaded || _prefs.MessageFontSize == size) return;
         _prefs.MessageFontSize = size;
         OnPropertyChanged(nameof(MessageFontSize));
+        await _repo.SaveAsync(_prefs);
+    }
+
+    public async Task SetEnterToSendAsync(bool enterToSend)
+    {
+        if (!_loaded || _prefs.EnterToSend == enterToSend) return;
+        _prefs.EnterToSend = enterToSend;
+        OnPropertyChanged(nameof(EnterToSend));
         await _repo.SaveAsync(_prefs);
     }
 }

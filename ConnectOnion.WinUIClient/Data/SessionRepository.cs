@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using ConnectOnion.WinUIClient.Models;
@@ -25,6 +26,9 @@ public sealed class SessionsState
 /// </summary>
 public sealed class SessionRepository
 {
+    private const string ActiveSessionMetaKey = "active_session_id";
+    private const string PinnedSessionsMetaKey = "pinned_session_ids";
+
     /// <summary>
     /// Loads sessions, dropping partial/corrupt rows (id, agentId and title all
     /// required) and clearing a stale active pointer.
@@ -34,8 +38,9 @@ public sealed class SessionRepository
         await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
         var state = new SessionsState
         {
-            ActiveSessionId = await AppDatabase.GetMetaAsync(connection, "active_session_id").ConfigureAwait(false),
+            ActiveSessionId = await AppDatabase.GetMetaAsync(connection, ActiveSessionMetaKey).ConfigureAwait(false),
         };
+        var pinnedIds = await LoadPinnedIdsAsync(connection).ConfigureAwait(false);
 
         await using (var command = connection.CreateCommand())
         {
@@ -56,6 +61,7 @@ public sealed class SessionRepository
                     LastProcessedEventId = ReadNullableString(reader, 4),
                     CreatedAt = reader.GetString(5),
                     UpdatedAt = reader.GetString(6),
+                    IsPinned = pinnedIds.Contains(reader.GetString(0)),
                 });
             }
         }
@@ -146,12 +152,32 @@ public sealed class SessionRepository
 
         if (string.IsNullOrWhiteSpace(state.ActiveSessionId))
         {
-            await AppDatabase.DeleteMetaAsync(connection, transaction, "active_session_id")
+            await AppDatabase.DeleteMetaAsync(connection, transaction, ActiveSessionMetaKey)
                 .ConfigureAwait(false);
         }
         else
         {
-            await AppDatabase.SetMetaAsync(connection, transaction, "active_session_id", state.ActiveSessionId!)
+            await AppDatabase.SetMetaAsync(connection, transaction, ActiveSessionMetaKey, state.ActiveSessionId!)
+                .ConfigureAwait(false);
+        }
+
+        var pinnedIds = state.Sessions
+            .Where(session => session.IsPinned && keepIds.Contains(session.Id))
+            .Select(session => session.Id)
+            .Distinct()
+            .ToList();
+        if (pinnedIds.Count == 0)
+        {
+            await AppDatabase.DeleteMetaAsync(connection, transaction, PinnedSessionsMetaKey)
+                .ConfigureAwait(false);
+        }
+        else
+        {
+            await AppDatabase.SetMetaAsync(
+                    connection,
+                    transaction,
+                    PinnedSessionsMetaKey,
+                    JsonSerializer.Serialize(pinnedIds, AppJsonContext.Default.ListString))
                 .ConfigureAwait(false);
         }
 
@@ -160,4 +186,20 @@ public sealed class SessionRepository
 
     private static string? ReadNullableString(SqliteDataReader reader, int ordinal)
         => reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);
+
+    private static async Task<HashSet<string>> LoadPinnedIdsAsync(SqliteConnection connection)
+    {
+        var json = await AppDatabase.GetMetaAsync(connection, PinnedSessionsMetaKey).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(json)) return new HashSet<string>();
+
+        try
+        {
+            var ids = JsonSerializer.Deserialize(json, AppJsonContext.Default.ListString) ?? new();
+            return ids.ToHashSet();
+        }
+        catch
+        {
+            return new HashSet<string>();
+        }
+    }
 }

@@ -17,6 +17,7 @@ public sealed class SessionSummary : ObservableObject
     private string? _lastProcessedEventId;
     private string _createdAt = "";
     private string _updatedAt = "";
+    private bool _isPinned;
 
     [JsonPropertyName("id")]
     public string Id { get => _id; set => SetProperty(ref _id, value); }
@@ -38,4 +39,7 @@ public sealed class SessionSummary : ObservableObject
 
     [JsonPropertyName("updatedAt")]
     public string UpdatedAt { get => _updatedAt; set => SetProperty(ref _updatedAt, value); }
+
+    [JsonPropertyName("isPinned")]
+    public bool IsPinned { get => _isPinned; set => SetProperty(ref _isPinned, value); }
 }

@@ -162,9 +162,13 @@ public sealed class ChatViewModel : ObservableObject
     private double _messageFontSize = 14;
     public double MessageFontSize { get => _messageFontSize; private set => SetProperty(ref _messageFontSize, value); }
 
+    private bool _enterToSend = true;
+    public bool EnterToSend { get => _enterToSend; private set => SetProperty(ref _enterToSend, value); }
+
     public async Task LoadAsync()
     {
         var prefs = await AppServices.Preferences.LoadAsync();
+        EnterToSend = prefs.EnterToSend;
         MessageFontSize = prefs.MessageFontSize switch
         {
             Models.MessageFontSize.Sm => 12,

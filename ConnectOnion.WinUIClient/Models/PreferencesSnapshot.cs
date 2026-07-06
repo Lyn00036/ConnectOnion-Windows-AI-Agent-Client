@@ -22,6 +22,9 @@ public enum MessageFontSize
 /// </summary>
 public sealed class PreferencesSnapshot
 {
+    private const string ComposerEnterKey = "composer.enterKey";
+    private const string EnterNewLineValue = "newline";
+
     [JsonPropertyName("theme")]
     public ThemeMode Theme { get; set; } = ThemeMode.Light;
 
@@ -33,4 +36,21 @@ public sealed class PreferencesSnapshot
 
     [JsonPropertyName("shortcutOverrides")]
     public Dictionary<string, string> ShortcutOverrides { get; set; } = new();
+
+    [JsonIgnore]
+    public bool EnterToSend
+    {
+        get => !ShortcutOverrides.TryGetValue(ComposerEnterKey, out var value)
+               || !string.Equals(value, EnterNewLineValue, System.StringComparison.OrdinalIgnoreCase);
+        set
+        {
+            if (value)
+            {
+                ShortcutOverrides.Remove(ComposerEnterKey);
+                return;
+            }
+
+            ShortcutOverrides[ComposerEnterKey] = EnterNewLineValue;
+        }
+    }
 }

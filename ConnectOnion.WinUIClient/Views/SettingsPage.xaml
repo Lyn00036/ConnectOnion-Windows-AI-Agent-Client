@@ -44,6 +44,23 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="Enter to send" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <TextBlock Text="When enabled, Enter sends and Shift+Enter inserts a new line."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                        <ToggleSwitch x:Name="EnterToSendSwitch"
+                                      Grid.Column="1"
+                                      VerticalAlignment="Center"
+                                      Toggled="EnterToSendSwitch_Toggled" />
+                    </Grid>
+
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
                             <TextBlock Text="Message text size" Style="{StaticResource BodyStrongTextBlockStyle}" />
                             <TextBlock Text="Adjust how large chat messages appear."
                                        Style="{StaticResource CaptionTextBlockStyle}"

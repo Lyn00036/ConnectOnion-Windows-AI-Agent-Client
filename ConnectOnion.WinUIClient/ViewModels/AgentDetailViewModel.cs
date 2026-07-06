@@ -27,6 +27,7 @@ public sealed class AgentDetailViewModel : ObservableObject
     private string _infoJson = "";
     private string _statusText = "";
     private bool _hasError;
+    private bool _enterToSend = true;
 
     public AgentDetailViewModel()
     {
@@ -134,6 +135,8 @@ public sealed class AgentDetailViewModel : ObservableObject
         ? $"Last updated {ts}"
         : null;
 
+    public bool EnterToSend { get => _enterToSend; private set => SetProperty(ref _enterToSend, value); }
+
     public async Task<bool> StartConversationAsync(string prompt)
     {
         if (Agent is null || string.IsNullOrWhiteSpace(prompt)) return false;
@@ -161,6 +164,9 @@ public sealed class AgentDetailViewModel : ObservableObject
     /// <summary>Loads agent info from cache or fetches fresh data.</summary>
     public async Task LoadAsync()
     {
+        var prefs = await AppServices.Preferences.LoadAsync();
+        EnterToSend = prefs.EnterToSend;
+
         var agents = await AppServices.Agents.LoadAsync();
         var selected = agents.Agents.FirstOrDefault(a => a.Id == agents.SelectedAgentId);
 

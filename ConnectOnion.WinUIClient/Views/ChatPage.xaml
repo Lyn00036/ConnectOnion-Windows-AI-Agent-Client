@@ -314,9 +314,15 @@
                                         Click="ToggleMessageCollapse_Click"
                                         ToolTipService.ToolTip="{x:Bind CollapseButtonText, Mode=OneWay}"
                                         Visibility="{x:Bind IsCollapsible, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                                    <TextBlock Text="{x:Bind CollapseButtonText, Mode=OneWay}"
-                                               FontSize="11"
-                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <StackPanel Orientation="Horizontal" Spacing="5">
+                                        <ic:FluentIcon Icon="ArrowMinimize"
+                                                       IconVariant="Regular"
+                                                       IconSize="Size16"
+                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        <TextBlock Text="{x:Bind CollapseButtonText, Mode=OneWay}"
+                                                   FontSize="11"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    </StackPanel>
                                 </Button>
                             </StackPanel>
                         </StackPanel>
@@ -325,163 +331,11 @@
             </ListView.ItemTemplate>
         </ListView>
 
-        <StackPanel x:Name="ComposerPanel"
-                    Grid.Row="2"
-                    MaxWidth="880"
-                    Margin="24,0,24,24"
-                    HorizontalAlignment="Center"
-                    Spacing="10"
-                    Width="880">
-            <StackPanel x:Name="SuggestionPanel"
-                        Orientation="Horizontal"
-                        HorizontalAlignment="Center"
-                        Spacing="8">
-                <Button Content="What can you do?"
-                        Tag="What can you do?"
-                        Padding="14,6"
-                        CornerRadius="16"
-                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                        BorderThickness="1"
-                        Click="Suggestion_Click" />
-                <Button Content="Show system info"
-                        Tag="Show system info"
-                        Padding="14,6"
-                        CornerRadius="16"
-                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                        BorderThickness="1"
-                        Click="Suggestion_Click" />
-                <Button Content="List files"
-                        Tag="List files in current directory"
-                        Padding="14,6"
-                        CornerRadius="16"
-                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                        BorderThickness="1"
-                        Click="Suggestion_Click" />
-            </StackPanel>
-
-            <Border CornerRadius="18"
-                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1">
-                <Grid MinHeight="116">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="1" />
-                        <RowDefinition Height="42" />
-                    </Grid.RowDefinitions>
-
-                    <Grid Grid.Row="0"
-                          Padding="18,14,14,12"
-                          ColumnSpacing="12"
-                          VerticalAlignment="Stretch">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-
-                        <Button Grid.Column="0"
-                                Width="48"
-                                Height="48"
-                                Padding="0"
-                                CornerRadius="24"
-                                Background="Transparent"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                BorderThickness="1"
-                                ToolTipService.ToolTip="Add attachment">
-                            <ic:FluentIcon Icon="Add"
-                                           IconVariant="Regular"
-                                           IconSize="Size28"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        </Button>
-
-                        <TextBox x:Name="InputBox"
-                                 Grid.Column="1"
-                                 MinHeight="48"
-                                 MaxHeight="160"
-                                 Padding="0,9,0,0"
-                                 PlaceholderText="Message this agent..."
-                                 PlaceholderForeground="{ThemeResource TextFillColorTertiaryBrush}"
-                                 Foreground="{ThemeResource TextFillColorPrimaryBrush}"
-                                 FontSize="16"
-                                 FontWeight="SemiBold"
-                                 IsEnabled="{x:Bind Vm.CanSend, Mode=OneWay}"
-                                 AcceptsReturn="True"
-                                 TextWrapping="Wrap"
-                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                 BorderThickness="0"
-                                 Background="Transparent"
-                                 VerticalAlignment="Center"
-                                 TextChanged="InputBox_TextChanged"
-                                 KeyDown="InputBox_KeyDown">
-                            <TextBox.Resources>
-                                <Thickness x:Key="TextControlBorderThemeThickness">0</Thickness>
-                                <Thickness x:Key="TextControlBorderThemeThicknessFocused">0</Thickness>
-                            </TextBox.Resources>
-                        </TextBox>
-
-                        <Button Grid.Column="2"
-                                Width="48"
-                                Height="48"
-                                Padding="0"
-                                CornerRadius="24"
-                                Background="Transparent"
-                                BorderThickness="0"
-                                ToolTipService.ToolTip="Voice input">
-                            <ic:FluentIcon Icon="Mic"
-                                           IconVariant="Regular"
-                                           IconSize="Size28"
-                                           Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
-                        </Button>
-
-                        <Button x:Name="SendButton"
-                                Grid.Column="3"
-                                Width="56"
-                                Height="56"
-                                Padding="0"
-                                CornerRadius="14"
-                                Background="{ThemeResource LayerFillColorDefaultBrush}"
-                                BorderThickness="0"
-                                IsEnabled="False"
-                                Click="Send_Click"
-                                ToolTipService.ToolTip="Send message">
-                            <ic:FluentIcon Icon="Send"
-                                           IconVariant="Regular"
-                                           IconSize="Size28"
-                                           Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
-                        </Button>
-                    </Grid>
-
-                    <Border Grid.Row="1"
-                            Background="{ThemeResource CardStrokeColorDefaultBrush}" />
-
-                    <TextBlock Grid.Row="2"
-                               HorizontalAlignment="Right"
-                               VerticalAlignment="Center"
-                               Margin="0,0,24,0"
-                               FontSize="14">
-                        <Run Text="safe"
-                             FontWeight="SemiBold"
-                             Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
-                        <Run Text=" &#x00B7; "
-                             Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <Run Text="plan"
-                             Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <Run Text=" &#x00B7; "
-                             Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <Run Text="accept"
-                             Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <Run Text=" &#x00B7; "
-                             Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <Run Text="ultra"
-                             Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                    </TextBlock>
-                </Grid>
-            </Border>
-        </StackPanel>
+        <controls:ChatComposer x:Name="Composer"
+                               Grid.Row="2"
+                               CanSubmit="{x:Bind Vm.CanSend, Mode=OneWay}"
+                               EnterToSubmit="{x:Bind Vm.EnterToSend, Mode=OneWay}"
+                               IsBusy="{x:Bind Vm.IsProcessing, Mode=OneWay}"
+                               SubmitRequested="Composer_SubmitRequested" />
     </Grid>
 </Page>

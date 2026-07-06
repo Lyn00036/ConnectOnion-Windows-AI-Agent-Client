@@ -31,6 +31,7 @@ public sealed partial class SettingsPage : Page
             MessageFontSize.Lg => 2,
             _ => 1,
         };
+        EnterToSendSwitch.IsOn = _vm.EnterToSend;
         _initializing = false;
     }
 
@@ -51,6 +52,12 @@ public sealed partial class SettingsPage : Page
             _ => MessageFontSize.Md,
         };
         await _vm.SetMessageFontSizeAsync(size);
+    }
+
+    private async void EnterToSendSwitch_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_initializing) return;
+        await _vm.SetEnterToSendAsync(EnterToSendSwitch.IsOn);
     }
 
     private void Identity_Click(object sender, RoutedEventArgs e)
