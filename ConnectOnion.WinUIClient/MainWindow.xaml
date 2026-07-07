@@ -100,37 +100,49 @@
                          BorderThickness="0"
                          VerticalAlignment="Center">
                     <MenuBarItem Title="File">
-                        <MenuFlyoutItem Text="New Window        Ctrl+Shift+N"
+                        <MenuFlyoutItem Text="New Window"
+                                        KeyboardAcceleratorTextOverride="Ctrl+Shift+N"
                                         Click="NewWindow_Click" />
-                        <MenuFlyoutItem Text="New Chat          Ctrl+N"
+                        <MenuFlyoutItem Text="New Chat"
+                                        KeyboardAcceleratorTextOverride="Ctrl+N"
                                         Click="NewChat_Click" />
-                        <MenuFlyoutItem Text="Open Folder...    Ctrl+O"
+                        <MenuFlyoutItem Text="Open Folder..."
+                                        KeyboardAcceleratorTextOverride="Ctrl+O"
                                         Click="OpenFolder_Click" />
-                        <MenuFlyoutItem Text="Close             Ctrl+W"
+                        <MenuFlyoutItem Text="Close"
+                                        KeyboardAcceleratorTextOverride="Ctrl+W"
                                         Click="CloseWindow_Click" />
                         <MenuFlyoutSeparator />
-                        <MenuFlyoutItem Text="Settings...       Ctrl+,"
+                        <MenuFlyoutItem Text="Settings..."
+                                        KeyboardAcceleratorTextOverride="Ctrl+,"
                                         Click="SettingsMenu_Click" />
                         <MenuFlyoutSeparator />
-                        <MenuFlyoutItem Text="Exit              Ctrl+Q"
+                        <MenuFlyoutItem Text="Exit"
+                                        KeyboardAcceleratorTextOverride="Ctrl+Q"
                                         Click="Exit_Click" />
                     </MenuBarItem>
                     <MenuBarItem Title="Edit">
-                        <MenuFlyoutItem Text="Undo              Ctrl+Z"
+                        <MenuFlyoutItem Text="Undo"
+                                        KeyboardAcceleratorTextOverride="Ctrl+Z"
                                         Click="Undo_Click" />
-                        <MenuFlyoutItem Text="Redo              Ctrl+Y"
+                        <MenuFlyoutItem Text="Redo"
+                                        KeyboardAcceleratorTextOverride="Ctrl+Y"
                                         Click="Redo_Click" />
                         <MenuFlyoutSeparator />
-                        <MenuFlyoutItem Text="Cut               Ctrl+X"
+                        <MenuFlyoutItem Text="Cut"
+                                        KeyboardAcceleratorTextOverride="Ctrl+X"
                                         Click="Cut_Click" />
-                        <MenuFlyoutItem Text="Copy              Ctrl+C"
+                        <MenuFlyoutItem Text="Copy"
+                                        KeyboardAcceleratorTextOverride="Ctrl+C"
                                         Click="Copy_Click" />
-                        <MenuFlyoutItem Text="Paste             Ctrl+V"
+                        <MenuFlyoutItem Text="Paste"
+                                        KeyboardAcceleratorTextOverride="Ctrl+V"
                                         Click="Paste_Click" />
                         <MenuFlyoutItem Text="Delete"
                                         Click="Delete_Click" />
                         <MenuFlyoutSeparator />
-                        <MenuFlyoutItem Text="Select All        Ctrl+A"
+                        <MenuFlyoutItem Text="Select All"
+                                        KeyboardAcceleratorTextOverride="Ctrl+A"
                                         Click="SelectAll_Click" />
                     </MenuBarItem>
                     <MenuBarItem Title="View">

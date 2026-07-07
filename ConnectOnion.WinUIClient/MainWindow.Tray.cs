@@ -31,19 +31,22 @@ public sealed partial class MainWindow
     private const uint MfSeparator = 0x0800;
     private const uint TpmRightButton = 0x0002;
     private const uint TpmBottomAlign = 0x0020;
+    private const uint TpmReturnCmd = 0x0100;
+    private const int ErrorClassAlreadyExists = 1410;
 
     // Window styles for the hidden tray helper window.
     private const uint WsPopUp = 0x80000000;
     private const int HwndMessage = -3;
 
     private static readonly IntPtr IdiApplication = new(32512);
+    private static readonly WNDPROC TrayWndProc = TrayHelperWndProc;
     private static bool _isExiting;
-    private static GCHandle _trayWndProcHandle;
 
     private SUBCLASSPROC? _subclassProc;
     private IntPtr _trayIconHandle;
     private bool _ownsTrayIconHandle;
     private bool _isTrayIconVisible;
+    private bool _isTrayDisposed;
     private IntPtr _trayHelperHwnd;
 
     private void InitializeTrayBehavior()
@@ -62,26 +65,23 @@ public sealed partial class MainWindow
 
     private static IntPtr CreateTrayHelperWindow()
     {
-        var wndProc = new WNDPROC(TrayHelperWndProc);
-        _trayWndProcHandle = GCHandle.Alloc(wndProc);
-
+        var hInstance = GetModuleHandle(null);
         var wc = new WNDCLASSEXW
         {
             cbSize = Marshal.SizeOf<WNDCLASSEXW>(),
-            lpfnWndProc = Marshal.GetFunctionPointerForDelegate(wndProc),
-            hInstance = GetModuleHandle(null),
+            lpfnWndProc = Marshal.GetFunctionPointerForDelegate(TrayWndProc),
+            hInstance = hInstance,
             lpszClassName = "ConnectOnionTrayHelper",
         };
 
         var atom = RegisterClassExW(ref wc);
-        if (atom == 0)
+        if (atom == 0 && Marshal.GetLastWin32Error() != ErrorClassAlreadyExists)
         {
-            _trayWndProcHandle.Free();
             return IntPtr.Zero;
         }
 
         return CreateWindowExW(0, "ConnectOnionTrayHelper", "", WsPopUp,
-            0, 0, 0, 0, new IntPtr(HwndMessage), IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
+            0, 0, 0, 0, new IntPtr(HwndMessage), IntPtr.Zero, hInstance, IntPtr.Zero);
     }
 
     private static IntPtr TrayHelperWndProc(IntPtr hwnd, uint msg, UIntPtr wParam, IntPtr lParam)
@@ -183,28 +183,35 @@ public sealed partial class MainWindow
         UIntPtr subclassId,
         UIntPtr refData)
     {
-        if (message == WmClose && !_isExiting)
+        try
         {
-            _ = DispatcherQueue.TryEnqueue(async () =>
+            if (message == WmClose && !_isExiting)
             {
-                try
+                _ = DispatcherQueue.TryEnqueue(async () =>
                 {
-                    if (await ShowCloseDialogAsync())
-                        MinimizeToTray();
-                }
-                catch
-                {
-                    // If the dialog or minimize fails (e.g. XamlRoot
-                    // unavailable during teardown), let the close proceed
-                    // through the default handler so the window can still
-                    // be dismissed.
-                    DefSubclassProc(hwnd, message, wParam, lParam);
-                }
-            });
-            return IntPtr.Zero;
-        }
+                    try
+                    {
+                        if (await ShowCloseDialogAsync())
+                            MinimizeToTray();
+                    }
+                    catch
+                    {
+                        // If the dialog or minimize fails (e.g. XamlRoot
+                        // unavailable during teardown), let the close proceed
+                        // through the default handler so the window can still
+                        // be dismissed.
+                        DefSubclassProc(hwnd, message, wParam, lParam);
+                    }
+                });
+                return IntPtr.Zero;
+            }
 
-        return DefSubclassProc(hwnd, message, wParam, lParam);
+            return DefSubclassProc(hwnd, message, wParam, lParam);
+        }
+        catch
+        {
+            return DefSubclassProc(hwnd, message, wParam, lParam);
+        }
     }
 
     private async System.Threading.Tasks.Task<bool> ShowCloseDialogAsync()
@@ -239,7 +246,7 @@ public sealed partial class MainWindow
 
     private void MinimizeToTray()
     {
-        if (_isExiting) return;
+        if (_isExiting || _isTrayDisposed) return;
 
         EnsureTrayIconVisible();
         ShowWindow(_hwnd, SwHide);
@@ -247,6 +254,8 @@ public sealed partial class MainWindow
 
     private void RestoreFromTray()
     {
+        if (_isExiting || _isTrayDisposed) return;
+
         ShowWindow(_hwnd, SwShow);
         SetForegroundWindow(_hwnd);
         Activate();
@@ -268,7 +277,7 @@ public sealed partial class MainWindow
 
     private void EnsureTrayIconVisible()
     {
-        if (_isTrayIconVisible) return;
+        if (_isTrayDisposed || _isTrayIconVisible) return;
 
         var data = CreateNotifyIconData();
         if (Shell_NotifyIcon(NotifyIconMessage.Add, ref data))
@@ -304,6 +313,8 @@ public sealed partial class MainWindow
 
     private void ShowTrayMenu()
     {
+        if (_isExiting || _isTrayDisposed) return;
+
         var menu = CreatePopupMenu();
         if (menu == IntPtr.Zero) return;
 
@@ -314,7 +325,23 @@ public sealed partial class MainWindow
             AppendMenu(menu, MfString, ExitCommandId, "Exit");
             GetCursorPos(out var point);
             SetForegroundWindow(_hwnd);
-            TrackPopupMenu(menu, TpmRightButton | TpmBottomAlign, point.X, point.Y, 0, _hwnd, IntPtr.Zero);
+            var command = TrackPopupMenu(
+                menu,
+                TpmRightButton | TpmBottomAlign | TpmReturnCmd,
+                point.X,
+                point.Y,
+                0,
+                _hwnd,
+                IntPtr.Zero);
+
+            if (command == OpenWindowCommandId)
+            {
+                RestoreFromTray();
+            }
+            else if (command == ExitCommandId)
+            {
+                ExitApplication();
+            }
         }
         finally
         {
@@ -341,7 +368,10 @@ public sealed partial class MainWindow
 
     private void DisposeTrayBehavior()
     {
+        if (_isTrayDisposed) return;
+
         RemoveTrayIcon();
+        _isTrayDisposed = true;
 
         if (_subclassProc is not null)
         {
@@ -353,11 +383,6 @@ public sealed partial class MainWindow
         {
             DestroyWindow(_trayHelperHwnd);
             _trayHelperHwnd = IntPtr.Zero;
-        }
-
-        if (_trayWndProcHandle.IsAllocated)
-        {
-            _trayWndProcHandle.Free();
         }
 
         if (_trayIconHandle != IntPtr.Zero && _ownsTrayIconHandle)
@@ -516,7 +541,7 @@ public sealed partial class MainWindow
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
     [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool TrackPopupMenu(
+    private static extern int TrackPopupMenu(
         IntPtr hMenu, uint uFlags, int x, int y,
         int nReserved, IntPtr hWnd, IntPtr prcRect);
 }
