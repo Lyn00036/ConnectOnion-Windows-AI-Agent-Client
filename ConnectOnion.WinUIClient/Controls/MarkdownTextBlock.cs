@@ -32,6 +32,20 @@ public sealed class MarkdownTextBlock : UserControl
             typeof(MarkdownTextBlock),
             new PropertyMetadata(0, OnMaxLinesChanged));
 
+    public static readonly DependencyProperty SearchQueryProperty =
+        DependencyProperty.Register(
+            nameof(SearchQuery),
+            typeof(string),
+            typeof(MarkdownTextBlock),
+            new PropertyMetadata(string.Empty, OnRenderPropertyChanged));
+
+    public static readonly DependencyProperty ActiveMatchIndexProperty =
+        DependencyProperty.Register(
+            nameof(ActiveMatchIndex),
+            typeof(int),
+            typeof(MarkdownTextBlock),
+            new PropertyMetadata(-1, OnRenderPropertyChanged));
+
     public MarkdownTextBlock()
     {
         _richTextBlock = new RichTextBlock
@@ -71,11 +85,26 @@ public sealed class MarkdownTextBlock : UserControl
         set => SetValue(MaxLinesProperty, value);
     }
 
+    public string SearchQuery
+    {
+        get => (string)GetValue(SearchQueryProperty);
+        set => SetValue(SearchQueryProperty, value);
+    }
+
+    public int ActiveMatchIndex
+    {
+        get => (int)GetValue(ActiveMatchIndexProperty);
+        set => SetValue(ActiveMatchIndexProperty, value);
+    }
+
     private static void OnMarkdownChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         => ((MarkdownTextBlock)d).RenderMarkdown(e.NewValue as string ?? string.Empty);
 
     private static void OnMaxLinesChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         => ((MarkdownTextBlock)d)._richTextBlock.MaxLines = (int)e.NewValue;
+
+    private static void OnRenderPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        => ((MarkdownTextBlock)d).RenderMarkdown(((MarkdownTextBlock)d).Markdown);
 
     private void RenderMarkdown(string markdown)
     {
@@ -87,7 +116,7 @@ public sealed class MarkdownTextBlock : UserControl
         }
 
         var document = Markdig.Markdown.Parse(markdown, Pipeline);
-        var renderer = new WinUiMarkdownRenderer(_richTextBlock);
+        var renderer = new WinUiMarkdownRenderer(_richTextBlock, SearchQuery, ActiveMatchIndex);
         Pipeline.Setup(renderer);
         renderer.Render(document);
 

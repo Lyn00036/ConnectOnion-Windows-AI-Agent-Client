@@ -86,71 +86,93 @@ public sealed partial class MainWindow
 
     private static IntPtr TrayHelperWndProc(IntPtr hwnd, uint msg, UIntPtr wParam, IntPtr lParam)
     {
-        if (msg == TrayCallbackMessage)
+        try
         {
-            var mouseMessage = (int)(lParam.ToInt64() & 0xFFFF);
-
-            // Left-click (single or double) restores the window.
-            if (mouseMessage is WmLButtonDown or WmLButtonUp
-                or WmLButtonDblClk or NinSelect)
+            if (msg == TrayCallbackMessage)
             {
-                foreach (var window in OpenWindows.ToArray())
+                var mouseMessage = (int)(lParam.ToInt64() & 0xFFFF);
+
+                // Left-click (single or double) restores the window.
+                if (mouseMessage is WmLButtonDown or WmLButtonUp
+                    or WmLButtonDblClk or NinSelect)
                 {
-                    if (window is MainWindow mainWindow)
+                    foreach (var window in GetOpenWindowsSnapshot())
                     {
-                        _ = mainWindow.DispatcherQueue.TryEnqueue(() =>
-                            mainWindow.RestoreFromTray());
+                        if (window is MainWindow mainWindow
+                            && mainWindow.DispatcherQueue is { } dq)
+                        {
+                            _ = dq.TryEnqueue(() =>
+                                mainWindow.RestoreFromTray());
+                        }
                     }
+                    return IntPtr.Zero;
                 }
-                return IntPtr.Zero;
+
+                // Right-click shows the context menu.
+                if (mouseMessage == WmRButtonUp)
+                {
+                    foreach (var window in GetOpenWindowsSnapshot())
+                    {
+                        if (window is MainWindow mainWindow
+                            && mainWindow.DispatcherQueue is { } dq)
+                        {
+                            _ = dq.TryEnqueue(() =>
+                                mainWindow.ShowTrayMenu());
+                        }
+                    }
+                    return IntPtr.Zero;
+                }
             }
 
-            // Right-click shows the context menu.
-            if (mouseMessage == WmRButtonUp)
+            if (msg == WmCommand)
             {
-                foreach (var window in OpenWindows.ToArray())
+                var commandId = unchecked((int)wParam.ToUInt64()) & 0xffff;
+                if (commandId == OpenWindowCommandId)
                 {
-                    if (window is MainWindow mainWindow)
+                    foreach (var window in GetOpenWindowsSnapshot())
                     {
-                        _ = mainWindow.DispatcherQueue.TryEnqueue(() =>
-                            mainWindow.ShowTrayMenu());
+                        if (window is MainWindow mainWindow
+                            && mainWindow.DispatcherQueue is { } dq)
+                        {
+                            _ = dq.TryEnqueue(() =>
+                                mainWindow.RestoreFromTray());
+                        }
                     }
+                    return IntPtr.Zero;
                 }
-                return IntPtr.Zero;
+
+                if (commandId == ExitCommandId)
+                {
+                    foreach (var window in GetOpenWindowsSnapshot())
+                    {
+                        if (window is MainWindow mainWindow
+                            && mainWindow.DispatcherQueue is { } dq)
+                        {
+                            _ = dq.TryEnqueue(
+                                mainWindow.ExitApplication);
+                        }
+                    }
+                    return IntPtr.Zero;
+                }
             }
         }
-
-        if (msg == WmCommand)
+        catch
         {
-            var commandId = unchecked((int)wParam.ToUInt64()) & 0xffff;
-            if (commandId == OpenWindowCommandId)
-            {
-                foreach (var window in OpenWindows.ToArray())
-                {
-                    if (window is MainWindow mainWindow)
-                    {
-                        _ = mainWindow.DispatcherQueue.TryEnqueue(() =>
-                            mainWindow.RestoreFromTray());
-                    }
-                }
-                return IntPtr.Zero;
-            }
-
-            if (commandId == ExitCommandId)
-            {
-                foreach (var window in OpenWindows.ToArray())
-                {
-                    if (window is MainWindow mainWindow)
-                    {
-                        _ = mainWindow.DispatcherQueue.TryEnqueue(
-                            mainWindow.ExitApplication);
-                    }
-                }
-                return IntPtr.Zero;
-            }
+            // Swallow exceptions in the WndProc to prevent crash-to-desktop.
+            // The helper window is a best-effort facility; a single dropped
+            // tray notification is acceptable.
         }
 
         return DefWindowProcW(hwnd, msg, wParam, lParam);
+    }
+
+    /// <summary>Thread-safe snapshot of <see cref="OpenWindows"/> for consumption by the WndProc.</summary>
+    private static Window[] GetOpenWindowsSnapshot()
+    {
+        lock (OpenWindows)
+        {
+            return OpenWindows.ToArray();
+        }
     }
 
     private IntPtr WindowSubclassProc(
@@ -165,8 +187,19 @@ public sealed partial class MainWindow
         {
             _ = DispatcherQueue.TryEnqueue(async () =>
             {
-                if (await ShowCloseDialogAsync())
-                    MinimizeToTray();
+                try
+                {
+                    if (await ShowCloseDialogAsync())
+                        MinimizeToTray();
+                }
+                catch
+                {
+                    // If the dialog or minimize fails (e.g. XamlRoot
+                    // unavailable during teardown), let the close proceed
+                    // through the default handler so the window can still
+                    // be dismissed.
+                    DefSubclassProc(hwnd, message, wParam, lParam);
+                }
             });
             return IntPtr.Zero;
         }
@@ -176,6 +209,11 @@ public sealed partial class MainWindow
 
     private async System.Threading.Tasks.Task<bool> ShowCloseDialogAsync()
     {
+        // If the XamlRoot is not available (e.g. window is already tearing
+        // down), skip the dialog and proceed with a normal close.
+        if (Content.XamlRoot is null)
+            return false;
+
         var dialog = new ContentDialog
         {
             Title = "ConnectOnion",
@@ -217,7 +255,7 @@ public sealed partial class MainWindow
     private void ExitApplication()
     {
         _isExiting = true;
-        foreach (var window in OpenWindows.ToArray())
+        foreach (var window in GetOpenWindowsSnapshot())
         {
             if (window is MainWindow mainWindow)
             {

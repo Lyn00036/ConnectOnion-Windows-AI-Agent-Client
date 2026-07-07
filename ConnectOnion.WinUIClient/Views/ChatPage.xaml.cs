@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Collections.Specialized;
 using System.Text.Json;
+using System.Threading.Tasks;
 using ConnectOnion.Protocol;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
@@ -11,13 +12,16 @@ using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using Windows.ApplicationModel.DataTransfer;
+using Windows.Foundation;
+using Windows.System;
 
 namespace ConnectOnion.WinUIClient.Views;
 
-public sealed partial class ChatPage : Page
+public sealed partial class ChatPage : Page, IFindHost
 {
     /// <summary>Persisted scroll positions keyed by session id, survives page recreation.</summary>
     private static readonly ConcurrentDictionary<string, double> ScrollPositions = new();
@@ -28,6 +32,10 @@ public sealed partial class ChatPage : Page
     private bool _isAutoScrollQueued;
     private bool _stickToBottom = true;
     private string? _pendingInitialPrompt;
+    private readonly List<FindMatch> _findMatches = new();
+    private readonly DispatcherTimer _findDebounceTimer = new() { Interval = TimeSpan.FromMilliseconds(150) };
+    private int _currentFindIndex = -1;
+    private string _searchQuery = "";
 
     public ChatPage()
     {
@@ -37,6 +45,8 @@ public sealed partial class ChatPage : Page
         Vm.ApprovalRequested += OnApprovalRequested;
         Vm.PlanReviewRequested += OnPlanReviewRequested;
         Vm.PropertyChanged += Vm_PropertyChanged;
+        _findDebounceTimer.Tick += FindDebounceTimer_Tick;
+        ChatRoot.KeyDown += ChatRoot_KeyDown;
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
     }
@@ -44,11 +54,17 @@ public sealed partial class ChatPage : Page
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         // Persist scroll position so returning to this conversation restores it.
-        if (Vm.SessionId is { } sid && _messageScrollViewer is not null)
-            ScrollPositions[sid] = _messageScrollViewer.VerticalOffset;
+        try
+        {
+            if (Vm.SessionId is { } sid && _messageScrollViewer is not null)
+                ScrollPositions[sid] = _messageScrollViewer.VerticalOffset;
+        }
+        catch { /* Best-effort scroll persistence. */ }
 
         Vm.PropertyChanged -= Vm_PropertyChanged;
-        Vm.Cleanup();
+        _findDebounceTimer.Stop();
+        try { Vm.Cleanup(); }
+        catch { /* Best-effort cleanup. */ }
     }
 
     private void Vm_PropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -83,22 +99,22 @@ public sealed partial class ChatPage : Page
         {
             await Vm.LoadAsync();
         }
+        catch
+        {
+            // Failed to restore the conversation (e.g. corrupted local
+            // storage); the page still loads in an empty state so the user
+            // can start a fresh chat.
+        }
         finally
         {
             _isLoadingConversation = false;
         }
 
-        // Restore cached scroll position for this conversation, or default to bottom.
-        if (Vm.SessionId is { } sid
-            && ScrollPositions.TryRemove(sid, out var offset)
-            && _messageScrollViewer is not null)
-        {
-            _messageScrollViewer.ChangeView(null, offset, null, disableAnimation: true);
-        }
-        else
-        {
-            QueueScrollToEnd(force: true);
-        }
+        // Wait for the ListView to materialize its virtualized item containers
+        // before removing the overlay.  A fixed delay cannot account for
+        // varying message counts and hardware speed — use ContainerContentChanging
+        // to detect when visible items are actually realized.
+        _ = DismissOverlayWhenItemsReadyAsync();
         Composer.CanSubmit = Vm.CanSend;
         Composer.IsBusy = Vm.IsProcessing;
         Composer.FocusInput();
@@ -188,6 +204,11 @@ public sealed partial class ChatPage : Page
     private void Messages_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         if (_isLoadingConversation) return;
+        if (FindPanel.Visibility == Visibility.Visible)
+        {
+            QueueFindRefresh();
+        }
+
         if (e.Action is not (NotifyCollectionChangedAction.Add or NotifyCollectionChangedAction.Replace))
         {
             return;
@@ -210,6 +231,80 @@ public sealed partial class ChatPage : Page
         });
     }
 
+    /// <summary>
+    /// Waits for the ListView to materialize enough virtualized item containers,
+    /// then removes the loading overlay and restores the scroll position.
+    /// Uses ContainerContentChanging for precise detection; falls back to a
+    /// timeout so the overlay never gets stuck.
+    /// </summary>
+    private async System.Threading.Tasks.Task DismissOverlayWhenItemsReadyAsync()
+    {
+        if (Vm.Messages.Count == 0)
+        {
+            LoadingOverlay.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        // How many distinct items we need before the viewport is considered
+        // populated (typical viewport holds 8–15 items).
+        var threshold = Math.Min(Vm.Messages.Count, 12);
+        var realized = new HashSet<int>();
+        var tcs = new TaskCompletionSource<bool>();
+
+        TypedEventHandler<ListViewBase, ContainerContentChangingEventArgs>? handler = null;
+        handler = (_, args) =>
+        {
+            if (args.ItemIndex >= 0)
+                realized.Add(args.ItemIndex);
+
+            if (realized.Count < threshold) return;
+
+            MessageList.ContainerContentChanging -= handler;
+            tcs.TrySetResult(true);
+        };
+
+        MessageList.ContainerContentChanging += handler;
+
+        // Safety timeout: if the ListView never materializes enough items
+        // (e.g. items are zero-height or collapsed), dismiss after 600 ms.
+        var timeout = Task.Delay(600);
+        await Task.WhenAny(tcs.Task, timeout);
+        MessageList.ContainerContentChanging -= handler;
+
+        // Wait one extra dispatcher frame so the RichTextBlock/Markdown
+        // content inside each container can finish its internal layout pass
+        // before the overlay is removed.
+        var frameTcs = new TaskCompletionSource();
+        DispatcherQueue.TryEnqueue(() => frameTcs.SetResult());
+        await frameTcs.Task;
+
+        try
+        {
+            // Restore scroll position FIRST (while overlay is still visible),
+            // then hide the overlay — this way the scroll jump is invisible.
+            if (Vm.SessionId is { } sid
+                && ScrollPositions.TryRemove(sid, out var offset)
+                && _messageScrollViewer is not null)
+            {
+                _messageScrollViewer.ChangeView(null, offset, null, disableAnimation: true);
+            }
+            else
+            {
+                QueueScrollToEnd(force: true);
+            }
+
+            // Allow one more frame for the scroll-restored items to be virtualized.
+            var scrollTcs = new TaskCompletionSource();
+            DispatcherQueue.TryEnqueue(() => scrollTcs.SetResult());
+            await scrollTcs.Task;
+
+            LoadingOverlay.Visibility = Visibility.Collapsed;
+        }
+        catch
+        {
+            LoadingOverlay.Visibility = Visibility.Collapsed;
+        }
+    }
     private void ScrollToEnd()
     {
         if (Vm.Messages.Count == 0) return;
@@ -245,11 +340,196 @@ public sealed partial class ChatPage : Page
         return null;
     }
 
+    public void OpenFind()
+    {
+        FindPanel.Visibility = Visibility.Visible;
+        FindTextBox.Focus(FocusState.Programmatic);
+        FindTextBox.SelectAll();
+        UpdateFindButtons();
+    }
+
+    private void CloseFind()
+    {
+        FindPanel.Visibility = Visibility.Collapsed;
+        _findDebounceTimer.Stop();
+        _searchQuery = "";
+        FindTextBox.Text = "";
+        ClearFindHighlights();
+        FindNavPanel.Visibility = Visibility.Collapsed;
+        FindDivider.Visibility = Visibility.Collapsed;
+        FindCounterText.Text = "0 / 0 results";
+        UpdateFindButtons();
+        MessageList.Focus(FocusState.Programmatic);
+    }
+
+    private void ChatRoot_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (FindPanel.Visibility == Visibility.Visible && e.Key == VirtualKey.Escape)
+        {
+            CloseFind();
+            e.Handled = true;
+        }
+    }
+
+    private void FindTextBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        _searchQuery = FindTextBox.Text;
+        var hasQuery = !string.IsNullOrWhiteSpace(_searchQuery);
+        FindNavPanel.Visibility = hasQuery ? Visibility.Visible : Visibility.Collapsed;
+        FindDivider.Visibility = hasQuery ? Visibility.Visible : Visibility.Collapsed;
+        QueueFindRefresh();
+    }
+
+    private void FindTextBox_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key == VirtualKey.Enter)
+        {
+            if ((Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift) & Windows.UI.Core.CoreVirtualKeyStates.Down) != 0)
+                SelectPreviousMatch();
+            else
+                SelectNextMatch();
+
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == VirtualKey.Escape)
+        {
+            CloseFind();
+            e.Handled = true;
+        }
+    }
+
+    private void PreviousFind_Click(object sender, RoutedEventArgs e)
+        => SelectPreviousMatch();
+
+    private void NextFind_Click(object sender, RoutedEventArgs e)
+        => SelectNextMatch();
+
+    private void CloseFind_Click(object sender, RoutedEventArgs e)
+        => CloseFind();
+
+    private void QueueFindRefresh()
+    {
+        _findDebounceTimer.Stop();
+        _findDebounceTimer.Start();
+    }
+
+    private void FindDebounceTimer_Tick(object? sender, object e)
+    {
+        _findDebounceTimer.Stop();
+        FindAllMatches();
+    }
+
+    private void FindAllMatches()
+    {
+        _findMatches.Clear();
+        ClearFindHighlights();
+
+        if (string.IsNullOrWhiteSpace(_searchQuery))
+        {
+            _currentFindIndex = -1;
+            FindCounterText.Text = "0 / 0 results";
+            UpdateFindButtons();
+            return;
+        }
+
+        foreach (var message in Vm.Messages)
+        {
+            if (string.IsNullOrEmpty(message.Content)) continue;
+
+            var localIndex = 0;
+            var cursor = 0;
+            while (cursor < message.Content.Length)
+            {
+                var index = message.Content.IndexOf(_searchQuery, cursor, StringComparison.OrdinalIgnoreCase);
+                if (index < 0) break;
+
+                _findMatches.Add(new FindMatch(message, localIndex));
+                localIndex++;
+                cursor = index + _searchQuery.Length;
+            }
+
+            if (localIndex > 0)
+            {
+                message.FindQuery = _searchQuery;
+            }
+        }
+
+        _currentFindIndex = _findMatches.Count > 0 ? 0 : -1;
+        ApplyCurrentFindMatch(scroll: _findMatches.Count > 0);
+    }
+
+    private void SelectNextMatch()
+    {
+        if (_findMatches.Count == 0) return;
+
+        _currentFindIndex = (_currentFindIndex + 1 + _findMatches.Count) % _findMatches.Count;
+        ApplyCurrentFindMatch(scroll: true);
+    }
+
+    private void SelectPreviousMatch()
+    {
+        if (_findMatches.Count == 0) return;
+
+        _currentFindIndex = (_currentFindIndex - 1 + _findMatches.Count) % _findMatches.Count;
+        ApplyCurrentFindMatch(scroll: true);
+    }
+
+    private void ApplyCurrentFindMatch(bool scroll)
+    {
+        foreach (var message in Vm.Messages)
+        {
+            message.ActiveFindMatchIndex = -1;
+        }
+
+        if (_currentFindIndex >= 0 && _currentFindIndex < _findMatches.Count)
+        {
+            var match = _findMatches[_currentFindIndex];
+            match.Message.FindQuery = _searchQuery;
+            match.Message.ActiveFindMatchIndex = match.MatchIndexInMessage;
+            if (match.Message.IsContentCollapsed)
+            {
+                match.Message.IsContentExpanded = true;
+            }
+
+            if (scroll)
+            {
+                MessageList.ScrollIntoView(match.Message);
+            }
+        }
+
+        FindCounterText.Text = _findMatches.Count == 0
+            ? "0 / 0 results"
+            : $"{_currentFindIndex + 1} / {_findMatches.Count} results";
+        UpdateFindButtons();
+    }
+
+    private void ClearFindHighlights()
+    {
+        foreach (var message in Vm.Messages)
+        {
+            message.FindQuery = "";
+            message.ActiveFindMatchIndex = -1;
+        }
+    }
+
+    private void UpdateFindButtons()
+    {
+        var hasMatches = _findMatches.Count > 0;
+        PreviousFindButton.IsEnabled = hasMatches;
+        NextFindButton.IsEnabled = hasMatches;
+    }
+
+    private readonly record struct FindMatch(ChatMessage Message, int MatchIndexInMessage);
+
     // --- Interactive turns ---
 
     private async void OnAskUserRequested(AskUserRequest request)
     {
-        var panel = new StackPanel { Spacing = 8 };
+        try
+        {
+            var panel = new StackPanel { Spacing = 8 };
         panel.Children.Add(new TextBlock { Text = request.Text, TextWrapping = TextWrapping.Wrap });
 
         // Dynamic fields take priority; otherwise options (single/multi) plus a
@@ -327,11 +607,15 @@ public sealed partial class ChatPage : Page
         }
 
         if (!string.IsNullOrEmpty(answer)) await Vm.RespondAskUserAsync(answer);
+        }
+        catch { /* Dialog dismissed or serialization issue; skip the turn. */ }
     }
 
     private async void OnApprovalRequested(ApprovalRequest request)
     {
-        var panel = new StackPanel { Spacing = 8 };
+        try
+        {
+            var panel = new StackPanel { Spacing = 8 };
         if (!string.IsNullOrEmpty(request.Description))
             panel.Children.Add(new TextBlock { Text = request.Description, TextWrapping = TextWrapping.Wrap });
         panel.Children.Add(new TextBlock { Text = "Arguments:", Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"] });
@@ -361,11 +645,15 @@ public sealed partial class ChatPage : Page
                 await Vm.RespondApprovalAsync(false);
                 break;
         }
+        }
+        catch { /* Dialog dismissed or response failed; skip the turn. */ }
     }
 
     private async void OnPlanReviewRequested(PlanReviewRequest request)
     {
-        var feedback = new TextBox
+        try
+        {
+            var feedback = new TextBox
         {
             PlaceholderText = "Optional feedback or requested changes",
             AcceptsReturn = true,
@@ -398,5 +686,7 @@ public sealed partial class ChatPage : Page
         {
             await Vm.RespondPlanReviewAsync(feedback.Text.Trim());
         }
+        }
+        catch { /* Dialog dismissed or response failed; skip the turn. */ }
     }
 }

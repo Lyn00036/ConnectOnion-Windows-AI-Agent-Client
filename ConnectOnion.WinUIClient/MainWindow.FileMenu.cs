@@ -17,9 +17,11 @@ public sealed partial class MainWindow
 
     private void TrackWindowLifetime()
     {
-        OpenWindows.Add(this);
-        Closed += (_, _) => OpenWindows.Remove(this);
+        lock (OpenWindows) { OpenWindows.Add(this); }
+        Closed += (_, _) => { lock (OpenWindows) { OpenWindows.Remove(this); } };
         RegisterFileMenuAccelerators();
+        RegisterEditMenuAccelerators();
+        RegisterViewMenuAccelerators();
     }
 
     private void NewWindow_Click(object sender, RoutedEventArgs e)

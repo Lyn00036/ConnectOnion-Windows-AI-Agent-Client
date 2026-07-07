@@ -11,6 +11,7 @@ using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
 using Windows.System;
 using Windows.UI.Text;
+using ConnectOnion.WinUIClient.Controls;
 
 namespace ConnectOnion.WinUIClient.Rendering;
 
@@ -21,11 +22,16 @@ public sealed class WinUiMarkdownRenderer : RendererBase
 {
     private readonly RichTextBlock _target;
     private readonly Stack<InlineCollection> _inlineScopes = new();
+    private readonly string _searchQuery;
+    private readonly int _activeMatchIndex;
+    private int _matchIndex;
     private int _quoteDepth;
 
-    public WinUiMarkdownRenderer(RichTextBlock target)
+    public WinUiMarkdownRenderer(RichTextBlock target, string searchQuery = "", int activeMatchIndex = -1)
     {
         _target = target;
+        _searchQuery = searchQuery;
+        _activeMatchIndex = activeMatchIndex;
 
         ObjectRenderers.Add(new DocumentRenderer());
         ObjectRenderers.Add(new HeadingRenderer());
@@ -198,7 +204,7 @@ public sealed class WinUiMarkdownRenderer : RendererBase
         => WritePlainParagraph(block.Lines.ToString());
 
     internal void WriteLiteral(LiteralInline inline)
-        => CurrentInlines.Add(new Run { Text = inline.Content.ToString() });
+        => WriteHighlightedText(inline.Content.ToString());
 
     internal void WriteLineBreak(LineBreakInline inline)
         => CurrentInlines.Add(new LineBreak());
@@ -210,7 +216,7 @@ public sealed class WinUiMarkdownRenderer : RendererBase
             FontFamily = new FontFamily("Consolas"),
             Foreground = ResolveBrush("AccentTextFillColorPrimaryBrush"),
         };
-        code.Inlines.Add(new Run { Text = inline.Content });
+        WriteHighlightedText(inline.Content, code.Inlines);
         CurrentInlines.Add(code);
     }
 
@@ -237,7 +243,7 @@ public sealed class WinUiMarkdownRenderer : RendererBase
     {
         if (inline.IsImage)
         {
-            CurrentInlines.Add(new Run { Text = inline.Url ?? string.Empty });
+            WriteHighlightedText(inline.Url ?? string.Empty);
             return;
         }
 
@@ -258,7 +264,7 @@ public sealed class WinUiMarkdownRenderer : RendererBase
         }
         else
         {
-            hyperlink.Inlines.Add(new Run { Text = inline.Url ?? string.Empty });
+            WriteHighlightedText(inline.Url ?? string.Empty, hyperlink.Inlines);
         }
 
         CurrentInlines.Add(hyperlink);
@@ -268,7 +274,7 @@ public sealed class WinUiMarkdownRenderer : RendererBase
         => WriteNestedInlines(inline, CurrentInlines);
 
     internal void WriteHtmlInline(HtmlInline inline)
-        => CurrentInlines.Add(new Run { Text = inline.Tag });
+        => WriteHighlightedText(inline.Tag);
 
     private InlineCollection CurrentInlines => _inlineScopes.Peek();
 
@@ -336,7 +342,7 @@ public sealed class WinUiMarkdownRenderer : RendererBase
         paragraph.Margin = new Thickness(0, 6, 0, 6);
         paragraph.FontFamily = new FontFamily("Consolas");
         paragraph.Foreground = ResolveBrush("AccentTextFillColorPrimaryBrush");
-        paragraph.Inlines.Add(new Run { Text = code.TrimEnd() });
+        WriteHighlightedText(code.TrimEnd(), paragraph.Inlines);
         _target.Blocks.Add(paragraph);
     }
 
@@ -348,9 +354,15 @@ public sealed class WinUiMarkdownRenderer : RendererBase
         }
 
         var paragraph = CreateParagraph();
-        paragraph.Inlines.Add(new Run { Text = text.TrimEnd() });
+        WriteHighlightedText(text.TrimEnd(), paragraph.Inlines);
         _target.Blocks.Add(paragraph);
     }
+
+    private void WriteHighlightedText(string text)
+        => WriteHighlightedText(text, CurrentInlines);
+
+    private void WriteHighlightedText(string text, InlineCollection inlines)
+        => HighlightedTextBlock.AddHighlightedRuns(inlines, text, _searchQuery, _activeMatchIndex, ref _matchIndex);
 
     private void WriteInlineContainer(ContainerInline container, InlineCollection inlines)
         => WriteNestedInlines(container, inlines);

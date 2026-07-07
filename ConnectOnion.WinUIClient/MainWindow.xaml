@@ -35,6 +35,18 @@
                 <Setter Property="MinHeight" Value="0" />
                 <Setter Property="Padding" Value="0" />
             </Style>
+
+            <Style x:Key="ZoomHudButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="CornerRadius" Value="4" />
+                <Setter Property="MinWidth" Value="0" />
+                <Setter Property="MinHeight" Value="0" />
+                <Setter Property="Width" Value="26" />
+                <Setter Property="Height" Value="26" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+            </Style>
         </Grid.Resources>
 
         <Grid.RowDefinitions>
@@ -50,7 +62,7 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="144" />
+                <ColumnDefinition x:Name="CaptionButtonsColumn" Width="144" />
             </Grid.ColumnDefinitions>
 
             <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="2" Padding="10,0,0,0">
@@ -103,8 +115,55 @@
                         <MenuFlyoutItem Text="Exit              Ctrl+Q"
                                         Click="Exit_Click" />
                     </MenuBarItem>
-                    <MenuBarItem Title="Edit" />
-                    <MenuBarItem Title="View" />
+                    <MenuBarItem Title="Edit">
+                        <MenuFlyoutItem Text="Undo              Ctrl+Z"
+                                        Click="Undo_Click" />
+                        <MenuFlyoutItem Text="Redo              Ctrl+Y"
+                                        Click="Redo_Click" />
+                        <MenuFlyoutSeparator />
+                        <MenuFlyoutItem Text="Cut               Ctrl+X"
+                                        Click="Cut_Click" />
+                        <MenuFlyoutItem Text="Copy              Ctrl+C"
+                                        Click="Copy_Click" />
+                        <MenuFlyoutItem Text="Paste             Ctrl+V"
+                                        Click="Paste_Click" />
+                        <MenuFlyoutItem Text="Delete"
+                                        Click="Delete_Click" />
+                        <MenuFlyoutSeparator />
+                        <MenuFlyoutItem Text="Select All        Ctrl+A"
+                                        Click="SelectAll_Click" />
+                    </MenuBarItem>
+                    <MenuBarItem Title="View">
+                        <MenuFlyoutItem Text="Toggle Sidebar"
+                                        KeyboardAcceleratorTextOverride="Ctrl+B"
+                                        Click="ToggleSidebarMenu_Click" />
+                        <MenuFlyoutItem Text="Open Terminal"
+                                        KeyboardAcceleratorTextOverride="Ctrl+`"
+                                        Click="OpenTerminal_Click" />
+                        <MenuFlyoutItem Text="Find"
+                                        KeyboardAcceleratorTextOverride="Ctrl+F"
+                                        Click="Find_Click" />
+                        <MenuFlyoutSeparator />
+                        <MenuFlyoutItem Text="Back"
+                                        KeyboardAcceleratorTextOverride="Ctrl+["
+                                        Click="BackMenu_Click" />
+                        <MenuFlyoutItem Text="Forward"
+                                        KeyboardAcceleratorTextOverride="Ctrl+]"
+                                        Click="ForwardMenu_Click" />
+                        <MenuFlyoutSeparator />
+                        <MenuFlyoutItem Text="Zoom In"
+                                        KeyboardAcceleratorTextOverride="Ctrl+Shift+="
+                                        Click="ZoomIn_Click" />
+                        <MenuFlyoutItem Text="Zoom Out"
+                                        KeyboardAcceleratorTextOverride="Ctrl+-"
+                                        Click="ZoomOut_Click" />
+                        <MenuFlyoutItem Text="Actual Size"
+                                        Click="ActualSize_Click" />
+                        <MenuFlyoutSeparator />
+                        <MenuFlyoutItem Text="Toggle Full Screen"
+                                        KeyboardAcceleratorTextOverride="F11"
+                                        Click="ToggleFullScreen_Click" />
+                    </MenuBarItem>
                     <MenuBarItem Title="Help">
                         <MenuFlyoutItem Text="About ConnectOnion"
                                         Click="AboutConnectOnion_Click" />
@@ -117,7 +176,8 @@
                   Background="Transparent" />
         </Grid>
 
-        <Grid Grid.Row="1">
+        <Grid x:Name="MainContentArea"
+              Grid.Row="1">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition x:Name="ShellSidebarColumn" Width="286" />
                 <ColumnDefinition Width="*" />
@@ -130,5 +190,87 @@
                    x:Name="ContentFrame"
                    Background="{ThemeResource ShellBackgroundBrush}" />
         </Grid>
+
+        <Popup x:Name="ZoomPopup"
+               IsLightDismissEnabled="False"
+               ShouldConstrainToRootBounds="True"
+               HorizontalOffset="0"
+               VerticalOffset="36">
+            <Popup.ChildTransitions>
+                <TransitionCollection>
+                    <PaneThemeTransition Edge="Top" />
+                </TransitionCollection>
+            </Popup.ChildTransitions>
+            <Border x:Name="ZoomPopupPanel"
+                    Width="236"
+                    Padding="14,6"
+                    CornerRadius="18"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1">
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="62" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="56" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock x:Name="ZoomPercentText"
+                               Grid.Column="0"
+                               Text="100%"
+                               FontSize="12"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center" />
+                    <Rectangle Grid.Column="1"
+                               Width="1"
+                               Height="18"
+                               Fill="{ThemeResource DividerStrokeColorDefaultBrush}"
+                               Opacity="0.7"
+                               VerticalAlignment="Center" />
+                    <Button Grid.Column="2"
+                            Style="{StaticResource ZoomHudButtonStyle}"
+                            Click="ActualSizeZoomOut_Click"
+                            AutomationProperties.Name="Zoom out"
+                            ToolTipService.ToolTip="Zoom out">
+                        <TextBlock Text="-"
+                                   FontSize="16"
+                                   VerticalAlignment="Center" />
+                    </Button>
+                    <Button Grid.Column="3"
+                            Style="{StaticResource ZoomHudButtonStyle}"
+                            Click="ActualSizeZoomIn_Click"
+                            AutomationProperties.Name="Zoom in"
+                            ToolTipService.ToolTip="Zoom in">
+                        <TextBlock Text="+"
+                                   FontSize="16"
+                                   VerticalAlignment="Center" />
+                    </Button>
+                    <Rectangle Grid.Column="4"
+                               Width="1"
+                               Height="18"
+                               Fill="{ThemeResource DividerStrokeColorDefaultBrush}"
+                               Opacity="0.7"
+                               VerticalAlignment="Center" />
+                    <Button x:Name="ResetZoomButton"
+                            Grid.Column="5"
+                            Style="{StaticResource DefaultButtonStyle}"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            IsEnabled="False"
+                            Padding="10,0"
+                            MinWidth="0"
+                            MinHeight="26"
+                            HorizontalAlignment="Stretch"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Click="ResetZoom_Click">
+                        <TextBlock Text="Reset"
+                                   FontSize="12" />
+                    </Button>
+                </Grid>
+            </Border>
+        </Popup>
     </Grid>
 </Window>

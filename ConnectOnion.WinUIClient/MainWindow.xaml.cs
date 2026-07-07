@@ -30,9 +30,17 @@ public sealed partial class MainWindow : Window
         ShellSidebar.NavigationRequested += NavigateTo;
         ContentFrame.Navigated += async (_, _) =>
         {
-            ShellSidebar.SetCurrentPage(ContentFrame.CurrentSourcePageType);
-            UpdateNavigationButtons();
-            await ShellSidebar.RefreshAsync();
+            try
+            {
+                ShellSidebar.SetCurrentPage(ContentFrame.CurrentSourcePageType);
+                UpdateNavigationButtons();
+                await ShellSidebar.RefreshAsync();
+            }
+            catch
+            {
+                // Best-effort UI refresh; a failed sidebar update should not
+                // crash the process.
+            }
         };
         ThemeService.ThemeApplied += ApplyTitleBarTheme;
         AppServices.Sessions.SessionsChanged += OnSessionsChanged;
@@ -46,9 +54,17 @@ public sealed partial class MainWindow : Window
         _ = ApplyStartupThemeAsync();
         RootGrid.Loaded += async (_, _) =>
         {
-            await ShellSidebar.RefreshAsync();
-            NavigateTo(typeof(HomePage));
-            UpdateNavigationButtons();
+            try
+            {
+                await ShellSidebar.RefreshAsync();
+                NavigateTo(typeof(HomePage));
+                UpdateNavigationButtons();
+            }
+            catch
+            {
+                // Initialization is best-effort; a failure here should not
+                // prevent the window from being shown.
+            }
         };
     }
 
@@ -68,7 +84,10 @@ public sealed partial class MainWindow : Window
     }
 
     private void RootGrid_SizeChanged(object sender, SizeChangedEventArgs e)
-        => ApplySidebarWidth(e.NewSize.Width);
+    {
+        ApplySidebarWidth(e.NewSize.Width);
+        UpdateZoomPopupPosition();
+    }
 
     private void ApplySidebarWidth(double windowWidth)
     {
@@ -87,6 +106,9 @@ public sealed partial class MainWindow : Window
     }
 
     private void SidebarToggle_Click(object sender, RoutedEventArgs e)
+        => ToggleSidebarCommand();
+
+    private void ToggleSidebarCommand()
     {
         _isSidebarVisible = !_isSidebarVisible;
         ShellSidebar.Visibility = _isSidebarVisible ? Visibility.Visible : Visibility.Collapsed;
@@ -95,6 +117,9 @@ public sealed partial class MainWindow : Window
     }
 
     private void Back_Click(object sender, RoutedEventArgs e)
+        => BackCommand();
+
+    private void BackCommand()
     {
         if (ContentFrame.CanGoBack)
         {
@@ -103,6 +128,9 @@ public sealed partial class MainWindow : Window
     }
 
     private void Forward_Click(object sender, RoutedEventArgs e)
+        => ForwardCommand();
+
+    private void ForwardCommand()
     {
         if (ContentFrame.CanGoForward)
         {
@@ -120,7 +148,11 @@ public sealed partial class MainWindow : Window
     }
 
     private void OnSessionsChanged()
-        => DispatcherQueue.TryEnqueue(async () => await ShellSidebar.RefreshAsync());
+        => DispatcherQueue.TryEnqueue(async () =>
+        {
+            try { await ShellSidebar.RefreshAsync(); }
+            catch { /* Best-effort refresh on session change. */ }
+        });
 
     private void ApplyTitleBarTheme(ThemeMode theme)
     {

@@ -369,7 +369,9 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     {
         if ((sender as FrameworkElement)?.Tag is not string agentId) return;
 
-        var agentsState = await AppServices.Agents.LoadAsync();
+        try
+        {
+            var agentsState = await AppServices.Agents.LoadAsync();
         var agent = agentsState.Agents.FirstOrDefault(entry => entry.Id == agentId);
         if (agent is null) return;
 
@@ -405,6 +407,8 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
 
         await RefreshAsync();
         RequestNavigation(typeof(ChatPage), forceReload: true);
+        }
+        catch { /* Ignore errors during agent deletion. */ }
     }
 
     private async void Session_Click(object sender, RoutedEventArgs e)
@@ -464,7 +468,9 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     {
         if ((sender as FrameworkElement)?.Tag is not string sessionId) return;
 
-        var sessionsState = await AppServices.Sessions.LoadAsync();
+        try
+        {
+            var sessionsState = await AppServices.Sessions.LoadAsync();
         var session = sessionsState.Sessions.FirstOrDefault(entry => entry.Id == sessionId);
         if (session is null) return;
 
@@ -497,6 +503,8 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
 
         await RefreshAsync();
         RequestNavigation(typeof(ChatPage), forceReload: true);
+        }
+        catch { /* Ignore errors during session deletion. */ }
     }
 
     private async void AddAgent_Click(object sender, RoutedEventArgs e)

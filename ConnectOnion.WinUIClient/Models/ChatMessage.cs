@@ -38,6 +38,8 @@ public sealed class ChatMessage : ObservableObject
     private string? _eventArgs;
     private string? _eventResult;
     private bool _isContentExpanded;
+    private string _findQuery = "";
+    private int _activeFindMatchIndex = -1;
 
     [JsonPropertyName("id")]
     public long Id { get; set; }
@@ -209,5 +211,19 @@ public sealed class ChatMessage : ObservableObject
             OnPropertyChanged(nameof(CollapseButtonText));
             OnPropertyChanged(nameof(RenderedMaxLines));
         }
+    }
+
+    [JsonIgnore]
+    public string FindQuery
+    {
+        get => _findQuery;
+        set => SetProperty(ref _findQuery, value);
+    }
+
+    [JsonIgnore]
+    public int ActiveFindMatchIndex
+    {
+        get => _activeFindMatchIndex;
+        set => SetProperty(ref _activeFindMatchIndex, value);
     }
 }
