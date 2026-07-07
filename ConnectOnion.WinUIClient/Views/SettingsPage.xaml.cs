@@ -8,9 +8,6 @@ namespace ConnectOnion.WinUIClient.Views;
 public sealed partial class SettingsPage : Page
 {
     private readonly SettingsViewModel _vm = new();
-
-    // Suppresses the SelectionChanged handlers while we seed the initial values,
-    // so restoring saved prefs doesn't write them straight back.
     private bool _initializing;
 
     public SettingsPage()
@@ -24,7 +21,12 @@ public sealed partial class SettingsPage : Page
         await _vm.LoadAsync();
 
         _initializing = true;
-        ThemeChoice.SelectedIndex = _vm.Theme == ThemeMode.Dark ? 1 : 0;
+        ThemeChoice.SelectedIndex = _vm.Theme switch
+        {
+            ThemeMode.Light => 1,
+            ThemeMode.Dark => 2,
+            _ => 0,
+        };
         FontChoice.SelectedIndex = _vm.MessageFontSize switch
         {
             MessageFontSize.Sm => 0,
@@ -32,13 +34,22 @@ public sealed partial class SettingsPage : Page
             _ => 1,
         };
         EnterToSendSwitch.IsOn = _vm.EnterToSend;
+
+        MicChoice.ItemsSource = _vm.Microphones;
+        MicChoice.SelectedIndex = _vm.SelectedMicIndex;
+
         _initializing = false;
     }
 
     private async void ThemeChoice_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_initializing) return;
-        var theme = ThemeChoice.SelectedIndex == 1 ? ThemeMode.Dark : ThemeMode.Light;
+        var theme = ThemeChoice.SelectedIndex switch
+        {
+            1 => ThemeMode.Light,
+            2 => ThemeMode.Dark,
+            _ => ThemeMode.System,
+        };
         await _vm.SetThemeAsync(theme);
     }
 
@@ -58,6 +69,12 @@ public sealed partial class SettingsPage : Page
     {
         if (_initializing) return;
         await _vm.SetEnterToSendAsync(EnterToSendSwitch.IsOn);
+    }
+
+    private void MicChoice_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        // SelectionChanged on ComboBox is two-way through the VM binding;
+        // the VM's SelectedMicIndex setter triggers the save.
     }
 
     private void Identity_Click(object sender, RoutedEventArgs e)

@@ -102,7 +102,8 @@ public static class AppDatabase
                 theme TEXT NOT NULL,
                 sidebar_visible INTEGER NOT NULL,
                 message_font_size TEXT NOT NULL,
-                shortcut_overrides_json TEXT NOT NULL
+                shortcut_overrides_json TEXT NOT NULL,
+                microphone_device_id TEXT NOT NULL DEFAULT ''
             );
 
             CREATE TABLE IF NOT EXISTS messages (

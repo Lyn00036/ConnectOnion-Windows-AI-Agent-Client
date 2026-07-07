@@ -350,6 +350,19 @@ Known deployed development agents:
   `.vs/`, `.co/`, local SQLite databases, MSIX/appx output, and user-specific
   publish files.
 
+### Local database location
+
+The app stores all data in a single SQLite file `connectonion.db`.  The path
+depends on how the app is launched:
+
+| Launch mode | Path |
+|---|---|
+| Unpackaged (`dotnet run`) | `%APPDATA%\ConnectOnion\connectonion.db` |
+| Packaged / MSIX (VS Debug) | `%LOCALAPPDATA%\Packages\779a2035-a8d1-4bc8-91cf-82aecda14cc5_<hash>\LocalState\ConnectOnion\connectonion.db` |
+
+To reset app data during development, delete the file and restart the app —
+the database is recreated from the embedded schema on next launch.
+
 ## References
 
 - [WinUIClient project README](./ConnectOnion.WinUIClient/README.md)

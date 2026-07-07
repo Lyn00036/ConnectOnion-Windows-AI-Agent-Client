@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.System;
 
@@ -49,6 +50,13 @@ public sealed partial class MainWindow
 
     private async void EditMenuShortcut_KeyDown(object sender, KeyRoutedEventArgs e)
     {
+        // TextBox natively handles Ctrl+C/V/X/Z/Y/A/Delete.  Don't double-fire
+        // by routing the same key through our custom handler while the TextBox
+        // (or a child of one) is focused.
+        if (e.OriginalSource is TextBox or PasswordBox
+            || (e.OriginalSource is FrameworkElement fe && FindParentTextBox(fe) is not null))
+            return;
+
         var target = CurrentTextBoxTarget();
         if (target is null) return;
 
@@ -96,6 +104,18 @@ public sealed partial class MainWindow
 
     private TextBox? CurrentTextBoxTarget()
         => FocusManager.GetFocusedElement(RootGrid.XamlRoot) as TextBox ?? _lastFocusedTextBox;
+
+    /// <summary>Walk up the visual tree to find a parent TextBox (useful when the
+    /// event source is a child element like a Grid or Border inside a TextBox template).</summary>
+    private static TextBox? FindParentTextBox(DependencyObject element)
+    {
+        while (element is not null)
+        {
+            if (element is TextBox tb) return tb;
+            element = VisualTreeHelper.GetParent(element);
+        }
+        return null;
+    }
 
     private void UndoText()
     {

@@ -80,7 +80,7 @@ public sealed partial class MainWindow : Window
         SetTitleBar(TitleBarDragRegion);
         _appWindow.Title = "ConnectOnion";
         _appWindow.SetIcon("Assets\\icon.ico");
-        ApplyTitleBarTheme(ThemeMode.Light);
+        ApplyTitleBarTheme(ElementTheme.Light);
     }
 
     private void RootGrid_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -154,7 +154,7 @@ public sealed partial class MainWindow : Window
             catch { /* Best-effort refresh on session change. */ }
         });
 
-    private void ApplyTitleBarTheme(ThemeMode theme)
+    private void ApplyTitleBarTheme(ElementTheme theme)
     {
         var titleBar = _appWindow.TitleBar;
         titleBar.BackgroundColor = Colors.Transparent;
@@ -162,7 +162,7 @@ public sealed partial class MainWindow : Window
         titleBar.ButtonBackgroundColor = Colors.Transparent;
         titleBar.ButtonInactiveBackgroundColor = Colors.Transparent;
 
-        if (theme == ThemeMode.Dark)
+        if (theme == ElementTheme.Dark)
         {
             titleBar.ForegroundColor = Color.FromArgb(255, 245, 245, 247);
             titleBar.InactiveForegroundColor = Color.FromArgb(255, 146, 146, 154);

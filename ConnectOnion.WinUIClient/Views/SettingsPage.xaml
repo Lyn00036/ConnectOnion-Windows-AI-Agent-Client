@@ -27,12 +27,13 @@
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0" VerticalAlignment="Center">
                             <TextBlock Text="Theme" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                            <TextBlock Text="Switch between light and dark mode."
+                            <TextBlock Text="Use the system theme or choose light or dark mode."
                                        Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </StackPanel>
-                        <RadioButtons x:Name="ThemeChoice" Grid.Column="1" MaxColumns="2"
+                        <RadioButtons x:Name="ThemeChoice" Grid.Column="1" MaxColumns="3"
                                       SelectionChanged="ThemeChoice_SelectionChanged">
+                            <x:String>System</x:String>
                             <x:String>Light</x:String>
                             <x:String>Dark</x:String>
                         </RadioButtons>
@@ -90,6 +91,32 @@
                                 Padding="14,6"
                                 VerticalAlignment="Center"
                                 Click="Identity_Click" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <Border Margin="0,8,0,0" Padding="20" CornerRadius="8"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                <StackPanel Spacing="20">
+                    <TextBlock Text="Audio" Style="{StaticResource SubtitleTextBlockStyle}" />
+
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="220" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="Microphone" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <TextBlock Text="Choose the microphone for voice input."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                        <ComboBox x:Name="MicChoice"
+                                  Grid.Column="1"
+                                  VerticalAlignment="Center"
+                                  DisplayMemberPath="Name"
+                                  SelectionChanged="MicChoice_SelectionChanged" />
                     </Grid>
                 </StackPanel>
             </Border>

@@ -1,16 +1,16 @@
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using ConnectOnion.WinUIClient.Common;
+using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
-using ConnectOnion.WinUIClient.Data;
+using Windows.Devices.Enumeration;
+using Windows.Foundation;
+using System.Runtime.InteropServices.WindowsRuntime;
 
 namespace ConnectOnion.WinUIClient.ViewModels;
 
-/// <summary>
-/// Backs the Settings page. Loads SQLite-backed preferences, exposes the current
-/// appearance settings, and persists (and live-applies the theme) on each change.
-/// Port of the appearance section of <c>SettingsPanel.tsx</c> / <c>store.ts</c>.
-/// </summary>
 public sealed class SettingsViewModel : ObservableObject
 {
     private readonly PreferencesRepository _repo = AppServices.Preferences;
@@ -20,14 +20,41 @@ public sealed class SettingsViewModel : ObservableObject
     public ThemeMode Theme => _prefs.Theme;
     public MessageFontSize MessageFontSize => _prefs.MessageFontSize;
     public bool EnterToSend => _prefs.EnterToSend;
+    public string MicrophoneDeviceId => _prefs.MicrophoneDeviceId;
+
+    public IReadOnlyList<MicrophoneItem> Microphones { get; private set; } = [];
+    private int _selectedMicIndex = -1;
+    public int SelectedMicIndex
+    {
+        get => _selectedMicIndex;
+        set
+        {
+            if (!SetProperty(ref _selectedMicIndex, value)) return;
+            if (_loaded && value >= 0 && value < Microphones.Count)
+                _ = SetMicrophoneAsync(Microphones[value].DeviceId);
+        }
+    }
 
     public async Task LoadAsync()
     {
         _prefs = await _repo.LoadAsync();
         _loaded = true;
+
+        Microphones = await EnumerateMicrophonesAsync();
+
+        var idx = Microphones
+            .Select((m, i) => (m, i))
+            .FirstOrDefault(x => x.m.DeviceId == _prefs.MicrophoneDeviceId).i;
+        if (idx < 0)
+            idx = Microphones.Select((m, i) => (m, i))
+                .FirstOrDefault(x => x.m.IsDefault).i;
+        _selectedMicIndex = idx >= 0 ? idx : 0;
+
         OnPropertyChanged(nameof(Theme));
         OnPropertyChanged(nameof(MessageFontSize));
         OnPropertyChanged(nameof(EnterToSend));
+        OnPropertyChanged(nameof(Microphones));
+        OnPropertyChanged(nameof(SelectedMicIndex));
     }
 
     public async Task SetThemeAsync(ThemeMode theme)
@@ -54,4 +81,42 @@ public sealed class SettingsViewModel : ObservableObject
         OnPropertyChanged(nameof(EnterToSend));
         await _repo.SaveAsync(_prefs);
     }
+
+    private async Task SetMicrophoneAsync(string deviceId)
+    {
+        if (!_loaded || _prefs.MicrophoneDeviceId == deviceId) return;
+        _prefs.MicrophoneDeviceId = deviceId;
+        await _repo.SaveAsync(_prefs);
+    }
+
+    private static async Task<IReadOnlyList<MicrophoneItem>> EnumerateMicrophonesAsync()
+    {
+        var devices = await Task.Run(() =>
+        {
+            var op = DeviceInformation.FindAllAsync(DeviceClass.AudioCapture);
+            var tcs = new TaskCompletionSource<DeviceInformationCollection>();
+            op.Completed = (_, status) =>
+            {
+                if (status == AsyncStatus.Completed)
+                    tcs.SetResult(op.GetResults());
+                else if (status == AsyncStatus.Error)
+                    tcs.SetException(op.ErrorCode);
+                else
+                    tcs.SetCanceled();
+            };
+            return tcs.Task;
+        });
+        var list = new List<MicrophoneItem>(devices.Count + 1)
+        {
+            new("System default", "", IsDefault: true),
+        };
+        foreach (var d in devices)
+        {
+            if (d.IsEnabled)
+                list.Add(new(d.Name, d.Id));
+        }
+        return list;
+    }
 }
+
+public sealed record MicrophoneItem(string Name, string DeviceId, bool IsDefault = false);

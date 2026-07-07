@@ -5,6 +5,7 @@ namespace ConnectOnion.WinUIClient.Models;
 
 public enum ThemeMode
 {
+    System,
     Light,
     Dark,
 }
@@ -26,7 +27,7 @@ public sealed class PreferencesSnapshot
     private const string EnterNewLineValue = "newline";
 
     [JsonPropertyName("theme")]
-    public ThemeMode Theme { get; set; } = ThemeMode.Light;
+    public ThemeMode Theme { get; set; } = ThemeMode.System;
 
     [JsonPropertyName("sidebarVisible")]
     public bool SidebarVisible { get; set; } = true;
@@ -36,6 +37,10 @@ public sealed class PreferencesSnapshot
 
     [JsonPropertyName("shortcutOverrides")]
     public Dictionary<string, string> ShortcutOverrides { get; set; } = new();
+
+    /// <summary>Selected capture device id, or empty for system default.</summary>
+    [JsonPropertyName("microphoneDeviceId")]
+    public string MicrophoneDeviceId { get; set; } = "";
 
     [JsonIgnore]
     public bool EnterToSend
