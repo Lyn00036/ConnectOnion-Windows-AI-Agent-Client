@@ -591,12 +591,12 @@ public sealed partial class ChatComposer : UserControl
                   || (ActualTheme == ElementTheme.Default
                       && Application.Current.RequestedTheme == ApplicationTheme.Dark);
 
-        _bgColor = isDark ? Color.FromArgb(255, 27, 27, 27)     // #1B1B1B
-                          : Color.FromArgb(255, 243, 243, 243);  // #F3F3F3
-        _baselineColor = isDark ? Color.FromArgb(255, 80, 80, 80)    // #505050
-                                : Color.FromArgb(255, 204, 204, 204); // #CCCCCC
-        _barColor = isDark ? Colors.White
-                           : Color.FromArgb(255, 26, 26, 26);     // #1A1A1A
+        // Matches the Border painted behind WaveformCanvas in XAML (SurfaceElevatedColor,
+        // aliased from CardBackgroundFillColorDefaultBrush) — the canvas fills the exact
+        // same rect, so the two must agree or the seam shows.
+        _bgColor = ThemeService.GetColor("SurfaceElevatedColor", isDark);
+        _baselineColor = ThemeService.GetColor("BorderStrongColor", isDark);
+        _barColor = ThemeService.GetColor("TextPrimaryColor", isDark);
     }
 
     // ---- Audio meter ----
@@ -762,7 +762,7 @@ public sealed partial class ChatComposer : UserControl
             : Brush("ComposerDisabledButtonForegroundBrush");
         BusyRing.IsActive = IsBusy;
         BusyRing.Visibility = IsBusy ? Visibility.Visible : Visibility.Collapsed;
-        BusyRing.Foreground = Brush("ApplicationPageBackgroundThemeBrush");
+        BusyRing.Foreground = Brush("AppBackgroundBrush");
 
         SpeechIcon.Visibility = isActive ? Visibility.Collapsed : Visibility.Visible;
         SpeechRing.IsActive = isActive;

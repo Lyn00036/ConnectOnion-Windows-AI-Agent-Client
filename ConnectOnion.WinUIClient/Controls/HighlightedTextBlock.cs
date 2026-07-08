@@ -12,16 +12,6 @@ public sealed class HighlightedTextBlock : UserControl
 {
     private readonly RichTextBlock _textBlock;
 
-    // ------ Search highlight colors ------
-    // Active (current) match: orange background with white text.
-    private static readonly SolidColorBrush ActiveMatchBackground = new(Windows.UI.Color.FromArgb(255, 240, 100, 43));
-    private static readonly SolidColorBrush ActiveMatchForeground = new(Windows.UI.Color.FromArgb(255, 255, 255, 255));
-
-    // Inactive (non-current) match: warm yellow background with near-black text.
-    private static readonly SolidColorBrush InactiveMatchBackground = new(Windows.UI.Color.FromArgb(255, 249, 216, 74));
-    private static readonly SolidColorBrush InactiveMatchForeground = new(Windows.UI.Color.FromArgb(255, 26, 26, 26));
-    // -------------------------------------
-
     public static readonly DependencyProperty TextProperty =
         DependencyProperty.Register(
             nameof(Text),
@@ -64,6 +54,12 @@ public sealed class HighlightedTextBlock : UserControl
         });
 
         Content = _textBlock;
+
+        // Search-highlight colors are theme-aware (Styles/Colors.xaml SearchMatch*/
+        // SearchCurrentBackground* tokens), resolved fresh on every render — force a
+        // re-render on a live theme flip so visible matches don't stay stuck on the
+        // old theme's colors.
+        ActualThemeChanged += (_, _) => Render();
     }
 
     public string Text
@@ -128,9 +124,12 @@ public sealed class HighlightedTextBlock : UserControl
 
             // WinUI 3 inline text elements (Run, Span) lack a Background property.
             // Use InlineUIContainer with a Border to render the highlight background.
+            // Resolved fresh (not cached) so this always reflects the current theme —
+            // see the ActualThemeChanged handler in the constructor above.
             var border = new Border
             {
-                Background = isActive ? ActiveMatchBackground : InactiveMatchBackground,
+                Background = (Brush)Application.Current.Resources[
+                    isActive ? "SearchCurrentBackgroundBrush" : "SearchMatchBackgroundBrush"],
                 CornerRadius = new CornerRadius(2),
                 Padding = new Thickness(2, 0, 2, 0),
             };
@@ -138,7 +137,7 @@ public sealed class HighlightedTextBlock : UserControl
             var matchText = new TextBlock
             {
                 Text = text.Substring(index, query.Length),
-                Foreground = isActive ? ActiveMatchForeground : InactiveMatchForeground,
+                Foreground = (Brush)Application.Current.Resources["SearchMatchTextBrush"],
                 FontWeight = isActive ? FontWeights.Bold : FontWeights.Normal,
             };
 

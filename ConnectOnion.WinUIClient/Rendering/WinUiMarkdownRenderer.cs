@@ -211,13 +211,25 @@ public sealed class WinUiMarkdownRenderer : RendererBase
 
     internal void WriteCodeInline(CodeInline inline)
     {
-        var code = new Span
+        // RichTextBlock inlines (Run/Span) can't have a Background, so — same
+        // technique as HighlightedTextBlock's search-match spans — wrap a Border
+        // in an InlineUIContainer to give inline code a subtle fill distinct from
+        // both surrounding prose and fenced code blocks (see WriteCodeBlockLines).
+        var codeText = new TextBlock
         {
             FontFamily = new FontFamily("Consolas"),
-            Foreground = ResolveBrush("AccentTextFillColorPrimaryBrush"),
+            Foreground = ResolveBrush("CodeTextBrush"),
         };
-        WriteHighlightedText(inline.Content, code.Inlines);
-        CurrentInlines.Add(code);
+        WriteHighlightedText(inline.Content, codeText.Inlines);
+
+        var border = new Border
+        {
+            Background = ResolveBrush("InlineCodeBackgroundBrush"),
+            CornerRadius = new CornerRadius(3),
+            Padding = new Thickness(4, 1, 4, 1),
+            Child = codeText,
+        };
+        CurrentInlines.Add(new InlineUIContainer { Child = border });
     }
 
     internal void WriteEmphasis(EmphasisInline inline)
@@ -249,7 +261,7 @@ public sealed class WinUiMarkdownRenderer : RendererBase
 
         var hyperlink = new Hyperlink
         {
-            Foreground = ResolveBrush("AccentFillColorDefaultBrush"),
+            Foreground = ResolveBrush("TextLinkBrush"),
         };
 
         var navigateUri = CreateUri(inline.Url);
@@ -290,7 +302,7 @@ public sealed class WinUiMarkdownRenderer : RendererBase
             paragraph.Inlines.Add(new Run
             {
                 Text = string.Concat(System.Linq.Enumerable.Repeat("\u2502 ", _quoteDepth)),
-                Foreground = ResolveBrush("AccentFillColorDefaultBrush"),
+                Foreground = ResolveBrush("BrandPrimaryBrush"),
             });
         }
 
@@ -338,11 +350,38 @@ public sealed class WinUiMarkdownRenderer : RendererBase
 
     private void WriteCodeBlockLines(string code)
     {
+        // Give fenced/indented code blocks a real background + border so they read
+        // as a distinct layer from surrounding prose. WinUI 3's RichTextBlock has no
+        // BlockUIContainer (unlike WPF/UWP) and Paragraph itself has no Background,
+        // so — same InlineUIContainer trick as the inline-code Border above and
+        // HighlightedTextBlock's search-match spans — this drops a single Border
+        // into its own paragraph as one inline UI element.
+        var codeText = new TextBlock
+        {
+            FontFamily = new FontFamily("Consolas"),
+            Foreground = ResolveBrush("CodeTextBrush"),
+            TextWrapping = TextWrapping.NoWrap,
+        };
+        WriteHighlightedText(code.TrimEnd(), codeText.Inlines);
+
+        var border = new Border
+        {
+            Background = ResolveBrush("CodeBackgroundBrush"),
+            BorderBrush = ResolveBrush("BorderSubtleBrush"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(10, 8, 10, 8),
+            Child = new ScrollViewer
+            {
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                Content = codeText,
+            },
+        };
+
         var paragraph = CreateParagraph();
         paragraph.Margin = new Thickness(0, 6, 0, 6);
-        paragraph.FontFamily = new FontFamily("Consolas");
-        paragraph.Foreground = ResolveBrush("AccentTextFillColorPrimaryBrush");
-        WriteHighlightedText(code.TrimEnd(), paragraph.Inlines);
+        paragraph.Inlines.Add(new InlineUIContainer { Child = border });
         _target.Blocks.Add(paragraph);
     }
 
