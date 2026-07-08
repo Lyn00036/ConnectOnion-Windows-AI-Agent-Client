@@ -37,12 +37,51 @@ public sealed class ConversationRepository
             {
                 messages.Add(RowToMessage(reader));
             }
+
+            await LoadAttachmentsIntoAsync(connection, conversationId, messages).ConfigureAwait(false);
         }
         catch
         {
             // Missing / corrupt table → start fresh.
         }
         return messages;
+    }
+
+    private static async Task LoadAttachmentsIntoAsync(
+        SqliteConnection connection, string conversationId, IReadOnlyList<ChatMessage> messages)
+    {
+        if (messages.Count == 0) return;
+
+        var byId = new Dictionary<long, ChatMessage>();
+        foreach (var m in messages) byId[m.Id] = m;
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT message_id, id, kind, file_name, mime_type, size_bytes,
+                   local_cache_path, remote_uri, status
+            FROM message_attachments
+            WHERE conversation_id = $conversation_id
+            ORDER BY message_id, rowid;
+            """;
+        AppDatabase.Add(command, "$conversation_id", conversationId);
+        await using var reader = await command.ExecuteReaderAsync().ConfigureAwait(false);
+        while (await reader.ReadAsync().ConfigureAwait(false))
+        {
+            var messageId = reader.GetInt64(0);
+            if (!byId.TryGetValue(messageId, out var message)) continue;
+
+            message.Attachments.Add(new ChatAttachment
+            {
+                Id = reader.GetString(1),
+                Kind = reader.GetString(2) == "image" ? AttachmentKind.Image : AttachmentKind.File,
+                FileName = reader.GetString(3),
+                MimeType = ReadNullableString(reader, 4),
+                SizeBytes = reader.GetInt64(5),
+                LocalCachePath = ReadNullableString(reader, 6),
+                RemoteUri = ReadNullableString(reader, 7),
+                Status = ReadNullableString(reader, 8) == "failed" ? AttachmentStatus.Failed : AttachmentStatus.Sent,
+            });
+        }
     }
 
     public async Task SaveMessagesAsync(string conversationId, IReadOnlyList<ChatMessage> messages)
@@ -62,7 +101,10 @@ public sealed class ConversationRepository
             await using (var del = connection.CreateCommand())
             {
                 del.Transaction = transaction;
-                del.CommandText = "DELETE FROM messages WHERE conversation_id = $conversation_id;";
+                del.CommandText = """
+                    DELETE FROM message_attachments WHERE conversation_id = $conversation_id;
+                    DELETE FROM messages WHERE conversation_id = $conversation_id;
+                    """;
                 AppDatabase.Add(del, "$conversation_id", conversationId);
                 await del.ExecuteNonQueryAsync().ConfigureAwait(false);
             }
@@ -86,6 +128,22 @@ public sealed class ConversationRepository
                     """;
                 BindMessage(insert, message, conversationId, now);
                 await insert.ExecuteNonQueryAsync().ConfigureAwait(false);
+
+                foreach (var attachment in message.Attachments)
+                {
+                    await using var insertAttachment = connection.CreateCommand();
+                    insertAttachment.Transaction = transaction;
+                    insertAttachment.CommandText = """
+                        INSERT INTO message_attachments
+                          (id, conversation_id, message_id, kind, file_name, mime_type,
+                           size_bytes, local_cache_path, remote_uri, status, created_at)
+                        VALUES
+                          ($id, $conversation_id, $message_id, $kind, $file_name, $mime_type,
+                           $size_bytes, $local_cache_path, $remote_uri, $status, $created_at);
+                        """;
+                    BindAttachment(insertAttachment, attachment, conversationId, message.Id, now);
+                    await insertAttachment.ExecuteNonQueryAsync().ConfigureAwait(false);
+                }
             }
 
             await transaction.CommitAsync().ConfigureAwait(false);
@@ -102,7 +160,10 @@ public sealed class ConversationRepository
         {
             await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
             await using var command = connection.CreateCommand();
-            command.CommandText = "DELETE FROM messages WHERE conversation_id = $conversation_id;";
+            command.CommandText = """
+                DELETE FROM message_attachments WHERE conversation_id = $conversation_id;
+                DELETE FROM messages WHERE conversation_id = $conversation_id;
+                """;
             AppDatabase.Add(command, "$conversation_id", conversationId);
             await command.ExecuteNonQueryAsync().ConfigureAwait(false);
         }
@@ -158,6 +219,21 @@ public sealed class ConversationRepository
             _ => "done",
         });
         AppDatabase.Add(cmd, "$is_onboarding", m.IsOnboarding ? 1 : 0);
+        AppDatabase.Add(cmd, "$created_at", now);
+    }
+
+    private static void BindAttachment(SqliteCommand cmd, ChatAttachment a, string conversationId, long messageId, long now)
+    {
+        AppDatabase.Add(cmd, "$id", a.Id);
+        AppDatabase.Add(cmd, "$conversation_id", conversationId);
+        AppDatabase.Add(cmd, "$message_id", messageId);
+        AppDatabase.Add(cmd, "$kind", a.Kind == AttachmentKind.Image ? "image" : "file");
+        AppDatabase.Add(cmd, "$file_name", a.FileName);
+        AppDatabase.Add(cmd, "$mime_type", a.MimeType ?? (object)DBNull.Value);
+        AppDatabase.Add(cmd, "$size_bytes", a.SizeBytes);
+        AppDatabase.Add(cmd, "$local_cache_path", a.LocalCachePath ?? (object)DBNull.Value);
+        AppDatabase.Add(cmd, "$remote_uri", a.RemoteUri ?? (object)DBNull.Value);
+        AppDatabase.Add(cmd, "$status", a.Status == AttachmentStatus.Failed ? "failed" : "sent");
         AppDatabase.Add(cmd, "$created_at", now);
     }
 

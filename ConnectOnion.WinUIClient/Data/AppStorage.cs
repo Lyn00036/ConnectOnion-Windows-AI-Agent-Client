@@ -25,6 +25,13 @@ public static class AppStorage
     public static readonly string ConversationsDir = Path.Combine(RootDir, "conversations");
 
     /// <summary>
+    /// Cache for decoded/downloaded incoming images (from <c>agent_image</c> events).
+    /// Files are named by content hash so re-receiving the same image is idempotent
+    /// and remote filenames are never trusted as local paths.
+    /// </summary>
+    public static readonly string ImageCacheDir = Path.Combine(RootDir, "cache", "images");
+
+    /// <summary>
     /// camelCase enum + property naming keeps the JSON byte-compatible with the
     /// web app's string values ("light"/"dark", "sm"/"md"/"lg", "user"/"agent").
     /// </summary>
@@ -41,6 +48,7 @@ public static class AppStorage
     {
         Directory.CreateDirectory(RootDir);
         Directory.CreateDirectory(ConversationsDir);
+        Directory.CreateDirectory(ImageCacheDir);
     }
 
     public static string PathFor(string fileName) => Path.Combine(RootDir, fileName);

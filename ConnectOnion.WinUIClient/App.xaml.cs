@@ -30,6 +30,14 @@ namespace ConnectOnion.WinUIClient
         private Window? _window;
 
         /// <summary>
+        /// The active top-level window. Used by code that needs an HWND (e.g.
+        /// <c>FileOpenPicker</c>) but isn't itself a <see cref="Window"/> — most
+        /// notably controls like <c>ChatComposer</c>, which is hosted inside a
+        /// <see cref="Microsoft.UI.Xaml.Controls.Page"/> and has no HWND of its own.
+        /// </summary>
+        public static Window? MainWindow { get; private set; }
+
+        /// <summary>
         /// Initializes the singleton application object.  This is the first line of authored code
         /// executed, and as such is the logical equivalent of main() or WinMain().
         /// </summary>
@@ -46,6 +54,7 @@ namespace ConnectOnion.WinUIClient
         {
             AppStorage.EnsureDirectories();
             _window = new MainWindow();
+            MainWindow = _window;
             _window.Activate();
         }
     }

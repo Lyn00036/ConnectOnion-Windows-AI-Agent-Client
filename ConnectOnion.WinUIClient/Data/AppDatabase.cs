@@ -130,6 +130,25 @@ public static class AppDatabase
             CREATE INDEX IF NOT EXISTS ix_messages_conversation
                 ON messages(conversation_id, id);
 
+            CREATE TABLE IF NOT EXISTS message_attachments (
+                id TEXT NOT NULL,
+                conversation_id TEXT NOT NULL,
+                message_id INTEGER NOT NULL,
+                kind TEXT NOT NULL,
+                file_name TEXT NOT NULL,
+                mime_type TEXT NULL,
+                size_bytes INTEGER NOT NULL DEFAULT 0,
+                local_cache_path TEXT NULL,
+                remote_uri TEXT NULL,
+                status TEXT NOT NULL DEFAULT 'sent',
+                created_at INTEGER NOT NULL,
+                PRIMARY KEY (conversation_id, message_id, id),
+                FOREIGN KEY (conversation_id) REFERENCES sessions(id)
+            );
+
+            CREATE INDEX IF NOT EXISTS ix_message_attachments_message
+                ON message_attachments(conversation_id, message_id);
+
             CREATE TABLE IF NOT EXISTS executions (
                 id TEXT PRIMARY KEY,
                 conversation_id TEXT NOT NULL,
