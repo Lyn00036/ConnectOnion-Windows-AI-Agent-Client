@@ -155,7 +155,7 @@ Schema tables:
 | `sessions` | Per-agent conversation sessions (id, title, timestamps) |
 | `conversations` | Full chat envelopes as JSON blobs |
 | `preferences` | Theme, sidebar, font size, shortcut overrides |
-| `identity_keys` | Local Ed25519 key pair |
+| `identity_keys` | Local Ed25519 key pair (private seed DPAPI-encrypted at rest) |
 | `app_meta` | Key-value application metadata |
 
 ## Connecting to an Agent
