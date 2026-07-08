@@ -431,6 +431,28 @@ public static class EndpointResolver
         return skills.Count > 0 ? skills : null;
     }
 
+    /// <summary>
+    /// Parses <c>accepted_inputs</c> straight out of a raw <c>/info</c> JSON
+    /// response — works for both the direct-URL path (the agent's own <c>/info</c>
+    /// verbatim) and the relay-composed JSON built by
+    /// <c>AgentInfoService.FetchFromRelayAsync</c>, since both put
+    /// <c>accepted_inputs</c> at the document root. Returns null on any parse
+    /// failure rather than throwing — this feeds UI capability gating, not a
+    /// hard requirement.
+    /// </summary>
+    public static AgentAcceptedInputs? ParseAcceptedInputsFromInfoJson(string infoJson)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(infoJson, JsonOptions);
+            return ParseAcceptedInputs(doc.RootElement);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private static AgentAcceptedInputs? ParseAcceptedInputs(JsonElement source)
     {
         if (!source.TryGetProperty("accepted_inputs", out var inputsEl) ||

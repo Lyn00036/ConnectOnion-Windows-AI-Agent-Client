@@ -163,21 +163,28 @@ public sealed class AgentConnectionService : IAsyncDisposable
     /// <summary>
     /// Sends a prompt and resolves with the final OUTPUT text. Opens and
     /// authenticates the socket first if needed. No wall-clock timeout by design.
+    /// <paramref name="images"/> and <paramref name="files"/> follow the exact
+    /// wire contract in <see cref="InputMessageBuilder"/> — omit both for a
+    /// text-only send identical to the original signature.
     /// </summary>
-    public async Task<string> SendInputAsync(string prompt, string? sessionId, CancellationToken ct = default)
+    public async Task<string> SendInputAsync(
+        string prompt,
+        string? sessionId,
+        IReadOnlyList<string>? images = null,
+        IReadOnlyList<OutgoingFileAttachment>? files = null,
+        CancellationToken ct = default)
     {
         await EnsureConnectedAsync(sessionId, ct).ConfigureAwait(false);
 
         var inputTcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
         _inputTcs = inputTcs;
 
-        var inputMsg = new Dictionary<string, object?>
-        {
-            ["type"] = "INPUT",
-            ["input_id"] = Guid.NewGuid().ToString(),
-            ["prompt"] = prompt,
-        };
-        if (!_isDirect) inputMsg["to"] = _address;
+        var inputMsg = InputMessageBuilder.BuildInput(
+            prompt,
+            Guid.NewGuid().ToString(),
+            toAddress: _isDirect ? null : _address,
+            images: images,
+            files: files);
         await SendJsonAsync(inputMsg, ct).ConfigureAwait(false);
 
         await using (ct.Register(() => inputTcs.TrySetCanceled()))

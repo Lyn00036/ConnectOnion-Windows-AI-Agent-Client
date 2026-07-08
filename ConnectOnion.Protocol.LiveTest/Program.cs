@@ -51,7 +51,7 @@ try
     // Bound the whole attempt so an onboarding gate / hang doesn't run forever.
     using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(45));
     Console.WriteLine("Connecting + sending input…");
-    var reply = await connection.SendInputAsync(prompt, sessionId, cts.Token);
+    var reply = await connection.SendInputAsync(prompt, sessionId, ct: cts.Token);
 
     Console.WriteLine(new string('-', 60));
     Console.WriteLine("AGENT REPLY:");
