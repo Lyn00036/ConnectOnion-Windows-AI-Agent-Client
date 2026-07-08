@@ -24,7 +24,7 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <TextBlock x:Name="AgentLabel" Grid.Column="0" VerticalAlignment="Center"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                       Foreground="{ThemeResource TextSecondaryBrush}" />
             <Button x:Name="NewSessionButton" Grid.Column="1" Content="New session"
                     Style="{StaticResource AccentButtonStyle}" Click="NewSession_Click" />
             <Button Grid.Column="2" Content="Delete" Click="Delete_Click" />
@@ -33,8 +33,8 @@
         <ListView Grid.Row="2"
                   ItemsSource="{x:Bind Vm.Sessions, Mode=OneWay}"
                   SelectedItem="{x:Bind Vm.Selected, Mode=TwoWay}"
-                  Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                  BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                  Background="{ThemeResource SurfaceElevatedBrush}"
+                  BorderBrush="{ThemeResource BorderDefaultBrush}"
                   BorderThickness="1" CornerRadius="8">
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="models:SessionSummary">
@@ -44,7 +44,7 @@
                                    TextTrimming="CharacterEllipsis" />
                         <TextBlock Text="{x:Bind UpdatedAt, Mode=OneWay}"
                                    Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                   Foreground="{ThemeResource TextSecondaryBrush}" />
                     </StackPanel>
                 </DataTemplate>
             </ListView.ItemTemplate>

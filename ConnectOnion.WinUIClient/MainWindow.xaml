@@ -14,7 +14,7 @@
         <MicaBackdrop />
     </Window.SystemBackdrop>
 
-    <Grid x:Name="RootGrid" Background="{ThemeResource ShellBackgroundBrush}" SizeChanged="RootGrid_SizeChanged">
+    <Grid x:Name="RootGrid" Background="{ThemeResource AppBackgroundBrush}" SizeChanged="RootGrid_SizeChanged">
         <Grid.Resources>
             <Style x:Key="ShellMenuButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
                 <Setter Property="Background" Value="Transparent" />
@@ -45,7 +45,7 @@
                 <Setter Property="Width" Value="26" />
                 <Setter Property="Height" Value="26" />
                 <Setter Property="Padding" Value="0" />
-                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource TextSecondaryBrush}" />
             </Style>
         </Grid.Resources>
 
@@ -56,9 +56,7 @@
 
         <Grid Grid.Row="0"
               x:Name="TitleBarArea"
-              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-              BorderThickness="0,0,0,1"
-              Background="{ThemeResource ShellBackgroundBrush}">
+              Background="{ThemeResource SidebarBackgroundBrush}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
@@ -74,27 +72,40 @@
                     <ic:FluentIcon Icon="PanelLeft"
                                    IconVariant="Regular"
                                    IconSize="Size20"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                   Foreground="{ThemeResource TextSecondaryBrush}" />
                 </Button>
                 <Button x:Name="BackButton"
                         Style="{StaticResource TitleIconButtonStyle}"
                         Click="Back_Click"
                         AutomationProperties.Name="Back"
                         ToolTipService.ToolTip="Back">
-                    <ic:FluentIcon Icon="ArrowLeft"
+                    <!-- Disabled Back/Forward show no background (transparent, flush with the
+                         title bar) — the arrow icon's own color is what signals disabled; see
+                         UpdateNavigationButtons. -->
+                    <Button.Resources>
+                        <SolidColorBrush x:Key="ButtonBackgroundDisabled" Color="Transparent" />
+                        <SolidColorBrush x:Key="ButtonBorderBrushDisabled" Color="Transparent" />
+                    </Button.Resources>
+                    <ic:FluentIcon x:Name="BackIcon"
+                                   Icon="ArrowLeft"
                                    IconVariant="Regular"
                                    IconSize="Size20"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                   Foreground="{ThemeResource TextSecondaryBrush}" />
                 </Button>
                 <Button x:Name="ForwardButton"
                         Style="{StaticResource TitleIconButtonStyle}"
                         Click="Forward_Click"
                         AutomationProperties.Name="Forward"
                         ToolTipService.ToolTip="Forward">
-                    <ic:FluentIcon Icon="ArrowRight"
+                    <Button.Resources>
+                        <SolidColorBrush x:Key="ButtonBackgroundDisabled" Color="Transparent" />
+                        <SolidColorBrush x:Key="ButtonBorderBrushDisabled" Color="Transparent" />
+                    </Button.Resources>
+                    <ic:FluentIcon x:Name="ForwardIcon"
+                                   Icon="ArrowRight"
                                    IconVariant="Regular"
                                    IconSize="Size20"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                   Foreground="{ThemeResource TextSecondaryBrush}" />
                 </Button>
                 <MenuBar Background="Transparent"
                          BorderThickness="0"
@@ -200,7 +211,24 @@
 
             <Frame Grid.Column="1"
                    x:Name="ContentFrame"
-                   Background="{ThemeResource ShellBackgroundBrush}" />
+                   Background="{ThemeResource AppBackgroundBrush}" />
+
+            <!-- Single hairline between sidebar and content — not a border around either
+                 panel, so there's no double edge where the sidebar meets this line or the
+                 window frame. -->
+            <Rectangle Grid.Column="0"
+                       Width="1"
+                       HorizontalAlignment="Right"
+                       Fill="{ThemeResource BorderDefaultBrush}" />
+
+            <!-- Horizontal hairline separating the title bar from the content area, drawn only
+                 over the content column so it meets the vertical divider above at the content's
+                 top-left corner. The sidebar column has no line here, so the title bar reads as
+                 seamlessly continuous with the sidebar below it (same color, no seam). -->
+            <Rectangle Grid.Column="1"
+                       Height="1"
+                       VerticalAlignment="Top"
+                       Fill="{ThemeResource BorderDefaultBrush}" />
         </Grid>
 
         <Popup x:Name="ZoomPopup"
@@ -217,8 +245,8 @@
                     Width="236"
                     Padding="14,6"
                     CornerRadius="18"
-                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    Background="{ThemeResource SurfaceElevatedBrush}"
+                    BorderBrush="{ThemeResource BorderDefaultBrush}"
                     BorderThickness="1">
                 <Grid ColumnSpacing="8">
                     <Grid.ColumnDefinitions>
@@ -239,7 +267,7 @@
                     <Rectangle Grid.Column="1"
                                Width="1"
                                Height="18"
-                               Fill="{ThemeResource DividerStrokeColorDefaultBrush}"
+                               Fill="{ThemeResource DividerBrush}"
                                Opacity="0.7"
                                VerticalAlignment="Center" />
                     <Button Grid.Column="2"
@@ -263,7 +291,7 @@
                     <Rectangle Grid.Column="4"
                                Width="1"
                                Height="18"
-                               Fill="{ThemeResource DividerStrokeColorDefaultBrush}"
+                               Fill="{ThemeResource DividerBrush}"
                                Opacity="0.7"
                                VerticalAlignment="Center" />
                     <Button x:Name="ResetZoomButton"
@@ -276,7 +304,7 @@
                             MinWidth="0"
                             MinHeight="26"
                             HorizontalAlignment="Stretch"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Foreground="{ThemeResource TextSecondaryBrush}"
                             Click="ResetZoom_Click">
                         <TextBlock Text="Reset"
                                    FontSize="12" />

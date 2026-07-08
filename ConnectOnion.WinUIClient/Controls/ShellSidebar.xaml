@@ -9,7 +9,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <Grid Background="{ThemeResource ShellSidebarBrush}"
+    <Grid Background="{ThemeResource SidebarBackgroundBrush}"
           Padding="14,18,10,16"
           RowSpacing="10">
         <Grid.Resources>
@@ -62,12 +62,12 @@
                                 ToolTipService.ToolTip="Online agents">
                         <Ellipse Width="5"
                                  Height="5"
-                                 Fill="{ThemeResource StatusSuccessTextBrush}"
+                                 Fill="{ThemeResource SuccessBrush}"
                                  VerticalAlignment="Center" />
                         <TextBlock Text="{Binding OnlineAgentCountText}"
                                    FontSize="9"
                                    FontWeight="SemiBold"
-                                   Foreground="{ThemeResource ShellMutedTextBrush}"
+                                   Foreground="{ThemeResource TextSecondaryBrush}"
                                    TextAlignment="Center" />
                     </StackPanel>
                 </StackPanel>
@@ -78,7 +78,7 @@
                 <TextBlock Grid.Column="2"
                            Text="desktop"
                            FontSize="10"
-                           Foreground="{ThemeResource ShellMutedTextBrush}"
+                           Foreground="{ThemeResource TextSecondaryBrush}"
                            VerticalAlignment="Center" />
             </Grid>
         </Button>
@@ -97,7 +97,7 @@
                                        Icon="ChevronDown"
                                        IconVariant="Regular"
                                        IconSize="Size16"
-                                       Foreground="{ThemeResource ShellMutedTextBrush}"
+                                       Foreground="{ThemeResource TextSecondaryBrush}"
                                        RenderTransformOrigin="0.5,0.5">
                             <ic:FluentIcon.RenderTransform>
                                 <RotateTransform Angle="{Binding PinnedChevronAngle}" />
@@ -107,7 +107,7 @@
                                    Text="Pinned Chats"
                                    FontSize="12"
                                    FontWeight="SemiBold"
-                                   Foreground="{ThemeResource ShellMutedTextBrush}"
+                                   Foreground="{ThemeResource TextSecondaryBrush}"
                                    VerticalAlignment="Center" />
                     </Grid>
                 </Button>
@@ -156,7 +156,7 @@
                                         HorizontalAlignment="Left"
                                         VerticalAlignment="Center"
                                         CornerRadius="2"
-                                        Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                        Background="{ThemeResource SidebarSelectedAccentBrush}"
                                         Visibility="{Binding IsSelected, Converter={StaticResource BoolToVis}}" />
                                 <Button Grid.Column="0"
                                         Style="{StaticResource ShellNavButtonStyle}"
@@ -167,7 +167,7 @@
                                         <ic:FluentIcon Icon="Chat"
                                                        IconVariant="Regular"
                                                        IconSize="Size16"
-                                                       Foreground="{ThemeResource ShellMutedTextBrush}" />
+                                                       Foreground="{ThemeResource TextSecondaryBrush}" />
                                         <StackPanel MinWidth="0">
                                             <TextBlock Text="{Binding Title}"
                                                        TextTrimming="CharacterEllipsis"
@@ -175,7 +175,7 @@
                                             <TextBlock Text="{Binding AgentName}"
                                                        TextTrimming="CharacterEllipsis"
                                                        FontSize="10"
-                                                       Foreground="{ThemeResource ShellMutedTextBrush}" />
+                                                       Foreground="{ThemeResource TextSecondaryBrush}" />
                                         </StackPanel>
                                     </StackPanel>
                                 </Button>
@@ -188,7 +188,7 @@
                                         Visibility="{Binding AreActionsVisible, Converter={StaticResource BoolToVis}}"
                                         AutomationProperties.Name="{Binding PinToolTip}"
                                         ToolTipService.ToolTip="{Binding PinToolTip}">
-                                    <ic:FluentIcon Icon="Pin" IconVariant="Regular" IconSize="Size16" Foreground="{ThemeResource AccentFillColorDefaultBrush}" />
+                                    <ic:FluentIcon Icon="Pin" IconVariant="Regular" IconSize="Size12" Foreground="{ThemeResource SidebarSelectedAccentBrush}" />
                                 </Button>
                             </Grid>
                         </DataTemplate>
@@ -198,14 +198,14 @@
                 <TextBlock Text="Agents"
                            FontSize="12"
                            FontWeight="SemiBold"
-                           Foreground="{ThemeResource ShellMutedTextBrush}"
+                           Foreground="{ThemeResource TextSecondaryBrush}"
                            Margin="8,0,0,4" />
                 <ItemsRepeater ItemsSource="{Binding ShellAgents}">
                 <ItemsRepeater.ItemTemplate>
                     <DataTemplate>
                         <StackPanel Margin="0,2">
                             <Border CornerRadius="8"
-                                    Background="{ThemeResource ShellRowBrush}"
+                                    Background="{ThemeResource SurfaceSecondaryBrush}"
                                     PointerEntered="AgentRow_PointerEntered"
                                     PointerExited="AgentRow_PointerExited"
                                     GotFocus="AgentRow_GotFocus"
@@ -237,7 +237,7 @@
                                             HorizontalAlignment="Left"
                                             VerticalAlignment="Center"
                                             CornerRadius="2"
-                                            Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                            Background="{ThemeResource SidebarSelectedAccentBrush}"
                                             Visibility="{Binding IsSelected, Converter={StaticResource BoolToVis}}" />
                                     <Button Grid.Column="0"
                                             Style="{StaticResource ShellIconButtonStyle}"
@@ -248,7 +248,7 @@
                                         <ic:FluentIcon Icon="ChevronDown"
                                                        IconVariant="Regular"
                                                        IconSize="Size16"
-                                                       Foreground="{ThemeResource ShellMutedTextBrush}"
+                                                       Foreground="{ThemeResource TextSecondaryBrush}"
                                                        RenderTransformOrigin="0.5,0.5">
                                             <ic:FluentIcon.RenderTransform>
                                                 <RotateTransform Angle="{Binding ChevronAngle}" />
@@ -260,9 +260,9 @@
                                             Height="26"
                                             VerticalAlignment="Center"
                                             CornerRadius="6"
-                                            Background="{ThemeResource TextFillColorPrimaryBrush}">
+                                            Background="{ThemeResource BrandPrimaryBrush}">
                                         <TextBlock Text="{Binding Initial}"
-                                                   Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                                                   Foreground="{ThemeResource TextOnBrandBrush}"
                                                    FontSize="11"
                                                    FontWeight="Bold"
                                                    HorizontalAlignment="Center"
@@ -275,14 +275,19 @@
                                             Padding="0"
                                             MinHeight="0"
                                             ToolTipService.ToolTip="{Binding Name}">
+                                        <!-- Name column is Auto (not *) so the presence dot in the next
+                                             Auto column sits right against the name instead of being pushed
+                                             to the row's right edge. MaxWidth + TextTrimming keeps a long
+                                             name from shoving the dot out — it ellipsizes first. -->
                                         <Grid ColumnSpacing="7">
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
                                             <TextBlock Grid.Column="0"
                                                        Text="{Binding Name}"
                                                        FontWeight="SemiBold"
+                                                       MaxWidth="150"
                                                        TextTrimming="CharacterEllipsis"
                                                        VerticalAlignment="Center" />
                                             <Grid Grid.Column="1"
@@ -295,10 +300,10 @@
                                                      OnlinePresenceDot_Loaded) — WinUI's FrameworkElement.Triggers/
                                                      EventTrigger doesn't support a RoutedEvent attribute the way
                                                      WPF's does, so a XAML-only trigger isn't an option here. -->
-                                                <Ellipse Fill="{ThemeResource StatusSuccessTextBrush}"
+                                                <Ellipse Fill="{ThemeResource SuccessBrush}"
                                                          Visibility="{Binding IsOnline, Converter={StaticResource BoolToVis}}"
                                                          Loaded="OnlinePresenceDot_Loaded" />
-                                                <Ellipse Stroke="{ThemeResource ShellMutedTextBrush}"
+                                                <Ellipse Stroke="{ThemeResource TextSecondaryBrush}"
                                                          StrokeThickness="1.5"
                                                          Visibility="{Binding IsOfflineIconVisible, Converter={StaticResource BoolToVis}}" />
                                             </Grid>
@@ -319,14 +324,14 @@
                                                     Tag="{Binding Id}"
                                                     AutomationProperties.Name="New chat"
                                                     ToolTipService.ToolTip="New chat">
-                                                <ic:FluentIcon Icon="Add" IconVariant="Regular" IconSize="Size16" Foreground="{ThemeResource ShellMutedTextBrush}" />
+                                                <ic:FluentIcon Icon="Add" IconVariant="Regular" IconSize="Size12" Foreground="{ThemeResource TextSecondaryBrush}" />
                                             </Button>
                                             <Button Style="{StaticResource ShellIconButtonStyle}"
                                                     Click="DeleteAgent_Click"
                                                     Tag="{Binding Id}"
                                                     AutomationProperties.Name="Delete agent"
                                                     ToolTipService.ToolTip="Delete agent">
-                                                <ic:FluentIcon Icon="Dismiss" IconVariant="Regular" IconSize="Size12" Foreground="{ThemeResource ShellMutedTextBrush}" />
+                                                <ic:FluentIcon Icon="Dismiss" IconVariant="Regular" IconSize="Size12" Foreground="{ThemeResource TextSecondaryBrush}" />
                                             </Button>
                                         </StackPanel>
                                     </StackPanel>
@@ -366,7 +371,7 @@
                                                     HorizontalAlignment="Left"
                                                     VerticalAlignment="Center"
                                                     CornerRadius="2"
-                                                    Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                                    Background="{ThemeResource SidebarSelectedAccentBrush}"
                                                     Visibility="{Binding IsSelected, Converter={StaticResource BoolToVis}}" />
                                             <Button Grid.Column="0"
                                                     Style="{StaticResource ShellNavButtonStyle}"
@@ -376,7 +381,7 @@
                                                     <ic:FluentIcon Icon="Chat"
                                                                    IconVariant="Regular"
                                                                    IconSize="Size16"
-                                                                   Foreground="{ThemeResource ShellMutedTextBrush}" />
+                                                                   Foreground="{ThemeResource TextSecondaryBrush}" />
                                                     <TextBlock Text="{Binding Title}"
                                                                TextTrimming="CharacterEllipsis"
                                                                FontSize="13" />
@@ -391,7 +396,7 @@
                                                     Visibility="{Binding AreActionsVisible, Converter={StaticResource BoolToVis}}"
                                                     AutomationProperties.Name="{Binding PinToolTip}"
                                                     ToolTipService.ToolTip="{Binding PinToolTip}">
-                                                <ic:FluentIcon Icon="Pin" IconVariant="Regular" IconSize="Size16" Foreground="{ThemeResource ShellMutedTextBrush}" />
+                                                <ic:FluentIcon Icon="Pin" IconVariant="Regular" IconSize="Size12" Foreground="{ThemeResource TextSecondaryBrush}" />
                                             </Button>
                                             <Button Grid.Column="1"
                                                     Margin="30,0,0,0"
@@ -402,7 +407,7 @@
                                                     Visibility="{Binding AreActionsVisible, Converter={StaticResource BoolToVis}}"
                                                     AutomationProperties.Name="Delete chat"
                                                     ToolTipService.ToolTip="Delete chat">
-                                                <ic:FluentIcon Icon="Dismiss" IconVariant="Regular" IconSize="Size12" Foreground="{ThemeResource ShellMutedTextBrush}" />
+                                                <ic:FluentIcon Icon="Dismiss" IconVariant="Regular" IconSize="Size12" Foreground="{ThemeResource TextSecondaryBrush}" />
                                             </Button>
                                         </Grid>
                                     </DataTemplate>

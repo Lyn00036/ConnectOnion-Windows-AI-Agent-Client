@@ -11,7 +11,7 @@
     mc:Ignorable="d">
 
     <Grid x:Name="ChatRoot"
-          Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
+          Background="{ThemeResource AppBackgroundBrush}"
           SizeChanged="ChatRoot_SizeChanged">
         <Grid.Resources>
             <Style x:Key="FindIconButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
@@ -23,7 +23,7 @@
                 <Setter Property="Width" Value="28" />
                 <Setter Property="Height" Value="28" />
                 <Setter Property="Padding" Value="0" />
-                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource TextSecondaryBrush}" />
             </Style>
 
             <!-- Shared attachment rendering for both user and agent bubbles: inline
@@ -36,7 +36,7 @@
                         <Border CornerRadius="10"
                                 MaxWidth="280"
                                 MaxHeight="280"
-                                Background="{ThemeResource LayerFillColorDefaultBrush}"
+                                Background="{ThemeResource SurfaceSecondaryBrush}"
                                 Visibility="{x:Bind IsFailed, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}"
                                 Tapped="AttachmentImage_Tapped"
                                 Tag="{x:Bind}">
@@ -48,7 +48,7 @@
                         <TextBlock Text="Image could not be loaded."
                                    FontSize="11"
                                    FontStyle="Italic"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   Foreground="{ThemeResource TextSecondaryBrush}"
                                    Visibility="{x:Bind IsFailed, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                     </StackPanel>
 
@@ -56,8 +56,8 @@
                     <Border CornerRadius="10"
                             Padding="10,8"
                             MaxWidth="320"
-                            Background="{ThemeResource LayerFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            Background="{ThemeResource SurfaceSecondaryBrush}"
+                            BorderBrush="{ThemeResource BorderDefaultBrush}"
                             BorderThickness="1"
                             Tapped="AttachmentFile_Tapped"
                             Tag="{x:Bind}"
@@ -73,7 +73,7 @@
                                            IconVariant="Regular"
                                            IconSize="Size24"
                                            VerticalAlignment="Center"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                           Foreground="{ThemeResource TextSecondaryBrush}" />
                             <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
                                 <TextBlock Text="{x:Bind FileName}"
                                            FontSize="12"
@@ -81,7 +81,7 @@
                                            TextTrimming="CharacterEllipsis" />
                                 <TextBlock Text="{x:Bind SizeLabel}"
                                            FontSize="10"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                           Foreground="{ThemeResource TextSecondaryBrush}" />
                             </StackPanel>
                             <Button Grid.Column="2"
                                     Width="28"
@@ -98,7 +98,7 @@
                                 <ic:FluentIcon Icon="SaveArrowRight"
                                                IconVariant="Regular"
                                                IconSize="Size16"
-                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                               Foreground="{ThemeResource TextSecondaryBrush}" />
                             </Button>
                         </Grid>
                     </Border>
@@ -128,9 +128,9 @@
                 <Border Width="30"
                         Height="30"
                         CornerRadius="8"
-                        Background="{ThemeResource TextFillColorPrimaryBrush}">
+                        Background="{ThemeResource BrandPrimaryBrush}">
                     <TextBlock Text="{x:Bind Vm.SelectedAgentInitial, Mode=OneWay}"
-                               Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                               Foreground="{ThemeResource TextOnBrandBrush}"
                                FontSize="12"
                                FontWeight="Bold"
                                HorizontalAlignment="Center"
@@ -142,7 +142,7 @@
                                FontWeight="SemiBold"
                                TextTrimming="CharacterEllipsis" />
                     <TextBlock FontSize="9"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}">
+                               Foreground="{ThemeResource TextSecondaryBrush}">
                         <Run Text="Session " />
                         <Run Text="{x:Bind Vm.SessionShortId, Mode=OneWay}" />
                     </TextBlock>
@@ -157,15 +157,15 @@
                 <Border MinHeight="30"
                         CornerRadius="15"
                         Padding="12,0"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderBrush="{ThemeResource BorderDefaultBrush}"
                         BorderThickness="1"
-                        Background="{ThemeResource LayerFillColorDefaultBrush}">
+                        Background="{ThemeResource SurfaceSecondaryBrush}">
                     <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                         <Ellipse Width="10"
                                  Height="10"
                                  Fill="{x:Bind Vm.Presence, Mode=OneWay, Converter={StaticResource PresenceToBrush}}" />
                         <TextBlock FontSize="12"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   Foreground="{ThemeResource TextSecondaryBrush}"
                                    VerticalAlignment="Center">
                             <Run Text="{x:Bind Vm.PresenceLabel, Mode=OneWay}" />
                             <Run Text=" - " />
@@ -181,7 +181,7 @@
                        Margin="40,2,0,0"
                        Text="{x:Bind Vm.StatusText, Mode=OneWay}"
                        FontSize="11"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       Foreground="{ThemeResource TextSecondaryBrush}"
                        TextTrimming="CharacterEllipsis"
                        Visibility="{x:Bind Vm.StatusText, Mode=OneWay, Converter={StaticResource StringToVis}}" />
         </Grid>
@@ -216,8 +216,8 @@
                                           Visibility="{x:Bind HasAttachments, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                             <Border CornerRadius="18"
                                     Padding="16,12"
-                                    Background="{ThemeResource LayerFillColorDefaultBrush}"
-                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                    Background="{ThemeResource UserMessageBackgroundBrush}"
+                                    BorderBrush="{ThemeResource BorderDefaultBrush}"
                                     BorderThickness="1"
                                     Visibility="{x:Bind Content, Converter={StaticResource StringToVis}}">
                                 <controls:HighlightedTextBlock Text="{x:Bind Content, Mode=OneWay}"
@@ -233,8 +233,8 @@
                                     Click="CopyMessage_Click"
                                     ToolTipService.ToolTip="Copy message">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <ic:FluentIcon Icon="Copy" IconVariant="Regular" IconSize="Size16" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                    <TextBlock Text="Copy" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <ic:FluentIcon Icon="Copy" IconVariant="Regular" IconSize="Size16" Foreground="{ThemeResource TextSecondaryBrush}" />
+                                    <TextBlock Text="Copy" FontSize="11" Foreground="{ThemeResource TextSecondaryBrush}" />
                                 </StackPanel>
                             </Button>
                         </StackPanel>
@@ -245,8 +245,8 @@
                                 HorizontalAlignment="Left"
                                 CornerRadius="10"
                                 Padding="12,9"
-                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                Background="{ThemeResource SurfaceElevatedBrush}"
+                                BorderBrush="{ThemeResource BorderDefaultBrush}"
                                 BorderThickness="1"
                                 Visibility="{x:Bind IsActivityEvent, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                             <Grid ColumnSpacing="10">
@@ -266,7 +266,7 @@
                                                FontWeight="SemiBold" />
                                     <TextBlock Text="{x:Bind EventDetail, Mode=OneWay}"
                                                FontSize="11"
-                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               Foreground="{ThemeResource TextSecondaryBrush}"
                                                TextWrapping="Wrap"
                                                Visibility="{x:Bind HasEventDetail, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                                 </StackPanel>
@@ -275,7 +275,7 @@
                                            FontSize="10"
                                            VerticalAlignment="Top"
                                            Margin="0,4,0,0"
-                                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                           Foreground="{ThemeResource TextTertiaryBrush}"
                                            Visibility="{x:Bind HasEventMeta, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                             </Grid>
                         </Border>
@@ -286,8 +286,8 @@
                                 HorizontalAlignment="Left"
                                 CornerRadius="10"
                                 Padding="14,11"
-                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                Background="{ThemeResource SurfaceElevatedBrush}"
+                                BorderBrush="{ThemeResource BorderDefaultBrush}"
                                 BorderThickness="1"
                                 Visibility="{x:Bind IsToolEvent, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                             <StackPanel Spacing="8">
@@ -302,7 +302,7 @@
                                                FontSize="10"
                                                FontWeight="Bold"
                                                VerticalAlignment="Center"
-                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                                               Foreground="{ThemeResource TextTertiaryBrush}" />
                                     <TextBlock Grid.Column="1"
                                                Text="{x:Bind EventTitle, Mode=OneWay}"
                                                FontSize="13"
@@ -313,7 +313,7 @@
                                             CornerRadius="8"
                                             Padding="8,2"
                                             VerticalAlignment="Center"
-                                            Background="{ThemeResource LayerFillColorDefaultBrush}">
+                                            Background="{ThemeResource SurfaceSecondaryBrush}">
                                         <TextBlock Text="{x:Bind StatusBadge, Mode=OneWay}"
                                                    FontSize="10"
                                                    FontWeight="SemiBold"
@@ -323,7 +323,7 @@
                                 <TextBlock Text="{x:Bind EventDetail, Mode=OneWay}"
                                            FontSize="12"
                                            TextWrapping="Wrap"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Foreground="{ThemeResource TextSecondaryBrush}"
                                            Visibility="{x:Bind HasEventDetail, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                                 <Expander Header="Arguments"
                                           HorizontalAlignment="Stretch"
@@ -351,7 +351,7 @@
                                 </Expander>
                                 <TextBlock Text="{x:Bind EventMeta, Mode=OneWay}"
                                            FontSize="10"
-                                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                           Foreground="{ThemeResource TextTertiaryBrush}"
                                            Visibility="{x:Bind HasEventMeta, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                             </StackPanel>
                         </Border>
@@ -362,19 +362,19 @@
                                 HorizontalAlignment="Left"
                                 CornerRadius="10"
                                 Padding="14,11"
-                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                Background="{ThemeResource SurfaceElevatedBrush}"
+                                BorderBrush="{ThemeResource BorderDefaultBrush}"
                                 BorderThickness="1"
                                 Visibility="{x:Bind IsAskUserEvent, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                             <StackPanel Spacing="10">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <ic:FluentIcon Icon="QuestionCircle" IconVariant="Regular" IconSize="Size16"
-                                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                                                   Foreground="{ThemeResource TextTertiaryBrush}" />
                                     <TextBlock Text="{x:Bind EventEyebrow}"
                                                FontSize="10"
                                                FontWeight="Bold"
                                                VerticalAlignment="Center"
-                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                                               Foreground="{ThemeResource TextTertiaryBrush}" />
                                 </StackPanel>
                                 <TextBlock Text="{x:Bind EventTitle}" FontSize="13" TextWrapping="Wrap" />
 
@@ -385,7 +385,7 @@
                                             <StackPanel Spacing="4" Margin="0,0,0,8">
                                                 <TextBlock Text="{x:Bind Label}"
                                                            FontSize="11"
-                                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                                           Foreground="{ThemeResource TextSecondaryBrush}" />
                                                 <TextBox PlaceholderText="{x:Bind Placeholder}"
                                                          Text="{x:Bind Value, Mode=TwoWay}" />
                                             </StackPanel>
@@ -429,25 +429,25 @@
                                 HorizontalAlignment="Left"
                                 CornerRadius="10"
                                 Padding="14,11"
-                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                Background="{ThemeResource SurfaceElevatedBrush}"
+                                BorderBrush="{ThemeResource BorderDefaultBrush}"
                                 BorderThickness="1"
                                 Visibility="{x:Bind IsApprovalEvent, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                             <StackPanel Spacing="8">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <ic:FluentIcon Icon="ShieldTask" IconVariant="Regular" IconSize="Size16"
-                                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                                                   Foreground="{ThemeResource TextTertiaryBrush}" />
                                     <TextBlock Text="{x:Bind EventEyebrow}"
                                                FontSize="10"
                                                FontWeight="Bold"
                                                VerticalAlignment="Center"
-                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                                               Foreground="{ThemeResource TextTertiaryBrush}" />
                                 </StackPanel>
                                 <TextBlock Text="{x:Bind EventTitle}" FontSize="13" FontWeight="SemiBold" />
                                 <TextBlock Text="{x:Bind EventDetail}"
                                            FontSize="12"
                                            TextWrapping="Wrap"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Foreground="{ThemeResource TextSecondaryBrush}"
                                            Visibility="{x:Bind HasEventDetail, Converter={StaticResource BoolToVis}}" />
                                 <Expander Header="Arguments"
                                           HorizontalAlignment="Stretch"
@@ -481,22 +481,22 @@
                                 HorizontalAlignment="Left"
                                 CornerRadius="10"
                                 Padding="14,11"
-                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                Background="{ThemeResource SurfaceElevatedBrush}"
+                                BorderBrush="{ThemeResource BorderDefaultBrush}"
                                 BorderThickness="1"
                                 Visibility="{x:Bind IsPlanReviewEvent, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                             <StackPanel Spacing="8">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <ic:FluentIcon Icon="ClipboardTask" IconVariant="Regular" IconSize="Size16"
-                                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                                                   Foreground="{ThemeResource TextTertiaryBrush}" />
                                     <TextBlock Text="{x:Bind EventEyebrow}"
                                                FontSize="10"
                                                FontWeight="Bold"
                                                VerticalAlignment="Center"
-                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                                               Foreground="{ThemeResource TextTertiaryBrush}" />
                                 </StackPanel>
                                 <controls:MarkdownTextBlock Markdown="{x:Bind EventDetail}"
-                                                            Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                                                            Foreground="{ThemeResource TextPrimaryBrush}" />
                                 <TextBox PlaceholderText="Optional feedback or requested changes"
                                          AcceptsReturn="True"
                                          Height="72"
@@ -523,13 +523,13 @@
                             <TextBlock Text="{x:Bind AgentName}"
                                        FontSize="12"
                                        FontWeight="SemiBold"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       Foreground="{ThemeResource TextSecondaryBrush}"
                                        Visibility="{x:Bind AgentName, Converter={StaticResource StringToVis}}" />
                             <controls:MarkdownTextBlock Markdown="{x:Bind Content, Mode=OneWay}"
                                                         MaxLines="{x:Bind RenderedMaxLines, Mode=OneWay}"
                                                         SearchQuery="{x:Bind FindQuery, Mode=OneWay}"
                                                         ActiveMatchIndex="{x:Bind ActiveFindMatchIndex, Mode=OneWay}"
-                                                        Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                                                        Foreground="{ThemeResource TextPrimaryBrush}" />
                             <ItemsControl ItemsSource="{x:Bind Attachments}"
                                           ItemTemplate="{StaticResource AttachmentChipTemplate}"
                                           Visibility="{x:Bind HasAttachments, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
@@ -561,10 +561,10 @@
                                         <ic:FluentIcon Icon="Copy"
                                                        IconVariant="Regular"
                                                        IconSize="Size16"
-                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                                       Foreground="{ThemeResource TextSecondaryBrush}" />
                                         <TextBlock Text="Copy"
                                                    FontSize="11"
-                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                                   Foreground="{ThemeResource TextSecondaryBrush}" />
                                     </StackPanel>
                                 </Button>
                                 <Button Padding="0"
@@ -579,10 +579,10 @@
                                         <ic:FluentIcon Icon="ArrowMinimize"
                                                        IconVariant="Regular"
                                                        IconSize="Size16"
-                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                                       Foreground="{ThemeResource TextSecondaryBrush}" />
                                         <TextBlock Text="{x:Bind CollapseButtonText, Mode=OneWay}"
                                                    FontSize="11"
-                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                                   Foreground="{ThemeResource TextSecondaryBrush}" />
                                     </StackPanel>
                                 </Button>
                             </StackPanel>
@@ -604,7 +604,7 @@
         <!-- Loading overlay — hides the empty-state flash before conversation data arrives -->
         <Border x:Name="LoadingOverlay"
                 Grid.Row="1"
-                Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
+                Background="{ThemeResource AppBackgroundBrush}"
                 Visibility="Visible">
             <ProgressRing Width="28"
                           Height="28"
@@ -620,8 +620,8 @@
                 MinWidth="280"
                 MaxWidth="380"
                 CornerRadius="14"
-                Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
-                BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
+                Background="{ThemeResource SurfaceElevatedBrush}"
+                BorderBrush="{ThemeResource BorderDefaultBrush}"
                 BorderThickness="1"
                 Visibility="Collapsed">
             <Border.Shadow>
@@ -646,7 +646,7 @@
                                    Icon="Search"
                                    IconVariant="Regular"
                                    IconSize="Size16"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   Foreground="{ThemeResource TextSecondaryBrush}"
                                    VerticalAlignment="Center"
                                    Margin="4,0,2,0" />
 
@@ -666,7 +666,7 @@
                             Height="20"
                             Margin="2,0"
                             VerticalAlignment="Center"
-                            Background="{ThemeResource CardStrokeColorDefaultBrush}"
+                            Background="{ThemeResource BorderDefaultBrush}"
                             Visibility="Collapsed" />
 
                     <Button Grid.Column="3"
@@ -677,7 +677,7 @@
                         <ic:FluentIcon Icon="Dismiss"
                                        IconVariant="Regular"
                                        IconSize="Size12"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                       Foreground="{ThemeResource TextSecondaryBrush}" />
                     </Button>
                 </Grid>
 
@@ -702,7 +702,7 @@
                         <ic:FluentIcon Icon="ArrowUp"
                                        IconVariant="Regular"
                                        IconSize="Size16"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                       Foreground="{ThemeResource TextSecondaryBrush}" />
                     </Button>
 
                     <Button x:Name="NextFindButton"
@@ -714,7 +714,7 @@
                         <ic:FluentIcon Icon="ArrowDown"
                                        IconVariant="Regular"
                                        IconSize="Size16"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                       Foreground="{ThemeResource TextSecondaryBrush}" />
                     </Button>
 
                     <TextBlock x:Name="FindCounterText"
@@ -723,7 +723,7 @@
                                FontSize="11"
                                HorizontalAlignment="Right"
                                VerticalAlignment="Center"
-                               Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                               Foreground="{ThemeResource TextTertiaryBrush}" />
                 </Grid>
             </Grid>
         </Border>

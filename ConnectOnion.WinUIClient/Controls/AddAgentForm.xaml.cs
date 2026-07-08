@@ -156,7 +156,7 @@ public sealed partial class AddAgentForm : UserControl
     {
         StatusText.Text = message;
         StatusText.Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[
-            isError ? "StatusErrorTextBrush" : "StatusSuccessTextBrush"];
+            isError ? "DangerBrush" : "SuccessBrush"];
         StatusText.Visibility = Visibility.Visible;
     }
 

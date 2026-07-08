@@ -12,11 +12,11 @@
             <TextBlock Text="Settings" Style="{StaticResource TitleTextBlockStyle}" />
             <TextBlock Text="Desktop preferences for this app."
                        Style="{StaticResource CaptionTextBlockStyle}"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                       Foreground="{ThemeResource TextSecondaryBrush}" />
 
             <Border Margin="0,16,0,0" Padding="20" CornerRadius="8"
-                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                    Background="{ThemeResource SurfaceElevatedBrush}"
+                    BorderBrush="{ThemeResource BorderDefaultBrush}" BorderThickness="1">
                 <StackPanel Spacing="20">
                     <TextBlock Text="Appearance" Style="{StaticResource SubtitleTextBlockStyle}" />
 
@@ -29,7 +29,7 @@
                             <TextBlock Text="Theme" Style="{StaticResource BodyStrongTextBlockStyle}" />
                             <TextBlock Text="Use the system theme or choose light or dark mode."
                                        Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                       Foreground="{ThemeResource TextSecondaryBrush}" />
                         </StackPanel>
                         <RadioButtons x:Name="ThemeChoice" Grid.Column="1" MaxColumns="3"
                                       SelectionChanged="ThemeChoice_SelectionChanged">
@@ -48,7 +48,7 @@
                             <TextBlock Text="Enter to send" Style="{StaticResource BodyStrongTextBlockStyle}" />
                             <TextBlock Text="When enabled, Enter sends and Shift+Enter inserts a new line."
                                        Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                       Foreground="{ThemeResource TextSecondaryBrush}" />
                         </StackPanel>
                         <ToggleSwitch x:Name="EnterToSendSwitch"
                                       Grid.Column="1"
@@ -65,7 +65,7 @@
                             <TextBlock Text="Message text size" Style="{StaticResource BodyStrongTextBlockStyle}" />
                             <TextBlock Text="Adjust how large chat messages appear."
                                        Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                       Foreground="{ThemeResource TextSecondaryBrush}" />
                         </StackPanel>
                         <RadioButtons x:Name="FontChoice" Grid.Column="1" MaxColumns="3"
                                       SelectionChanged="FontChoice_SelectionChanged">
@@ -84,7 +84,7 @@
                             <TextBlock Text="Local identity" Style="{StaticResource BodyStrongTextBlockStyle}" />
                             <TextBlock Text="View this desktop client's ConnectOnion address and public key."
                                        Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                       Foreground="{ThemeResource TextSecondaryBrush}" />
                         </StackPanel>
                         <Button Grid.Column="1"
                                 Content="View identity"
@@ -96,8 +96,8 @@
             </Border>
 
             <Border Margin="0,8,0,0" Padding="20" CornerRadius="8"
-                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                    Background="{ThemeResource SurfaceElevatedBrush}"
+                    BorderBrush="{ThemeResource BorderDefaultBrush}" BorderThickness="1">
                 <StackPanel Spacing="20">
                     <TextBlock Text="Audio" Style="{StaticResource SubtitleTextBlockStyle}" />
 
@@ -110,7 +110,7 @@
                             <TextBlock Text="Microphone" Style="{StaticResource BodyStrongTextBlockStyle}" />
                             <TextBlock Text="Choose the microphone for voice input."
                                        Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                       Foreground="{ThemeResource TextSecondaryBrush}" />
                         </StackPanel>
                         <ComboBox x:Name="MicChoice"
                                   Grid.Column="1"

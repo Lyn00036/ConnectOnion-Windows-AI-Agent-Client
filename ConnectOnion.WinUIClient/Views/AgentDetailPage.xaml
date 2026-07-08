@@ -9,7 +9,7 @@
     mc:Ignorable="d">
 
     <Grid x:Name="AgentRoot"
-          Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+          Background="{ThemeResource AppBackgroundBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
@@ -26,9 +26,9 @@
                     Height="58"
                     CornerRadius="8"
                     HorizontalAlignment="Center"
-                    Background="{ThemeResource TextFillColorPrimaryBrush}">
+                    Background="{ThemeResource BrandPrimaryBrush}">
                 <TextBlock Text="{x:Bind Vm.AgentInitial, Mode=OneWay}"
-                           Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                           Foreground="{ThemeResource TextOnBrandBrush}"
                            FontSize="20"
                            FontWeight="Bold"
                            HorizontalAlignment="Center"
@@ -57,7 +57,7 @@
 
                 <TextBlock Text="{x:Bind Vm.DisplayModel, Mode=OneWay}"
                            FontSize="12"
-                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                           Foreground="{ThemeResource TextTertiaryBrush}"
                            HorizontalAlignment="Center" />
             </StackPanel>
 
@@ -67,14 +67,14 @@
                 <TextBlock Text="{x:Bind Vm.ToolSummaryLineOne, Mode=OneWay}"
                            FontFamily="Consolas"
                            FontSize="11"
-                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                           Foreground="{ThemeResource TextTertiaryBrush}"
                            TextAlignment="Center"
                            TextWrapping="Wrap"
                            HorizontalAlignment="Center" />
                 <TextBlock Text="{x:Bind Vm.ToolSummaryLineTwo, Mode=OneWay}"
                            FontFamily="Consolas"
                            FontSize="11"
-                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                           Foreground="{ThemeResource TextTertiaryBrush}"
                            TextAlignment="Center"
                            TextWrapping="Wrap"
                            HorizontalAlignment="Center"
@@ -102,7 +102,7 @@
                        Style="{StaticResource SubtitleTextBlockStyle}"
                        TextAlignment="Center" />
             <TextBlock Text="Select an agent from the sidebar or add a new one to get started."
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       Foreground="{ThemeResource TextSecondaryBrush}"
                        TextAlignment="Center"
                        TextWrapping="WrapWholeWords" />
         </StackPanel>

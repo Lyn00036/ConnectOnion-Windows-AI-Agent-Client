@@ -79,7 +79,7 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(TitleBarDragRegion);
         _appWindow.Title = "ConnectOnion";
-        _appWindow.SetIcon("Assets\\icon.ico");
+        _appWindow.SetIcon("Assets\\app-icon.ico");
         ApplyTitleBarTheme(ElementTheme.Light);
     }
 
@@ -145,7 +145,17 @@ public sealed partial class MainWindow : Window
     {
         BackButton.IsEnabled = ContentFrame.CanGoBack;
         ForwardButton.IsEnabled = ContentFrame.CanGoForward;
+
+        // Disabled Back/Forward keep the title bar's own (transparent) background — see
+        // their inline ButtonBackgroundDisabled override in XAML — so the muted arrow color
+        // is the only disabled cue.
+        BackIcon.Foreground = NavIconBrush(ContentFrame.CanGoBack);
+        ForwardIcon.Foreground = NavIconBrush(ContentFrame.CanGoForward);
     }
+
+    private static Microsoft.UI.Xaml.Media.Brush NavIconBrush(bool isEnabled)
+        => (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[
+            isEnabled ? "TextSecondaryBrush" : "TextDisabledBrush"];
 
     private void OnSessionsChanged()
         => DispatcherQueue.TryEnqueue(async () =>
@@ -162,27 +172,18 @@ public sealed partial class MainWindow : Window
         titleBar.ButtonBackgroundColor = Colors.Transparent;
         titleBar.ButtonInactiveBackgroundColor = Colors.Transparent;
 
-        if (theme == ElementTheme.Dark)
-        {
-            titleBar.ForegroundColor = Color.FromArgb(255, 245, 245, 247);
-            titleBar.InactiveForegroundColor = Color.FromArgb(255, 146, 146, 154);
-            titleBar.ButtonForegroundColor = Color.FromArgb(255, 245, 245, 247);
-            titleBar.ButtonInactiveForegroundColor = Color.FromArgb(255, 146, 146, 154);
-            titleBar.ButtonHoverBackgroundColor = Color.FromArgb(255, 50, 50, 56);
-            titleBar.ButtonHoverForegroundColor = Color.FromArgb(255, 255, 255, 255);
-            titleBar.ButtonPressedBackgroundColor = Color.FromArgb(255, 68, 68, 76);
-            titleBar.ButtonPressedForegroundColor = Color.FromArgb(255, 255, 255, 255);
-            return;
-        }
+        var isDark = theme == ElementTheme.Dark;
+        var textPrimary = ThemeService.GetColor("TextPrimaryColor", isDark);
+        var textSecondary = ThemeService.GetColor("TextSecondaryColor", isDark);
 
-        titleBar.ForegroundColor = Color.FromArgb(255, 48, 49, 54);
-        titleBar.InactiveForegroundColor = Color.FromArgb(255, 120, 120, 126);
-        titleBar.ButtonForegroundColor = Color.FromArgb(255, 48, 49, 54);
-        titleBar.ButtonInactiveForegroundColor = Color.FromArgb(255, 120, 120, 126);
-        titleBar.ButtonHoverBackgroundColor = Color.FromArgb(255, 232, 232, 234);
-        titleBar.ButtonHoverForegroundColor = Color.FromArgb(255, 20, 20, 24);
-        titleBar.ButtonPressedBackgroundColor = Color.FromArgb(255, 215, 215, 218);
-        titleBar.ButtonPressedForegroundColor = Color.FromArgb(255, 20, 20, 24);
+        titleBar.ForegroundColor = textPrimary;
+        titleBar.InactiveForegroundColor = textSecondary;
+        titleBar.ButtonForegroundColor = textPrimary;
+        titleBar.ButtonInactiveForegroundColor = textSecondary;
+        titleBar.ButtonHoverBackgroundColor = ThemeService.GetColor("SurfaceHoverColor", isDark);
+        titleBar.ButtonHoverForegroundColor = textPrimary;
+        titleBar.ButtonPressedBackgroundColor = ThemeService.GetColor("SurfacePressedColor", isDark);
+        titleBar.ButtonPressedForegroundColor = textPrimary;
     }
 
     private async System.Threading.Tasks.Task ApplyStartupThemeAsync()

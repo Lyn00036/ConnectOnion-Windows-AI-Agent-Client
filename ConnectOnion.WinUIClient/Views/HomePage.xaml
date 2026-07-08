@@ -10,7 +10,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+    <Grid Background="{ThemeResource AppBackgroundBrush}">
         <StackPanel Width="704"
                     MaxWidth="704"
                     HorizontalAlignment="Center"
@@ -22,7 +22,7 @@
                         Height="88"
                         Padding="12"
                         CornerRadius="14"
-                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                        Background="{ThemeResource SurfaceElevatedBrush}">
                     <Image Source="/Assets/icon.png"
                            Stretch="Uniform" />
                 </Border>
@@ -36,7 +36,7 @@
                                HorizontalAlignment="Center" />
                     <TextBlock Text="Select an agent to start a new conversation"
                                FontSize="18"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Foreground="{ThemeResource TextSecondaryBrush}"
                                TextAlignment="Center"
                                HorizontalAlignment="Center" />
                 </StackPanel>
@@ -69,8 +69,8 @@
                             <Border MinHeight="112"
                                     Padding="22"
                                     CornerRadius="8"
-                                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                    Background="{ThemeResource SurfaceElevatedBrush}"
+                                    BorderBrush="{ThemeResource BorderDefaultBrush}"
                                     BorderThickness="1">
                                 <Grid ColumnSpacing="20">
                                     <Grid.ColumnDefinitions>
@@ -81,9 +81,9 @@
                                     <Border Width="66"
                                             Height="66"
                                             CornerRadius="9"
-                                            Background="{ThemeResource TextFillColorPrimaryBrush}">
+                                            Background="{ThemeResource BrandPrimaryBrush}">
                                         <TextBlock Text="{x:Bind Initial}"
-                                                   Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                                                   Foreground="{ThemeResource TextOnBrandBrush}"
                                                    FontSize="22"
                                                    FontWeight="Bold"
                                                    HorizontalAlignment="Center"
@@ -102,14 +102,14 @@
                                             <ic:FluentIcon Icon="Live"
                                                            IconVariant="Regular"
                                                            IconSize="Size16"
-                                                           Foreground="{ThemeResource StatusSuccessTextBrush}"
+                                                           Foreground="{ThemeResource SuccessBrush}"
                                                            VerticalAlignment="Center"
                                                            Visibility="{x:Bind IsOnline, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                                         </StackPanel>
                                         <TextBlock Text="{x:Bind ShortAddress}"
                                                    FontSize="14"
                                                    FontWeight="SemiBold"
-                                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                                   Foreground="{ThemeResource TextTertiaryBrush}"
                                                    TextTrimming="CharacterEllipsis" />
                                     </StackPanel>
                                 </Grid>
@@ -128,10 +128,10 @@
                     <ic:FluentIcon Icon="Add"
                                    IconVariant="Regular"
                                    IconSize="Size20"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                   Foreground="{ThemeResource TextSecondaryBrush}" />
                     <TextBlock x:Name="AddAgentActionLabel"
                                FontSize="16"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                               Foreground="{ThemeResource TextSecondaryBrush}" />
                 </StackPanel>
             </Button>
 

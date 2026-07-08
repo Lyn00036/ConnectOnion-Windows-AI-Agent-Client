@@ -26,13 +26,13 @@
                 <TextBlock Text="Local identity" Style="{StaticResource TitleTextBlockStyle}" />
                 <TextBlock Text="This desktop client uses an Ed25519 identity to sign ConnectOnion messages. The private seed is stored locally and is not shown here."
                            TextWrapping="Wrap"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                           Foreground="{ThemeResource TextSecondaryBrush}" />
             </StackPanel>
 
             <Border Padding="20"
                     CornerRadius="8"
-                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    Background="{ThemeResource SurfaceElevatedBrush}"
+                    BorderBrush="{ThemeResource BorderDefaultBrush}"
                     BorderThickness="1">
                 <StackPanel Spacing="18">
                     <Grid ColumnSpacing="14">
@@ -85,13 +85,13 @@
                                    TextWrapping="Wrap"
                                    IsTextSelectionEnabled="True"
                                    FontFamily="Consolas"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                   Foreground="{ThemeResource TextSecondaryBrush}" />
                     </StackPanel>
 
-                    <TextBlock Text="Private seed is stored in the local SQLite identity_keys table and is intentionally hidden."
+                    <TextBlock Text="Private seed is stored DPAPI-encrypted in the local SQLite identity_keys table and is intentionally hidden."
                                TextWrapping="Wrap"
                                Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                               Foreground="{ThemeResource TextSecondaryBrush}" />
                 </StackPanel>
             </Border>
         </StackPanel>

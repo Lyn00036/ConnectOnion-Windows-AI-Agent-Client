@@ -24,8 +24,8 @@
 
     <Border Padding="12"
             CornerRadius="14"
-            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            Background="{ThemeResource SurfaceElevatedBrush}"
+            BorderBrush="{ThemeResource BorderDefaultBrush}"
             BorderThickness="1">
         <StackPanel Spacing="8">
             <Grid>
@@ -40,7 +40,7 @@
                     <ic:FluentIcon Icon="Dismiss"
                                    IconVariant="Regular"
                                    IconSize="Size16"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                   Foreground="{ThemeResource TextSecondaryBrush}" />
                 </Button>
             </Grid>
 
@@ -82,7 +82,7 @@
 
             <TextBlock x:Name="StatusText"
                        FontSize="11"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       Foreground="{ThemeResource TextSecondaryBrush}"
                        TextWrapping="WrapWholeWords"
                        Visibility="Collapsed" />
         </StackPanel>

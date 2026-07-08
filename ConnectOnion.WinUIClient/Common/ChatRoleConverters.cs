@@ -27,7 +27,12 @@ public sealed class StringToVisibilityConverter : IValueConverter
         => throw new NotSupportedException();
 }
 
-/// <summary>Colors the status dot by presence: green online, red offline, muted otherwise.</summary>
+/// <summary>
+/// Colors the status dot by presence — green online, red offline, muted
+/// otherwise. Color is a secondary signal here: every presence dot this feeds
+/// is paired with a text label (see <c>PresenceLabel</c>/<c>StatusText</c> in
+/// the view models), so presence is never conveyed by color alone.
+/// </summary>
 public sealed class PresenceToBrushConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
@@ -35,11 +40,12 @@ public sealed class PresenceToBrushConverter : IValueConverter
         var key = value is AgentPresence presence
             ? presence switch
             {
-                AgentPresence.Online => "StatusSuccessTextBrush",
-                AgentPresence.Offline => "StatusErrorTextBrush",
-                _ => "TextFillColorTertiaryBrush",
+                AgentPresence.Online => "SuccessBrush",
+                AgentPresence.Checking => "InfoBrush",
+                AgentPresence.Offline => "TextTertiaryBrush",
+                _ => "TextTertiaryBrush",
             }
-            : "TextFillColorTertiaryBrush";
+            : "TextTertiaryBrush";
         return (Brush)Application.Current.Resources[key];
     }
 
@@ -47,7 +53,7 @@ public sealed class PresenceToBrushConverter : IValueConverter
         => throw new NotSupportedException();
 }
 
-/// <summary>Colors an event's status dot/badge: blue running, green done, red error.</summary>
+/// <summary>Colors an event's status dot/badge: brand purple running, green done, red error.</summary>
 public sealed class EventStatusToBrushConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
@@ -55,11 +61,11 @@ public sealed class EventStatusToBrushConverter : IValueConverter
         var key = value is EventStatus status
             ? status switch
             {
-                EventStatus.Running => "AccentFillColorDefaultBrush",
-                EventStatus.Error => "StatusErrorTextBrush",
-                _ => "StatusSuccessTextBrush",
+                EventStatus.Running => "BrandPrimaryBrush",
+                EventStatus.Error => "DangerBrush",
+                _ => "SuccessBrush",
             }
-            : "TextFillColorTertiaryBrush";
+            : "TextTertiaryBrush";
         return (Brush)Application.Current.Resources[key];
     }
 
@@ -72,7 +78,7 @@ public sealed class RoleToBrushConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
     {
-        var key = value is ChatRole.User ? "LayerFillColorDefaultBrush" : "CardBackgroundFillColorDefaultBrush";
+        var key = value is ChatRole.User ? "UserMessageBackgroundBrush" : "AgentMessageBackgroundBrush";
         return (Brush)Application.Current.Resources[key];
     }
 

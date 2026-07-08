@@ -35,9 +35,9 @@
                                 Height="56"
                                 CornerRadius="10"
                                 Padding="8,6"
-                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                Background="{ThemeResource SurfaceElevatedBrush}"
                                 BorderThickness="1"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+                                BorderBrush="{ThemeResource BorderDefaultBrush}">
                             <Grid ColumnSpacing="8">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
@@ -47,12 +47,12 @@
 
                                 <Grid Width="36" Height="36" VerticalAlignment="Center">
                                     <Border CornerRadius="6"
-                                            Background="{ThemeResource LayerFillColorDefaultBrush}"
+                                            Background="{ThemeResource SurfaceSecondaryBrush}"
                                             Visibility="{x:Bind IsImage, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}">
                                         <ic:FluentIcon Icon="DocumentText"
                                                        IconVariant="Regular"
                                                        IconSize="Size20"
-                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                                       Foreground="{ThemeResource TextSecondaryBrush}" />
                                     </Border>
                                     <Border CornerRadius="6"
                                             Visibility="{x:Bind IsImage, Mode=OneWay, Converter={StaticResource BoolToVis}}">
@@ -65,7 +65,7 @@
                                     <ic:FluentIcon Icon="ErrorCircle"
                                                    IconVariant="Filled"
                                                    IconSize="Size16"
-                                                   Foreground="{ThemeResource StatusErrorTextBrush}"
+                                                   Foreground="{ThemeResource DangerBrush}"
                                                    HorizontalAlignment="Right"
                                                    VerticalAlignment="Bottom"
                                                    Visibility="{x:Bind IsFailed, Mode=OneWay, Converter={StaticResource BoolToVis}}"
@@ -80,11 +80,11 @@
                                                MaxLines="1" />
                                     <TextBlock Text="{x:Bind SizeLabel}"
                                                FontSize="10"
-                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               Foreground="{ThemeResource TextSecondaryBrush}"
                                                Visibility="{x:Bind IsFailed, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
                                     <TextBlock Text="{x:Bind Error, Mode=OneWay}"
                                                FontSize="10"
-                                               Foreground="{ThemeResource StatusErrorTextBrush}"
+                                               Foreground="{ThemeResource DangerBrush}"
                                                TextTrimming="CharacterEllipsis"
                                                MaxLines="1"
                                                Visibility="{x:Bind IsFailed, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
@@ -106,7 +106,7 @@
                                     <ic:FluentIcon Icon="Dismiss"
                                                    IconVariant="Regular"
                                                    IconSize="Size12"
-                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                                   Foreground="{ThemeResource TextSecondaryBrush}" />
                                 </Button>
                             </Grid>
                         </Border>
@@ -123,24 +123,24 @@
                     Tag="What can you do?"
                     Padding="14,6"
                     CornerRadius="16"
-                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    Background="{ThemeResource SurfaceElevatedBrush}"
+                    BorderBrush="{ThemeResource BorderDefaultBrush}"
                     BorderThickness="1"
                     Click="Suggestion_Click" />
             <Button Content="Show system info"
                     Tag="Show system info"
                     Padding="14,6"
                     CornerRadius="16"
-                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    Background="{ThemeResource SurfaceElevatedBrush}"
+                    BorderBrush="{ThemeResource BorderDefaultBrush}"
                     BorderThickness="1"
                     Click="Suggestion_Click" />
             <Button Content="List files"
                     Tag="List files in current directory"
                     Padding="14,6"
                     CornerRadius="16"
-                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    Background="{ThemeResource SurfaceElevatedBrush}"
+                    BorderBrush="{ThemeResource BorderDefaultBrush}"
                     BorderThickness="1"
                     Click="Suggestion_Click" />
         </StackPanel>
@@ -176,6 +176,15 @@
                     <TextBox.Resources>
                         <Thickness x:Key="TextControlBorderThemeThickness">0</Thickness>
                         <Thickness x:Key="TextControlBorderThemeThicknessFocused">0</Thickness>
+                        <!-- Keep the input transparent across every visual state so the outer
+                             composer Border's color shows through unchanged — WinUI's TextBox
+                             otherwise paints its own PointerOver/Focused background over the
+                             transparent default, making the field flash a different shade on
+                             hover and while typing. -->
+                        <SolidColorBrush x:Key="TextControlBackground" Color="Transparent" />
+                        <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
+                        <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
+                        <SolidColorBrush x:Key="TextControlBackgroundDisabled" Color="Transparent" />
                     </TextBox.Resources>
                 </TextBox>
 
@@ -212,7 +221,7 @@
                           Height="36"
                           MinWidth="120"
                           Visibility="Collapsed">
-                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        <Border Background="{ThemeResource SurfaceElevatedBrush}"
                                 CornerRadius="4" />
                         <canvas:CanvasAnimatedControl x:Name="WaveformCanvas"
                                                       HorizontalAlignment="Stretch"
@@ -229,7 +238,7 @@
                         <TextBlock x:Name="WaveformTimerText"
                                    Text="0:00"
                                    FontSize="11"
-                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                   Foreground="{ThemeResource TextTertiaryBrush}"
                                    VerticalAlignment="Bottom"
                                    HorizontalAlignment="Right"
                                    Margin="0,0,8,3" />

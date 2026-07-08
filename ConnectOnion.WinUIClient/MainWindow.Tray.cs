@@ -352,7 +352,7 @@ public sealed partial class MainWindow
     private static IntPtr LoadTrayIcon(out bool ownsHandle)
     {
         ownsHandle = false;
-        var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "icon.ico");
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "app-icon.ico");
         if (File.Exists(iconPath))
         {
             var handle = LoadImage(IntPtr.Zero, iconPath, ImageIcon, 0, 0, LrLoadFromFile | LrDefaultSize);
