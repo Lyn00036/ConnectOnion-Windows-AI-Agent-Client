@@ -25,6 +25,85 @@
                 <Setter Property="Padding" Value="0" />
                 <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
             </Style>
+
+            <!-- Shared attachment rendering for both user and agent bubbles: inline
+                 image preview (tap to open in the default viewer) or a file chip
+                 (tap to open, button to save a copy). -->
+            <DataTemplate x:Key="AttachmentChipTemplate" x:DataType="models:ChatAttachment">
+                <Grid Margin="0,2">
+                    <!-- Image: thumbnail, or a fallback message if it failed to load/decode. -->
+                    <StackPanel Spacing="4" Visibility="{x:Bind IsImage, Converter={StaticResource BoolToVis}}">
+                        <Border CornerRadius="10"
+                                MaxWidth="280"
+                                MaxHeight="280"
+                                Background="{ThemeResource LayerFillColorDefaultBrush}"
+                                Visibility="{x:Bind IsFailed, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}"
+                                Tapped="AttachmentImage_Tapped"
+                                Tag="{x:Bind}">
+                            <Image Source="{x:Bind LocalCachePath, Mode=OneWay, Converter={StaticResource PathToImage}}"
+                                   Stretch="Uniform"
+                                   MaxWidth="280"
+                                   MaxHeight="280" />
+                        </Border>
+                        <TextBlock Text="Image could not be loaded."
+                                   FontSize="11"
+                                   FontStyle="Italic"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   Visibility="{x:Bind IsFailed, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                    </StackPanel>
+
+                    <!-- Generic file: icon + name + size, tap to open, button to save a copy. -->
+                    <Border CornerRadius="10"
+                            Padding="10,8"
+                            MaxWidth="320"
+                            Background="{ThemeResource LayerFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            Tapped="AttachmentFile_Tapped"
+                            Tag="{x:Bind}"
+                            Visibility="{x:Bind IsImage, Converter={StaticResource BoolToVis}, ConverterParameter=invert}">
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <ic:FluentIcon Grid.Column="0"
+                                           Icon="DocumentText"
+                                           IconVariant="Regular"
+                                           IconSize="Size24"
+                                           VerticalAlignment="Center"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                                <TextBlock Text="{x:Bind FileName}"
+                                           FontSize="12"
+                                           FontWeight="SemiBold"
+                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{x:Bind SizeLabel}"
+                                           FontSize="10"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                            <Button Grid.Column="2"
+                                    Width="28"
+                                    Height="28"
+                                    Padding="0"
+                                    MinWidth="0"
+                                    MinHeight="0"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    VerticalAlignment="Center"
+                                    Tag="{x:Bind}"
+                                    Click="SaveAttachment_Click"
+                                    ToolTipService.ToolTip="Save a copy">
+                                <ic:FluentIcon Icon="SaveArrowRight"
+                                               IconVariant="Regular"
+                                               IconSize="Size16"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </Button>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </DataTemplate>
         </Grid.Resources>
 
         <Grid.RowDefinitions>
@@ -131,11 +210,16 @@
                                     HorizontalAlignment="Right"
                                     Spacing="8"
                                     Visibility="{x:Bind IsUser, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                            <ItemsControl ItemsSource="{x:Bind Attachments}"
+                                          ItemTemplate="{StaticResource AttachmentChipTemplate}"
+                                          HorizontalAlignment="Right"
+                                          Visibility="{x:Bind HasAttachments, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                             <Border CornerRadius="18"
                                     Padding="16,12"
                                     Background="{ThemeResource LayerFillColorDefaultBrush}"
                                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                    BorderThickness="1">
+                                    BorderThickness="1"
+                                    Visibility="{x:Bind Content, Converter={StaticResource StringToVis}}">
                                 <controls:HighlightedTextBlock Text="{x:Bind Content, Mode=OneWay}"
                                                                SearchQuery="{x:Bind FindQuery, Mode=OneWay}"
                                                                ActiveMatchIndex="{x:Bind ActiveFindMatchIndex, Mode=OneWay}" />
@@ -272,6 +356,166 @@
                             </StackPanel>
                         </Border>
 
+                        <!-- Ask-user card: question + inline answer controls (dynamic fields,
+                             single/multi-select options, or free text), submit button. -->
+                        <Border MaxWidth="520"
+                                HorizontalAlignment="Left"
+                                CornerRadius="10"
+                                Padding="14,11"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                Visibility="{x:Bind IsAskUserEvent, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                            <StackPanel Spacing="10">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <ic:FluentIcon Icon="QuestionCircle" IconVariant="Regular" IconSize="Size16"
+                                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                                    <TextBlock Text="{x:Bind EventEyebrow}"
+                                               FontSize="10"
+                                               FontWeight="Bold"
+                                               VerticalAlignment="Center"
+                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                                </StackPanel>
+                                <TextBlock Text="{x:Bind EventTitle}" FontSize="13" TextWrapping="Wrap" />
+
+                                <ItemsControl ItemsSource="{x:Bind AskUserFields}"
+                                              Visibility="{x:Bind HasAskUserFields, Converter={StaticResource BoolToVis}}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="models:AskUserFieldEntry">
+                                            <StackPanel Spacing="4" Margin="0,0,0,8">
+                                                <TextBlock Text="{x:Bind Label}"
+                                                           FontSize="11"
+                                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                                <TextBox PlaceholderText="{x:Bind Placeholder}"
+                                                         Text="{x:Bind Value, Mode=TwoWay}" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <RadioButtons ItemsSource="{x:Bind AskUserOptions}"
+                                              SelectedItem="{x:Bind SelectedAskUserOption, Mode=TwoWay}"
+                                              Visibility="{x:Bind HasAskUserOptions, Converter={StaticResource BoolToVis}}" />
+
+                                <ItemsControl ItemsSource="{x:Bind AskUserOptionEntries}"
+                                              Visibility="{x:Bind HasAskUserMultiOptions, Converter={StaticResource BoolToVis}}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="models:AskUserOptionEntry">
+                                            <CheckBox Content="{x:Bind Text}" IsChecked="{x:Bind IsChecked, Mode=TwoWay}" />
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <TextBox PlaceholderText="Type your answer"
+                                         Text="{x:Bind AskUserFreeText, Mode=TwoWay}"
+                                         Visibility="{x:Bind HasAskUserFields, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
+
+                                <Button Content="Submit"
+                                        HorizontalAlignment="Right"
+                                        Tag="{x:Bind}"
+                                        Click="AskUserSubmit_Click"
+                                        Visibility="{x:Bind IsAwaitingResponse, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                                <TextBlock Text="{x:Bind EventMeta, Mode=OneWay}"
+                                           FontSize="12"
+                                           FontWeight="SemiBold"
+                                           TextWrapping="Wrap"
+                                           Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource EventStatusToBrush}}"
+                                           Visibility="{x:Bind IsAwaitingResponse, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Approval card: tool + description + collapsible arguments, approve/reject buttons. -->
+                        <Border MaxWidth="520"
+                                HorizontalAlignment="Left"
+                                CornerRadius="10"
+                                Padding="14,11"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                Visibility="{x:Bind IsApprovalEvent, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                            <StackPanel Spacing="8">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <ic:FluentIcon Icon="ShieldTask" IconVariant="Regular" IconSize="Size16"
+                                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                                    <TextBlock Text="{x:Bind EventEyebrow}"
+                                               FontSize="10"
+                                               FontWeight="Bold"
+                                               VerticalAlignment="Center"
+                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                                </StackPanel>
+                                <TextBlock Text="{x:Bind EventTitle}" FontSize="13" FontWeight="SemiBold" />
+                                <TextBlock Text="{x:Bind EventDetail}"
+                                           FontSize="12"
+                                           TextWrapping="Wrap"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Visibility="{x:Bind HasEventDetail, Converter={StaticResource BoolToVis}}" />
+                                <Expander Header="Arguments"
+                                          HorizontalAlignment="Stretch"
+                                          HorizontalContentAlignment="Stretch"
+                                          Visibility="{x:Bind HasEventArgs, Converter={StaticResource BoolToVis}}">
+                                    <ScrollViewer MaxHeight="200" HorizontalScrollBarVisibility="Auto">
+                                        <TextBlock Text="{x:Bind EventArgs}"
+                                                   FontFamily="Consolas"
+                                                   FontSize="12"
+                                                   IsTextSelectionEnabled="True"
+                                                   TextWrapping="NoWrap" />
+                                    </ScrollViewer>
+                                </Expander>
+                                <StackPanel Orientation="Horizontal"
+                                            Spacing="8"
+                                            Visibility="{x:Bind IsAwaitingResponse, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                                    <Button Content="Approve once" Tag="{x:Bind}" Click="ApprovalOnce_Click" />
+                                    <Button Content="Approve for session" Tag="{x:Bind}" Click="ApprovalSession_Click" />
+                                    <Button Content="Reject" Tag="{x:Bind}" Click="ApprovalReject_Click" />
+                                </StackPanel>
+                                <TextBlock Text="{x:Bind EventMeta, Mode=OneWay}"
+                                           FontSize="12"
+                                           FontWeight="SemiBold"
+                                           Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource EventStatusToBrush}}"
+                                           Visibility="{x:Bind IsAwaitingResponse, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Plan-review card: rendered plan + optional feedback, approve/request-changes buttons. -->
+                        <Border MaxWidth="640"
+                                HorizontalAlignment="Left"
+                                CornerRadius="10"
+                                Padding="14,11"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                Visibility="{x:Bind IsPlanReviewEvent, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                            <StackPanel Spacing="8">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <ic:FluentIcon Icon="ClipboardTask" IconVariant="Regular" IconSize="Size16"
+                                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                                    <TextBlock Text="{x:Bind EventEyebrow}"
+                                               FontSize="10"
+                                               FontWeight="Bold"
+                                               VerticalAlignment="Center"
+                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                                </StackPanel>
+                                <controls:MarkdownTextBlock Markdown="{x:Bind EventDetail}"
+                                                            Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                                <TextBox PlaceholderText="Optional feedback or requested changes"
+                                         AcceptsReturn="True"
+                                         Height="72"
+                                         Text="{x:Bind PlanFeedback, Mode=TwoWay}"
+                                         Visibility="{x:Bind IsAwaitingResponse, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                                <StackPanel Orientation="Horizontal"
+                                            Spacing="8"
+                                            Visibility="{x:Bind IsAwaitingResponse, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                                    <Button Content="Approve plan" Tag="{x:Bind}" Click="PlanApprove_Click" />
+                                    <Button Content="Request changes" Tag="{x:Bind}" Click="PlanRequestChanges_Click" />
+                                </StackPanel>
+                                <TextBlock Text="{x:Bind EventMeta, Mode=OneWay}"
+                                           FontSize="12"
+                                           FontWeight="SemiBold"
+                                           Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource EventStatusToBrush}}"
+                                           Visibility="{x:Bind IsAwaitingResponse, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
+                            </StackPanel>
+                        </Border>
+
                         <StackPanel MaxWidth="760"
                                     HorizontalAlignment="Left"
                                     Spacing="8"
@@ -286,6 +530,9 @@
                                                         SearchQuery="{x:Bind FindQuery, Mode=OneWay}"
                                                         ActiveMatchIndex="{x:Bind ActiveFindMatchIndex, Mode=OneWay}"
                                                         Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                            <ItemsControl ItemsSource="{x:Bind Attachments}"
+                                          ItemTemplate="{StaticResource AttachmentChipTemplate}"
+                                          Visibility="{x:Bind HasAttachments, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                             <Grid ColumnSpacing="8"
                                   Visibility="{x:Bind IsOnboarding, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                                 <Grid.ColumnDefinitions>
@@ -350,6 +597,8 @@
                                CanSubmit="{x:Bind Vm.CanSend, Mode=OneWay}"
                                EnterToSubmit="{x:Bind Vm.EnterToSend, Mode=OneWay}"
                                IsBusy="{x:Bind Vm.IsProcessing, Mode=OneWay}"
+                               AcceptedInputs="{x:Bind Vm.AcceptedInputs, Mode=OneWay}"
+                               ShowSuggestions="False"
                                SubmitRequested="Composer_SubmitRequested" />
 
         <!-- Loading overlay — hides the empty-state flash before conversation data arrives -->

@@ -5,6 +5,7 @@ using System.Globalization;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
+using ConnectOnion.Protocol;
 using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
@@ -135,9 +136,25 @@ public sealed class AgentDetailViewModel : ObservableObject
 
     public bool EnterToSend { get => _enterToSend; private set => SetProperty(ref _enterToSend, value); }
 
-    public async Task<bool> StartConversationAsync(string prompt)
+    private AgentAcceptedInputs? _acceptedInputs;
+    /// <summary>Same purpose as <c>ChatViewModel.AcceptedInputs</c>: gates the composer's attachment UI against the agent's real <c>/info</c> capability.</summary>
+    public AgentAcceptedInputs? AcceptedInputs
     {
-        if (Agent is null || string.IsNullOrWhiteSpace(prompt)) return false;
+        get => _acceptedInputs;
+        private set => SetProperty(ref _acceptedInputs, value);
+    }
+
+    /// <summary>
+    /// Starts a new conversation. <paramref name="hasAttachments"/> must be true
+    /// when the composer submission carries attachments even if
+    /// <paramref name="prompt"/> is empty — an image/file-only send is valid and
+    /// must still create and navigate to a session, matching ChatPage's own
+    /// composer (previously this only checked the text, so an attachment-only
+    /// submission here silently did nothing).
+    /// </summary>
+    public async Task<bool> StartConversationAsync(string prompt, bool hasAttachments = false)
+    {
+        if (Agent is null || (string.IsNullOrWhiteSpace(prompt) && !hasAttachments)) return false;
 
         var agentsState = await AppServices.Agents.LoadAsync();
         agentsState.SelectedAgentId = Agent.Id;
@@ -239,6 +256,8 @@ public sealed class AgentDetailViewModel : ObservableObject
         {
             // Corrupt cache: leave fields empty, a refresh will fix it.
         }
+
+        AcceptedInputs = EndpointResolver.ParseAcceptedInputsFromInfoJson(json);
     }
 
     /// <summary>

@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Text.Json.Serialization;
 using ConnectOnion.WinUIClient.Common;
 
@@ -71,7 +72,7 @@ public sealed class ChatMessage : ObservableObject
         set { if (SetProperty(ref _eventDetail, value)) OnPropertyChanged(nameof(HasEventDetail)); }
     }
 
-    /// <summary>Which event template renders this bubble: "activity" or "tool" (empty = not an event).</summary>
+    /// <summary>Which event template renders this bubble: "activity", "tool", "ask_user", "approval", "plan_review" (empty = not an event).</summary>
     [JsonPropertyName("eventKind")]
     public string EventKind
     {
@@ -81,6 +82,9 @@ public sealed class ChatMessage : ObservableObject
             if (!SetProperty(ref _eventKind, value)) return;
             OnPropertyChanged(nameof(IsActivityEvent));
             OnPropertyChanged(nameof(IsToolEvent));
+            OnPropertyChanged(nameof(IsAskUserEvent));
+            OnPropertyChanged(nameof(IsApprovalEvent));
+            OnPropertyChanged(nameof(IsPlanReviewEvent));
         }
     }
 
@@ -88,7 +92,12 @@ public sealed class ChatMessage : ObservableObject
     public EventStatus Status
     {
         get => _status;
-        set { if (SetProperty(ref _status, value)) OnPropertyChanged(nameof(StatusBadge)); }
+        set
+        {
+            if (!SetProperty(ref _status, value)) return;
+            OnPropertyChanged(nameof(StatusBadge));
+            OnPropertyChanged(nameof(IsAwaitingResponse));
+        }
     }
 
     /// <summary>Small uppercase label shown before the title on tool cards.</summary>
@@ -168,6 +177,28 @@ public sealed class ChatMessage : ObservableObject
     [JsonIgnore]
     public bool IsToolEvent => EventKind == "tool";
 
+    /// <summary>An <c>ask_user</c> turn: question + inline answer controls.</summary>
+    [JsonIgnore]
+    public bool IsAskUserEvent => EventKind == "ask_user";
+
+    /// <summary>An <c>approval_needed</c> turn: tool + arguments + approve/reject buttons.</summary>
+    [JsonIgnore]
+    public bool IsApprovalEvent => EventKind == "approval";
+
+    /// <summary>A <c>plan_review</c> turn: plan content + approve/request-changes buttons.</summary>
+    [JsonIgnore]
+    public bool IsPlanReviewEvent => EventKind == "plan_review";
+
+    /// <summary>
+    /// True while an ask_user/approval/plan_review turn is still waiting on the
+    /// user (reuses <see cref="EventStatus.Running"/> the same way tool cards do
+    /// for "in progress" — different EventKind values, so no semantic clash).
+    /// Once answered the bubble shows its resolved <see cref="EventMeta"/> instead
+    /// of the interactive controls.
+    /// </summary>
+    [JsonIgnore]
+    public bool IsAwaitingResponse => Status == EventStatus.Running;
+
     [JsonIgnore]
     public bool HasEventDetail => !string.IsNullOrEmpty(EventDetail);
 
@@ -225,5 +256,66 @@ public sealed class ChatMessage : ObservableObject
     {
         get => _activeFindMatchIndex;
         set => SetProperty(ref _activeFindMatchIndex, value);
+    }
+
+    /// <summary>
+    /// Attachments sent by the user on this message, or images the agent produced
+    /// via <c>agent_image</c> and merged onto this bubble. Empty for plain text
+    /// and for event/activity/tool bubbles.
+    /// </summary>
+    [JsonIgnore]
+    public ObservableCollection<ChatAttachment> Attachments { get; } = new();
+
+    [JsonIgnore]
+    public bool HasAttachments => Attachments.Count > 0;
+
+    // ---- Interactive turn state (ask_user / approval / plan_review) ----
+    // None of this is persisted to SQLite (ConversationRepository only maps the
+    // generic Event* columns above) — it's only meaningful while a live
+    // WebSocket connection can still receive the response. Reloaded history
+    // shows the resolved snapshot (EventTitle/EventDetail/EventArgs/EventMeta/
+    // Status) with no live controls, which is correct: the server-side
+    // io.receive() wait that this answers no longer exists after a restart.
+
+    /// <summary>Single-select options for an ask_user turn (bound to inline RadioButtons).</summary>
+    [JsonIgnore]
+    public ObservableCollection<string> AskUserOptions { get; } = new();
+
+    /// <summary>Multi-select options for an ask_user turn (bound to inline CheckBoxes).</summary>
+    [JsonIgnore]
+    public ObservableCollection<AskUserOptionEntry> AskUserOptionEntries { get; } = new();
+
+    /// <summary>Dynamic named fields for an ask_user turn (bound to inline TextBoxes).</summary>
+    [JsonIgnore]
+    public ObservableCollection<AskUserFieldEntry> AskUserFields { get; } = new();
+
+    [JsonIgnore]
+    public bool AskUserMultiSelect { get; set; }
+
+    private string? _selectedAskUserOption;
+    [JsonIgnore]
+    public string? SelectedAskUserOption { get => _selectedAskUserOption; set => SetProperty(ref _selectedAskUserOption, value); }
+
+    private string _askUserFreeText = "";
+    [JsonIgnore]
+    public string AskUserFreeText { get => _askUserFreeText; set => SetProperty(ref _askUserFreeText, value); }
+
+    private string _planFeedback = "";
+    /// <summary>Optional feedback typed into a plan_review turn before approving or requesting changes.</summary>
+    [JsonIgnore]
+    public string PlanFeedback { get => _planFeedback; set => SetProperty(ref _planFeedback, value); }
+
+    [JsonIgnore]
+    public bool HasAskUserFields => AskUserFields.Count > 0;
+
+    [JsonIgnore]
+    public bool HasAskUserOptions => !AskUserMultiSelect && AskUserOptions.Count > 0;
+
+    [JsonIgnore]
+    public bool HasAskUserMultiOptions => AskUserMultiSelect && AskUserOptionEntries.Count > 0;
+
+    public ChatMessage()
+    {
+        Attachments.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasAttachments));
     }
 }

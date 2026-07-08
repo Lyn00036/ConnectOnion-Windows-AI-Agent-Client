@@ -6,6 +6,8 @@ using System.Collections.Specialized;
 using System.Text.Json;
 using System.Threading.Tasks;
 using ConnectOnion.Protocol;
+using ConnectOnion.WinUIClient;
+using ConnectOnion.WinUIClient.Controls;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
 using ConnectOnion.WinUIClient.Data;
@@ -15,8 +17,11 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
+using System.IO;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Foundation;
+using Windows.Storage;
+using Windows.Storage.Pickers;
 using Windows.System;
 
 namespace ConnectOnion.WinUIClient.Views;
@@ -31,7 +36,7 @@ public sealed partial class ChatPage : Page, IFindHost
     private bool _isLoadingConversation;
     private bool _isAutoScrollQueued;
     private bool _stickToBottom = true;
-    private string? _pendingInitialPrompt;
+    private ComposerSubmission? _pendingInitialSubmission;
     private readonly List<FindMatch> _findMatches = new();
     private readonly DispatcherTimer _findDebounceTimer = new() { Interval = TimeSpan.FromMilliseconds(150) };
     private int _currentFindIndex = -1;
@@ -41,9 +46,6 @@ public sealed partial class ChatPage : Page, IFindHost
     {
         InitializeComponent();
         Vm.Messages.CollectionChanged += Messages_CollectionChanged;
-        Vm.AskUserRequested += OnAskUserRequested;
-        Vm.ApprovalRequested += OnApprovalRequested;
-        Vm.PlanReviewRequested += OnPlanReviewRequested;
         Vm.PropertyChanged += Vm_PropertyChanged;
         _findDebounceTimer.Tick += FindDebounceTimer_Tick;
         ChatRoot.KeyDown += ChatRoot_KeyDown;
@@ -82,7 +84,15 @@ public sealed partial class ChatPage : Page, IFindHost
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
-        _pendingInitialPrompt = e.Parameter as string;
+        // AgentDetailPage navigates here with a ComposerSubmission (text + any
+        // attachments); a plain string is also accepted for robustness against
+        // any other caller that only ever had a prompt to pass.
+        _pendingInitialSubmission = e.Parameter switch
+        {
+            ComposerSubmission submission => submission,
+            string prompt => new ComposerSubmission(prompt, Array.Empty<PendingAttachment>()),
+            _ => null,
+        };
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -119,17 +129,17 @@ public sealed partial class ChatPage : Page, IFindHost
         Composer.IsBusy = Vm.IsProcessing;
         Composer.FocusInput();
 
-        if (!string.IsNullOrWhiteSpace(_pendingInitialPrompt))
+        var pending = _pendingInitialSubmission;
+        if (pending is not null && (!string.IsNullOrWhiteSpace(pending.Text) || pending.Attachments.Count > 0))
         {
-            var prompt = _pendingInitialPrompt;
-            _pendingInitialPrompt = null;
-            await Vm.SendAsync(prompt);
+            _pendingInitialSubmission = null;
+            await Vm.SendAsync(pending.Text, pending.Attachments);
             QueueScrollToEnd(force: true);
         }
     }
 
-    private async void Composer_SubmitRequested(object? sender, string text)
-        => await SendAsync(text);
+    private async void Composer_SubmitRequested(object? sender, ComposerSubmission submission)
+        => await SendAsync(submission.Text, submission.Attachments);
 
     private async void SubmitOnboard_Click(object sender, RoutedEventArgs e)
     {
@@ -168,6 +178,58 @@ public sealed partial class ChatPage : Page, IFindHost
         }
     }
 
+    private async void AttachmentImage_Tapped(object sender, TappedRoutedEventArgs e)
+        => await OpenAttachmentAsync((sender as FrameworkElement)?.Tag as ChatAttachment);
+
+    private async void AttachmentFile_Tapped(object sender, TappedRoutedEventArgs e)
+        => await OpenAttachmentAsync((sender as FrameworkElement)?.Tag as ChatAttachment);
+
+    /// <summary>Opens a received/sent attachment in its default OS viewer. Best-effort: a
+    /// missing or moved cache file must not crash the chat, just silently no-op.</summary>
+    private static async System.Threading.Tasks.Task OpenAttachmentAsync(ChatAttachment? attachment)
+    {
+        if (attachment is null || string.IsNullOrEmpty(attachment.LocalCachePath)) return;
+        try
+        {
+            var file = await StorageFile.GetFileFromPathAsync(attachment.LocalCachePath);
+            await Launcher.LaunchFileAsync(file);
+        }
+        catch
+        {
+            // Cache file missing/moved/locked — best-effort open only.
+        }
+    }
+
+    private async void SaveAttachment_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not ChatAttachment attachment ||
+            string.IsNullOrEmpty(attachment.LocalCachePath) || App.MainWindow is null)
+        {
+            return;
+        }
+
+        var picker = new FileSavePicker();
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindow));
+        var ext = Path.GetExtension(attachment.FileName);
+        var extLabel = string.IsNullOrEmpty(ext) ? "File" : ext.TrimStart('.').ToUpperInvariant();
+        picker.SuggestedFileName = attachment.FileName;
+        picker.FileTypeChoices.Add(extLabel, new List<string> { string.IsNullOrEmpty(ext) ? "." : ext });
+
+        var target = await picker.PickSaveFileAsync();
+        if (target is null) return;
+
+        try
+        {
+            using var source = File.OpenRead(attachment.LocalCachePath);
+            using var dest = await target.OpenStreamForWriteAsync();
+            await source.CopyToAsync(dest);
+        }
+        catch
+        {
+            // Best-effort save; the original attachment stays intact either way.
+        }
+    }
+
     private void ToggleMessageCollapse_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.DataContext is not ChatMessage message)
@@ -192,11 +254,12 @@ public sealed partial class ChatPage : Page, IFindHost
         MessageList.Padding = new Thickness(horizontalInset, 18, horizontalInset, 22);
     }
 
-    private async System.Threading.Tasks.Task SendAsync(string text)
+    private async System.Threading.Tasks.Task SendAsync(string text, IReadOnlyList<PendingAttachment>? attachments = null)
     {
-        if (string.IsNullOrWhiteSpace(text) || !Vm.CanSend) return;
+        var hasAttachments = attachments is { Count: > 0 };
+        if ((string.IsNullOrWhiteSpace(text) && !hasAttachments) || !Vm.CanSend) return;
 
-        await Vm.SendAsync(text);
+        await Vm.SendAsync(text, attachments);
         QueueScrollToEnd(force: true);
         Composer.FocusInput();
     }
@@ -523,170 +586,56 @@ public sealed partial class ChatPage : Page, IFindHost
 
     private readonly record struct FindMatch(ChatMessage Message, int MatchIndexInMessage);
 
-    // --- Interactive turns ---
+    // --- Interactive turns (ask_user / approval_needed / plan_review) ---
+    // Rendered as persistent inline chat bubbles (see ChatViewModel.AddAskUserBubble
+    // etc. and the DataTemplate cards in ChatPage.xaml) rather than ContentDialogs,
+    // so the question/decision stays in the conversation history.
 
-    private async void OnAskUserRequested(AskUserRequest request)
+    private async void AskUserSubmit_Click(object sender, RoutedEventArgs e)
     {
-        try
+        if ((sender as FrameworkElement)?.Tag is ChatMessage message)
         {
-            var panel = new StackPanel { Spacing = 8 };
-        panel.Children.Add(new TextBlock { Text = request.Text, TextWrapping = TextWrapping.Wrap });
-
-        // Dynamic fields take priority; otherwise options (single/multi) plus a
-        // free-text box, matching the web app's ask_user handling.
-        var fieldInputs = new List<(string Name, TextBox Box)>();
-        var optionChecks = new List<CheckBox>();
-        RadioButtons? radio = null;
-        TextBox? freeText = null;
-
-        if (request.Fields.Count > 0)
-        {
-            foreach (var field in request.Fields)
-            {
-                panel.Children.Add(new TextBlock { Text = field.Label, Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"] });
-                var box = new TextBox { PlaceholderText = field.Placeholder ?? "" };
-                panel.Children.Add(box);
-                fieldInputs.Add((field.Name, box));
-            }
+            await Vm.SubmitAskUserAnswerAsync(message);
         }
-        else
-        {
-            if (request.Options.Count > 0)
-            {
-                if (request.MultiSelect)
-                {
-                    foreach (var option in request.Options)
-                    {
-                        var check = new CheckBox { Content = option, Tag = option };
-                        optionChecks.Add(check);
-                        panel.Children.Add(check);
-                    }
-                }
-                else
-                {
-                    radio = new RadioButtons();
-                    foreach (var option in request.Options) radio.Items.Add(option);
-                    panel.Children.Add(radio);
-                }
-            }
-            freeText = new TextBox { PlaceholderText = request.Options.Count > 0 ? "Or enter another answer" : "Type your answer" };
-            panel.Children.Add(freeText);
-        }
-
-        var dialog = new ContentDialog
-        {
-            Title = "Question",
-            Content = new ScrollViewer { Content = panel },
-            PrimaryButtonText = "Submit",
-            CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Primary,
-            XamlRoot = XamlRoot,
-        };
-
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
-
-        string answer;
-        if (fieldInputs.Count > 0)
-        {
-            var values = new Dictionary<string, string>();
-            foreach (var (name, box) in fieldInputs) values[name] = box.Text;
-            answer = JsonSerializer.Serialize(values, AppJsonContext.Default.DictionaryStringString);
-        }
-        else if (optionChecks.Count > 0)
-        {
-            var selected = new List<string>();
-            foreach (var check in optionChecks)
-                if (check.IsChecked == true) selected.Add((string)check.Tag);
-            answer = string.Join(", ", selected);
-        }
-        else
-        {
-            answer = !string.IsNullOrWhiteSpace(freeText?.Text)
-                ? freeText!.Text.Trim()
-                : radio?.SelectedItem as string ?? "";
-        }
-
-        if (!string.IsNullOrEmpty(answer)) await Vm.RespondAskUserAsync(answer);
-        }
-        catch { /* Dialog dismissed or serialization issue; skip the turn. */ }
     }
 
-    private async void OnApprovalRequested(ApprovalRequest request)
+    private async void ApprovalOnce_Click(object sender, RoutedEventArgs e)
     {
-        try
+        if ((sender as FrameworkElement)?.Tag is ChatMessage message)
         {
-            var panel = new StackPanel { Spacing = 8 };
-        if (!string.IsNullOrEmpty(request.Description))
-            panel.Children.Add(new TextBlock { Text = request.Description, TextWrapping = TextWrapping.Wrap });
-        panel.Children.Add(new TextBlock { Text = "Arguments:", Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"] });
-        panel.Children.Add(new TextBlock { Text = request.ArgumentsJson, TextWrapping = TextWrapping.Wrap, FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Consolas") });
-
-        var dialog = new ContentDialog
-        {
-            Title = $"Approve tool: {request.Tool}",
-            Content = new ScrollViewer { Content = panel },
-            PrimaryButtonText = "Approve once",
-            SecondaryButtonText = "Approve for session",
-            CloseButtonText = "Reject",
-            DefaultButton = ContentDialogButton.Primary,
-            XamlRoot = XamlRoot,
-        };
-
-        var result = await dialog.ShowAsync();
-        switch (result)
-        {
-            case ContentDialogResult.Primary:
-                await Vm.RespondApprovalAsync(true, "once");
-                break;
-            case ContentDialogResult.Secondary:
-                await Vm.RespondApprovalAsync(true, "session");
-                break;
-            default:
-                await Vm.RespondApprovalAsync(false);
-                break;
+            await Vm.SubmitApprovalAsync(message, true, "once");
         }
-        }
-        catch { /* Dialog dismissed or response failed; skip the turn. */ }
     }
 
-    private async void OnPlanReviewRequested(PlanReviewRequest request)
+    private async void ApprovalSession_Click(object sender, RoutedEventArgs e)
     {
-        try
+        if ((sender as FrameworkElement)?.Tag is ChatMessage message)
         {
-            var feedback = new TextBox
-        {
-            PlaceholderText = "Optional feedback or requested changes",
-            AcceptsReturn = true,
-            Height = 100,
-        };
-        var panel = new StackPanel { Spacing = 8 };
-        panel.Children.Add(new TextBlock { Text = request.PlanContent, TextWrapping = TextWrapping.Wrap });
-        panel.Children.Add(feedback);
+            await Vm.SubmitApprovalAsync(message, true, "session");
+        }
+    }
 
-        var dialog = new ContentDialog
+    private async void ApprovalReject_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is ChatMessage message)
         {
-            Title = "Plan review",
-            Content = new ScrollViewer { Content = panel, MaxHeight = 400 },
-            PrimaryButtonText = "Approve plan",
-            SecondaryButtonText = "Request changes",
-            CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Primary,
-            XamlRoot = XamlRoot,
-        };
+            await Vm.SubmitApprovalAsync(message, false, "once");
+        }
+    }
 
-        var result = await dialog.ShowAsync();
-        if (result == ContentDialogResult.Primary)
+    private async void PlanApprove_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is ChatMessage message)
         {
-            var message = string.IsNullOrWhiteSpace(feedback.Text)
-                ? "Plan approved. Proceed with implementation."
-                : feedback.Text.Trim();
-            await Vm.RespondPlanReviewAsync(message);
+            await Vm.SubmitPlanReviewAsync(message, true);
         }
-        else if (result == ContentDialogResult.Secondary && !string.IsNullOrWhiteSpace(feedback.Text))
+    }
+
+    private async void PlanRequestChanges_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is ChatMessage message)
         {
-            await Vm.RespondPlanReviewAsync(feedback.Text.Trim());
+            await Vm.SubmitPlanReviewAsync(message, false);
         }
-        }
-        catch { /* Dialog dismissed or response failed; skip the turn. */ }
     }
 }

@@ -1,4 +1,7 @@
 using System;
+using System.Collections.ObjectModel;
+using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -21,9 +24,14 @@ using Windows.System;
 using Windows.UI;
 using Windows.UI.Core;
 using WinRT;
+using ConnectOnion.Protocol;
+using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
 
 namespace ConnectOnion.WinUIClient.Controls;
+
+/// <summary>Text plus whatever attachments were ready to send at submit time.</summary>
+public sealed record ComposerSubmission(string Text, IReadOnlyList<PendingAttachment> Attachments);
 
 public sealed partial class ChatComposer : UserControl
 {
@@ -89,7 +97,26 @@ public sealed partial class ChatComposer : UserControl
             typeof(ChatComposer),
             new PropertyMetadata(false, OnIsBusyChanged));
 
-    public event EventHandler<string>? SubmitRequested;
+    public static readonly DependencyProperty AcceptedInputsProperty =
+        DependencyProperty.Register(
+            nameof(AcceptedInputs),
+            typeof(AgentAcceptedInputs),
+            typeof(ChatComposer),
+            new PropertyMetadata(null));
+
+    public static readonly DependencyProperty ShowSuggestionsProperty =
+        DependencyProperty.Register(
+            nameof(ShowSuggestions),
+            typeof(bool),
+            typeof(ChatComposer),
+            new PropertyMetadata(true, OnShowSuggestionsChanged));
+
+    public event EventHandler<ComposerSubmission>? SubmitRequested;
+
+    /// <summary>Attachments picked but not yet sent. Cleared (for the ones actually sent) on submit.</summary>
+    public ObservableCollection<PendingAttachment> PendingAttachments { get; } = new();
+
+    private readonly CancellationTokenSource _lifetimeCts = new();
 
     public ChatComposer()
     {
@@ -99,6 +126,11 @@ public sealed partial class ChatComposer : UserControl
         _recordingElapsedTimer.Tick += RecordingElapsedTimer_Tick;
         ActualThemeChanged += (_, _) => ApplyWaveformTheme();
         Unloaded += Composer_Unloaded;
+        PendingAttachments.CollectionChanged += (_, _) =>
+        {
+            AttachmentsScrollViewer.Visibility = PendingAttachments.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            RefreshSendButtonState();
+        };
         RefreshSendButtonState();
     }
 
@@ -120,6 +152,25 @@ public sealed partial class ChatComposer : UserControl
         set => SetValue(IsBusyProperty, value);
     }
 
+    /// <summary>The connected agent's advertised input capabilities, from <c>/info</c>. Null while unknown (not yet fetched, or offline) — attachments are not blocked in that case.</summary>
+    public AgentAcceptedInputs? AcceptedInputs
+    {
+        get => (AgentAcceptedInputs?)GetValue(AcceptedInputsProperty);
+        set => SetValue(AcceptedInputsProperty, value);
+    }
+
+    /// <summary>
+    /// Whether the "What can you do?" / "Show system info" / "List files" quick
+    /// prompt chips appear above the input box. True by default (the agent-detail
+    /// page's first-message composer); ChatPage sets this false since those
+    /// starter prompts don't make sense once a conversation is already underway.
+    /// </summary>
+    public bool ShowSuggestions
+    {
+        get => (bool)GetValue(ShowSuggestionsProperty);
+        set => SetValue(ShowSuggestionsProperty, value);
+    }
+
     public void FocusInput()
         => InputBox.Focus(FocusState.Programmatic);
 
@@ -128,6 +179,15 @@ public sealed partial class ChatComposer : UserControl
 
     private static void OnIsBusyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         => ((ChatComposer)d).RefreshSendButtonState();
+
+    private static void OnShowSuggestionsChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var composer = (ChatComposer)d;
+        composer.ApplySuggestionVisibility(composer.ActualWidth);
+    }
+
+    private void ApplySuggestionVisibility(double width)
+        => SuggestionPanel.Visibility = ShowSuggestions && width >= 620 ? Visibility.Visible : Visibility.Collapsed;
 
     private async void Send_Click(object sender, RoutedEventArgs e)
     {
@@ -138,11 +198,111 @@ public sealed partial class ChatComposer : UserControl
 
     private async void Composer_Unloaded(object sender, RoutedEventArgs e)
     {
+        _lifetimeCts.Cancel();
         WaveformCanvas.RemoveFromVisualTree();
         await StopSpeechRecognitionAsync();
         _speechRecognizer?.Dispose();
         _speechRecognizer = null;
         StopAudioMeter();
+    }
+
+    // ---- Attachments ----
+
+    private void AddAttachment_Click(object sender, RoutedEventArgs e)
+    {
+        var accepted = AcceptedInputs;
+        var flyout = new MenuFlyout();
+
+        var imageItem = new MenuFlyoutItem { Text = "Add image..." };
+        var imagesBlocked = accepted?.Images == false;
+        imageItem.IsEnabled = !imagesBlocked;
+        if (imagesBlocked) ToolTipService.SetToolTip(imageItem, "This agent does not accept image input.");
+        imageItem.Click += async (_, _) => await AddAttachmentsAsync(AttachmentKind.Image);
+        flyout.Items.Add(imageItem);
+
+        var fileItem = new MenuFlyoutItem { Text = "Add file..." };
+        var filesBlocked = accepted is not null && accepted.Files is null;
+        fileItem.IsEnabled = !filesBlocked;
+        if (filesBlocked) ToolTipService.SetToolTip(fileItem, "This agent does not accept file input.");
+        fileItem.Click += async (_, _) => await AddAttachmentsAsync(AttachmentKind.File);
+        flyout.Items.Add(fileItem);
+
+        flyout.ShowAt((FrameworkElement)sender);
+    }
+
+    private async Task AddAttachmentsAsync(AttachmentKind kind)
+    {
+        IReadOnlyList<PendingAttachment> picked;
+        try
+        {
+            picked = await AttachmentPickerService.PickAsync(kind, _lifetimeCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Attachment] pick failed kind={kind} error={ex.GetType().Name}");
+            return;
+        }
+
+        // Empty result means the user dismissed the picker — a normal outcome, not an error.
+        if (picked.Count == 0) return;
+
+        foreach (var attachment in picked)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[Attachment] selected name={attachment.FileName} mime={attachment.MimeType} size={attachment.SizeBytes}");
+
+            var existingCount = PendingAttachments.Count(p => p.Kind == kind);
+            var error = AttachmentValidationService.Validate(attachment, AcceptedInputs, existingCount);
+
+            PendingAttachments.Add(attachment);
+
+            if (error is not null)
+            {
+                attachment.Status = AttachmentStatus.Failed;
+                attachment.Error = error;
+                System.Diagnostics.Debug.WriteLine($"[Attachment] rejected name={attachment.FileName} reason={error}");
+                continue;
+            }
+
+            _ = EncodeAttachmentAsync(attachment);
+        }
+    }
+
+    private async Task EncodeAttachmentAsync(PendingAttachment attachment)
+    {
+        attachment.Status = AttachmentStatus.Encoding;
+        try
+        {
+            var dataUrl = await AttachmentEncoder
+                .EncodeToDataUrlAsync(attachment.LocalPath, attachment.MimeType, _lifetimeCts.Token)
+                .ConfigureAwait(true);
+            attachment.DataUrl = dataUrl;
+            attachment.Status = AttachmentStatus.Ready;
+            System.Diagnostics.Debug.WriteLine($"[Attachment] encoded name={attachment.FileName} bytes={attachment.SizeBytes}");
+        }
+        catch (OperationCanceledException)
+        {
+            // Control unloaded mid-encode; the attachment is being discarded anyway.
+        }
+        catch (Exception ex)
+        {
+            attachment.Status = AttachmentStatus.Failed;
+            attachment.Error = "Could not read this file.";
+            System.Diagnostics.Debug.WriteLine($"[Attachment] encode failed name={attachment.FileName} error={ex.GetType().Name}");
+        }
+        RefreshSendButtonState();
+    }
+
+    private void RemoveAttachment_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is PendingAttachment attachment)
+        {
+            PendingAttachments.Remove(attachment);
+        }
     }
 
     private bool IsRecordingActive => _recordingState is RecordingState.Starting
@@ -298,11 +458,19 @@ public sealed partial class ChatComposer : UserControl
     private void SubmitCurrentText()
     {
         var text = InputBox.Text.Trim();
-        if (text.Length == 0 || !CanSubmit) return;
+        var isAttachmentsBusy = PendingAttachments.Any(a => a.IsBusy);
+        var readyAttachments = PendingAttachments.Where(a => a.Status == AttachmentStatus.Ready).ToList();
+
+        if (!CanSubmit || isAttachmentsBusy) return;
+        if (text.Length == 0 && readyAttachments.Count == 0) return;
 
         InputBox.Text = "";
+        // Only the attachments that made it to Ready are sent; Failed ones stay in
+        // the rail so the user notices and can remove/retry them — a bad attachment
+        // must never silently disappear or block the rest of the message.
+        foreach (var attachment in readyAttachments) PendingAttachments.Remove(attachment);
         RefreshSendButtonState();
-        SubmitRequested?.Invoke(this, text);
+        SubmitRequested?.Invoke(this, new ComposerSubmission(text, readyAttachments));
     }
 
     private void AppendRecognizedText(string text)
@@ -577,8 +745,12 @@ public sealed partial class ChatComposer : UserControl
         var isStopping = _recordingState == RecordingState.Stopping;
         var isActive = IsRecordingActive;
 
-        var canSend = CanSubmit && !IsBusy && !string.IsNullOrWhiteSpace(InputBox.Text);
+        var isAttachmentsBusy = PendingAttachments.Any(a => a.IsBusy);
+        var hasReadyAttachment = PendingAttachments.Any(a => a.Status == AttachmentStatus.Ready);
+        var canSend = CanSubmit && !IsBusy && !isAttachmentsBusy
+            && (!string.IsNullOrWhiteSpace(InputBox.Text) || hasReadyAttachment);
         InputBox.IsEnabled = CanSubmit && !IsBusy;
+        AddAttachmentButton.IsEnabled = CanSubmit && !IsBusy;
         SpeechButton.IsEnabled = CanSubmit && !IsBusy && !isActive;
         SendButton.IsEnabled = canSend || isActive;
         SendButton.Background = isActive || canSend || IsBusy
@@ -611,7 +783,7 @@ public sealed partial class ChatComposer : UserControl
     private void Composer_SizeChanged(object sender, SizeChangedEventArgs e)
     {
         ComposerPanel.Width = Math.Max(280, Math.Min(880, e.NewSize.Width - 48));
-        SuggestionPanel.Visibility = e.NewSize.Width < 620 ? Visibility.Collapsed : Visibility.Visible;
+        ApplySuggestionVisibility(e.NewSize.Width);
     }
 
     [ComImport]

@@ -1,4 +1,5 @@
 using System;
+using ConnectOnion.WinUIClient.Controls;
 using ConnectOnion.WinUIClient.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -26,17 +27,23 @@ public sealed partial class AgentDetailPage : Page
     private void OnUnloaded(object sender, RoutedEventArgs e)
         => Vm.Cleanup();
 
-    private async void Composer_SubmitRequested(object? sender, string text)
-        => await StartConversationAsync(text);
+    // This composer starts a fresh conversation before navigating to ChatPage.
+    // The whole submission (text + attachments) is carried across the
+    // navigation via the Frame parameter so an image/file sent from here
+    // behaves exactly like one sent from ChatPage's own composer: it creates
+    // the session, navigates, and is actually sent as the first turn.
+    private async void Composer_SubmitRequested(object? sender, ComposerSubmission submission)
+        => await StartConversationAsync(submission);
 
-    private async System.Threading.Tasks.Task StartConversationAsync(string prompt)
+    private async System.Threading.Tasks.Task StartConversationAsync(ComposerSubmission submission)
     {
-        var initialPrompt = prompt.Trim();
-        if (initialPrompt.Length == 0) return;
+        var initialPrompt = submission.Text.Trim();
+        var hasAttachments = submission.Attachments.Count > 0;
+        if (initialPrompt.Length == 0 && !hasAttachments) return;
 
-        if (await Vm.StartConversationAsync(initialPrompt))
+        if (await Vm.StartConversationAsync(initialPrompt, hasAttachments))
         {
-            Frame.Navigate(typeof(ChatPage), initialPrompt);
+            Frame.Navigate(typeof(ChatPage), new ComposerSubmission(initialPrompt, submission.Attachments));
         }
     }
 }

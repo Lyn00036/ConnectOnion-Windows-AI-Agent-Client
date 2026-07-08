@@ -111,6 +111,7 @@
                                Grid.Row="1"
                                CanSubmit="{x:Bind Vm.HasAgent, Mode=OneWay}"
                                EnterToSubmit="{x:Bind Vm.EnterToSend, Mode=OneWay}"
+                               AcceptedInputs="{x:Bind Vm.AcceptedInputs, Mode=OneWay}"
                                SubmitRequested="Composer_SubmitRequested"
                                Visibility="{x:Bind Vm.HasAgent, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
     </Grid>

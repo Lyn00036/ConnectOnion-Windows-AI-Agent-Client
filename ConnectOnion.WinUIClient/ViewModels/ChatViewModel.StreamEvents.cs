@@ -32,6 +32,149 @@ public sealed partial class ChatViewModel
         StatusText = "Waiting for invite code...";
     }
 
+    // ---- Interactive turns: ask_user / approval_needed / plan_review ----
+    // Rendered as persistent inline chat bubbles (matching the reference web
+    // client's chat-item feed) rather than transient ContentDialogs, so the
+    // question/decision stays visible in history instead of vanishing once
+    // the popup closes.
+
+    private void AddAskUserBubble(AskUserRequest request)
+    {
+        var message = new ChatMessage
+        {
+            Id = NextId(),
+            Role = ChatRole.Event,
+            EventKind = "ask_user",
+            EventKey = request.Id,
+            EventEyebrow = "Question",
+            EventTitle = request.Text,
+            Status = EventStatus.Running,
+        };
+
+        message.AskUserMultiSelect = request.MultiSelect;
+        foreach (var option in request.Options)
+        {
+            message.AskUserOptions.Add(option);
+            if (request.MultiSelect) message.AskUserOptionEntries.Add(new AskUserOptionEntry { Text = option });
+        }
+        foreach (var field in request.Fields)
+        {
+            message.AskUserFields.Add(new AskUserFieldEntry
+            {
+                Name = field.Name,
+                Label = field.Label,
+                Placeholder = field.Placeholder,
+            });
+        }
+
+        Messages.Add(message);
+        StatusText = "Waiting for your answer...";
+    }
+
+    /// <summary>Submits an ask_user bubble's answer. Mirrors the composition logic the old ContentDialog used: dynamic fields → JSON, multi-select → comma-joined checked options, else free text or the selected radio option.</summary>
+    public async Task SubmitAskUserAnswerAsync(ChatMessage message)
+    {
+        if (message.Status != EventStatus.Running) return;
+
+        string answer;
+        if (message.AskUserFields.Count > 0)
+        {
+            var values = new Dictionary<string, string>();
+            foreach (var field in message.AskUserFields) values[field.Name] = field.Value;
+            answer = JsonSerializer.Serialize(values, AppJsonContext.Default.DictionaryStringString);
+        }
+        else if (message.AskUserMultiSelect)
+        {
+            var selected = message.AskUserOptionEntries.Where(o => o.IsChecked).Select(o => o.Text).ToList();
+            answer = selected.Count > 0 ? string.Join(", ", selected) : message.AskUserFreeText.Trim();
+        }
+        else
+        {
+            answer = !string.IsNullOrWhiteSpace(message.AskUserFreeText)
+                ? message.AskUserFreeText.Trim()
+                : message.SelectedAskUserOption ?? "";
+        }
+
+        if (string.IsNullOrEmpty(answer)) return;
+
+        message.EventMeta = $"Answered: {answer}";
+        message.Status = EventStatus.Done;
+        await PersistConversationAsync();
+        StatusText = "";
+        await (_connection?.RespondAskUserAsync(answer) ?? Task.CompletedTask);
+    }
+
+    private void AddApprovalBubble(ApprovalRequest request)
+    {
+        Messages.Add(new ChatMessage
+        {
+            Id = NextId(),
+            Role = ChatRole.Event,
+            EventKind = "approval",
+            EventEyebrow = "Approval needed",
+            EventTitle = request.Tool,
+            EventDetail = request.Description,
+            EventArgs = PrettyJson(request.ArgumentsJson),
+            Status = EventStatus.Running,
+        });
+        StatusText = "Waiting for approval...";
+    }
+
+    /// <summary><paramref name="scope"/> is "once" or "session", matching <see cref="AgentConnectionService.RespondApprovalAsync"/>.</summary>
+    public async Task SubmitApprovalAsync(ChatMessage message, bool approved, string scope)
+    {
+        if (message.Status != EventStatus.Running) return;
+
+        message.EventMeta = approved
+            ? (scope == "session" ? "Approved for session" : "Approved once")
+            : "Rejected";
+        message.Status = approved ? EventStatus.Done : EventStatus.Error;
+        await PersistConversationAsync();
+        StatusText = "";
+        await (_connection?.RespondApprovalAsync(approved, scope) ?? Task.CompletedTask);
+    }
+
+    private void AddPlanReviewBubble(PlanReviewRequest request)
+    {
+        Messages.Add(new ChatMessage
+        {
+            Id = NextId(),
+            Role = ChatRole.Event,
+            EventKind = "plan_review",
+            EventEyebrow = "Plan review",
+            EventTitle = "Review the plan",
+            EventDetail = request.PlanContent,
+            Status = EventStatus.Running,
+        });
+        StatusText = "Waiting for plan review...";
+    }
+
+    /// <summary>Approving with no feedback sends the SDK's default "proceed" message; requesting changes with no feedback is a no-op (nothing to send) — matches the previous dialog's behavior.</summary>
+    public async Task SubmitPlanReviewAsync(ChatMessage message, bool approved)
+    {
+        if (message.Status != EventStatus.Running) return;
+
+        var feedback = message.PlanFeedback.Trim();
+        string responseMessage;
+        if (approved)
+        {
+            responseMessage = feedback.Length == 0 ? "Plan approved. Proceed with implementation." : feedback;
+            message.EventMeta = "Plan approved";
+            message.Status = EventStatus.Done;
+        }
+        else
+        {
+            if (feedback.Length == 0) return;
+            responseMessage = feedback;
+            message.EventMeta = "Changes requested";
+            message.Status = EventStatus.Error;
+        }
+
+        await PersistConversationAsync();
+        StatusText = "";
+        await (_connection?.RespondPlanReviewAsync(responseMessage) ?? Task.CompletedTask);
+    }
+
     /// <summary>
     /// Maps a streamed event onto the message list, C# port of the SDK's
     /// <c>chat-item-mapper.ts</c>. Paired events merge by id into one bubble that
@@ -104,48 +247,34 @@ public sealed partial class ChatViewModel
 
             case "llm_call":
             {
-                var id = Str("id");
-                var iteration = Num("iteration");
-                var model = Str("model");
-                var title = iteration is not null
-                    ? $"Iteration {iteration:0}"
-                    : "Thinking...";
-                Messages.Add(new ChatMessage
-                {
-                    Id = NextId(),
-                    Role = ChatRole.Event,
-                    EventKind = "activity",
-                    EventKey = id,
-                    EventTitle = title,
-                    EventDetail = model,
-                    Status = EventStatus.Running,
-                });
+                // No per-iteration bubble: a turn can run several LLM calls via the
+                // tool-use loop, and showing "Iteration 1", "Iteration 2", ... was
+                // noise. Only the model name is worth remembering here; token usage
+                // and a single summary bubble are handled on "llm_result" / at the
+                // end of the turn (see AddTurnSummaryBubble).
+                if (Str("model") is { } callModel) _turnModel = callModel;
                 break;
             }
 
             case "llm_result":
             {
-                var existing = FindEvent(Str("id"), "activity");
-                if (existing is not null)
-                {
-                    existing.Status = Str("status") == "error" ? EventStatus.Error : EventStatus.Done;
-                    var iteration = Num("iteration");
-                    existing.EventTitle = iteration is not null
-                        ? $"Iteration {iteration:0} complete"
-                        : "Thinking complete";
+                if (Str("model") is { } resultModel) _turnModel = resultModel;
 
-                    var parts = new List<string>();
-                    if (Num("duration_ms") is { } dur) parts.Add(FormatDuration(dur));
-                    if (ParseTokenUsage(root) is (var tokIn, var tokOut) && tokIn is not null)
-                        parts.Add($"{tokIn}→{tokOut} tok");
-                    if (Num("context_percent") is { } ctx)
-                        parts.Add($"ctx {ctx:0.#}%");
-                    if (Num("tool_calls_count") is { } tcc and > 0)
-                        parts.Add($"{tcc:0} tools");
-                    existing.EventMeta = string.Join(" · ", parts);
+                var (tokIn, tokOut) = TryParseRawTokenUsage(root);
+                if (tokIn is not null) { _turnTokensIn += tokIn.Value; _turnHasUsage = true; }
+                if (tokOut is not null) { _turnTokensOut += tokOut.Value; _turnHasUsage = true; }
 
-                    existing.EventDetail = Str("model") ?? existing.EventDetail;
-                }
+                // Total time actually spent in LLM calls this turn.
+                if (Num("duration_ms") is { } dur) _turnDurationMs += dur;
+
+                // Context fill is a point-in-time reading, not a per-iteration
+                // delta — keep the latest one, not a sum.
+                if (Num("context_percent") is { } ctx) _turnContextPercent = ctx;
+
+                // Tools invoked as a result of this LLM call — sum across iterations
+                // for a turn total.
+                if (Num("tool_calls_count") is { } tcc) _turnToolCallsCount += (long)tcc;
+
                 break;
             }
 
@@ -228,15 +357,55 @@ public sealed partial class ChatViewModel
                 });
                 break;
 
+            case "agent_image":
+            {
+                // Typed parser (not raw JsonDocument.Parse in this switch's usual
+                // style) per the real `agent_image` wire event —
+                // network/io/base.py:send_image → {"type":"agent_image","image":"data:...;base64,..."}.
+                // A malformed/missing `image` field is ignored, not thrown, so one
+                // bad frame can't take down the receive loop.
+                if (!AttachmentWireEvents.TryGetAgentImageDataUrl(WireMessage.Parse(e.RawJson), out var dataUrl))
+                {
+                    System.Diagnostics.Debug.WriteLine("[Attachment] malformed agent_image event ignored");
+                    break;
+                }
+
+                // Mirror the SDK's chat-item-mapper.ts: merge onto the last agent
+                // bubble if one is open, else start a fresh one.
+                var lastAgent = Messages.LastOrDefault(m => m.Role == ChatRole.Agent);
+                ChatMessage target;
+                if (lastAgent is not null)
+                {
+                    target = lastAgent;
+                }
+                else
+                {
+                    target = new ChatMessage { Id = NextId(), Role = ChatRole.Agent, AgentName = _agent?.Name };
+                    Messages.Add(target);
+                }
+
+                var attachment = new ChatAttachment
+                {
+                    Kind = AttachmentKind.Image,
+                    FileName = "image",
+                    Status = AttachmentStatus.Encoding,
+                };
+                target.Attachments.Add(attachment);
+                System.Diagnostics.Debug.WriteLine("[Attachment] received source=data-url");
+                _ = ResolveAgentImageAsync(dataUrl, attachment);
+                break;
+            }
+
             case "files_received":
             {
+                // Typed parser for the real `files_received` echo event
+                // (agent.py:317-323) — just a name/path notification of what the
+                // *user* uploaded, not a download mechanism (no local file exists
+                // at the server's path from the client's point of view).
                 var names = new List<string>();
-                if (root.ValueKind == JsonValueKind.Object
-                    && root.TryGetProperty("files", out var files) && files.ValueKind == JsonValueKind.Array)
+                if (AttachmentWireEvents.TryGetFilesReceived(WireMessage.Parse(e.RawJson), out var files))
                 {
-                    foreach (var file in files.EnumerateArray())
-                        if (file.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String)
-                            names.Add(n.GetString()!);
+                    foreach (var file in files) names.Add(file.Name);
                 }
                 var item = NewActivity(null, $"Files received - {names.Count} file(s)", EventStatus.Done);
                 if (names.Count > 0) item.EventDetail = string.Join(", ", names);
@@ -264,6 +433,37 @@ public sealed partial class ChatViewModel
                 Messages.Add(NewActivity(null, "Onboarding complete", EventStatus.Done));
                 break;
         }
+    }
+
+    /// <summary>
+    /// Decodes/downloads an inbound image off the UI thread and caches it to disk
+    /// (see <see cref="Services.AttachmentImageCacheService"/>) so the message list
+    /// and SQLite only ever hold a file path, never the base64 payload itself.
+    /// Failure (invalid base64, unsupported scheme, download timeout, ...) marks
+    /// the attachment Failed rather than throwing — a single bad image must not
+    /// crash the receive loop or the rest of the conversation.
+    /// </summary>
+    private async Task ResolveAgentImageAsync(string dataUrl, ChatAttachment attachment)
+    {
+        var resolved = await AttachmentImageCacheService
+            .ResolveAndCacheAsync(dataUrl, AppServices.Http)
+            .ConfigureAwait(false);
+
+        _dispatcher.TryEnqueue(() =>
+        {
+            if (resolved is { } value)
+            {
+                attachment.LocalCachePath = value.LocalPath;
+                attachment.MimeType = value.MimeType;
+                attachment.Status = AttachmentStatus.Sent;
+            }
+            else
+            {
+                attachment.Status = AttachmentStatus.Failed;
+                attachment.Error = "Image could not be loaded.";
+                System.Diagnostics.Debug.WriteLine("[Attachment] failed to decode/cache agent image");
+            }
+        });
     }
 
     private ChatMessage NewActivity(string? key, string title, EventStatus status) => new()
@@ -329,14 +529,12 @@ public sealed partial class ChatViewModel
         return null;
     }
 
-    private static (string? input, string? output) ParseTokenUsage(JsonElement root)
+    private static (long? input, long? output) TryParseRawTokenUsage(JsonElement root)
     {
         if (root.TryGetProperty("usage", out var u) && u.ValueKind == JsonValueKind.Object)
         {
-            var input = u.TryGetProperty("input_tokens", out var i) && i.TryGetInt64(out var iv)
-                ? FormatTokenCount(iv) : null;
-            var output = u.TryGetProperty("output_tokens", out var o) && o.TryGetInt64(out var ov)
-                ? FormatTokenCount(ov) : null;
+            long? input = u.TryGetProperty("input_tokens", out var i) && i.TryGetInt64(out var iv) ? iv : null;
+            long? output = u.TryGetProperty("output_tokens", out var o) && o.TryGetInt64(out var ov) ? ov : null;
             return (input, output);
         }
         return (null, null);
@@ -349,4 +547,35 @@ public sealed partial class ChatViewModel
             >= 1_000 => $"{tokens / 1000.0:0.#}K",
             _ => tokens.ToString(),
         };
+
+    /// <summary>
+    /// One summary bubble at the end of a turn: model name + total duration,
+    /// tokens, final context usage, and tool-call count accumulated across every
+    /// llm_call/llm_result iteration of that turn (replaces the old per-iteration
+    /// "Iteration N" bubbles, which showed these same four fields but once per
+    /// iteration). Skipped entirely if the agent never reported anything —
+    /// nothing worth showing.
+    /// </summary>
+    private void AddTurnSummaryBubble()
+    {
+        var hasAnyMetric = _turnHasUsage || _turnDurationMs > 0
+            || _turnContextPercent is not null || _turnToolCallsCount > 0;
+        if (!hasAnyMetric && string.IsNullOrEmpty(_turnModel)) return;
+
+        var parts = new List<string>();
+        if (_turnDurationMs > 0) parts.Add(FormatDuration(_turnDurationMs));
+        if (_turnHasUsage) parts.Add($"{FormatTokenCount(_turnTokensIn)}→{FormatTokenCount(_turnTokensOut)} tok");
+        if (_turnContextPercent is { } ctx) parts.Add($"ctx {ctx:0.#}%");
+        if (_turnToolCallsCount > 0) parts.Add($"{_turnToolCallsCount:0} tools");
+
+        Messages.Add(new ChatMessage
+        {
+            Id = NextId(),
+            Role = ChatRole.Event,
+            EventKind = "activity",
+            EventTitle = _turnModel ?? "Model",
+            EventMeta = parts.Count > 0 ? string.Join(" · ", parts) : null,
+            Status = EventStatus.Done,
+        });
+    }
 }

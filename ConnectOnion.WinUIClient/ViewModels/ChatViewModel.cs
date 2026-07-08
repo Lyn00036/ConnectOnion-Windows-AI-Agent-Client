@@ -51,6 +51,17 @@ public sealed partial class ChatViewModel : ObservableObject
     // Trace events buffered in memory during execution, flushed to DB on OUTPUT.
     private readonly List<(string EventId, string Type, string RawJson, double? Ts)> _pendingTraces = new();
 
+    // Accumulated across every llm_call/llm_result iteration of the current turn
+    // (a turn can run several LLM calls via the tool-use loop) — used to show one
+    // model+usage summary at the end instead of a bubble per iteration.
+    private string? _turnModel;
+    private long _turnTokensIn;
+    private long _turnTokensOut;
+    private bool _turnHasUsage;
+    private double _turnDurationMs;
+    private double? _turnContextPercent;
+    private long _turnToolCallsCount;
+
     // Real transport when the agent exposes a Direct URL; null falls back to the
     // simulated reply so the UI still works for agents without one.
     private AgentConnectionService? _connection;
@@ -141,6 +152,14 @@ public sealed partial class ChatViewModel : ObservableObject
     public string? SessionId => _session?.Id;
     public string ConnectionDetail => IsConnecting ? "connecting" : IsProcessing ? "working" : "idle";
 
+    private AgentAcceptedInputs? _acceptedInputs;
+    /// <summary>The connected agent's advertised <c>/info</c> capabilities. Null while unknown (never fetched, or the fetch failed) — attachment UI does not block on unknown capability, see <see cref="Services.AttachmentValidationService"/>.</summary>
+    public AgentAcceptedInputs? AcceptedInputs
+    {
+        get => _acceptedInputs;
+        private set => SetProperty(ref _acceptedInputs, value);
+    }
+
     private string _headerText = "Chat";
     public string HeaderText { get => _headerText; private set => SetProperty(ref _headerText, value); }
 
@@ -156,20 +175,6 @@ public sealed partial class ChatViewModel : ObservableObject
     }
 
     public bool HasStatusText => !string.IsNullOrWhiteSpace(StatusText);
-
-    // Interactive turns, re-raised on the UI thread for the page to show dialogs.
-    public event Action<AskUserRequest>? AskUserRequested;
-    public event Action<ApprovalRequest>? ApprovalRequested;
-    public event Action<PlanReviewRequest>? PlanReviewRequested;
-
-    public Task RespondAskUserAsync(string answer)
-        => _connection?.RespondAskUserAsync(answer) ?? Task.CompletedTask;
-
-    public Task RespondApprovalAsync(bool approved, string scope = "once")
-        => _connection?.RespondApprovalAsync(approved, scope) ?? Task.CompletedTask;
-
-    public Task RespondPlanReviewAsync(string message)
-        => _connection?.RespondPlanReviewAsync(message) ?? Task.CompletedTask;
 
     private double _messageFontSize = 14;
     public double MessageFontSize { get => _messageFontSize; private set => SetProperty(ref _messageFontSize, value); }
@@ -210,6 +215,34 @@ public sealed partial class ChatViewModel : ObservableObject
         // Reflect cached presence immediately. The sidebar owns automatic
         // probing; the header button can still force a recheck.
         RaisePresenceProperties();
+
+        // Fire-and-forget: gates the attachment UI once it resolves, but a slow
+        // or failed /info probe must never block the chat from opening.
+        _ = RefreshAcceptedInputsAsync();
+    }
+
+    /// <summary>
+    /// Fetches (or reuses the cached) <c>/info</c> response and updates
+    /// <see cref="AcceptedInputs"/> so the composer can gate image/file
+    /// attachments on the agent's real advertised capability.
+    /// </summary>
+    private async Task RefreshAcceptedInputsAsync()
+    {
+        if (_agent is null) return;
+
+        string? infoJson;
+        try
+        {
+            infoJson = await AgentInfoService.FetchAndPersistAsync(_agent).ConfigureAwait(false);
+        }
+        catch
+        {
+            return;
+        }
+        if (infoJson is null) return;
+
+        var parsed = EndpointResolver.ParseAcceptedInputsFromInfoJson(infoJson);
+        _dispatcher.TryEnqueue(() => AcceptedInputs = parsed);
     }
 
     /// <summary>Re-probes the agent's online status (bound to the header button).</summary>
@@ -249,11 +282,11 @@ public sealed partial class ChatViewModel : ObservableObject
         _connection.OnboardRequired += () =>
             _dispatcher.TryEnqueue(AddOnboardingBubble);
         _connection.AskUserRequested += r =>
-            _dispatcher.TryEnqueue(() => AskUserRequested?.Invoke(r));
+            _dispatcher.TryEnqueue(() => AddAskUserBubble(r));
         _connection.ApprovalRequested += r =>
-            _dispatcher.TryEnqueue(() => ApprovalRequested?.Invoke(r));
+            _dispatcher.TryEnqueue(() => AddApprovalBubble(r));
         _connection.PlanReviewRequested += r =>
-            _dispatcher.TryEnqueue(() => PlanReviewRequested?.Invoke(r));
+            _dispatcher.TryEnqueue(() => AddPlanReviewBubble(r));
         RaiseConnectionProperties();
     }
 
@@ -321,12 +354,44 @@ public sealed partial class ChatViewModel : ObservableObject
             _agent, _session, Messages.ToList(), _createdAt);
     }
 
-    public async Task SendAsync(string text)
+    public async Task SendAsync(string text, IReadOnlyList<PendingAttachment>? attachments = null)
     {
         text = text?.Trim() ?? "";
-        if (text.Length == 0 || _agent is null || _session is null || IsProcessing) return;
+        var hasAttachments = attachments is { Count: > 0 };
+        if ((text.Length == 0 && !hasAttachments) || _agent is null || _session is null || IsProcessing) return;
 
-        Messages.Add(new ChatMessage { Id = NextId(), Role = ChatRole.User, Content = text });
+        var userMessage = new ChatMessage { Id = NextId(), Role = ChatRole.User, Content = text };
+        List<string>? imageDataUrls = null;
+        List<OutgoingFileAttachment>? fileAttachments = null;
+
+        if (hasAttachments)
+        {
+            imageDataUrls = new List<string>();
+            fileAttachments = new List<OutgoingFileAttachment>();
+            foreach (var attachment in attachments!)
+            {
+                userMessage.Attachments.Add(new ChatAttachment
+                {
+                    Kind = attachment.Kind,
+                    FileName = attachment.FileName,
+                    MimeType = attachment.MimeType,
+                    SizeBytes = attachment.SizeBytes,
+                    LocalCachePath = attachment.LocalPath,
+                    Status = AttachmentStatus.Sent,
+                });
+
+                if (attachment.DataUrl is null) continue; // shouldn't happen (composer only sends Ready attachments), skip defensively
+                if (attachment.Kind == AttachmentKind.Image) imageDataUrls.Add(attachment.DataUrl);
+                else fileAttachments.Add(new OutgoingFileAttachment(attachment.FileName, attachment.DataUrl));
+            }
+            if (imageDataUrls.Count == 0) imageDataUrls = null;
+            if (fileAttachments.Count == 0) fileAttachments = null;
+
+            System.Diagnostics.Debug.WriteLine(
+                $"[Attachment] sending images={imageDataUrls?.Count ?? 0} files={fileAttachments?.Count ?? 0}");
+        }
+
+        Messages.Add(userMessage);
         TouchSession(text);
         await PersistConversationAsync();
 
@@ -336,12 +401,19 @@ public sealed partial class ChatViewModel : ObservableObject
         var executionId = Guid.NewGuid().ToString();
         _currentExecutionId = executionId;
         _pendingTraces.Clear();
+        _turnModel = null;
+        _turnTokensIn = 0;
+        _turnTokensOut = 0;
+        _turnHasUsage = false;
+        _turnDurationMs = 0;
+        _turnContextPercent = null;
+        _turnToolCallsCount = 0;
         await AppServices.Conversations.InsertExecutionAsync(
             executionId, _session.Id, null, text, "running");
         try
         {
             var reply = _connection is not null
-                ? await _connection.SendInputAsync(text, _session.Id)
+                ? await _connection.SendInputAsync(text, _session.Id, images: imageDataUrls, files: fileAttachments)
                 : await SimulateReplyAsync(text);
             sent = true;
             RaiseConnectionProperties();
@@ -363,6 +435,7 @@ public sealed partial class ChatViewModel : ObservableObject
                     });
                 }
             }
+            AddTurnSummaryBubble();
             await PersistConversationAsync();
             await PersistSessionMetadataAsync();
             await FlushPendingTracesAsync();
@@ -391,6 +464,14 @@ public sealed partial class ChatViewModel : ObservableObject
             IsProcessing = false;
             if (sent) StatusText = "";
             RaiseConnectionProperties();
+
+            // Release the base64 payload now that the send attempt is over
+            // (success or failure) — it must not linger as long-held string state.
+            if (hasAttachments)
+            {
+                foreach (var attachment in attachments!) attachment.DataUrl = null;
+            }
+
             // Refresh the cache so re-opening this session shows the latest messages.
             if (_session is not null)
                 SessionCache[_session.Id] = new CachedSession(
