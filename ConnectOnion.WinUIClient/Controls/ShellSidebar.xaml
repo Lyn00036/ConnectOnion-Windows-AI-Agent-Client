@@ -33,6 +33,7 @@
                 <Setter Property="Height" Value="26" />
                 <Setter Property="Padding" Value="0" />
             </Style>
+
         </Grid.Resources>
 
         <Grid.RowDefinitions>
@@ -120,15 +121,35 @@
                                   PointerExited="SessionRow_PointerExited"
                                   GotFocus="SessionRow_GotFocus"
                                   LostFocus="SessionRow_LostFocus">
+                                <!--
+                                    Shadows the theme's Button chrome resource keys so the
+                                    name button and the Pin icon button in this row don't
+                                    each paint their own separate PointerOver/Pressed
+                                    background — only the unified RowStateToBackground
+                                    Border below does. Must be declared inline per
+                                    DataTemplate (not a shared StaticResource): WinUI
+                                    requires a Resources dictionary to be uniquely owned
+                                    per element, and ItemsRepeater re-instantiates this
+                                    template once per row.
+                                -->
+                                <Grid.Resources>
+                                    <ResourceDictionary>
+                                        <SolidColorBrush x:Key="ButtonBackground" Color="Transparent" />
+                                        <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="Transparent" />
+                                        <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="Transparent" />
+                                        <SolidColorBrush x:Key="ButtonBorderBrush" Color="Transparent" />
+                                        <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="Transparent" />
+                                        <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="Transparent" />
+                                    </ResourceDictionary>
+                                </Grid.Resources>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <Border Grid.ColumnSpan="2"
                                         CornerRadius="8"
-                                        Background="{ThemeResource AccentFillColorSecondaryBrush}"
-                                        Opacity="0.16"
-                                        Visibility="{Binding IsSelected, Converter={StaticResource BoolToVis}}" />
+                                        Background="{Binding IsSelected, Converter={StaticResource RowStateToBackground}}"
+                                        Visibility="{Binding ShowRowBackground, Converter={StaticResource BoolToVis}}" />
                                 <Border Grid.ColumnSpan="2"
                                         Width="3"
                                         Height="22"
@@ -189,6 +210,16 @@
                                     PointerExited="AgentRow_PointerExited"
                                     GotFocus="AgentRow_GotFocus"
                                     LostFocus="AgentRow_LostFocus">
+                                <Border.Resources>
+                                    <ResourceDictionary>
+                                        <SolidColorBrush x:Key="ButtonBackground" Color="Transparent" />
+                                        <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="Transparent" />
+                                        <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="Transparent" />
+                                        <SolidColorBrush x:Key="ButtonBorderBrush" Color="Transparent" />
+                                        <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="Transparent" />
+                                        <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="Transparent" />
+                                    </ResourceDictionary>
+                                </Border.Resources>
                                 <Grid MinHeight="44" Padding="1.5,0" ColumnSpacing="6">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
@@ -198,9 +229,8 @@
                                     </Grid.ColumnDefinitions>
                                     <Border Grid.ColumnSpan="4"
                                             CornerRadius="7"
-                                            Background="{ThemeResource AccentFillColorSecondaryBrush}"
-                                            Opacity="0.18"
-                                            Visibility="{Binding IsSelected, Converter={StaticResource BoolToVis}}" />
+                                            Background="{Binding IsSelected, Converter={StaticResource RowStateToBackground}}"
+                                            Visibility="{Binding ShowRowBackground, Converter={StaticResource BoolToVis}}" />
                                     <Border Grid.ColumnSpan="4"
                                             Width="3"
                                             Height="24"
@@ -260,8 +290,14 @@
                                                   Height="10"
                                                   VerticalAlignment="Center"
                                                   ToolTipService.ToolTip="{Binding PresenceLabel}">
+                                                <!-- Breathing effect for the online status dot: slow opacity
+                                                     fade, forever, started from code-behind on Loaded (see
+                                                     OnlinePresenceDot_Loaded) — WinUI's FrameworkElement.Triggers/
+                                                     EventTrigger doesn't support a RoutedEvent attribute the way
+                                                     WPF's does, so a XAML-only trigger isn't an option here. -->
                                                 <Ellipse Fill="{ThemeResource StatusSuccessTextBrush}"
-                                                         Visibility="{Binding IsOnline, Converter={StaticResource BoolToVis}}" />
+                                                         Visibility="{Binding IsOnline, Converter={StaticResource BoolToVis}}"
+                                                         Loaded="OnlinePresenceDot_Loaded" />
                                                 <Ellipse Stroke="{ThemeResource ShellMutedTextBrush}"
                                                          StrokeThickness="1.5"
                                                          Visibility="{Binding IsOfflineIconVisible, Converter={StaticResource BoolToVis}}" />
@@ -290,7 +326,7 @@
                                                     Tag="{Binding Id}"
                                                     AutomationProperties.Name="Delete agent"
                                                     ToolTipService.ToolTip="Delete agent">
-                                                <ic:FluentIcon Icon="Delete" IconVariant="Regular" IconSize="Size16" Foreground="{ThemeResource ShellMutedTextBrush}" />
+                                                <ic:FluentIcon Icon="Dismiss" IconVariant="Regular" IconSize="Size12" Foreground="{ThemeResource ShellMutedTextBrush}" />
                                             </Button>
                                         </StackPanel>
                                     </StackPanel>
@@ -306,15 +342,24 @@
                                               PointerExited="SessionRow_PointerExited"
                                               GotFocus="SessionRow_GotFocus"
                                               LostFocus="SessionRow_LostFocus">
+                                            <Grid.Resources>
+                                                <ResourceDictionary>
+                                                    <SolidColorBrush x:Key="ButtonBackground" Color="Transparent" />
+                                                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="Transparent" />
+                                                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="Transparent" />
+                                                    <SolidColorBrush x:Key="ButtonBorderBrush" Color="Transparent" />
+                                                    <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="Transparent" />
+                                                    <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="Transparent" />
+                                                </ResourceDictionary>
+                                            </Grid.Resources>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
                                             <Border Grid.ColumnSpan="2"
                                                     CornerRadius="8"
-                                                    Background="{ThemeResource AccentFillColorSecondaryBrush}"
-                                                    Opacity="0.16"
-                                                    Visibility="{Binding IsSelected, Converter={StaticResource BoolToVis}}" />
+                                                    Background="{Binding IsSelected, Converter={StaticResource RowStateToBackground}}"
+                                                    Visibility="{Binding ShowRowBackground, Converter={StaticResource BoolToVis}}" />
                                             <Border Grid.ColumnSpan="2"
                                                     Width="3"
                                                     Height="22"
@@ -357,7 +402,7 @@
                                                     Visibility="{Binding AreActionsVisible, Converter={StaticResource BoolToVis}}"
                                                     AutomationProperties.Name="Delete chat"
                                                     ToolTipService.ToolTip="Delete chat">
-                                                <ic:FluentIcon Icon="Delete" IconVariant="Regular" IconSize="Size16" Foreground="{ThemeResource ShellMutedTextBrush}" />
+                                                <ic:FluentIcon Icon="Dismiss" IconVariant="Regular" IconSize="Size12" Foreground="{ThemeResource ShellMutedTextBrush}" />
                                             </Button>
                                         </Grid>
                                     </DataTemplate>

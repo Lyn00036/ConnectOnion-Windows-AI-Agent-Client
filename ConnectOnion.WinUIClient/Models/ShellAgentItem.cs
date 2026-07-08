@@ -11,6 +11,7 @@ public sealed class ShellAgentItem : ObservableObject
 {
     private bool _isExpanded;
     private bool _isSelected;
+    private bool _isHovered;
     private bool _areActionsVisible;
     private AgentPresence _presence;
 
@@ -40,7 +41,18 @@ public sealed class ShellAgentItem : ObservableObject
             OnPropertyChanged(nameof(ChevronAngle));
         }
     }
-    public bool IsSelected { get => _isSelected; set => SetProperty(ref _isSelected, value); }
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set { if (SetProperty(ref _isSelected, value)) OnPropertyChanged(nameof(ShowRowBackground)); }
+    }
+    public bool IsHovered
+    {
+        get => _isHovered;
+        set { if (SetProperty(ref _isHovered, value)) OnPropertyChanged(nameof(ShowRowBackground)); }
+    }
+    /// <summary>True when the row should paint its unified background layer (selected and/or hovered) — see <c>RowStateToBackgroundConverter</c>.</summary>
+    public bool ShowRowBackground => IsSelected || IsHovered;
     public bool AreActionsVisible { get => _areActionsVisible; set => SetProperty(ref _areActionsVisible, value); }
     public AgentPresence Presence
     {

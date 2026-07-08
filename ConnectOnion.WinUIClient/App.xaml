@@ -35,7 +35,7 @@
                     <SolidColorBrush x:Key="ShellBackgroundBrush" Color="#FFFFFFFF" />
                     <SolidColorBrush x:Key="ShellSidebarBrush" Color="#FFF7F7F8" />
                     <SolidColorBrush x:Key="ShellRowBrush" Color="#FFF4F4F5" />
-                    <SolidColorBrush x:Key="ShellHoverBrush" Color="#FFEFEFF0" />
+                    <SolidColorBrush x:Key="ShellHoverBrush" Color="#FFF6F6F7" />
                     <SolidColorBrush x:Key="ShellMutedTextBrush" Color="#FF6F737A" />
                     <SolidColorBrush x:Key="ThinkingStatusBackgroundBrush" Color="#FFE7F7EE" />
                     <SolidColorBrush x:Key="ThinkingStatusBorderBrush" Color="#FF9BD7B8" />
@@ -111,6 +111,8 @@
             <common:StringToVisibilityConverter x:Key="StringToVis" />
             <common:PresenceToBrushConverter x:Key="PresenceToBrush" />
             <common:EventStatusToBrushConverter x:Key="EventStatusToBrush" />
+            <common:LocalPathToImageSourceConverter x:Key="PathToImage" />
+            <common:RowStateToBackgroundConverter x:Key="RowStateToBackground" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

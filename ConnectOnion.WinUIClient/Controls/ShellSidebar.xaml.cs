@@ -11,6 +11,8 @@ using ConnectOnion.WinUIClient.Views;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media.Animation;
+using Microsoft.UI.Xaml.Shapes;
 
 namespace ConnectOnion.WinUIClient.Controls;
 
@@ -320,11 +322,39 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     private void TogglePinned_Click(object sender, RoutedEventArgs e)
         => IsPinnedExpanded = !IsPinnedExpanded;
 
+    /// <summary>
+    /// Starts the online-dot breathing animation once per realized Ellipse.
+    /// WinUI's FrameworkElement.Triggers/EventTrigger has no RoutedEvent
+    /// property (WPF-only), so a XAML-declared Loaded trigger isn't valid here
+    /// — the Storyboard is built and started from code instead.
+    /// </summary>
+    private void OnlinePresenceDot_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Ellipse ellipse) return;
+
+        var animation = new DoubleAnimation
+        {
+            From = 1.0,
+            To = 0.35,
+            Duration = TimeSpan.FromSeconds(1.2),
+            AutoReverse = true,
+            RepeatBehavior = RepeatBehavior.Forever,
+            EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut },
+        };
+        Storyboard.SetTarget(animation, ellipse);
+        Storyboard.SetTargetProperty(animation, "Opacity");
+
+        var storyboard = new Storyboard();
+        storyboard.Children.Add(animation);
+        storyboard.Begin();
+    }
+
     private void AgentRow_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.DataContext is ShellAgentItem agent)
         {
             agent.AreActionsVisible = true;
+            agent.IsHovered = true;
         }
     }
 
@@ -333,6 +363,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         if ((sender as FrameworkElement)?.DataContext is ShellAgentItem agent)
         {
             agent.AreActionsVisible = false;
+            agent.IsHovered = false;
         }
     }
 
@@ -341,6 +372,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         if ((sender as FrameworkElement)?.DataContext is ShellAgentItem agent)
         {
             agent.AreActionsVisible = true;
+            agent.IsHovered = true;
         }
     }
 
@@ -349,6 +381,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         if ((sender as FrameworkElement)?.DataContext is ShellAgentItem agent)
         {
             agent.AreActionsVisible = false;
+            agent.IsHovered = false;
         }
     }
 
@@ -437,6 +470,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         if ((sender as FrameworkElement)?.DataContext is ShellSessionItem session)
         {
             session.AreActionsVisible = true;
+            session.IsHovered = true;
         }
     }
 
@@ -445,6 +479,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         if ((sender as FrameworkElement)?.DataContext is ShellSessionItem session)
         {
             session.AreActionsVisible = false;
+            session.IsHovered = false;
         }
     }
 
@@ -453,6 +488,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         if ((sender as FrameworkElement)?.DataContext is ShellSessionItem session)
         {
             session.AreActionsVisible = true;
+            session.IsHovered = true;
         }
     }
 
@@ -461,6 +497,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         if ((sender as FrameworkElement)?.DataContext is ShellSessionItem session)
         {
             session.AreActionsVisible = false;
+            session.IsHovered = false;
         }
     }
 
@@ -489,6 +526,25 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         sessionsState.Sessions.Remove(session);
         await AppServices.Conversations.DeleteMessagesAsync(sessionId);
         await AppServices.Conversations.DeleteExecutionsAndTracesAsync(sessionId);
+
+        // No conversations left for this agent — go back to the agent page
+        // instead of silently starting a fresh conversation, so deleting the
+        // last chat doesn't just spawn another one in its place.
+        var hasRemainingForAgent = sessionsState.Sessions.Any(entry => entry.AgentId == session.AgentId);
+        if (!hasRemainingForAgent)
+        {
+            if (sessionsState.ActiveSessionId == sessionId) sessionsState.ActiveSessionId = null;
+            await AppServices.Sessions.SaveAsync(sessionsState);
+
+            var agentsState = await AppServices.Agents.LoadAsync();
+            agentsState.SelectedAgentId = session.AgentId;
+            await AppServices.Agents.SaveAsync(agentsState);
+
+            await RefreshAsync();
+            RequestNavigation(typeof(AgentDetailPage), forceReload: true);
+            return;
+        }
+
         if (sessionsState.ActiveSessionId == sessionId)
         {
             sessionsState.ActiveSessionId = sessionsState.Sessions
