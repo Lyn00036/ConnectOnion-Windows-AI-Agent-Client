@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Semantic color tokens (raw Color values only — see Brushes.xaml for the
+    SolidColorBrush layer pages actually bind to). Brand base: Deep Purple
+    (#673AB7 primary / #7C4DFF accent), extended into a full light/dark
+    surface + text + status + chat + sidebar scale.
+
+    Naming: <Concept>Color, grouped by role (Brand / Surface / Text / Border /
+    Status / Search / Chat / Sidebar), not by literal hue — see CLAUDE.md
+    "Not implemented yet" history and the color-system task this file was
+    introduced for. Dark theme is a distinct, hand-tuned palette (deep
+    purple-gray, never pure black) — not an inverted copy of Light.
+-->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ResourceDictionary.ThemeDictionaries>
+
+        <ResourceDictionary x:Key="Light">
+
+            <!-- Brand -->
+            <Color x:Key="BrandPrimaryColor">#FF673AB7</Color>
+            <Color x:Key="BrandPrimaryHoverColor">#FF5E35B1</Color>
+            <Color x:Key="BrandPrimaryPressedColor">#FF512DA8</Color>
+            <Color x:Key="BrandPrimarySubtleColor">#FFD1C4E9</Color>
+            <Color x:Key="BrandAccentColor">#FF7C4DFF</Color>
+            <Color x:Key="BrandAccentHoverColor">#FF7043F5</Color>
+            <Color x:Key="BrandAccentPressedColor">#FF6236E5</Color>
+            <Color x:Key="BrandOnPrimaryColor">#FFFFFFFF</Color>
+
+            <!-- Background / Surface -->
+            <Color x:Key="AppBackgroundColor">#FFF8F7FA</Color>
+            <Color x:Key="SurfacePrimaryColor">#FFFFFFFF</Color>
+            <Color x:Key="SurfaceSecondaryColor">#FFF5F3F8</Color>
+            <Color x:Key="SurfaceTertiaryColor">#FFEEEAF4</Color>
+            <Color x:Key="SurfaceElevatedColor">#FFFFFFFF</Color>
+            <Color x:Key="SurfaceHoverColor">#FFF0ECF7</Color>
+            <Color x:Key="SurfacePressedColor">#FFE5DFF0</Color>
+            <Color x:Key="SurfaceSelectedColor">#FFE8E0F5</Color>
+
+            <!-- Text -->
+            <Color x:Key="TextPrimaryColor">#FF212121</Color>
+            <Color x:Key="TextSecondaryColor">#FF757575</Color>
+            <Color x:Key="TextTertiaryColor">#FF8C8792</Color>
+            <Color x:Key="TextDisabledColor">#FFAAA5AF</Color>
+            <Color x:Key="TextOnBrandColor">#FFFFFFFF</Color>
+            <Color x:Key="TextLinkColor">#FF673AB7</Color>
+            <Color x:Key="TextLinkHoverColor">#FF512DA8</Color>
+
+            <!-- Border -->
+            <Color x:Key="BorderSubtleColor">#FFE8E4EC</Color>
+            <Color x:Key="BorderDefaultColor">#FFDDD8E3</Color>
+            <Color x:Key="BorderStrongColor">#FFBDBDBD</Color>
+            <Color x:Key="DividerColor">#FFE3DFE7</Color>
+            <Color x:Key="FocusBorderColor">#FF7C4DFF</Color>
+
+            <!-- Status -->
+            <Color x:Key="SuccessColor">#FF2E7D32</Color>
+            <Color x:Key="WarningColor">#FFED6C02</Color>
+            <Color x:Key="DangerColor">#FFD32F2F</Color>
+            <Color x:Key="InfoColor">#FF1976D2</Color>
+
+            <!-- Search -->
+            <Color x:Key="SearchMatchBackgroundColor">#FFFFE082</Color>
+            <Color x:Key="SearchCurrentBackgroundColor">#FFFFB74D</Color>
+            <Color x:Key="SearchMatchTextColor">#FF212121</Color>
+
+            <!-- Chat -->
+            <Color x:Key="ChatBackgroundColor">#FFFFFFFF</Color>
+            <Color x:Key="UserMessageBackgroundColor">#FFEEE8F8</Color>
+            <Color x:Key="AgentMessageBackgroundColor">#FFFFFFFF</Color>
+            <Color x:Key="SystemMessageBackgroundColor">#FFF5F3F8</Color>
+            <Color x:Key="ChatInputBackgroundColor">#FFF7F5F9</Color>
+            <Color x:Key="CodeBackgroundColor">#FFF3F0F6</Color>
+            <Color x:Key="InlineCodeBackgroundColor">#FFEEEAF4</Color>
+            <Color x:Key="CodeTextColor">#FF6C50AA</Color>
+
+            <!-- Sidebar -->
+            <Color x:Key="SidebarBackgroundColor">#FFF5F3F8</Color>
+            <Color x:Key="SidebarItemHoverColor">#FFECE7F3</Color>
+            <Color x:Key="SidebarItemPressedColor">#FFE2DAED</Color>
+            <Color x:Key="SidebarItemSelectedColor">#FFE8E0F5</Color>
+            <Color x:Key="SidebarSelectedAccentColor">#FF673AB7</Color>
+
+        </ResourceDictionary>
+
+        <ResourceDictionary x:Key="Dark">
+
+            <!-- Brand -->
+            <Color x:Key="BrandPrimaryColor">#FF9A7AE0</Color>
+            <Color x:Key="BrandPrimaryHoverColor">#FFAA8BEA</Color>
+            <Color x:Key="BrandPrimaryPressedColor">#FF8768CE</Color>
+            <Color x:Key="BrandPrimarySubtleColor">#FF3D3154</Color>
+            <Color x:Key="BrandAccentColor">#FF9D7BFF</Color>
+            <Color x:Key="BrandAccentHoverColor">#FFAD8FFF</Color>
+            <Color x:Key="BrandAccentPressedColor">#FF8A66E8</Color>
+            <Color x:Key="BrandOnPrimaryColor">#FFFFFFFF</Color>
+
+            <!-- Background / Surface -->
+            <Color x:Key="AppBackgroundColor">#FF18171C</Color>
+            <Color x:Key="SurfacePrimaryColor">#FF211F27</Color>
+            <Color x:Key="SurfaceSecondaryColor">#FF292631</Color>
+            <Color x:Key="SurfaceTertiaryColor">#FF332F3D</Color>
+            <Color x:Key="SurfaceElevatedColor">#FF302C39</Color>
+            <Color x:Key="SurfaceHoverColor">#FF393442</Color>
+            <Color x:Key="SurfacePressedColor">#FF463F52</Color>
+            <Color x:Key="SurfaceSelectedColor">#FF3D3455</Color>
+
+            <!-- Text -->
+            <Color x:Key="TextPrimaryColor">#FFF7F5FA</Color>
+            <Color x:Key="TextSecondaryColor">#FFC8C3CF</Color>
+            <Color x:Key="TextTertiaryColor">#FF9D97A6</Color>
+            <Color x:Key="TextDisabledColor">#FF716B79</Color>
+            <Color x:Key="TextOnBrandColor">#FFFFFFFF</Color>
+            <Color x:Key="TextLinkColor">#FFB39DFF</Color>
+            <Color x:Key="TextLinkHoverColor">#FFC7B8FF</Color>
+
+            <!-- Border -->
+            <Color x:Key="BorderSubtleColor">#FF34303B</Color>
+            <Color x:Key="BorderDefaultColor">#FF413C49</Color>
+            <Color x:Key="BorderStrongColor">#FF5C5565</Color>
+            <Color x:Key="DividerColor">#FF38343F</Color>
+            <Color x:Key="FocusBorderColor">#FF9D7BFF</Color>
+
+            <!-- Status -->
+            <Color x:Key="SuccessColor">#FF81C784</Color>
+            <Color x:Key="WarningColor">#FFFFB74D</Color>
+            <Color x:Key="DangerColor">#FFEF9A9A</Color>
+            <Color x:Key="InfoColor">#FF64B5F6</Color>
+
+            <!-- Search -->
+            <Color x:Key="SearchMatchBackgroundColor">#FF7A651A</Color>
+            <Color x:Key="SearchCurrentBackgroundColor">#FFA85F16</Color>
+            <Color x:Key="SearchMatchTextColor">#FFFFFFFF</Color>
+
+            <!-- Chat -->
+            <Color x:Key="ChatBackgroundColor">#FF211F27</Color>
+            <Color x:Key="UserMessageBackgroundColor">#FF3C3153</Color>
+            <Color x:Key="AgentMessageBackgroundColor">#FF211F27</Color>
+            <Color x:Key="SystemMessageBackgroundColor">#FF292631</Color>
+            <Color x:Key="ChatInputBackgroundColor">#FF2C2933</Color>
+            <Color x:Key="CodeBackgroundColor">#FF18171C</Color>
+            <Color x:Key="InlineCodeBackgroundColor">#FF332F3D</Color>
+            <Color x:Key="CodeTextColor">#FFE9E0FF</Color>
+
+            <!-- Sidebar -->
+            <Color x:Key="SidebarBackgroundColor">#FF292631</Color>
+            <Color x:Key="SidebarItemHoverColor">#FF393442</Color>
+            <Color x:Key="SidebarItemPressedColor">#FF463F52</Color>
+            <Color x:Key="SidebarItemSelectedColor">#FF3D3455</Color>
+            <Color x:Key="SidebarSelectedAccentColor">#FF9D7BFF</Color>
+
+        </ResourceDictionary>
+
+    </ResourceDictionary.ThemeDictionaries>
+
+</ResourceDictionary>

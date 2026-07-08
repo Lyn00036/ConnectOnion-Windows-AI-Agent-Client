@@ -1,5 +1,6 @@
 using ConnectOnion.WinUIClient.Models;
 using Microsoft.UI.Xaml;
+using Windows.UI;
 
 namespace ConnectOnion.WinUIClient.Services;
 
@@ -41,6 +42,35 @@ public static class ThemeService
 
     private static ElementTheme EffectiveTheme
         => _root?.ActualTheme == ElementTheme.Dark ? ElementTheme.Dark : ElementTheme.Light;
+
+    /// <summary>
+    /// Resolves a <see cref="Color"/> token straight from the app's Light/Dark
+    /// <c>Styles/Colors.xaml</c> ThemeDictionaries, for the specific requested
+    /// theme regardless of the app's current ambient theme. For the handful of
+    /// call sites (Win2D canvas draws, <c>AppWindowTitleBar</c>) that need a raw
+    /// <see cref="Color"/> rather than a brush and can't use
+    /// <c>{ThemeResource}</c> markup — keeps them reading the same tokens pages
+    /// bind to instead of duplicating hex literals.
+    /// <c>Application.Resources.ThemeDictionaries</c> only reflects entries
+    /// declared directly on that dictionary, not ones nested inside its merged
+    /// dictionaries, so this walks <c>MergedDictionaries</c> to find the one
+    /// (<c>Colors.xaml</c>) that actually declares <paramref name="key"/>.
+    /// </summary>
+    public static Color GetColor(string key, bool isDark)
+    {
+        var themeKey = isDark ? "Dark" : "Light";
+        foreach (var merged in Application.Current.Resources.MergedDictionaries)
+        {
+            if (merged.ThemeDictionaries.TryGetValue(themeKey, out var themeDictionaryObj)
+                && themeDictionaryObj is ResourceDictionary themeDictionary
+                && themeDictionary.TryGetValue(key, out var value))
+            {
+                return (Color)value;
+            }
+        }
+
+        throw new System.Collections.Generic.KeyNotFoundException($"Theme color '{key}' not found in '{themeKey}'.");
+    }
 
     private static void Root_ActualThemeChanged(FrameworkElement sender, object args)
     {
