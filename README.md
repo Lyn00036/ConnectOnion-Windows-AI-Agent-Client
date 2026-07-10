@@ -16,12 +16,14 @@ User
   -> XAML pages: Home, Chat, AgentDetail, Sessions, Identity, Settings
   -> ViewModels: MVVM state and commands
   -> Services:
-      -> SQLite repositories for local app state
+      -> SQLite repositories (Data/) for local app state
       -> ConnectionTester for /health and relay reachability probes
       -> AgentPresenceService for in-memory online status caching
       -> AgentInfoService for /info fetch, caching, and change detection
-      -> IdentityStore for the local Ed25519 identity
+      -> IdentityStore for the local Ed25519 identity (DPAPI-encrypted seed)
       -> ThemeService for light/dark theme management
+      -> Attachment pipeline: PickerService / DropService / ValidationService
+         / Encoder / ImageCacheService for outgoing + incoming multimodal content
       -> ConnectOnion.Protocol for WebSocket protocol handling
           -> ClientWebSocket / HttpClient
           -> canonical JSON signing
@@ -44,12 +46,19 @@ Current SQLite tables:
 | --- | --- |
 | `app_meta` | key, value |
 | `agents` | id, name, address, direct_url, invite_code, info_json, info_updated_at, sort_order |
-| `sessions` | id, agent_id, title, created_at, updated_at, sort_order |
-| `preferences` | theme, sidebar_visible, message_font_size, shortcut_overrides_json |
-| `conversations` | storage_key, address, session_id, envelope_json, updated_at |
-| `identity_keys` | address, private_seed |
+| `sessions` | id, agent_id, title, remote_session_id, last_processed_event_id, created_at, updated_at, sort_order |
+| `preferences` | theme, sidebar_visible, message_font_size, shortcut_overrides_json, microphone_device_id |
+| `messages` | conversation_id, id, role, content, agent_name, event_kind/title/detail/meta/args/result/status, is_onboarding, created_at |
+| `message_attachments` | conversation_id, message_id, id, kind, file_name, mime_type, size_bytes, local_cache_path, remote_uri, status |
+| `executions` | id, conversation_id, remote_session_id, prompt, result, status, duration_ms, created_at |
+| `trace_events` | id, conversation_id, execution_id, session_id, type, payload_json, ts |
+| `identity_keys` | address, private_seed (DPAPI-protected, base64-encoded) |
 
-The database uses WAL journal mode and enforces foreign keys.
+`messages` is one row per rendered chat bubble (not a serialized conversation
+envelope) — `ConversationRepository` deletes and reinserts the full message
+list per save. `message_attachments` stores attachment metadata only; the
+base64 payload is never persisted. The database uses WAL journal mode and
+enforces foreign keys.
 
 ## Project Structure
 
@@ -62,6 +71,9 @@ connectonion-desktop/
     MainWindow.xaml[.cs]              Shell window with Mica backdrop, custom title bar
     MainWindow.Tray.cs               System tray icon, close dialog, minimize/restore
     MainWindow.FileMenu.cs           File menu handlers and keyboard shortcuts
+    MainWindow.EditMenu.cs           Undo/redo/cut/copy/paste/select-all + accelerators
+    MainWindow.ViewMenu.cs           Sidebar toggle, zoom, full screen, find overlay
+    MainWindow.DragDrop.cs           Window-level drag-and-drop attachment handling
     Views/
       HomePage                        Agent selection landing page
       ChatPage                        Real-time chat with streaming events
@@ -70,42 +82,60 @@ connectonion-desktop/
       IdentityPage                    Local Ed25519 identity display
       SettingsPage                    Theme, sidebar, font size, shortcuts
     ViewModels/
-      ChatViewModel.cs                Send input, stream events, message rendering
-      SessionsViewModel.cs            Session CRUD, active session tracking
-      AgentDetailViewModel.cs         Agent form state, /info loading, connection testing
-      SettingsViewModel.cs            Preference read/write
+      ChatViewModel.cs                 Session/connection lifecycle, SendAsync
+      ChatViewModel.StreamEvents.cs    Stream-event -> ChatMessage mapping, interactive turns
+      SessionsViewModel.cs             Session CRUD, active session tracking
+      AgentDetailViewModel.cs          Agent form state, /info loading, connection testing
+      SettingsViewModel.cs             Preference read/write
     Controls/
       ShellSidebar.xaml[.cs]          Agent list + session list navigation
       AddAgentForm.xaml[.cs]          Inline agent creation form
+      ChatComposer.xaml[.cs]          Message input, attachment picker/drop, mic device
     Models/
       AgentConfig.cs                  Saved agent connection
       AgentHealthResponse.cs          /health endpoint shape
-      ChatEnvelope.cs                 Serialized conversation payload
-      ChatMessage.cs                  Chat bubble (user/agent/event)
+      ChatMessage.cs                  Chat bubble (user/agent/event), generic Event* fields
+      ChatAttachment.cs               Resolved attachment metadata for a chat bubble
+      PendingAttachment.cs            Picked/dropped attachment awaiting send
+      AskUserEntries.cs               ask_user interactive turn field models
       OnboardSubmission.cs            Onboarding invite code payload
-      PreferencesSnapshot.cs          Theme, font size, sidebar, shortcuts
+      PreferencesSnapshot.cs          Theme, font size, sidebar, shortcuts, mic device
       SessionSummary.cs               Indexed conversation metadata
       ShellAgentItem.cs               Sidebar agent list item
       ShellSessionItem.cs             Sidebar session list item
-    Services/
+    Data/
       AppDatabase.cs                  SQLite initialization and schema
-      AppServices.cs                  Process-wide singleton service locator
       AppStorage.cs                   Local filesystem directory setup
       AgentRepository.cs              Agent CRUD (SQLite)
       SessionRepository.cs            Session CRUD (SQLite)
-      ConversationRepository.cs       Conversation envelope persistence (SQLite)
+      ConversationRepository.cs       Message/attachment persistence (SQLite)
       PreferencesRepository.cs        Preference persistence (SQLite)
-      IdentityStore.cs                Local Ed25519 identity persistence (SQLite)
+      IdentityStore.cs                Local Ed25519 identity persistence, DPAPI-encrypted seed
+    Services/
+      AppServices.cs                  Process-wide singleton service locator
       ConnectionTester.cs             Direct URL and relay reachability probes
       AgentInfoService.cs             /info fetch, 5-minute cache, change detection
       AgentPresenceService.cs         In-memory online status cache with TTL
-      ThemeService.cs                 Light/dark theme management
-      AppJsonContext.cs               System.Text.Json source-generation context
+      ThemeService.cs                 Light/dark theme management, raw Color lookup
+      AttachmentPickerService.cs      FileOpenPicker for outgoing images/files
+      AttachmentDropService.cs        Drag-and-drop attachment handling
+      AttachmentValidationService.cs  Preflight checks against agent /info capabilities
+      AttachmentEncoder.cs            Off-UI-thread data: URL encoding
+      AttachmentImageCacheService.cs  Decode/cache incoming agent_image attachments
+      AttachmentIntake.cs             Shared picker/drop -> validated attachment pipeline
+      MimeTypeResolver.cs             Extension -> MIME type lookup
+    Rendering/
+      WinUiMarkdownRenderer.cs        Markdown -> WinUI inline/block rendering for chat
     Common/
       ObservableObject.cs             INotifyPropertyChanged base class
       RelayCommand.cs                 ICommand implementation
       BoolToVisibilityConverter.cs    XAML value converters
       ChatRoleConverters.cs           Role-based alignment and color converters
+      RowStateToBackgroundConverter.cs  Unified hover/selected row background
+      LocalPathToImageSourceConverter.cs  Cached image path -> BitmapImage
+    Styles/
+      Colors.xaml                     Raw Light/Dark Color resources (brand palette)
+      Brushes.xaml                    Semantic brushes + re-pointed Fluent theme keys
     Properties/PublishProfiles/       win-x86, win-x64, win-arm64 profiles
     Package.appxmanifest              MSIX package manifest
 
@@ -115,6 +145,8 @@ connectonion-desktop/
     CanonicalJson.cs                  Canonical JSON serializer
     EndpointResolver.cs               Relay lookup and endpoint probing
     WireMessage.cs                    Protocol message definitions
+    InputMessageBuilder.cs            Builds the INPUT wire frame (text/images/files)
+    AttachmentModels.cs               DataUrlCodec + agent_image/files_received parsers
     InteractiveModels.cs              ask_user, approval, plan review models
     Hex.cs                            Lowercase hex helpers
 
@@ -122,6 +154,7 @@ connectonion-desktop/
     Program.cs                        C# vs JS signing conformance runner
     ref-sign.js                       Reference JavaScript signer
 
+  ConnectOnion.Protocol.Tests/        xunit tests for ConnectOnion.Protocol (not in .sln/CI yet)
   ConnectOnion.Protocol.LiveTest/
     Program.cs                        Optional live WebSocket integration test
 
@@ -301,6 +334,12 @@ Known deployed development agents:
 | --- | --- | --- |
 | email-agent | `http://124.156.170.117/email` | `0x66f0bb49d47cb1859678f1e39c0d40a3b2e2e96921e7de9ca7dae8e0aacaa2ca` |
 | browser-agent | `http://124.156.170.117/browser` | `0xf83dfaec8890059e0bc247e78449000a4d81e808ad1d45042cfcbf28406713cb` |
+| remote-admin-agent | `http://124.156.170.117/remote-admin` | `0xbd53aac6952595726f2853542a2dde199da7327cd03903f328e6572d0b268506` |
+| multimodal_agent | `http://124.156.170.117/multimodal` | `0x01bd18d01e3a05d5d4387446f5806e59d0b0a910803bad3f1515c6842fc670fb` |
+
+> **Access notes:** `remote-admin-agent` is not self-service — contact **Kai Pan** to get
+> added to the whitelist before connecting. All other agents above accept the invite
+> code `COMP9900` during onboarding.
 
 ## Implemented
 
@@ -309,36 +348,42 @@ Known deployed development agents:
 - Agent add, edit, delete, select, and connection testing (Direct URL + relay)
 - Agent /info fetch with 5-minute cache and change detection
 - Agent online presence with TTL-based caching and per-agent status indicators
-- Per-agent sessions and conversation persistence
-- Local Ed25519 identity display (Identity page)
+- Per-agent sessions with message/attachment persistence (one row per chat bubble)
+- Local Ed25519 identity display (Identity page), seed encrypted at rest via DPAPI
 - SQLite-backed local storage with WAL journal mode and foreign keys
 - Direct URL and relay connection paths
 - WebSocket protocol handling through `ConnectOnion.Protocol`
 - Canonical JSON signing compatible with the JavaScript reference implementation
 - Stream event display for thinking/tool/status events with collapsible cards
+- Interactive turns (`ask_user`, `approval_needed`, `plan_review`) as persistent inline chat bubbles
+- Multimodal attachments: outgoing image/file picking and drag-and-drop, agent-capability
+  preflight validation, and incoming `agent_image`/`files_received` rendering with local disk cache
 - User and agent message layout aligned with the current desktop UX
+- Markdown rendering for chat messages (`WinUiMarkdownRenderer`)
 - Copy action for chat messages
 - Collapse/expand for long responses
-- Light/dark theme with shell-aware title bar colors
+- In-chat find overlay (Ctrl+F) with match highlighting and next/previous navigation
+- Agent offline notice surfaced in the chat composer
+- Light/dark theme with shell-aware title bar colors and semantic brush system
 - Configurable message font size (S/M/L)
-- Keyboard shortcuts (sidebar toggle, new chat) with user-customizable bindings
+- Keyboard shortcuts (sidebar toggle, new chat, zoom, full screen, find) with user-customizable bindings
 - Responsive sidebar with agent list and session list navigation
 - Back/forward navigation in the title bar
 - Suggested prompts for new conversations
 - System tray icon with left-click restore, right-click menu (Open Window / Exit)
 - Close button (X) dialog with Minimize to tray / Exit / Cancel options
 - File menu with keyboard shortcuts (Ctrl+N new chat, Ctrl+Shift+N new window, Ctrl+W close)
+- Edit menu (undo/redo/cut/copy/paste/select all) and View menu (sidebar, zoom, full screen, find)
 - Protocol conformance test gate
 - Windows/.NET CI workflow
 
 ## Not Implemented Yet
 
 - Production installer/release pipeline (MSIX packaging is configured but not yet automated)
-- Secure OS credential storage (keys are currently stored in SQLite)
-- File attachments and drag-and-drop
-- Edit and View menu commands (currently placeholders)
+- `ConnectOnion.Protocol.Tests` is not wired into the `.sln` or CI (run directly with `dotnet test`)
 - Live protocol tests in CI
-- Full migration tooling for preserving older local app data
+- Full migration tooling for preserving older local app data (a pre-DPAPI identity row is
+  regenerated rather than migrated; a database created before the `messages` schema isn't migrated)
 
 ## Notes For Development
 

@@ -275,19 +275,18 @@
                                             Padding="0"
                                             MinHeight="0"
                                             ToolTipService.ToolTip="{Binding Name}">
-                                        <!-- Name column is Auto (not *) so the presence dot in the next
-                                             Auto column sits right against the name instead of being pushed
-                                             to the row's right edge. MaxWidth + TextTrimming keeps a long
-                                             name from shoving the dot out — it ellipsizes first. -->
+                                        <!-- Name column is * (not Auto) so it only ever claims the space
+                                             left over after the Auto-width presence dot, shrinking via
+                                             TextTrimming instead of overflowing past the row and pushing/
+                                             hiding the dot when the name is longer than the row is wide. -->
                                         <Grid ColumnSpacing="7">
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
                                             <TextBlock Grid.Column="0"
                                                        Text="{Binding Name}"
                                                        FontWeight="SemiBold"
-                                                       MaxWidth="150"
                                                        TextTrimming="CharacterEllipsis"
                                                        VerticalAlignment="Center" />
                                             <Grid Grid.Column="1"
