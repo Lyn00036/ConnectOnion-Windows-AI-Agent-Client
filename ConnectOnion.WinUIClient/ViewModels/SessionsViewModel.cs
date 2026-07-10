@@ -59,16 +59,7 @@ public sealed class SessionsViewModel : ObservableObject
     /// <summary>Creates a new conversation for the given agent and selects it.</summary>
     public SessionSummary StartNewSession(string agentId)
     {
-        var count = Sessions.Count(s => s.AgentId == agentId) + 1;
-        var timestamp = DateTime.UtcNow.ToString("o");
-        var session = new SessionSummary
-        {
-            Id = Guid.NewGuid().ToString(),
-            AgentId = agentId,
-            Title = $"Conversation {count}",
-            CreatedAt = timestamp,
-            UpdatedAt = timestamp,
-        };
+        var session = SessionSummary.NewConversation(agentId, Sessions);
         Sessions.Insert(0, session);
         Selected = session;
         _ = SaveAsync();

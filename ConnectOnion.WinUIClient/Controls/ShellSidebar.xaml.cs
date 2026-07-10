@@ -228,16 +228,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     private static async System.Threading.Tasks.Task<string> CreateAndActivateSessionAsync(
         SessionsState sessionsState, string agentId)
     {
-        var timestamp = DateTime.UtcNow.ToString("o");
-        var count = sessionsState.Sessions.Count(s => s.AgentId == agentId) + 1;
-        var session = new SessionSummary
-        {
-            Id = Guid.NewGuid().ToString(),
-            AgentId = agentId,
-            Title = $"Conversation {count}",
-            CreatedAt = timestamp,
-            UpdatedAt = timestamp,
-        };
+        var session = SessionSummary.NewConversation(agentId, sessionsState.Sessions);
         sessionsState.Sessions.Add(session);
         sessionsState.ActiveSessionId = session.Id;
         await AppServices.Sessions.SaveAsync(sessionsState);
@@ -500,22 +491,12 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
 
     private async void AddAgent_Click(object sender, RoutedEventArgs e)
     {
-        AddAgentPanel.Visibility = AddAgentPanel.Visibility == Visibility.Visible
-            ? Visibility.Collapsed
-            : Visibility.Visible;
-        if (AddAgentPanel.Visibility == Visibility.Visible)
-        {
-            AddAgentPanel.FocusFirstField();
-        }
+        AddAgentPanel.Toggle();
         await RefreshAsync();
     }
 
-    private void AddAgentForm_CloseRequested()
-        => AddAgentPanel.Visibility = Visibility.Collapsed;
-
     private async void AddAgentForm_AgentAdded(AgentConfig _)
     {
-        AddAgentPanel.Visibility = Visibility.Collapsed;
         await RefreshAsync();
         RequestNavigation(typeof(AgentDetailPage), forceReload: true);
     }

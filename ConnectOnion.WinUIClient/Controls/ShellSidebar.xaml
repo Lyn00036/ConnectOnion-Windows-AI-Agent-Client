@@ -415,7 +415,6 @@
         <StackPanel Grid.Row="2" Spacing="6">
             <local:AddAgentForm x:Name="AddAgentPanel"
                                 Visibility="Collapsed"
-                                CloseRequested="AddAgentForm_CloseRequested"
                                 AgentAdded="AddAgentForm_AgentAdded" />
 
             <Button Style="{StaticResource ShellNavButtonStyle}" Click="AddAgent_Click">

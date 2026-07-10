@@ -48,6 +48,15 @@ public sealed partial class AddAgentForm : UserControl
     public void FocusFirstField()
         => AddressBox.Focus(FocusState.Programmatic);
 
+    /// <summary>Shows or hides the form, focusing the first field when it opens.
+    /// Hosts call this instead of poking <see cref="UIElement.Visibility"/> and
+    /// re-implementing the focus step.</summary>
+    public void Toggle()
+    {
+        Visibility = Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
+        if (Visibility == Visibility.Visible) FocusFirstField();
+    }
+
     public void Reset()
     {
         AddressBox.Text = "";
@@ -63,6 +72,7 @@ public sealed partial class AddAgentForm : UserControl
     private void Close_Click(object sender, RoutedEventArgs e)
     {
         Reset();
+        Visibility = Visibility.Collapsed;
         CloseRequested?.Invoke();
     }
 
@@ -110,6 +120,7 @@ public sealed partial class AddAgentForm : UserControl
         await AppServices.Agents.SaveAsync(agentsState);
 
         Reset();
+        Visibility = Visibility.Collapsed;
         AgentAdded?.Invoke(agent);
     }
 

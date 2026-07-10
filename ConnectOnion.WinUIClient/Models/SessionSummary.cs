@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json.Serialization;
 using ConnectOnion.WinUIClient.Common;
 
@@ -42,4 +45,24 @@ public sealed class SessionSummary : ObservableObject
 
     [JsonPropertyName("isPinned")]
     public bool IsPinned { get => _isPinned; set => SetProperty(ref _isPinned, value); }
+
+    /// <summary>
+    /// Builds a fresh "Conversation N" session for an agent, numbering it after
+    /// the agent's existing conversations. This is the single source of truth for
+    /// new-session shape (id/title/timestamps) — callers still Add/Insert it into
+    /// their list and persist. <paramref name="existing"/> is only read to compute N.
+    /// </summary>
+    public static SessionSummary NewConversation(string agentId, IEnumerable<SessionSummary> existing)
+    {
+        var count = existing.Count(s => s.AgentId == agentId) + 1;
+        var timestamp = DateTime.UtcNow.ToString("o");
+        return new SessionSummary
+        {
+            Id = Guid.NewGuid().ToString(),
+            AgentId = agentId,
+            Title = $"Conversation {count}",
+            CreatedAt = timestamp,
+            UpdatedAt = timestamp,
+        };
+    }
 }

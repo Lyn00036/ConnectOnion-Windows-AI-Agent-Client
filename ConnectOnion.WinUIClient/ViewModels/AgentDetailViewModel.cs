@@ -17,10 +17,9 @@ namespace ConnectOnion.WinUIClient.ViewModels;
 /// Backs the Agent Detail page: loads the selected agent's /info payload and
 /// exposes key fields plus the raw JSON for the UI.
 /// </summary>
-public sealed class AgentDetailViewModel : ObservableObject
+public sealed class AgentDetailViewModel : PresenceAwareViewModel
 {
     private readonly DispatcherQueue _dispatcher = DispatcherQueue.GetForCurrentThread();
-    private readonly AgentPresenceService _presence = AppServices.Presence;
     private AgentConfig? _agent;
     private bool _isLoading;
     private string _infoJson = "";
@@ -28,19 +27,11 @@ public sealed class AgentDetailViewModel : ObservableObject
     private bool _hasError;
     private bool _enterToSend = true;
 
-    public AgentDetailViewModel()
-    {
-        _presence.PresenceChanged += OnPresenceChanged;
-    }
+    /// <summary>The agent this page tracks for presence (base class reads this).</summary>
+    protected override AgentConfig? PresenceAgent => _agent;
 
     /// <summary>Detaches from the shared presence service. Call when the page unloads.</summary>
-    public void Cleanup() => _presence.PresenceChanged -= OnPresenceChanged;
-
-    private void OnPresenceChanged(string agentId)
-    {
-        if (_agent is null || agentId != _agent.Id) return;
-        _dispatcher.TryEnqueue(RaisePresenceProperties);
-    }
+    public void Cleanup() => DetachPresence();
 
     public AgentConfig? Agent
     {
@@ -64,51 +55,11 @@ public sealed class AgentDetailViewModel : ObservableObject
     public string? DirectUrl => _agent?.DirectUrl;
     public bool HasAgent => _agent is not null;
 
-    // See ChatViewModel: keeps the offline bar visible (spinning) through a
-    // user-initiated recheck without flashing "offline" during the first probe.
-    private bool _isManualRecheck;
-
-    public AgentPresence Presence => _agent is null ? AgentPresence.Unknown : _presence.GetPresence(_agent.Id);
-    public bool IsOnline => Presence == AgentPresence.Online;
-    public bool IsOffline => Presence == AgentPresence.Offline;
-    public bool ShowOfflineNotice => HasAgent && (IsOffline || _isManualRecheck);
     public bool CanStartConversation => HasAgent && IsOnline;
-    public string PresenceDetail => _agent is null ? "" : _presence.GetDetail(_agent.Id);
-    public string PresenceLabel => Presence switch
-    {
-        AgentPresence.Online => "Online",
-        AgentPresence.Checking => "Checking...",
-        AgentPresence.Offline => "Offline",
-        _ => "Unknown",
-    };
 
-    /// <summary>True while a reachability probe is in flight (or a manual recheck is
-    /// starting) — drives the offline bar's spinner.</summary>
-    public bool IsCheckingPresence => _isManualRecheck || Presence == AgentPresence.Checking;
-
-    private string _recheckFailedMessage = "";
-    /// <summary>Attention line shown in the offline bar after a manual recheck that resolved to still-offline.</summary>
-    public string RecheckFailedMessage
-    {
-        get => _recheckFailedMessage;
-        private set => SetProperty(ref _recheckFailedMessage, value);
-    }
-
-    private void RaisePresenceProperties()
-    {
-        // A fresh probe (Checking) or a recovery (Online) clears any stale
-        // "still offline" note before we re-notify the derived properties.
-        if (Presence != AgentPresence.Offline) RecheckFailedMessage = "";
-
-        OnPropertyChanged(nameof(Presence));
-        OnPropertyChanged(nameof(IsOnline));
-        OnPropertyChanged(nameof(IsOffline));
-        OnPropertyChanged(nameof(ShowOfflineNotice));
-        OnPropertyChanged(nameof(IsCheckingPresence));
-        OnPropertyChanged(nameof(CanStartConversation));
-        OnPropertyChanged(nameof(PresenceDetail));
-        OnPropertyChanged(nameof(PresenceLabel));
-    }
+    /// <summary>Also refresh whether a conversation can be started (gated on online).</summary>
+    protected override void OnPresenceRaised()
+        => OnPropertyChanged(nameof(CanStartConversation));
 
     public bool IsLoading
     {
@@ -190,42 +141,11 @@ public sealed class AgentDetailViewModel : ObservableObject
         await AppServices.Agents.SaveAsync(agentsState);
 
         var sessionsState = await AppServices.Sessions.LoadAsync();
-        var timestamp = DateTime.UtcNow.ToString("o");
-        var count = sessionsState.Sessions.Count(s => s.AgentId == Agent.Id) + 1;
-        sessionsState.Sessions.Add(new SessionSummary
-        {
-            Id = Guid.NewGuid().ToString(),
-            AgentId = Agent.Id,
-            Title = $"Conversation {count}",
-            CreatedAt = timestamp,
-            UpdatedAt = timestamp,
-        });
-        sessionsState.ActiveSessionId = sessionsState.Sessions[^1].Id;
+        var session = SessionSummary.NewConversation(Agent.Id, sessionsState.Sessions);
+        sessionsState.Sessions.Add(session);
+        sessionsState.ActiveSessionId = session.Id;
         await AppServices.Sessions.SaveAsync(sessionsState);
         return true;
-    }
-
-    /// <summary>Forces a fresh online-status probe for the selected agent. Awaits
-    /// the probe so the offline bar can spin while it runs and show a "still
-    /// offline" note if it resolves without reconnecting.</summary>
-    public async Task RecheckPresenceAsync()
-    {
-        if (Agent is null) return;
-        RecheckFailedMessage = "";
-        _isManualRecheck = true;
-        RaisePresenceProperties();
-        try
-        {
-            await _presence.RefreshAsync(Agent);
-        }
-        finally
-        {
-            _isManualRecheck = false;
-            RecheckFailedMessage = IsOffline
-                ? "Still offline. The agent hasn't reconnected — try again in a moment."
-                : "";
-            RaisePresenceProperties();
-        }
     }
 
     /// <summary>Loads agent info from cache or fetches fresh data.</summary>
@@ -239,6 +159,11 @@ public sealed class AgentDetailViewModel : ObservableObject
 
         Agent = selected;
         if (Agent is null) return;
+
+        // Probe once on open; the offline bar stays hidden until it resolves so a
+        // stale cached "offline" never flashes the reconnect UI. Placed before the
+        // /info early-returns below so it always runs.
+        _ = ProbePresenceOnOpenAsync();
 
         // Use cached /info immediately; only fetch when the cache is missing or stale.
         if (!string.IsNullOrWhiteSpace(Agent.InfoJson))

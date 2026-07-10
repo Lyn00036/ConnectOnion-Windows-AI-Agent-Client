@@ -127,7 +127,6 @@
                                    MaxWidth="620"
                                    HorizontalAlignment="Center"
                                    Visibility="Collapsed"
-                                   CloseRequested="AddAgentForm_CloseRequested"
                                    AgentAdded="AddAgentForm_AgentAdded" />
         </StackPanel>
     </Grid>

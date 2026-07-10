@@ -97,23 +97,10 @@ public sealed partial class HomePage : Page
     }
 
     private void AddAnotherAgent_Click(object sender, RoutedEventArgs e)
-    {
-        AddAgentPanel.Visibility = AddAgentPanel.Visibility == Visibility.Visible
-            ? Visibility.Collapsed
-            : Visibility.Visible;
-
-        if (AddAgentPanel.Visibility == Visibility.Visible)
-        {
-            AddAgentPanel.FocusFirstField();
-        }
-    }
-
-    private void AddAgentForm_CloseRequested()
-        => AddAgentPanel.Visibility = Visibility.Collapsed;
+        => AddAgentPanel.Toggle();
 
     private async void AddAgentForm_AgentAdded(AgentConfig _)
     {
-        AddAgentPanel.Visibility = Visibility.Collapsed;
         await LoadAsync();
         Frame.Navigate(typeof(AgentDetailPage));
     }
@@ -135,17 +122,9 @@ public sealed partial class HomePage : Page
             return;
         }
 
-        var timestamp = DateTime.UtcNow.ToString("o");
-        var count = sessionsState.Sessions.Count(s => s.AgentId == agentId) + 1;
-        sessionsState.Sessions.Add(new SessionSummary
-        {
-            Id = Guid.NewGuid().ToString(),
-            AgentId = agentId,
-            Title = $"Conversation {count}",
-            CreatedAt = timestamp,
-            UpdatedAt = timestamp,
-        });
-        sessionsState.ActiveSessionId = sessionsState.Sessions[^1].Id;
+        var session = SessionSummary.NewConversation(agentId, sessionsState.Sessions);
+        sessionsState.Sessions.Add(session);
+        sessionsState.ActiveSessionId = session.Id;
         await AppServices.Sessions.SaveAsync(sessionsState);
     }
 
