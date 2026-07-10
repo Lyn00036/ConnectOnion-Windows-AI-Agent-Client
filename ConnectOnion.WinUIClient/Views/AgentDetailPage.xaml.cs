@@ -35,7 +35,7 @@ public sealed partial class AgentDetailPage : Page
     private async void Composer_SubmitRequested(object? sender, ComposerSubmission submission)
         => await StartConversationAsync(submission);
 
-    private async void RecheckPresence_Click(object sender, RoutedEventArgs e)
+    private async void OfflineNotice_RecheckRequested(object? sender, EventArgs e)
         => await Vm.RecheckPresenceAsync();
 
     private async System.Threading.Tasks.Task StartConversationAsync(ComposerSubmission submission)

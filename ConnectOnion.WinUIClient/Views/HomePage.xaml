@@ -68,27 +68,17 @@
                                 Click="AgentCard_Click">
                             <Border MinHeight="112"
                                     Padding="22"
-                                    CornerRadius="8"
-                                    Background="{ThemeResource SurfaceElevatedBrush}"
-                                    BorderBrush="{ThemeResource BorderDefaultBrush}"
-                                    BorderThickness="1">
+                                    Style="{StaticResource CardBorderStyle}">
                                 <Grid ColumnSpacing="20">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
 
-                                    <Border Width="66"
-                                            Height="66"
-                                            CornerRadius="9"
-                                            Background="{ThemeResource BrandPrimaryBrush}">
-                                        <TextBlock Text="{x:Bind Initial}"
-                                                   Foreground="{ThemeResource TextOnBrandBrush}"
-                                                   FontSize="22"
-                                                   FontWeight="Bold"
-                                                   HorizontalAlignment="Center"
-                                                   VerticalAlignment="Center" />
-                                    </Border>
+                                    <controls:AgentAvatar Size="66"
+                                                          CornerRadius="9"
+                                                          FontSize="22"
+                                                          Initial="{x:Bind Initial}" />
 
                                     <StackPanel Grid.Column="1"
                                                 Spacing="8"
@@ -124,15 +114,12 @@
                     Background="Transparent"
                     BorderThickness="0"
                     Click="AddAnotherAgent_Click">
-                <StackPanel Orientation="Horizontal" Spacing="12">
-                    <ic:FluentIcon Icon="Add"
-                                   IconVariant="Regular"
+                <controls:IconText x:Name="AddAgentActionLabel"
+                                   Glyph="Add"
                                    IconSize="Size20"
+                                   Spacing="12"
+                                   FontSize="16"
                                    Foreground="{ThemeResource TextSecondaryBrush}" />
-                    <TextBlock x:Name="AddAgentActionLabel"
-                               FontSize="16"
-                               Foreground="{ThemeResource TextSecondaryBrush}" />
-                </StackPanel>
             </Button>
 
             <controls:AddAgentForm x:Name="AddAgentPanel"

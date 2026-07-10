@@ -117,10 +117,10 @@
                     <ItemsRepeater.ItemTemplate>
                         <DataTemplate>
                             <Grid Margin="0,2,0,0"
-                                  PointerEntered="SessionRow_PointerEntered"
-                                  PointerExited="SessionRow_PointerExited"
-                                  GotFocus="SessionRow_GotFocus"
-                                  LostFocus="SessionRow_LostFocus">
+                                  PointerEntered="Row_PointerEntered"
+                                  PointerExited="Row_PointerExited"
+                                  GotFocus="Row_GotFocus"
+                                  LostFocus="Row_LostFocus">
                                 <!--
                                     Shadows the theme's Button chrome resource keys so the
                                     name button and the Pin icon button in this row don't
@@ -206,10 +206,10 @@
                         <StackPanel Margin="0,2">
                             <Border CornerRadius="8"
                                     Background="{ThemeResource SurfaceSecondaryBrush}"
-                                    PointerEntered="AgentRow_PointerEntered"
-                                    PointerExited="AgentRow_PointerExited"
-                                    GotFocus="AgentRow_GotFocus"
-                                    LostFocus="AgentRow_LostFocus">
+                                    PointerEntered="Row_PointerEntered"
+                                    PointerExited="Row_PointerExited"
+                                    GotFocus="Row_GotFocus"
+                                    LostFocus="Row_LostFocus">
                                 <Border.Resources>
                                     <ResourceDictionary>
                                         <SolidColorBrush x:Key="ButtonBackground" Color="Transparent" />
@@ -255,19 +255,12 @@
                                             </ic:FluentIcon.RenderTransform>
                                         </ic:FluentIcon>
                                     </Button>
-                                    <Border Grid.Column="1"
-                                            Width="26"
-                                            Height="26"
-                                            VerticalAlignment="Center"
-                                            CornerRadius="6"
-                                            Background="{ThemeResource BrandPrimaryBrush}">
-                                        <TextBlock Text="{Binding Initial}"
-                                                   Foreground="{ThemeResource TextOnBrandBrush}"
-                                                   FontSize="11"
-                                                   FontWeight="Bold"
-                                                   HorizontalAlignment="Center"
-                                                   VerticalAlignment="Center" />
-                                    </Border>
+                                    <local:AgentAvatar Grid.Column="1"
+                                                       Size="26"
+                                                       CornerRadius="6"
+                                                       FontSize="11"
+                                                       VerticalAlignment="Center"
+                                                       Initial="{Binding Initial}" />
                                     <Button Grid.Column="2"
                                             Style="{StaticResource ShellNavButtonStyle}"
                                             Click="Agent_Click"
@@ -342,10 +335,10 @@
                                 <ItemsRepeater.ItemTemplate>
                                     <DataTemplate>
                                         <Grid Margin="34,2,0,0"
-                                              PointerEntered="SessionRow_PointerEntered"
-                                              PointerExited="SessionRow_PointerExited"
-                                              GotFocus="SessionRow_GotFocus"
-                                              LostFocus="SessionRow_LostFocus">
+                                              PointerEntered="Row_PointerEntered"
+                                              PointerExited="Row_PointerExited"
+                                              GotFocus="Row_GotFocus"
+                                              LostFocus="Row_LostFocus">
                                             <Grid.Resources>
                                                 <ResourceDictionary>
                                                     <SolidColorBrush x:Key="ButtonBackground" Color="Transparent" />
@@ -426,16 +419,10 @@
                                 AgentAdded="AddAgentForm_AgentAdded" />
 
             <Button Style="{StaticResource ShellNavButtonStyle}" Click="AddAgent_Click">
-                <StackPanel Orientation="Horizontal" Spacing="9">
-                    <ic:FluentIcon Icon="Add" IconVariant="Regular" IconSize="Size20" />
-                    <TextBlock Text="Add Agent" />
-                </StackPanel>
+                <local:IconText Glyph="Add" IconSize="Size20" Spacing="9" Text="Add Agent" />
             </Button>
             <Button Style="{StaticResource ShellNavButtonStyle}" Click="Settings_Click">
-                <StackPanel Orientation="Horizontal" Spacing="9">
-                    <ic:FluentIcon Icon="Settings" IconVariant="Regular" IconSize="Size20" />
-                    <TextBlock Text="Settings" />
-                </StackPanel>
+                <local:IconText Glyph="Settings" IconSize="Size20" Spacing="9" Text="Settings" />
             </Button>
         </StackPanel>
     </Grid>

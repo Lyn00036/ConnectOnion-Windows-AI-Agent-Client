@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using ConnectOnion.WinUIClient.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -161,13 +162,7 @@ public sealed partial class MainWindow
     }
 
     private static void CopyText(TextBox target)
-    {
-        if (string.IsNullOrEmpty(target.SelectedText)) return;
-
-        var package = new DataPackage();
-        package.SetText(target.SelectedText);
-        Clipboard.SetContent(package);
-    }
+        => ClipboardService.CopyText(target.SelectedText);
 
     private async Task PasteTextAsync()
     {

@@ -3,7 +3,6 @@ using ConnectOnion.WinUIClient.Services;
 using ConnectOnion.WinUIClient.Data;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Windows.ApplicationModel.DataTransfer;
 
 namespace ConnectOnion.WinUIClient.Views;
 
@@ -50,9 +49,7 @@ public sealed partial class IdentityPage : Page
         };
         if (string.IsNullOrWhiteSpace(value)) return;
 
-        var data = new DataPackage();
-        data.SetText(value);
-        Clipboard.SetContent(data);
+        ClipboardService.CopyText(value);
 
         if (sender is Button button)
         {

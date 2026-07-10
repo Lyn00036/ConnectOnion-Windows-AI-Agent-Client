@@ -33,7 +33,7 @@ public static class ConnectionTester
 
     public static async Task<ConnectionTestResult> TestAsync(
         string? address, string? directUrl, int timeoutMs = DefaultTimeoutMs,
-        AgentConfig? existingAgent = null)
+        AgentConfig? existingAgent = null, bool forceRefresh = false)
     {
         directUrl = directUrl?.Trim();
 
@@ -95,7 +95,7 @@ public static class ConnectionTester
             try
             {
                 var info = await ConnectOnion.Protocol.EndpointResolver
-                    .FetchAgentInfoAsync(AppServices.Http, address, ConnectOnion.Protocol.EndpointResolver.DefaultRelay, RelayTimeoutMs)
+                    .FetchAgentInfoAsync(AppServices.Http, address, ConnectOnion.Protocol.EndpointResolver.DefaultRelay, RelayTimeoutMs, forceRefresh)
                     .ConfigureAwait(false);
                 if (info.Online)
                 {

@@ -3,6 +3,7 @@
     x:Class="ConnectOnion.WinUIClient.Views.SettingsPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:ConnectOnion.WinUIClient.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
@@ -14,110 +15,56 @@
                        Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextSecondaryBrush}" />
 
-            <Border Margin="0,16,0,0" Padding="20" CornerRadius="8"
-                    Background="{ThemeResource SurfaceElevatedBrush}"
-                    BorderBrush="{ThemeResource BorderDefaultBrush}" BorderThickness="1">
+            <Border Margin="0,16,0,0" Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="20">
                     <TextBlock Text="Appearance" Style="{StaticResource SubtitleTextBlockStyle}" />
 
-                    <Grid ColumnSpacing="16">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                            <TextBlock Text="Theme" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                            <TextBlock Text="Use the system theme or choose light or dark mode."
-                                       Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextSecondaryBrush}" />
-                        </StackPanel>
-                        <RadioButtons x:Name="ThemeChoice" Grid.Column="1" MaxColumns="3"
+                    <controls:SettingRow Title="Theme"
+                                         Description="Use the system theme or choose light or dark mode.">
+                        <RadioButtons x:Name="ThemeChoice" MaxColumns="3"
                                       SelectionChanged="ThemeChoice_SelectionChanged">
                             <x:String>System</x:String>
                             <x:String>Light</x:String>
                             <x:String>Dark</x:String>
                         </RadioButtons>
-                    </Grid>
+                    </controls:SettingRow>
 
-                    <Grid ColumnSpacing="16">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                            <TextBlock Text="Enter to send" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                            <TextBlock Text="When enabled, Enter sends and Shift+Enter inserts a new line."
-                                       Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextSecondaryBrush}" />
-                        </StackPanel>
+                    <controls:SettingRow Title="Enter to send"
+                                         Description="When enabled, Enter sends and Shift+Enter inserts a new line.">
                         <ToggleSwitch x:Name="EnterToSendSwitch"
-                                      Grid.Column="1"
-                                      VerticalAlignment="Center"
                                       Toggled="EnterToSendSwitch_Toggled" />
-                    </Grid>
+                    </controls:SettingRow>
 
-                    <Grid ColumnSpacing="16">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                            <TextBlock Text="Message text size" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                            <TextBlock Text="Adjust how large chat messages appear."
-                                       Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextSecondaryBrush}" />
-                        </StackPanel>
-                        <RadioButtons x:Name="FontChoice" Grid.Column="1" MaxColumns="3"
+                    <controls:SettingRow Title="Message text size"
+                                         Description="Adjust how large chat messages appear.">
+                        <RadioButtons x:Name="FontChoice" MaxColumns="3"
                                       SelectionChanged="FontChoice_SelectionChanged">
                             <x:String>Small</x:String>
                             <x:String>Medium</x:String>
                             <x:String>Large</x:String>
                         </RadioButtons>
-                    </Grid>
+                    </controls:SettingRow>
 
-                    <Grid ColumnSpacing="16">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                            <TextBlock Text="Local identity" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                            <TextBlock Text="View this desktop client's ConnectOnion address and public key."
-                                       Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextSecondaryBrush}" />
-                        </StackPanel>
-                        <Button Grid.Column="1"
-                                Content="View identity"
+                    <controls:SettingRow Title="Local identity"
+                                         Description="View this desktop client's ConnectOnion address and public key.">
+                        <Button Content="View identity"
                                 Padding="14,6"
-                                VerticalAlignment="Center"
                                 Click="Identity_Click" />
-                    </Grid>
+                    </controls:SettingRow>
                 </StackPanel>
             </Border>
 
-            <Border Margin="0,8,0,0" Padding="20" CornerRadius="8"
-                    Background="{ThemeResource SurfaceElevatedBrush}"
-                    BorderBrush="{ThemeResource BorderDefaultBrush}" BorderThickness="1">
+            <Border Margin="0,8,0,0" Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="20">
                     <TextBlock Text="Audio" Style="{StaticResource SubtitleTextBlockStyle}" />
 
-                    <Grid ColumnSpacing="16">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="220" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                            <TextBlock Text="Microphone" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                            <TextBlock Text="Choose the microphone for voice input."
-                                       Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextSecondaryBrush}" />
-                        </StackPanel>
+                    <controls:SettingRow Title="Microphone"
+                                         Description="Choose the microphone for voice input.">
                         <ComboBox x:Name="MicChoice"
-                                  Grid.Column="1"
-                                  VerticalAlignment="Center"
+                                  Width="220"
                                   DisplayMemberPath="Name"
                                   SelectionChanged="MicChoice_SelectionChanged" />
-                    </Grid>
+                    </controls:SettingRow>
                 </StackPanel>
             </Border>
         </StackPanel>

@@ -214,25 +214,20 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
             return recent.Id;
         }
 
-        var timestamp = DateTime.UtcNow.ToString("o");
-        var count = sessionsState.Sessions.Count(s => s.AgentId == agentId) + 1;
-        var session = new SessionSummary
-        {
-            Id = Guid.NewGuid().ToString(),
-            AgentId = agentId,
-            Title = $"Conversation {count}",
-            CreatedAt = timestamp,
-            UpdatedAt = timestamp,
-        };
-        sessionsState.Sessions.Add(session);
-        sessionsState.ActiveSessionId = session.Id;
-        await AppServices.Sessions.SaveAsync(sessionsState);
-        return session.Id;
+        return await CreateAndActivateSessionAsync(sessionsState, agentId);
     }
 
     private async System.Threading.Tasks.Task<string> CreateSessionAsync(string agentId)
     {
         var sessionsState = await AppServices.Sessions.LoadAsync();
+        return await CreateAndActivateSessionAsync(sessionsState, agentId);
+    }
+
+    /// <summary>Appends a fresh "Conversation N" session for the agent to the
+    /// already-loaded state, makes it active, persists, and returns its id.</summary>
+    private static async System.Threading.Tasks.Task<string> CreateAndActivateSessionAsync(
+        SessionsState sessionsState, string agentId)
+    {
         var timestamp = DateTime.UtcNow.ToString("o");
         var count = sessionsState.Sessions.Count(s => s.AgentId == agentId) + 1;
         var session = new SessionSummary
@@ -281,6 +276,22 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
 
     private ShellAgentItem? FindShellAgent(string agentId)
         => ShellAgents.FirstOrDefault(agent => agent.Id == agentId);
+
+    /// <summary>Shows the shared Delete/Cancel confirmation dialog; true if the
+    /// user confirmed deletion.</summary>
+    private async System.Threading.Tasks.Task<bool> ConfirmDeleteAsync(string title, string content)
+    {
+        var dialog = new ContentDialog
+        {
+            Title = title,
+            Content = content,
+            PrimaryButtonText = "Delete",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = XamlRoot,
+        };
+        return await dialog.ShowAsync() == ContentDialogResult.Primary;
+    }
 
     private async void ChatHome_Click(object sender, RoutedEventArgs e)
     {
@@ -349,39 +360,19 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         storyboard.Begin();
     }
 
-    private void AgentRow_PointerEntered(object sender, PointerRoutedEventArgs e)
-    {
-        if ((sender as FrameworkElement)?.DataContext is ShellAgentItem agent)
-        {
-            agent.AreActionsVisible = true;
-            agent.IsHovered = true;
-        }
-    }
+    // Agent and session rows share one interaction model (see RowStateItem):
+    // pointer hover and keyboard focus both reveal the row's action buttons and
+    // paint its hover background. Both row kinds bind to these same handlers.
+    private void Row_PointerEntered(object sender, PointerRoutedEventArgs e) => SetRowInteractive(sender, true);
+    private void Row_PointerExited(object sender, PointerRoutedEventArgs e) => SetRowInteractive(sender, false);
+    private void Row_GotFocus(object sender, RoutedEventArgs e) => SetRowInteractive(sender, true);
+    private void Row_LostFocus(object sender, RoutedEventArgs e) => SetRowInteractive(sender, false);
 
-    private void AgentRow_PointerExited(object sender, PointerRoutedEventArgs e)
+    private static void SetRowInteractive(object sender, bool active)
     {
-        if ((sender as FrameworkElement)?.DataContext is ShellAgentItem agent)
+        if ((sender as FrameworkElement)?.DataContext is RowStateItem row)
         {
-            agent.AreActionsVisible = false;
-            agent.IsHovered = false;
-        }
-    }
-
-    private void AgentRow_GotFocus(object sender, RoutedEventArgs e)
-    {
-        if ((sender as FrameworkElement)?.DataContext is ShellAgentItem agent)
-        {
-            agent.AreActionsVisible = true;
-            agent.IsHovered = true;
-        }
-    }
-
-    private void AgentRow_LostFocus(object sender, RoutedEventArgs e)
-    {
-        if ((sender as FrameworkElement)?.DataContext is ShellAgentItem agent)
-        {
-            agent.AreActionsVisible = false;
-            agent.IsHovered = false;
+            row.SetInteractive(active);
         }
     }
 
@@ -408,17 +399,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         var agent = agentsState.Agents.FirstOrDefault(entry => entry.Id == agentId);
         if (agent is null) return;
 
-        var dialog = new ContentDialog
-        {
-            Title = $"Delete {agent.Name}?",
-            Content = "This agent and all of its local sessions will be removed.",
-            PrimaryButtonText = "Delete",
-            CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Close,
-            XamlRoot = XamlRoot,
-        };
-
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        if (!await ConfirmDeleteAsync($"Delete {agent.Name}?", "This agent and all of its local sessions will be removed.")) return;
 
         agentsState.Agents.Remove(agent);
         if (agentsState.SelectedAgentId == agentId)
@@ -465,42 +446,6 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         await RefreshAsync();
     }
 
-    private void SessionRow_PointerEntered(object sender, PointerRoutedEventArgs e)
-    {
-        if ((sender as FrameworkElement)?.DataContext is ShellSessionItem session)
-        {
-            session.AreActionsVisible = true;
-            session.IsHovered = true;
-        }
-    }
-
-    private void SessionRow_PointerExited(object sender, PointerRoutedEventArgs e)
-    {
-        if ((sender as FrameworkElement)?.DataContext is ShellSessionItem session)
-        {
-            session.AreActionsVisible = false;
-            session.IsHovered = false;
-        }
-    }
-
-    private void SessionRow_GotFocus(object sender, RoutedEventArgs e)
-    {
-        if ((sender as FrameworkElement)?.DataContext is ShellSessionItem session)
-        {
-            session.AreActionsVisible = true;
-            session.IsHovered = true;
-        }
-    }
-
-    private void SessionRow_LostFocus(object sender, RoutedEventArgs e)
-    {
-        if ((sender as FrameworkElement)?.DataContext is ShellSessionItem session)
-        {
-            session.AreActionsVisible = false;
-            session.IsHovered = false;
-        }
-    }
-
     private async void DeleteSession_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.Tag is not string sessionId) return;
@@ -511,17 +456,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         var session = sessionsState.Sessions.FirstOrDefault(entry => entry.Id == sessionId);
         if (session is null) return;
 
-        var dialog = new ContentDialog
-        {
-            Title = $"Delete {session.Title}?",
-            Content = "This local conversation will be removed.",
-            PrimaryButtonText = "Delete",
-            CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Close,
-            XamlRoot = XamlRoot,
-        };
-
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        if (!await ConfirmDeleteAsync($"Delete {session.Title}?", "This local conversation will be removed.")) return;
 
         sessionsState.Sessions.Remove(session);
         await AppServices.Conversations.DeleteMessagesAsync(sessionId);

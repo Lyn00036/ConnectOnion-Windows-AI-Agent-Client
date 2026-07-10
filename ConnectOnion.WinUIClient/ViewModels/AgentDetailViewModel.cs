@@ -64,10 +64,14 @@ public sealed class AgentDetailViewModel : ObservableObject
     public string? DirectUrl => _agent?.DirectUrl;
     public bool HasAgent => _agent is not null;
 
+    // See ChatViewModel: keeps the offline bar visible (spinning) through a
+    // user-initiated recheck without flashing "offline" during the first probe.
+    private bool _isManualRecheck;
+
     public AgentPresence Presence => _agent is null ? AgentPresence.Unknown : _presence.GetPresence(_agent.Id);
     public bool IsOnline => Presence == AgentPresence.Online;
     public bool IsOffline => Presence == AgentPresence.Offline;
-    public bool ShowOfflineNotice => HasAgent && IsOffline;
+    public bool ShowOfflineNotice => HasAgent && (IsOffline || _isManualRecheck);
     public bool CanStartConversation => HasAgent && IsOnline;
     public string PresenceDetail => _agent is null ? "" : _presence.GetDetail(_agent.Id);
     public string PresenceLabel => Presence switch
@@ -78,12 +82,29 @@ public sealed class AgentDetailViewModel : ObservableObject
         _ => "Unknown",
     };
 
+    /// <summary>True while a reachability probe is in flight (or a manual recheck is
+    /// starting) — drives the offline bar's spinner.</summary>
+    public bool IsCheckingPresence => _isManualRecheck || Presence == AgentPresence.Checking;
+
+    private string _recheckFailedMessage = "";
+    /// <summary>Attention line shown in the offline bar after a manual recheck that resolved to still-offline.</summary>
+    public string RecheckFailedMessage
+    {
+        get => _recheckFailedMessage;
+        private set => SetProperty(ref _recheckFailedMessage, value);
+    }
+
     private void RaisePresenceProperties()
     {
+        // A fresh probe (Checking) or a recovery (Online) clears any stale
+        // "still offline" note before we re-notify the derived properties.
+        if (Presence != AgentPresence.Offline) RecheckFailedMessage = "";
+
         OnPropertyChanged(nameof(Presence));
         OnPropertyChanged(nameof(IsOnline));
         OnPropertyChanged(nameof(IsOffline));
         OnPropertyChanged(nameof(ShowOfflineNotice));
+        OnPropertyChanged(nameof(IsCheckingPresence));
         OnPropertyChanged(nameof(CanStartConversation));
         OnPropertyChanged(nameof(PresenceDetail));
         OnPropertyChanged(nameof(PresenceLabel));
@@ -184,9 +205,28 @@ public sealed class AgentDetailViewModel : ObservableObject
         return true;
     }
 
-    /// <summary>Forces a fresh online-status probe for the selected agent.</summary>
-    public Task RecheckPresenceAsync()
-        => Agent is null ? Task.CompletedTask : _presence.RefreshAsync(Agent);
+    /// <summary>Forces a fresh online-status probe for the selected agent. Awaits
+    /// the probe so the offline bar can spin while it runs and show a "still
+    /// offline" note if it resolves without reconnecting.</summary>
+    public async Task RecheckPresenceAsync()
+    {
+        if (Agent is null) return;
+        RecheckFailedMessage = "";
+        _isManualRecheck = true;
+        RaisePresenceProperties();
+        try
+        {
+            await _presence.RefreshAsync(Agent);
+        }
+        finally
+        {
+            _isManualRecheck = false;
+            RecheckFailedMessage = IsOffline
+                ? "Still offline. The agent hasn't reconnected — try again in a moment."
+                : "";
+            RaisePresenceProperties();
+        }
+    }
 
     /// <summary>Loads agent info from cache or fetches fresh data.</summary>
     public async Task LoadAsync()

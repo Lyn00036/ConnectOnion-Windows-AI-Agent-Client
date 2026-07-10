@@ -144,7 +144,7 @@ public sealed partial class ChatPage : Page, IFindHost
     private async void Composer_SubmitRequested(object? sender, ComposerSubmission submission)
         => await SendAsync(submission.Text, submission.Attachments);
 
-    private async void RecheckPresence_Click(object sender, RoutedEventArgs e)
+    private async void OfflineNotice_RecheckRequested(object? sender, System.EventArgs e)
         => await Vm.RecheckPresenceAsync();
 
     private async void SubmitOnboard_Click(object sender, RoutedEventArgs e)
@@ -164,23 +164,14 @@ public sealed partial class ChatPage : Page, IFindHost
             return;
         }
 
-        var data = new DataPackage();
-        data.SetText(message.Content);
-        Clipboard.SetContent(data);
+        ClipboardService.CopyText(message.Content);
 
-        if (sender is Button button && button.Content is StackPanel panel)
+        if (sender is Button { Content: IconText iconText })
         {
-            foreach (var child in panel.Children)
-            {
-                if (child is TextBlock text)
-                {
-                    var original = text.Text;
-                    text.Text = "Copied";
-                    await System.Threading.Tasks.Task.Delay(1000);
-                    text.Text = original;
-                    break;
-                }
-            }
+            var original = iconText.Text;
+            iconText.Text = "Copied";
+            await System.Threading.Tasks.Task.Delay(1000);
+            iconText.Text = original;
         }
     }
 

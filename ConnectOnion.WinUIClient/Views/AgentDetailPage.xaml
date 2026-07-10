@@ -23,18 +23,11 @@
                     Margin="32,0,32,108"
                     Spacing="18"
                     Visibility="{x:Bind Vm.HasAgent, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-            <Border Width="58"
-                    Height="58"
-                    CornerRadius="8"
-                    HorizontalAlignment="Center"
-                    Background="{ThemeResource BrandPrimaryBrush}">
-                <TextBlock Text="{x:Bind Vm.AgentInitial, Mode=OneWay}"
-                           Foreground="{ThemeResource TextOnBrandBrush}"
-                           FontSize="20"
-                           FontWeight="Bold"
-                           HorizontalAlignment="Center"
-                           VerticalAlignment="Center" />
-            </Border>
+            <controls:AgentAvatar Size="58"
+                                  CornerRadius="8"
+                                  FontSize="20"
+                                  HorizontalAlignment="Center"
+                                  Initial="{x:Bind Vm.AgentInitial, Mode=OneWay}" />
 
             <StackPanel HorizontalAlignment="Center" Spacing="8">
                 <StackPanel Orientation="Horizontal"
@@ -93,57 +86,14 @@
                      IsOpen="{x:Bind Vm.HasError, Mode=OneWay}"
                      IsClosable="False" />
 
-            <Border MaxWidth="620"
-                    HorizontalAlignment="Stretch"
-                    CornerRadius="10"
-                    Padding="14,10"
-                    Background="{ThemeResource SurfaceElevatedBrush}"
-                    BorderBrush="{ThemeResource BorderDefaultBrush}"
-                    BorderThickness="1"
-                    Visibility="{x:Bind Vm.ShowOfflineNotice, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                <Grid ColumnSpacing="12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-
-                    <ic:FluentIcon Grid.Column="0"
-                                   Icon="PlugDisconnected"
-                                   IconVariant="Regular"
-                                   IconSize="Size20"
-                                   Foreground="{ThemeResource TextSecondaryBrush}"
-                                   VerticalAlignment="Center" />
-
-                    <StackPanel Grid.Column="1"
-                                MinWidth="0"
-                                VerticalAlignment="Center"
-                                Spacing="2">
-                        <TextBlock Text="Agent is offline"
-                                   FontSize="13"
-                                   FontWeight="SemiBold" />
-                        <TextBlock Text="{x:Bind Vm.PresenceDetail, Mode=OneWay}"
-                                   FontSize="11"
-                                   Foreground="{ThemeResource TextSecondaryBrush}"
-                                   TextTrimming="CharacterEllipsis"
-                                   Visibility="{x:Bind Vm.PresenceDetail, Mode=OneWay, Converter={StaticResource StringToVis}}" />
-                    </StackPanel>
-
-                    <Button Grid.Column="2"
-                            MinWidth="0"
-                            Padding="10,6"
-                            VerticalAlignment="Center"
-                            IsEnabled="{x:Bind Vm.HasAgent, Mode=OneWay}"
-                            Click="RecheckPresence_Click">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <ic:FluentIcon Icon="ArrowClockwise"
-                                           IconVariant="Regular"
-                                           IconSize="Size16" />
-                            <TextBlock Text="Recheck" />
-                        </StackPanel>
-                    </Button>
-                </Grid>
-            </Border>
+            <controls:OfflineNoticeBar MaxWidth="620"
+                                       HorizontalAlignment="Stretch"
+                                       Detail="{x:Bind Vm.PresenceDetail, Mode=OneWay}"
+                                       CanRecheck="{x:Bind Vm.HasAgent, Mode=OneWay}"
+                                       IsChecking="{x:Bind Vm.IsCheckingPresence, Mode=OneWay}"
+                                       StatusMessage="{x:Bind Vm.RecheckFailedMessage, Mode=OneWay}"
+                                       RecheckRequested="OfflineNotice_RecheckRequested"
+                                       Visibility="{x:Bind Vm.ShowOfflineNotice, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
         </StackPanel>
 
         <StackPanel Grid.Row="0"

@@ -135,10 +135,17 @@ public sealed partial class ChatViewModel : ObservableObject
     public bool HasEndpoint => _connection is not null;
     public bool HasConnection => _connection?.IsConnected == true;
 
+    // True only while a user-initiated recheck is running, so the offline bar
+    // stays visible (spinning) across the Offline→Checking→result transition
+    // instead of vanishing the moment presence leaves Offline. Deliberately not
+    // set by the initial page-load probe, so an online agent never flashes the
+    // "offline" bar while its first check runs.
+    private bool _isManualRecheck;
+
     public AgentPresence Presence => _agent is null ? AgentPresence.Unknown : _presence.GetPresence(_agent.Id);
     public bool IsOnline => Presence == AgentPresence.Online;
     public bool IsOffline => Presence == AgentPresence.Offline;
-    public bool ShowOfflineNotice => HasAgent && IsOffline;
+    public bool ShowOfflineNotice => HasAgent && (IsOffline || _isManualRecheck);
     public string PresenceDetail => _agent is null ? "" : _presence.GetDetail(_agent.Id);
     public string PresenceLabel => Presence switch
     {
@@ -147,6 +154,18 @@ public sealed partial class ChatViewModel : ObservableObject
         AgentPresence.Offline => "Offline",
         _ => "Unknown",
     };
+
+    /// <summary>True while a reachability probe is in flight (or a manual recheck is
+    /// starting) — drives the offline bar's spinner.</summary>
+    public bool IsCheckingPresence => _isManualRecheck || Presence == AgentPresence.Checking;
+
+    private string _recheckFailedMessage = "";
+    /// <summary>Attention line shown in the offline bar after a manual recheck that resolved to still-offline.</summary>
+    public string RecheckFailedMessage
+    {
+        get => _recheckFailedMessage;
+        private set => SetProperty(ref _recheckFailedMessage, value);
+    }
 
     public string SelectedAgentName => _agent?.Name ?? "Agent";
     public string SelectedAgentInitial => string.IsNullOrWhiteSpace(_agent?.Name) ? "?" : _agent!.Name[..1].ToUpperInvariant();
@@ -248,9 +267,28 @@ public sealed partial class ChatViewModel : ObservableObject
         _dispatcher.TryEnqueue(() => AcceptedInputs = parsed);
     }
 
-    /// <summary>Re-probes the agent's online status (bound to the header button).</summary>
-    public Task RecheckPresenceAsync()
-        => _agent is null ? Task.CompletedTask : _presence.RefreshAsync(_agent);
+    /// <summary>Re-probes the agent's online status (bound to the offline bar's
+    /// Recheck button). Awaits the probe so the bar can spin while it runs and
+    /// show a "still offline" note if it resolves without reconnecting.</summary>
+    public async Task RecheckPresenceAsync()
+    {
+        if (_agent is null) return;
+        RecheckFailedMessage = "";
+        _isManualRecheck = true;
+        RaisePresenceProperties();
+        try
+        {
+            await _presence.RefreshAsync(_agent);
+        }
+        finally
+        {
+            _isManualRecheck = false;
+            RecheckFailedMessage = IsOffline
+                ? "Still offline. The agent hasn't reconnected — try again in a moment."
+                : "";
+            RaisePresenceProperties();
+        }
+    }
 
     // Wire the real transport when the agent has a Direct URL. Stream events and
     // connection-loss callbacks arrive on the receive-loop thread, so marshal
@@ -281,6 +319,10 @@ public sealed partial class ChatViewModel : ObservableObject
             {
                 StatusText = $"Disconnected: {ex.Message}";
                 RaiseConnectionProperties();
+                // Re-probe presence so a genuine drop surfaces the offline +
+                // reconnect bar (ShowOfflineNotice), while a transient blip
+                // simply re-confirms Online without a false "offline".
+                if (_agent is not null) _ = _presence.RefreshAsync(_agent);
             });
         _connection.OnboardRequired += () =>
             _dispatcher.TryEnqueue(AddOnboardingBubble);
@@ -457,6 +499,11 @@ public sealed partial class ChatViewModel : ObservableObject
                 Content = $"[connection error] {UserFacingError(ex)}",
                 AgentName = _agent.Name,
             });
+            // A failed turn (relay "Agent not connected", socket drop, timeout)
+            // re-probes reachability: if the agent really is offline the presence
+            // flip lights up the offline + reconnect bar; if it was transient the
+            // probe re-confirms Online so we don't falsely mark it offline.
+            _ = _presence.RefreshAsync(_agent);
             await PersistConversationAsync();
             await AppServices.Conversations.FinalizeExecutionAsync(
                 executionId, _session.Id, ex.Message, "error", 0);
@@ -606,10 +653,15 @@ public sealed partial class ChatViewModel : ObservableObject
 
     private void RaisePresenceProperties()
     {
+        // A fresh probe (Checking) or a recovery (Online) clears any stale
+        // "still offline" note before we re-notify the derived properties.
+        if (Presence != AgentPresence.Offline) RecheckFailedMessage = "";
+
         OnPropertyChanged(nameof(Presence));
         OnPropertyChanged(nameof(IsOnline));
         OnPropertyChanged(nameof(IsOffline));
         OnPropertyChanged(nameof(ShowOfflineNotice));
+        OnPropertyChanged(nameof(IsCheckingPresence));
         OnPropertyChanged(nameof(PresenceDetail));
         OnPropertyChanged(nameof(PresenceLabel));
         OnPropertyChanged(nameof(CanSend));

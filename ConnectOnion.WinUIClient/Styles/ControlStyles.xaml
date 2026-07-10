@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Shared "card" container chrome: elevated surface, hairline border,
+         rounded corners. Opt-in via Style="{StaticResource CardBorderStyle}".
+         Per-site Padding/CornerRadius/Margin are set locally and win over the
+         setters below. -->
+    <Style x:Key="CardBorderStyle" TargetType="Border">
+        <Setter Property="Background" Value="{ThemeResource SurfaceElevatedBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource BorderDefaultBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="Padding" Value="20" />
+    </Style>
+
+</ResourceDictionary>

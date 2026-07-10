@@ -74,13 +74,16 @@ public sealed class AgentPresenceService
         lock (_gate)
         {
             if (_inflight.TryGetValue(agent.Id, out var running)) return running;
-            return StartProbeLocked(agent);
+            // A user-initiated refresh bypasses the EndpointResolver relay-lookup
+            // cache (which holds an "offline" answer for ~30s) — otherwise clicking
+            // Recheck right after the agent comes back up keeps reporting offline.
+            return StartProbeLocked(agent, forceRefresh: true);
         }
     }
 
-    private Task StartProbeLocked(AgentConfig agent)
+    private Task StartProbeLocked(AgentConfig agent, bool forceRefresh = false)
     {
-        var task = ProbeAsync(agent);
+        var task = ProbeAsync(agent, forceRefresh);
         _inflight[agent.Id] = task;
         return task;
     }
@@ -100,7 +103,7 @@ public sealed class AgentPresenceService
         return ttl == TimeSpan.Zero || now - checkedAt >= ttl;
     }
 
-    private async Task ProbeAsync(AgentConfig agent)
+    private async Task ProbeAsync(AgentConfig agent, bool forceRefresh)
     {
         // Yield before touching shared state so RefreshAsync can release _gate and
         // register this task before Set() re-enters the lock / fires the event.
@@ -111,7 +114,7 @@ public sealed class AgentPresenceService
         {
             // A lean reachability probe: no existingAgent, so we skip the extra
             // /info diff — the detail page fetches /info on its own.
-            var result = await ConnectionTester.TestAsync(agent.Address, agent.DirectUrl);
+            var result = await ConnectionTester.TestAsync(agent.Address, agent.DirectUrl, forceRefresh: forceRefresh);
             Set(agent.Id, result.Ok ? AgentPresence.Online : AgentPresence.Offline, result.Detail);
         }
         catch (Exception ex)

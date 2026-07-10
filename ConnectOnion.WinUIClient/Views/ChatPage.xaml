@@ -113,17 +113,10 @@
             <StackPanel x:Name="ChatHeaderIdentity"
                         Orientation="Horizontal"
                         Spacing="10">
-                <Border Width="30"
-                        Height="30"
-                        CornerRadius="8"
-                        Background="{ThemeResource BrandPrimaryBrush}">
-                    <TextBlock Text="{x:Bind Vm.SelectedAgentInitial, Mode=OneWay}"
-                               Foreground="{ThemeResource TextOnBrandBrush}"
-                               FontSize="12"
-                               FontWeight="Bold"
-                               HorizontalAlignment="Center"
-                               VerticalAlignment="Center" />
-                </Border>
+                <controls:AgentAvatar Size="30"
+                                      CornerRadius="8"
+                                      FontSize="12"
+                                      Initial="{x:Bind Vm.SelectedAgentInitial, Mode=OneWay}" />
                 <StackPanel VerticalAlignment="Center">
                     <TextBlock Text="{x:Bind Vm.SelectedAgentName, Mode=OneWay}"
                                FontSize="13"
@@ -208,10 +201,8 @@
                                     BorderThickness="0"
                                     Click="CopyMessage_Click"
                                     ToolTipService.ToolTip="Copy message">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <ic:FluentIcon Icon="Copy" IconVariant="Regular" IconSize="Size16" Foreground="{ThemeResource TextSecondaryBrush}" />
-                                    <TextBlock Text="Copy" FontSize="11" Foreground="{ThemeResource TextSecondaryBrush}" />
-                                </StackPanel>
+                                <controls:IconText Glyph="Copy" IconSize="Size16" Spacing="6" FontSize="11"
+                                                   Foreground="{ThemeResource TextSecondaryBrush}" Text="Copy" />
                             </Button>
                         </StackPanel>
 
@@ -533,15 +524,8 @@
                                         BorderThickness="0"
                                         Click="CopyMessage_Click"
                                         ToolTipService.ToolTip="Copy message">
-                                    <StackPanel Orientation="Horizontal" Spacing="5">
-                                        <ic:FluentIcon Icon="Copy"
-                                                       IconVariant="Regular"
-                                                       IconSize="Size16"
-                                                       Foreground="{ThemeResource TextSecondaryBrush}" />
-                                        <TextBlock Text="Copy"
-                                                   FontSize="11"
-                                                   Foreground="{ThemeResource TextSecondaryBrush}" />
-                                    </StackPanel>
+                                    <controls:IconText Glyph="Copy" IconSize="Size16" Spacing="5" FontSize="11"
+                                                       Foreground="{ThemeResource TextSecondaryBrush}" Text="Copy" />
                                 </Button>
                                 <Button Padding="0"
                                         MinWidth="0"
@@ -551,15 +535,9 @@
                                         Click="ToggleMessageCollapse_Click"
                                         ToolTipService.ToolTip="{x:Bind CollapseButtonText, Mode=OneWay}"
                                         Visibility="{x:Bind IsCollapsible, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                                    <StackPanel Orientation="Horizontal" Spacing="5">
-                                        <ic:FluentIcon Icon="ArrowMinimize"
-                                                       IconVariant="Regular"
-                                                       IconSize="Size16"
-                                                       Foreground="{ThemeResource TextSecondaryBrush}" />
-                                        <TextBlock Text="{x:Bind CollapseButtonText, Mode=OneWay}"
-                                                   FontSize="11"
-                                                   Foreground="{ThemeResource TextSecondaryBrush}" />
-                                    </StackPanel>
+                                    <controls:IconText Glyph="ArrowMinimize" IconSize="Size16" Spacing="5" FontSize="11"
+                                                       Foreground="{ThemeResource TextSecondaryBrush}"
+                                                       Text="{x:Bind CollapseButtonText, Mode=OneWay}" />
                                 </Button>
                             </StackPanel>
                         </StackPanel>
@@ -586,60 +564,17 @@
                        TextTrimming="CharacterEllipsis" />
         </Border>
 
-        <Border Grid.Row="1"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Bottom"
-                Margin="20,0,20,18"
-                MaxWidth="620"
-                CornerRadius="10"
-                Padding="14,10"
-                Background="{ThemeResource SurfaceElevatedBrush}"
-                BorderBrush="{ThemeResource BorderDefaultBrush}"
-                BorderThickness="1"
-                Visibility="{x:Bind Vm.ShowOfflineNotice, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-            <Grid ColumnSpacing="12">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-
-                <ic:FluentIcon Grid.Column="0"
-                               Icon="PlugDisconnected"
-                               IconVariant="Regular"
-                               IconSize="Size20"
-                               Foreground="{ThemeResource TextSecondaryBrush}"
-                               VerticalAlignment="Center" />
-
-                <StackPanel Grid.Column="1"
-                            MinWidth="0"
-                            VerticalAlignment="Center"
-                            Spacing="2">
-                    <TextBlock Text="Agent is offline"
-                               FontSize="13"
-                               FontWeight="SemiBold" />
-                    <TextBlock Text="{x:Bind Vm.PresenceDetail, Mode=OneWay}"
-                               FontSize="11"
-                               Foreground="{ThemeResource TextSecondaryBrush}"
-                               TextTrimming="CharacterEllipsis"
-                               Visibility="{x:Bind Vm.PresenceDetail, Mode=OneWay, Converter={StaticResource StringToVis}}" />
-                </StackPanel>
-
-                <Button Grid.Column="2"
-                        MinWidth="0"
-                        Padding="10,6"
-                        VerticalAlignment="Center"
-                        IsEnabled="{x:Bind Vm.CanReconnect, Mode=OneWay}"
-                        Click="RecheckPresence_Click">
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                        <ic:FluentIcon Icon="ArrowClockwise"
-                                       IconVariant="Regular"
-                                       IconSize="Size16" />
-                        <TextBlock Text="Recheck" />
-                    </StackPanel>
-                </Button>
-            </Grid>
-        </Border>
+        <controls:OfflineNoticeBar Grid.Row="1"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Bottom"
+                                   Margin="20,0,20,18"
+                                   MaxWidth="620"
+                                   Detail="{x:Bind Vm.PresenceDetail, Mode=OneWay}"
+                                   CanRecheck="{x:Bind Vm.CanReconnect, Mode=OneWay}"
+                                   IsChecking="{x:Bind Vm.IsCheckingPresence, Mode=OneWay}"
+                                   StatusMessage="{x:Bind Vm.RecheckFailedMessage, Mode=OneWay}"
+                                   RecheckRequested="OfflineNotice_RecheckRequested"
+                                   Visibility="{x:Bind Vm.ShowOfflineNotice, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
 
         <controls:ChatComposer x:Name="Composer"
                                Grid.Row="2"

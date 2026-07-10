@@ -11,6 +11,7 @@
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
                 <ResourceDictionary Source="ms-appx:///Styles/Colors.xaml" />
                 <ResourceDictionary Source="ms-appx:///Styles/Brushes.xaml" />
+                <ResourceDictionary Source="ms-appx:///Styles/ControlStyles.xaml" />
             </ResourceDictionary.MergedDictionaries>
             <common:BoolToVisibilityConverter x:Key="BoolToVis" />
             <common:RoleToAlignmentConverter x:Key="RoleToAlignment" />
