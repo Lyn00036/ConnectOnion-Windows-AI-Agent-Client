@@ -1,0 +1,10 @@
+ConnectOnion multimodal fixture.
+
+Task:
+Summarize the attached image and cross-check it against this file.
+
+Expected checks:
+- Attachment name is preserved.
+- MIME type resolves as text/plain.
+- File content can be encoded as a data URL.
+- Text-only and mixed image/file submissions both work.

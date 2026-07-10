@@ -137,6 +137,9 @@ public sealed partial class ChatViewModel : ObservableObject
 
     public AgentPresence Presence => _agent is null ? AgentPresence.Unknown : _presence.GetPresence(_agent.Id);
     public bool IsOnline => Presence == AgentPresence.Online;
+    public bool IsOffline => Presence == AgentPresence.Offline;
+    public bool ShowOfflineNotice => HasAgent && IsOffline;
+    public string PresenceDetail => _agent is null ? "" : _presence.GetDetail(_agent.Id);
     public string PresenceLabel => Presence switch
     {
         AgentPresence.Online => "Online",
@@ -605,6 +608,9 @@ public sealed partial class ChatViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(Presence));
         OnPropertyChanged(nameof(IsOnline));
+        OnPropertyChanged(nameof(IsOffline));
+        OnPropertyChanged(nameof(ShowOfflineNotice));
+        OnPropertyChanged(nameof(PresenceDetail));
         OnPropertyChanged(nameof(PresenceLabel));
         OnPropertyChanged(nameof(CanSend));
         OnPropertyChanged(nameof(CanReconnect));

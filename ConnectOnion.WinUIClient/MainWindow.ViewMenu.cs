@@ -16,11 +16,17 @@ public sealed partial class MainWindow
     private const double MaxZoom = 1.4;
     private const double DefaultZoom = 1.0;
     private const double ZoomPopupMarginFromCaption = 8;
-    private const double ZoomPopupTopOffset = 36;
+    private const double ZoomPopupTopOffset = 18;
+    private const double FindOverlayWidth = 380;
+    private const double FindOverlayMinWidth = 280;
+    private const double FindOverlayMarginFromCaption = 8;
+    private const double FindOverlayTopOffset = 18;
     private static readonly TimeSpan ZoomPopupIdleTimeout = TimeSpan.FromSeconds(3);
 
     private double _zoomFactor = 1.0;
     private bool _isFullScreen;
+    private bool _isUpdatingFindText;
+    private Views.IFindHost? _activeFindHost;
     private readonly DispatcherTimer _zoomPopupIdleTimer = new()
     {
         Interval = ZoomPopupIdleTimeout,
@@ -167,10 +173,20 @@ public sealed partial class MainWindow
 
     private void FindCommand()
     {
-        if (ContentFrame.Content is Views.IFindHost findHost)
+        if (ContentFrame.Content is not Views.IFindHost findHost) return;
+
+        AttachFindHost(findHost);
+        UpdateFindOverlayPosition();
+        FindOverlayPanel.Visibility = Visibility.Visible;
+        findHost.OpenFind();
+        findHost.SetFindQuery(FindTextBox.Text);
+        UpdateFindOverlayState();
+
+        DispatcherQueue.TryEnqueue(() =>
         {
-            findHost.OpenFind();
-        }
+            FindTextBox.Focus(FocusState.Programmatic);
+            FindTextBox.SelectAll();
+        });
     }
 
     private void ZoomInCommand()
@@ -186,8 +202,7 @@ public sealed partial class MainWindow
     {
         UpdateZoomPopupPosition();
         UpdateZoomPercentText();
-        ZoomPopup.IsOpen = false;
-        ZoomPopup.IsOpen = true;
+        ZoomPopupPanel.Visibility = Visibility.Visible;
         RestartZoomPopupIdleTimer();
     }
 
@@ -211,20 +226,104 @@ public sealed partial class MainWindow
 
     private void UpdateZoomPopupPosition()
     {
-        var popupWidth = ZoomPopupPanel.Width;
         var captionWidth = CaptionButtonsColumn.ActualWidth > 0
             ? CaptionButtonsColumn.ActualWidth
             : 144;
 
-        ZoomPopup.HorizontalOffset = Math.Max(
-            8,
-            RootGrid.ActualWidth - captionWidth - popupWidth - ZoomPopupMarginFromCaption);
-        ZoomPopup.VerticalOffset = ZoomPopupTopOffset;
+        ZoomPopupPanel.Margin = new Thickness(
+            0,
+            ZoomPopupTopOffset,
+            captionWidth + ZoomPopupMarginFromCaption,
+            0);
     }
+
+    private void UpdateFindOverlayPosition()
+    {
+        var captionWidth = CaptionButtonsColumn.ActualWidth > 0
+            ? CaptionButtonsColumn.ActualWidth
+            : 144;
+        var availableWidth = Math.Max(FindOverlayMinWidth, RootGrid.ActualWidth - captionWidth - 16);
+
+        FindOverlayPanel.Width = Math.Min(FindOverlayWidth, availableWidth);
+        FindOverlayPanel.Margin = new Thickness(
+            0,
+            FindOverlayTopOffset,
+            captionWidth + FindOverlayMarginFromCaption,
+            0);
+    }
+
+    private void AttachFindHost(Views.IFindHost findHost)
+    {
+        if (ReferenceEquals(_activeFindHost, findHost)) return;
+
+        if (_activeFindHost is not null)
+            _activeFindHost.FindStateChanged -= FindHost_FindStateChanged;
+
+        _activeFindHost = findHost;
+        _activeFindHost.FindStateChanged += FindHost_FindStateChanged;
+    }
+
+    private void FindHost_FindStateChanged(object? sender, EventArgs e)
+        => DispatcherQueue.TryEnqueue(UpdateFindOverlayState);
+
+    private void UpdateFindOverlayState()
+    {
+        var host = _activeFindHost;
+        var hasMatches = host?.HasFindMatches == true;
+
+        FindCounterText.Text = host?.FindStatusText ?? "0 / 0 results";
+        PreviousFindButton.IsEnabled = hasMatches;
+        NextFindButton.IsEnabled = hasMatches;
+    }
+
+    private void CloseFindOverlay()
+    {
+        FindOverlayPanel.Visibility = Visibility.Collapsed;
+        _activeFindHost?.CloseFind();
+        _isUpdatingFindText = true;
+        FindTextBox.Text = "";
+        _isUpdatingFindText = false;
+        UpdateFindOverlayState();
+    }
+
+    private void FindTextBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_isUpdatingFindText) return;
+        _activeFindHost?.SetFindQuery(FindTextBox.Text);
+    }
+
+    private void FindTextBox_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key == VirtualKey.Enter)
+        {
+            if ((Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift) & Windows.UI.Core.CoreVirtualKeyStates.Down) != 0)
+                _activeFindHost?.SelectPreviousFindMatch();
+            else
+                _activeFindHost?.SelectNextFindMatch();
+
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == VirtualKey.Escape)
+        {
+            CloseFindOverlay();
+            e.Handled = true;
+        }
+    }
+
+    private void PreviousFind_Click(object sender, RoutedEventArgs e)
+        => _activeFindHost?.SelectPreviousFindMatch();
+
+    private void NextFind_Click(object sender, RoutedEventArgs e)
+        => _activeFindHost?.SelectNextFindMatch();
+
+    private void CloseFind_Click(object sender, RoutedEventArgs e)
+        => CloseFindOverlay();
 
     private void RestartZoomPopupIdleTimer()
     {
-        if (!ZoomPopup.IsOpen) return;
+        if (ZoomPopupPanel.Visibility != Visibility.Visible) return;
 
         _zoomPopupIdleTimer.Stop();
         _zoomPopupIdleTimer.Start();
@@ -233,7 +332,7 @@ public sealed partial class MainWindow
     private void ZoomPopupIdleTimer_Tick(object? sender, object e)
     {
         _zoomPopupIdleTimer.Stop();
-        ZoomPopup.IsOpen = false;
+        ZoomPopupPanel.Visibility = Visibility.Collapsed;
     }
 
     private void ToggleFullScreenCommand()

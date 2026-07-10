@@ -66,6 +66,10 @@ public sealed class AgentDetailViewModel : ObservableObject
 
     public AgentPresence Presence => _agent is null ? AgentPresence.Unknown : _presence.GetPresence(_agent.Id);
     public bool IsOnline => Presence == AgentPresence.Online;
+    public bool IsOffline => Presence == AgentPresence.Offline;
+    public bool ShowOfflineNotice => HasAgent && IsOffline;
+    public bool CanStartConversation => HasAgent && IsOnline;
+    public string PresenceDetail => _agent is null ? "" : _presence.GetDetail(_agent.Id);
     public string PresenceLabel => Presence switch
     {
         AgentPresence.Online => "Online",
@@ -78,6 +82,10 @@ public sealed class AgentDetailViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(Presence));
         OnPropertyChanged(nameof(IsOnline));
+        OnPropertyChanged(nameof(IsOffline));
+        OnPropertyChanged(nameof(ShowOfflineNotice));
+        OnPropertyChanged(nameof(CanStartConversation));
+        OnPropertyChanged(nameof(PresenceDetail));
         OnPropertyChanged(nameof(PresenceLabel));
     }
 
@@ -154,7 +162,7 @@ public sealed class AgentDetailViewModel : ObservableObject
     /// </summary>
     public async Task<bool> StartConversationAsync(string prompt, bool hasAttachments = false)
     {
-        if (Agent is null || (string.IsNullOrWhiteSpace(prompt) && !hasAttachments)) return false;
+        if (Agent is null || !IsOnline || (string.IsNullOrWhiteSpace(prompt) && !hasAttachments)) return false;
 
         var agentsState = await AppServices.Agents.LoadAsync();
         agentsState.SelectedAgentId = Agent.Id;
@@ -175,6 +183,10 @@ public sealed class AgentDetailViewModel : ObservableObject
         await AppServices.Sessions.SaveAsync(sessionsState);
         return true;
     }
+
+    /// <summary>Forces a fresh online-status probe for the selected agent.</summary>
+    public Task RecheckPresenceAsync()
+        => Agent is null ? Task.CompletedTask : _presence.RefreshAsync(Agent);
 
     /// <summary>Loads agent info from cache or fetches fresh data.</summary>
     public async Task LoadAsync()

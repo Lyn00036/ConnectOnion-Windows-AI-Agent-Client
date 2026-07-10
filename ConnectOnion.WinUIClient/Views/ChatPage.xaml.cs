@@ -41,6 +41,9 @@ public sealed partial class ChatPage : Page, IFindHost
     private readonly DispatcherTimer _findDebounceTimer = new() { Interval = TimeSpan.FromMilliseconds(150) };
     private int _currentFindIndex = -1;
     private string _searchQuery = "";
+    public event EventHandler? FindStateChanged;
+    public string FindStatusText { get; private set; } = "0 / 0 results";
+    public bool HasFindMatches => _findMatches.Count > 0;
 
     public ChatPage()
     {
@@ -140,6 +143,9 @@ public sealed partial class ChatPage : Page, IFindHost
 
     private async void Composer_SubmitRequested(object? sender, ComposerSubmission submission)
         => await SendAsync(submission.Text, submission.Attachments);
+
+    private async void RecheckPresence_Click(object sender, RoutedEventArgs e)
+        => await Vm.RecheckPresenceAsync();
 
     private async void SubmitOnboard_Click(object sender, RoutedEventArgs e)
     {
@@ -267,10 +273,7 @@ public sealed partial class ChatPage : Page, IFindHost
     private void Messages_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         if (_isLoadingConversation) return;
-        if (FindPanel.Visibility == Visibility.Visible)
-        {
-            QueueFindRefresh();
-        }
+        QueueFindRefresh();
 
         if (e.Action is not (NotifyCollectionChangedAction.Add or NotifyCollectionChangedAction.Replace))
         {
@@ -405,72 +408,39 @@ public sealed partial class ChatPage : Page, IFindHost
 
     public void OpenFind()
     {
-        FindPanel.Visibility = Visibility.Visible;
-        FindTextBox.Focus(FocusState.Programmatic);
-        FindTextBox.SelectAll();
         UpdateFindButtons();
     }
 
-    private void CloseFind()
+    public void CloseFind()
     {
-        FindPanel.Visibility = Visibility.Collapsed;
         _findDebounceTimer.Stop();
         _searchQuery = "";
-        FindTextBox.Text = "";
         ClearFindHighlights();
-        FindNavPanel.Visibility = Visibility.Collapsed;
-        FindDivider.Visibility = Visibility.Collapsed;
-        FindCounterText.Text = "0 / 0 results";
+        FindStatusText = "0 / 0 results";
         UpdateFindButtons();
         MessageList.Focus(FocusState.Programmatic);
     }
 
     private void ChatRoot_KeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (FindPanel.Visibility == Visibility.Visible && e.Key == VirtualKey.Escape)
+        if (!string.IsNullOrWhiteSpace(_searchQuery) && e.Key == VirtualKey.Escape)
         {
             CloseFind();
             e.Handled = true;
         }
     }
 
-    private void FindTextBox_TextChanged(object sender, TextChangedEventArgs e)
+    public void SetFindQuery(string query)
     {
-        _searchQuery = FindTextBox.Text;
-        var hasQuery = !string.IsNullOrWhiteSpace(_searchQuery);
-        FindNavPanel.Visibility = hasQuery ? Visibility.Visible : Visibility.Collapsed;
-        FindDivider.Visibility = hasQuery ? Visibility.Visible : Visibility.Collapsed;
+        _searchQuery = query;
         QueueFindRefresh();
     }
 
-    private void FindTextBox_KeyDown(object sender, KeyRoutedEventArgs e)
-    {
-        if (e.Key == VirtualKey.Enter)
-        {
-            if ((Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift) & Windows.UI.Core.CoreVirtualKeyStates.Down) != 0)
-                SelectPreviousMatch();
-            else
-                SelectNextMatch();
-
-            e.Handled = true;
-            return;
-        }
-
-        if (e.Key == VirtualKey.Escape)
-        {
-            CloseFind();
-            e.Handled = true;
-        }
-    }
-
-    private void PreviousFind_Click(object sender, RoutedEventArgs e)
+    public void SelectPreviousFindMatch()
         => SelectPreviousMatch();
 
-    private void NextFind_Click(object sender, RoutedEventArgs e)
+    public void SelectNextFindMatch()
         => SelectNextMatch();
-
-    private void CloseFind_Click(object sender, RoutedEventArgs e)
-        => CloseFind();
 
     private void QueueFindRefresh()
     {
@@ -492,7 +462,7 @@ public sealed partial class ChatPage : Page, IFindHost
         if (string.IsNullOrWhiteSpace(_searchQuery))
         {
             _currentFindIndex = -1;
-            FindCounterText.Text = "0 / 0 results";
+            FindStatusText = "0 / 0 results";
             UpdateFindButtons();
             return;
         }
@@ -562,7 +532,7 @@ public sealed partial class ChatPage : Page, IFindHost
             }
         }
 
-        FindCounterText.Text = _findMatches.Count == 0
+        FindStatusText = _findMatches.Count == 0
             ? "0 / 0 results"
             : $"{_currentFindIndex + 1} / {_findMatches.Count} results";
         UpdateFindButtons();
@@ -579,9 +549,7 @@ public sealed partial class ChatPage : Page, IFindHost
 
     private void UpdateFindButtons()
     {
-        var hasMatches = _findMatches.Count > 0;
-        PreviousFindButton.IsEnabled = hasMatches;
-        NextFindButton.IsEnabled = hasMatches;
+        FindStateChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private readonly record struct FindMatch(ChatMessage Message, int MatchIndexInMessage);

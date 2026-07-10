@@ -14,18 +14,6 @@
           Background="{ThemeResource AppBackgroundBrush}"
           SizeChanged="ChatRoot_SizeChanged">
         <Grid.Resources>
-            <Style x:Key="FindIconButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
-                <Setter Property="Background" Value="Transparent" />
-                <Setter Property="BorderThickness" Value="0" />
-                <Setter Property="CornerRadius" Value="4" />
-                <Setter Property="MinWidth" Value="0" />
-                <Setter Property="MinHeight" Value="0" />
-                <Setter Property="Width" Value="28" />
-                <Setter Property="Height" Value="28" />
-                <Setter Property="Padding" Value="0" />
-                <Setter Property="Foreground" Value="{ThemeResource TextSecondaryBrush}" />
-            </Style>
-
             <!-- Shared attachment rendering for both user and agent bubbles: inline
                  image preview (tap to open in the default viewer) or a file chip
                  (tap to open, button to save a copy). -->
@@ -168,22 +156,10 @@
                                    Foreground="{ThemeResource TextSecondaryBrush}"
                                    VerticalAlignment="Center">
                             <Run Text="{x:Bind Vm.PresenceLabel, Mode=OneWay}" />
-                            <Run Text=" - " />
-                            <Run Text="{x:Bind Vm.ConnectionDetail, Mode=OneWay}" />
                         </TextBlock>
                     </StackPanel>
                 </Border>
             </StackPanel>
-
-            <TextBlock Grid.Row="1"
-                       Grid.Column="0"
-                       Grid.ColumnSpan="2"
-                       Margin="40,2,0,0"
-                       Text="{x:Bind Vm.StatusText, Mode=OneWay}"
-                       FontSize="11"
-                       Foreground="{ThemeResource TextSecondaryBrush}"
-                       TextTrimming="CharacterEllipsis"
-                       Visibility="{x:Bind Vm.StatusText, Mode=OneWay, Converter={StaticResource StringToVis}}" />
         </Grid>
 
         <ListView Grid.Row="1"
@@ -592,6 +568,79 @@
             </ListView.ItemTemplate>
         </ListView>
 
+        <Border Grid.Row="1"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Bottom"
+                Margin="0,0,0,16"
+                MaxWidth="520"
+                CornerRadius="14"
+                Padding="12,7"
+                Background="{ThemeResource SurfaceElevatedBrush}"
+                BorderBrush="{ThemeResource BorderDefaultBrush}"
+                BorderThickness="1"
+                IsHitTestVisible="False"
+                Visibility="{x:Bind Vm.StatusText, Mode=OneWay, Converter={StaticResource StringToVis}}">
+            <TextBlock Text="{x:Bind Vm.StatusText, Mode=OneWay}"
+                       FontSize="11"
+                       Foreground="{ThemeResource TextSecondaryBrush}"
+                       TextTrimming="CharacterEllipsis" />
+        </Border>
+
+        <Border Grid.Row="1"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Bottom"
+                Margin="20,0,20,18"
+                MaxWidth="620"
+                CornerRadius="10"
+                Padding="14,10"
+                Background="{ThemeResource SurfaceElevatedBrush}"
+                BorderBrush="{ThemeResource BorderDefaultBrush}"
+                BorderThickness="1"
+                Visibility="{x:Bind Vm.ShowOfflineNotice, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <ic:FluentIcon Grid.Column="0"
+                               Icon="PlugDisconnected"
+                               IconVariant="Regular"
+                               IconSize="Size20"
+                               Foreground="{ThemeResource TextSecondaryBrush}"
+                               VerticalAlignment="Center" />
+
+                <StackPanel Grid.Column="1"
+                            MinWidth="0"
+                            VerticalAlignment="Center"
+                            Spacing="2">
+                    <TextBlock Text="Agent is offline"
+                               FontSize="13"
+                               FontWeight="SemiBold" />
+                    <TextBlock Text="{x:Bind Vm.PresenceDetail, Mode=OneWay}"
+                               FontSize="11"
+                               Foreground="{ThemeResource TextSecondaryBrush}"
+                               TextTrimming="CharacterEllipsis"
+                               Visibility="{x:Bind Vm.PresenceDetail, Mode=OneWay, Converter={StaticResource StringToVis}}" />
+                </StackPanel>
+
+                <Button Grid.Column="2"
+                        MinWidth="0"
+                        Padding="10,6"
+                        VerticalAlignment="Center"
+                        IsEnabled="{x:Bind Vm.CanReconnect, Mode=OneWay}"
+                        Click="RecheckPresence_Click">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <ic:FluentIcon Icon="ArrowClockwise"
+                                       IconVariant="Regular"
+                                       IconSize="Size16" />
+                        <TextBlock Text="Recheck" />
+                    </StackPanel>
+                </Button>
+            </Grid>
+        </Border>
+
         <controls:ChatComposer x:Name="Composer"
                                Grid.Row="2"
                                CanSubmit="{x:Bind Vm.CanSend, Mode=OneWay}"
@@ -601,7 +650,7 @@
                                ShowSuggestions="False"
                                SubmitRequested="Composer_SubmitRequested" />
 
-        <!-- Loading overlay — hides the empty-state flash before conversation data arrives -->
+        <!-- Loading overlay hides the empty-state flash before conversation data arrives -->
         <Border x:Name="LoadingOverlay"
                 Grid.Row="1"
                 Background="{ThemeResource AppBackgroundBrush}"
@@ -612,120 +661,6 @@
                           HorizontalAlignment="Center"
                           VerticalAlignment="Center" />
         </Border>
-        <Border x:Name="FindPanel"
-                Grid.Row="1"
-                HorizontalAlignment="Right"
-                VerticalAlignment="Top"
-                Margin="0,8,12,0"
-                MinWidth="280"
-                MaxWidth="380"
-                CornerRadius="14"
-                Background="{ThemeResource SurfaceElevatedBrush}"
-                BorderBrush="{ThemeResource BorderDefaultBrush}"
-                BorderThickness="1"
-                Visibility="Collapsed">
-            <Border.Shadow>
-                <ThemeShadow />
-            </Border.Shadow>
-            <Grid RowSpacing="0">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition x:Name="FindNavRow" Height="Auto" />
-                </Grid.RowDefinitions>
 
-                <!-- Row 0: Search input -->
-                <Grid Padding="8,6,4,6" ColumnSpacing="4">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-
-                    <ic:FluentIcon Grid.Column="0"
-                                   Icon="Search"
-                                   IconVariant="Regular"
-                                   IconSize="Size16"
-                                   Foreground="{ThemeResource TextSecondaryBrush}"
-                                   VerticalAlignment="Center"
-                                   Margin="4,0,2,0" />
-
-                    <TextBox x:Name="FindTextBox"
-                             Grid.Column="1"
-                             MinWidth="0"
-                             BorderThickness="0"
-                             Background="Transparent"
-                             PlaceholderText="Search chat..."
-                             TextChanged="FindTextBox_TextChanged"
-                             KeyDown="FindTextBox_KeyDown" />
-
-                    <!-- Vertical divider (visible only when query is non-empty) -->
-                    <Border x:Name="FindDivider"
-                            Grid.Column="2"
-                            Width="1"
-                            Height="20"
-                            Margin="2,0"
-                            VerticalAlignment="Center"
-                            Background="{ThemeResource BorderDefaultBrush}"
-                            Visibility="Collapsed" />
-
-                    <Button Grid.Column="3"
-                            Style="{StaticResource FindIconButtonStyle}"
-                            Click="CloseFind_Click"
-                            AutomationProperties.Name="Close find"
-                            ToolTipService.ToolTip="Close find (Esc)">
-                        <ic:FluentIcon Icon="Dismiss"
-                                       IconVariant="Regular"
-                                       IconSize="Size12"
-                                       Foreground="{ThemeResource TextSecondaryBrush}" />
-                    </Button>
-                </Grid>
-
-                <!-- Row 1: Navigation controls (collapsed when query is empty) -->
-                <Grid x:Name="FindNavPanel"
-                      Grid.Row="1"
-                      Padding="8,2,10,6"
-                      ColumnSpacing="4"
-                      Visibility="Collapsed">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-
-                    <Button x:Name="PreviousFindButton"
-                            Grid.Column="0"
-                            Style="{StaticResource FindIconButtonStyle}"
-                            Click="PreviousFind_Click"
-                            AutomationProperties.Name="Previous result"
-                            ToolTipService.ToolTip="Previous result (Shift+Enter)">
-                        <ic:FluentIcon Icon="ArrowUp"
-                                       IconVariant="Regular"
-                                       IconSize="Size16"
-                                       Foreground="{ThemeResource TextSecondaryBrush}" />
-                    </Button>
-
-                    <Button x:Name="NextFindButton"
-                            Grid.Column="1"
-                            Style="{StaticResource FindIconButtonStyle}"
-                            Click="NextFind_Click"
-                            AutomationProperties.Name="Next result"
-                            ToolTipService.ToolTip="Next result (Enter)">
-                        <ic:FluentIcon Icon="ArrowDown"
-                                       IconVariant="Regular"
-                                       IconSize="Size16"
-                                       Foreground="{ThemeResource TextSecondaryBrush}" />
-                    </Button>
-
-                    <TextBlock x:Name="FindCounterText"
-                               Grid.Column="2"
-                               Text="0 / 0 results"
-                               FontSize="11"
-                               HorizontalAlignment="Right"
-                               VerticalAlignment="Center"
-                               Foreground="{ThemeResource TextTertiaryBrush}" />
-                </Grid>
-            </Grid>
-        </Border>
     </Grid>
 </Page>

@@ -13,6 +13,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Windows.ApplicationModel.DataTransfer;
 using Windows.Devices.Enumeration;
 using Windows.Media;
 using Windows.Media.Audio;
@@ -248,14 +249,26 @@ public sealed partial class ChatComposer : UserControl
         }
 
         // Empty result means the user dismissed the picker — a normal outcome, not an error.
-        if (picked.Count == 0) return;
+        AddAttachments(picked);
+    }
 
-        foreach (var attachment in picked)
+    /// <summary>
+    /// Validates each candidate and kicks off encoding for the ones that pass. Shared by the
+    /// file picker and drag-and-drop, so both routes get identical capability gating — the
+    /// only difference between them is how the <see cref="PendingAttachment"/> list was
+    /// produced. Rejected candidates are still added to the rail (as Failed) so the user sees
+    /// *why* a file didn't take.
+    /// </summary>
+    private void AddAttachments(IReadOnlyList<PendingAttachment> candidates)
+    {
+        foreach (var attachment in candidates)
         {
             System.Diagnostics.Debug.WriteLine(
                 $"[Attachment] selected name={attachment.FileName} mime={attachment.MimeType} size={attachment.SizeBytes}");
 
-            var existingCount = PendingAttachments.Count(p => p.Kind == kind);
+            // Counted per-kind and re-read each iteration: a mixed drop of images and files
+            // is checked against each kind's own count limit, including the ones just added.
+            var existingCount = PendingAttachments.Count(p => p.Kind == attachment.Kind);
             var error = AttachmentValidationService.Validate(attachment, AcceptedInputs, existingCount);
 
             PendingAttachments.Add(attachment);
@@ -269,6 +282,83 @@ public sealed partial class ChatComposer : UserControl
             }
 
             _ = EncodeAttachmentAsync(attachment);
+        }
+    }
+
+    // ---- Drag and drop ----
+
+    private void Composer_DragEnter(object sender, DragEventArgs e)
+        => UpdateDragFeedback(e);
+
+    private void Composer_DragOver(object sender, DragEventArgs e)
+        => UpdateDragFeedback(e);
+
+    private void Composer_DragLeave(object sender, DragEventArgs e)
+        => DropOverlay.Visibility = Visibility.Collapsed;
+
+    /// <summary>
+    /// Runs on every pointer move during a drag, so it stays synchronous — inspecting the
+    /// payload's *format* is cheap, whereas actually materializing the storage items is not
+    /// and is deferred to <see cref="Composer_Drop"/>.
+    /// </summary>
+    private void UpdateDragFeedback(DragEventArgs e)
+    {
+        if (!CanAcceptDrop(e.DataView))
+        {
+            e.AcceptedOperation = DataPackageOperation.None;
+            DropOverlay.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        e.AcceptedOperation = DataPackageOperation.Copy;
+        if (e.DragUIOverride is { } dragUi)
+        {
+            dragUi.Caption = "Attach";
+            dragUi.IsCaptionVisible = true;
+            dragUi.IsGlyphVisible = false;
+        }
+        DropOverlay.Visibility = Visibility.Visible;
+
+        // Claims the drag: the event still bubbles to MainWindow (which listens with
+        // handledEventsToo), where Handled is the signal to drop the window-wide "drop it on
+        // the message box" hint now that the pointer has reached the real target.
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// Whether the payload is droppable at all. Deliberately does not check per-file
+    /// capability or type — the dropped files aren't readable from here — so an unsupported
+    /// file still lands in the rail and gets a visible rejection from
+    /// <see cref="AttachmentValidationService"/> rather than being refused by a cursor the
+    /// user can't interrogate.
+    /// </summary>
+    private bool CanAcceptDrop(DataPackageView data)
+        => CanSubmit && !IsBusy && !IsRecordingActive && AttachmentDropService.ContainsFiles(data);
+
+    private async void Composer_Drop(object sender, DragEventArgs e)
+    {
+        DropOverlay.Visibility = Visibility.Collapsed;
+        if (!CanAcceptDrop(e.DataView)) return;
+
+        // The drag source stays blocked until the deferral completes, so it must be released
+        // on every path out of this handler.
+        var deferral = e.GetDeferral();
+        try
+        {
+            var dropped = await AttachmentDropService.ExtractAsync(e.DataView, _lifetimeCts.Token);
+            AddAttachments(dropped);
+        }
+        catch (OperationCanceledException)
+        {
+            // Composer unloaded mid-drop; the attachments are being discarded anyway.
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Attachment] drop failed error={ex.GetType().Name}");
+        }
+        finally
+        {
+            deferral.Complete();
         }
     }
 

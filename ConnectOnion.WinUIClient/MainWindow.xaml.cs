@@ -34,6 +34,7 @@ public sealed partial class MainWindow : Window
             {
                 ShellSidebar.SetCurrentPage(ContentFrame.CurrentSourcePageType);
                 UpdateNavigationButtons();
+                CloseFindOverlay();
                 await ShellSidebar.RefreshAsync();
             }
             catch
@@ -87,6 +88,7 @@ public sealed partial class MainWindow : Window
     {
         ApplySidebarWidth(e.NewSize.Width);
         UpdateZoomPopupPosition();
+        UpdateFindOverlayPosition();
     }
 
     private void ApplySidebarWidth(double windowWidth)

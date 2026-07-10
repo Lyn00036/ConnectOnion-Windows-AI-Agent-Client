@@ -47,6 +47,18 @@
                 <Setter Property="Padding" Value="0" />
                 <Setter Property="Foreground" Value="{ThemeResource TextSecondaryBrush}" />
             </Style>
+
+            <Style x:Key="FindHudButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="CornerRadius" Value="4" />
+                <Setter Property="MinWidth" Value="0" />
+                <Setter Property="MinHeight" Value="0" />
+                <Setter Property="Width" Value="28" />
+                <Setter Property="Height" Value="28" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="Foreground" Value="{ThemeResource TextSecondaryBrush}" />
+            </Style>
         </Grid.Resources>
 
         <Grid.RowDefinitions>
@@ -231,23 +243,111 @@
                        Fill="{ThemeResource BorderDefaultBrush}" />
         </Grid>
 
-        <Popup x:Name="ZoomPopup"
-               IsLightDismissEnabled="False"
-               ShouldConstrainToRootBounds="True"
-               HorizontalOffset="0"
-               VerticalOffset="36">
-            <Popup.ChildTransitions>
-                <TransitionCollection>
-                    <PaneThemeTransition Edge="Top" />
-                </TransitionCollection>
-            </Popup.ChildTransitions>
+        <Grid x:Name="FloatingOverlayLayer"
+              Grid.Row="0"
+              Grid.RowSpan="2"
+              Canvas.ZIndex="100">
+            <Border x:Name="FindOverlayPanel"
+                    Width="380"
+                    MinHeight="36"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Top"
+                    Margin="0,18,152,0"
+                    Padding="8,2,4,2"
+                    CornerRadius="14"
+                    Background="{ThemeResource SurfaceElevatedBrush}"
+                    BorderBrush="{ThemeResource BorderDefaultBrush}"
+                    BorderThickness="1"
+                    IsHitTestVisible="True"
+                    Visibility="Collapsed">
+                <Border.Shadow>
+                    <ThemeShadow />
+                </Border.Shadow>
+                <Grid ColumnSpacing="4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <ic:FluentIcon Grid.Column="0"
+                                   Icon="Search"
+                                   IconVariant="Regular"
+                                   IconSize="Size16"
+                                   Foreground="{ThemeResource TextSecondaryBrush}"
+                                   VerticalAlignment="Center"
+                                   Margin="4,0,2,0" />
+
+                    <TextBox x:Name="FindTextBox"
+                             Grid.Column="1"
+                             MinWidth="0"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             PlaceholderText="Search chat..."
+                             TextChanged="FindTextBox_TextChanged"
+                             KeyDown="FindTextBox_KeyDown" />
+
+                    <TextBlock x:Name="FindCounterText"
+                               Grid.Column="2"
+                               Text="0 / 0 results"
+                               FontSize="11"
+                               VerticalAlignment="Center"
+                               Foreground="{ThemeResource TextTertiaryBrush}" />
+
+                    <Button x:Name="PreviousFindButton"
+                            Grid.Column="3"
+                            Style="{StaticResource FindHudButtonStyle}"
+                            Click="PreviousFind_Click"
+                            AutomationProperties.Name="Previous result"
+                            ToolTipService.ToolTip="Previous result (Shift+Enter)">
+                        <ic:FluentIcon Icon="ArrowUp"
+                                       IconVariant="Regular"
+                                       IconSize="Size16"
+                                       Foreground="{ThemeResource TextSecondaryBrush}" />
+                    </Button>
+
+                    <Button x:Name="NextFindButton"
+                            Grid.Column="4"
+                            Style="{StaticResource FindHudButtonStyle}"
+                            Click="NextFind_Click"
+                            AutomationProperties.Name="Next result"
+                            ToolTipService.ToolTip="Next result (Enter)">
+                        <ic:FluentIcon Icon="ArrowDown"
+                                       IconVariant="Regular"
+                                       IconSize="Size16"
+                                       Foreground="{ThemeResource TextSecondaryBrush}" />
+                    </Button>
+
+                    <Button Grid.Column="5"
+                            Style="{StaticResource FindHudButtonStyle}"
+                            Click="CloseFind_Click"
+                            AutomationProperties.Name="Close find"
+                            ToolTipService.ToolTip="Close find (Esc)">
+                        <ic:FluentIcon Icon="Dismiss"
+                                       IconVariant="Regular"
+                                       IconSize="Size12"
+                                       Foreground="{ThemeResource TextSecondaryBrush}" />
+                    </Button>
+                </Grid>
+            </Border>
+
             <Border x:Name="ZoomPopupPanel"
                     Width="236"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Top"
                     Padding="14,6"
                     CornerRadius="18"
                     Background="{ThemeResource SurfaceElevatedBrush}"
                     BorderBrush="{ThemeResource BorderDefaultBrush}"
-                    BorderThickness="1">
+                    BorderThickness="1"
+                    IsHitTestVisible="True"
+                    Visibility="Collapsed">
+                <Border.Shadow>
+                    <ThemeShadow />
+                </Border.Shadow>
                 <Grid ColumnSpacing="8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="62" />
@@ -311,6 +411,37 @@
                     </Button>
                 </Grid>
             </Border>
-        </Popup>
+
+            <!-- Window-wide "you dropped this in the wrong place" hint. Only the composer is a
+                 real drop target, so a file dragged anywhere else in the window gets this
+                 instead of a silent no-drop cursor. IsHitTestVisible=False so it never
+                 intercepts the drag itself. See MainWindow.DragDrop.cs. -->
+            <Border x:Name="DragHintPanel"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Top"
+                    Margin="0,60,0,0"
+                    Padding="16,10"
+                    CornerRadius="20"
+                    Background="{ThemeResource SurfaceElevatedBrush}"
+                    BorderBrush="{ThemeResource BrandPrimaryBrush}"
+                    BorderThickness="1"
+                    IsHitTestVisible="False"
+                    Visibility="Collapsed">
+                <Border.Shadow>
+                    <ThemeShadow />
+                </Border.Shadow>
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <ic:FluentIcon Icon="ArrowDown"
+                                   IconVariant="Regular"
+                                   IconSize="Size20"
+                                   Foreground="{ThemeResource BrandPrimaryBrush}"
+                                   VerticalAlignment="Center" />
+                    <TextBlock Text="Drop files on the message box to attach"
+                               FontSize="13"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center" />
+                </StackPanel>
+            </Border>
+        </Grid>
     </Grid>
 </Window>

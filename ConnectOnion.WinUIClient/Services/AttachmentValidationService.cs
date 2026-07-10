@@ -50,6 +50,25 @@ public static class AttachmentValidationService
         return null;
     }
 
+    /// <summary>
+    /// Infers the attachment kind from a file's extension, for entry points that don't
+    /// already know it (drag-and-drop, where the OS applies no filter). Anything that
+    /// isn't a known image extension is classified as <see cref="AttachmentKind.File"/>
+    /// — including extensions on neither list. Those are *not* filtered out here on
+    /// purpose: letting them through to <see cref="ValidateExtension"/> turns an
+    /// unsupported drop into a visible "Unsupported file type: .exe" chip instead of a
+    /// file that silently vanishes on drop.
+    /// </summary>
+    public static AttachmentKind ClassifyKind(string fileName)
+    {
+        var ext = Path.GetExtension(fileName);
+        foreach (var candidate in ImageExtensions)
+        {
+            if (string.Equals(candidate, ext, StringComparison.OrdinalIgnoreCase)) return AttachmentKind.Image;
+        }
+        return AttachmentKind.File;
+    }
+
     public static string? ValidateFileName(string fileName)
     {
         if (string.IsNullOrWhiteSpace(fileName)) return "File name is empty.";

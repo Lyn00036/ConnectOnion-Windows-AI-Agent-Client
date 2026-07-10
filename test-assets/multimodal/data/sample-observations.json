@@ -1,0 +1,22 @@
+{
+  "fixture": "sample-observations",
+  "version": 1,
+  "createdFor": "ConnectOnion multimodal testing",
+  "observations": [
+    {
+      "id": "obs-001",
+      "image": "images/workspace-scene.png",
+      "expectedTopics": ["workspace", "laptop", "notebook", "mug"]
+    },
+    {
+      "id": "obs-002",
+      "image": "images/shape-set.png",
+      "expectedTopics": ["five objects", "colors", "basic shapes"]
+    }
+  ],
+  "checks": {
+    "supportsText": true,
+    "supportsImages": true,
+    "supportsFiles": true
+  }
+}

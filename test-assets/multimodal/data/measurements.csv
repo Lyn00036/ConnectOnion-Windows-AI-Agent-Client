@@ -1,0 +1,6 @@
+id,item,color,expected_count,notes
+1,cube,red,1,shape-set object
+2,sphere,blue,1,shape-set object
+3,cylinder,green,1,shape-set object
+4,cone,yellow,1,shape-set object
+5,star token,purple,1,shape-set object

@@ -145,10 +145,20 @@
                     Click="Suggestion_Click" />
         </StackPanel>
 
-        <Border CornerRadius="24"
+        <!-- AllowDrop lives on this Border rather than on InputBox or the outer panel:
+             the drag events are routed, so every child (input box, buttons) bubbles up
+             to one handler, and the drop region visually matches the rounded surface
+             the DropOverlay paints over. -->
+        <Border x:Name="ComposerSurface"
+                CornerRadius="24"
                 Background="{ThemeResource ComposerBackgroundBrush}"
                 BorderBrush="{ThemeResource ComposerBorderBrush}"
-                BorderThickness="1">
+                BorderThickness="1"
+                AllowDrop="True"
+                DragEnter="Composer_DragEnter"
+                DragOver="Composer_DragOver"
+                DragLeave="Composer_DragLeave"
+                Drop="Composer_Drop">
             <Grid MinHeight="112" Padding="14,12">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*" />
@@ -317,6 +327,44 @@
                                           Visibility="Collapsed" />
                         </Grid>
                     </Button>
+                </Grid>
+
+                <!-- Drop affordance. Negative margin cancels the parent Grid's Padding so it
+                     covers the whole rounded surface. IsHitTestVisible=False keeps it out of
+                     the drag hit-test, which would otherwise make DragLeave fire the moment
+                     the overlay appears under the pointer. -->
+                <Grid x:Name="DropOverlay"
+                      Grid.Row="0"
+                      Grid.RowSpan="2"
+                      Margin="-14,-12,-14,-12"
+                      IsHitTestVisible="False"
+                      Visibility="Collapsed">
+                    <Border CornerRadius="24"
+                            Background="{ThemeResource ComposerBackgroundBrush}"
+                            Opacity="0.92" />
+                    <Rectangle Margin="2"
+                               RadiusX="22"
+                               RadiusY="22"
+                               Fill="Transparent"
+                               Stroke="{ThemeResource BrandPrimaryBrush}"
+                               StrokeThickness="2"
+                               StrokeDashArray="4,3"
+                               StrokeDashCap="Round" />
+                    <StackPanel Orientation="Horizontal"
+                                Spacing="10"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center">
+                        <ic:FluentIcon Icon="ArrowDown"
+                                       IconVariant="Regular"
+                                       IconSize="Size20"
+                                       Foreground="{ThemeResource BrandPrimaryBrush}"
+                                       VerticalAlignment="Center" />
+                        <TextBlock Text="Drop files to attach"
+                                   FontSize="14"
+                                   FontWeight="SemiBold"
+                                   Foreground="{ThemeResource BrandPrimaryBrush}"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
                 </Grid>
             </Grid>
         </Border>

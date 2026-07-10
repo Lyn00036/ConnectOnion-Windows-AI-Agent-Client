@@ -22,6 +22,7 @@ public sealed partial class MainWindow
         RegisterFileMenuAccelerators();
         RegisterEditMenuAccelerators();
         RegisterViewMenuAccelerators();
+        RegisterDragDropHint();
     }
 
     private void NewWindow_Click(object sender, RoutedEventArgs e)

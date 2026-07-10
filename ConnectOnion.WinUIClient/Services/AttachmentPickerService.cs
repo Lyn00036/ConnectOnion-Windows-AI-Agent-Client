@@ -57,29 +57,10 @@ public static class AttachmentPickerService
         var results = new List<PendingAttachment>(files.Count);
         foreach (var file in files)
         {
-            ct.ThrowIfCancellationRequested();
-
-            long sizeBytes;
-            try
-            {
-                var props = await file.GetBasicPropertiesAsync().AsTask(ct).ConfigureAwait(false);
-                sizeBytes = (long)props.Size;
-            }
-            catch
-            {
-                // Metadata read failed (locked/removed file) — skip it rather
-                // than fail the whole batch pick.
-                continue;
-            }
-
-            results.Add(new PendingAttachment
-            {
-                Kind = kind,
-                FileName = file.Name,
-                LocalPath = file.Path,
-                MimeType = MimeTypeResolver.Resolve(file.ContentType, file.Name),
-                SizeBytes = sizeBytes,
-            });
+            // A file whose metadata can't be read is skipped rather than failing the
+            // whole batch pick.
+            var described = await AttachmentIntake.DescribeAsync(file, kind, ct).ConfigureAwait(false);
+            if (described is not null) results.Add(described);
         }
         return results;
     }

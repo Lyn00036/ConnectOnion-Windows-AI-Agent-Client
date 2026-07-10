@@ -20,7 +20,7 @@ public sealed partial class AgentDetailPage : Page
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         await Vm.LoadAsync();
-        Composer.CanSubmit = Vm.HasAgent;
+        Composer.CanSubmit = Vm.CanStartConversation;
         Composer.FocusInput();
     }
 
@@ -34,6 +34,9 @@ public sealed partial class AgentDetailPage : Page
     // the session, navigates, and is actually sent as the first turn.
     private async void Composer_SubmitRequested(object? sender, ComposerSubmission submission)
         => await StartConversationAsync(submission);
+
+    private async void RecheckPresence_Click(object sender, RoutedEventArgs e)
+        => await Vm.RecheckPresenceAsync();
 
     private async System.Threading.Tasks.Task StartConversationAsync(ComposerSubmission submission)
     {
