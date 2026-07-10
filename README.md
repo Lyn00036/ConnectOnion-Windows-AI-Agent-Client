@@ -412,8 +412,5 @@ the database is recreated from the embedded schema on next launch.
 
 - [WinUIClient project README](./ConnectOnion.WinUIClient/README.md)
 - [WinUI 3 native migration notes](./WINUI3_NATIVE_MIGRATION.md)
-- [Team progress notes](./TEAM_PROGRESS.md)
-- [Requirement-to-solution mapping](./connectonion_requirement_solution_mapping.md)
-- [Email agent README](./agent/email-agent/README.md)
 - [ConnectOnion Python repository](https://github.com/openonion/connectonion)
 - [ConnectOnion TypeScript repository](https://github.com/openonion/connectonion-ts)
