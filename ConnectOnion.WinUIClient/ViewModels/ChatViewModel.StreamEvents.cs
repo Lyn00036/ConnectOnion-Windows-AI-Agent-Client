@@ -27,6 +27,16 @@ public sealed partial class ChatViewModel
     private AgentConnectionService? CurrentConnection
         => _session is null ? null : AppServices.RunManager.Connections.Get(_session.Id);
 
+    /// <summary>Hands the just-resolved interactive card's result to the app-level manager so it
+    /// survives into persisted history. The live stream never echoes the user's reply, so the
+    /// manager can only stamp the chosen result (or "no selection") onto its re-projected card
+    /// if we record it here at the moment of answering.</summary>
+    private void RecordInteractiveAnswer(ChatMessage message)
+    {
+        if (_session is null || string.IsNullOrEmpty(message.EventMeta)) return;
+        AppServices.RunManager.RecordInteractiveAnswer(_session.Id, message.EventMeta, message.Status);
+    }
+
     public async Task SubmitOnboardInviteCodeAsync(ChatMessage message)
     {
         var connection = CurrentConnection;
@@ -81,6 +91,7 @@ public sealed partial class ChatViewModel
 
         message.EventMeta = $"Answered: {answer}";
         message.Status = EventStatus.Done;
+        RecordInteractiveAnswer(message);
         StatusText = "";
         await (CurrentConnection?.RespondAskUserAsync(answer) ?? Task.CompletedTask);
     }
@@ -94,6 +105,7 @@ public sealed partial class ChatViewModel
             ? (scope == "session" ? "Approved for session" : "Approved once")
             : "Rejected";
         message.Status = approved ? EventStatus.Done : EventStatus.Error;
+        RecordInteractiveAnswer(message);
         StatusText = "";
         await (CurrentConnection?.RespondApprovalAsync(approved, scope) ?? Task.CompletedTask);
     }
@@ -120,6 +132,7 @@ public sealed partial class ChatViewModel
             message.Status = EventStatus.Error;
         }
 
+        RecordInteractiveAnswer(message);
         StatusText = "";
         await (CurrentConnection?.RespondPlanReviewAsync(responseMessage) ?? Task.CompletedTask);
     }

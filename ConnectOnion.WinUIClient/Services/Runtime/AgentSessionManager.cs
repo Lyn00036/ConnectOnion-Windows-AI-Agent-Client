@@ -31,8 +31,27 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
     private readonly ConcurrentDictionary<string, AgentConfig> _agentsById = new();
     // The registry intentionally persists a reply before publishing its terminal state. Keep
     // that short transition observable so a page opened in the gap does not replay the same
-    // stream events onto the history it just loaded from the database.
+    // stream events onto the history it just loaded from the database. Each marker is only
+    // needed for that brief window, so the set is FIFO-capped (see MarkHistoryPersisted) rather
+    // than grown one entry per turn for the whole app lifetime.
     private readonly ConcurrentDictionary<string, byte> _historyPersistedRuns = new();
+    private readonly ConcurrentQueue<string> _historyPersistedOrder = new();
+    private const int MaxPersistedRunMarkers = 128;
+
+    // Interactive-turn answers (ask_user / approval / plan_review) captured from the page as the
+    // user resolves them, keyed by conversation id and consumed at persist time in the order the
+    // cards were created. The live stream carries each *request* but never the user's reply, so
+    // without this the app-level persist (which re-projects cards from the reply-less event
+    // stream) has no way to record the chosen result — a reloaded card would show dead controls.
+    private readonly ConcurrentDictionary<string, ConcurrentQueue<InteractiveAnswer>> _interactiveAnswers = new();
+
+    /// <summary>Shown for an interactive turn that history reload finds was never answered
+    /// (the WebSocket wait it replied to is gone, so it can never be resolved now).</summary>
+    private const string NoSelectionMeta = "No selection";
+
+    /// <summary>A resolved interactive answer: the meta text to show (e.g. "Answered: yes",
+    /// "Approved once", "Rejected") and the status it resolves the card to.</summary>
+    private readonly record struct InteractiveAnswer(string Meta, EventStatus Status);
 
     public AgentSessionManager(HttpClient http, ConversationRepository conversations)
     {
@@ -47,6 +66,14 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
     /// and trigger explicit reconnects on the same connection the run uses.</summary>
     public AgentConnectionRegistry Connections => _connections;
 
+    /// <summary>Records the result the user chose for an interactive turn (ask_user / approval /
+    /// plan_review) so the app-level persist can stamp it onto the card it re-projects from the
+    /// reply-less event stream. Called by the chat page the moment it resolves the turn; answers
+    /// are consumed in creation order when the run is persisted.</summary>
+    public void RecordInteractiveAnswer(string conversationId, string meta, EventStatus status)
+        => _interactiveAnswers.GetOrAdd(conversationId, _ => new ConcurrentQueue<InteractiveAnswer>())
+            .Enqueue(new InteractiveAnswer(meta, status));
+
     // ---- IAgentSessionManager ----
 
     public async Task<SendMessageResult> SendMessageAsync(
@@ -54,6 +81,9 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         IReadOnlyList<PendingAttachment>? attachments = null)
     {
         _agentsById[agent.Id] = agent;
+        // A fresh run starts clean: drop any interactive answers left over from an abandoned
+        // prior turn so they can't leak onto this run's cards at persist time.
+        _interactiveAnswers.TryRemove(conversationId, out _);
 
         List<string>? images = null;
         List<OutgoingFileAttachment>? files = null;
@@ -135,6 +165,7 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
     public ConversationRunSnapshot? RetryRun(AgentConfig agent, string conversationId)
     {
         _agentsById[agent.Id] = agent;
+        _interactiveAnswers.TryRemove(conversationId, out _);
         var connection = _connections.GetOrCreate(conversationId, agent);
         return _runs.RetryRun(conversationId, new AgentTurnExecutor(connection, r => NotifyApproval(agent, conversationId, r)));
     }
@@ -142,6 +173,36 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
     private static void NotifyApproval(AgentConfig agent, string conversationId, ApprovalRequest r)
         => AppServices.Notifications.PublishApprovalRequired(
             agent.Id, agent.Name, conversationId, r.Tool, r.Description, r.ArgumentsJson);
+
+    /// <summary>Releases everything tied to a deleted conversation: cancels its active run (if
+    /// any), closes and drops its app-owned socket, and clears its pending interactive answers.
+    /// Called when the user deletes a session or agent so a removed conversation leaves no live
+    /// WebSocket or in-memory state behind.</summary>
+    public async Task ReleaseConversationAsync(string conversationId)
+    {
+        var run = _runs.GetActiveRun(conversationId);
+        if (run is not null)
+        {
+            try { await _runs.CancelRunAsync(conversationId, run.RunId).ConfigureAwait(false); }
+            catch { /* best-effort: the socket is torn down next regardless */ }
+        }
+        _interactiveAnswers.TryRemove(conversationId, out _);
+        await _connections.RemoveAsync(conversationId).ConfigureAwait(false);
+    }
+
+    /// <summary>Records that a run's history is on disk, bounded FIFO so the marker set never
+    /// grows past <see cref="MaxPersistedRunMarkers"/> — each entry only matters for the brief
+    /// window between the conversation write and the terminal snapshot.</summary>
+    private void MarkHistoryPersisted(string runId)
+    {
+        if (!_historyPersistedRuns.TryAdd(runId, 0)) return;
+        _historyPersistedOrder.Enqueue(runId);
+        while (_historyPersistedOrder.Count > MaxPersistedRunMarkers
+            && _historyPersistedOrder.TryDequeue(out var old))
+        {
+            _historyPersistedRuns.TryRemove(old, out _);
+        }
+    }
 
     /// <summary>Real app exit: stop new runs, cancel in-flight ones within a bounded window,
     /// then release the sockets. Never blocks forever.</summary>
@@ -169,16 +230,22 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
             catch { /* a single bad image must not fail the whole persist */ }
         }
 
+        ResolveInteractiveCards(snapshot.ConversationId, history);
+
         await _conversations.SaveMessagesAsync(
             snapshot.ConversationId, history.Where(m => !m.IsOnboarding).ToList()).ConfigureAwait(false);
 
         // Set this immediately after the conversation write (rather than after trace/execution
         // bookkeeping) because a newly created page can subscribe during that interval.
-        _historyPersistedRuns.TryAdd(snapshot.RunId, 0);
+        MarkHistoryPersisted(snapshot.RunId);
 
         await PersistTraceAsync(snapshot).ConfigureAwait(false);
         await _conversations.FinalizeExecutionAsync(
             snapshot.RunId, snapshot.ConversationId, finalReply, "done", projection.TurnDurationMs).ConfigureAwait(false);
+
+        // A completed turn is a natural point to release sockets for other conversations that
+        // have gone idle, so a long session never accumulates live WebSockets without bound.
+        await _connections.TrimIdleAsync(cid => _runs.GetActiveRun(cid) is not null).ConfigureAwait(false);
 
         // Completion notification is now an app-level concern (fires even in the tray with no
         // page open); the coordinator suppresses it when a window already shows this chat.
@@ -220,11 +287,15 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
             });
         }
 
+        ResolveInteractiveCards(snapshot.ConversationId, history);
+
         await _conversations.SaveMessagesAsync(
             snapshot.ConversationId, history.Where(m => !m.IsOnboarding).ToList()).ConfigureAwait(false);
-        _historyPersistedRuns.TryAdd(snapshot.RunId, 0);
+        MarkHistoryPersisted(snapshot.RunId);
         await _conversations.FinalizeExecutionAsync(
             snapshot.RunId, snapshot.ConversationId, snapshot.ErrorMessage ?? "", "error", 0).ConfigureAwait(false);
+
+        await _connections.TrimIdleAsync(cid => _runs.GetActiveRun(cid) is not null).ConfigureAwait(false);
     }
 
     private async Task PersistTraceAsync(ConversationRunSnapshot snapshot)
@@ -248,6 +319,42 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         }
         catch { }
         return null;
+    }
+
+    /// <summary>
+    /// Stamps the user's recorded interactive answers onto the cards this run just re-projected
+    /// from the (reply-less) event stream, in creation order, then seals any that were never
+    /// answered as <see cref="NoSelectionMeta"/>. Only freshly projected cards are touched —
+    /// a card is "unresolved" iff it is still <see cref="EventStatus.Running"/> with no
+    /// <c>EventMeta</c>, which cleanly skips interactive turns resolved in earlier turns of the
+    /// same conversation (they already carry their own meta/status). This is what makes the
+    /// chosen result — or "no selection" — survive into reloaded history.
+    /// </summary>
+    private void ResolveInteractiveCards(string conversationId, IReadOnlyList<ChatMessage> history)
+    {
+        _interactiveAnswers.TryRemove(conversationId, out var answers);
+
+        foreach (var m in history)
+        {
+            if (m.Role != ChatRole.Event
+                || m.Status != EventStatus.Running
+                || m.EventMeta is not null
+                || m.EventKind is not ("ask_user" or "approval" or "plan_review"))
+            {
+                continue;
+            }
+
+            if (answers is not null && answers.TryDequeue(out var answer))
+            {
+                m.EventMeta = answer.Meta;
+                m.Status = answer.Status;
+            }
+            else
+            {
+                m.EventMeta = NoSelectionMeta;
+                m.Status = EventStatus.Done;
+            }
+        }
     }
 
     private static long NextLongId(IReadOnlyList<ChatMessage> messages)

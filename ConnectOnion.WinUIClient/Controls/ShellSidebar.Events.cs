@@ -64,6 +64,12 @@ public sealed partial class ShellSidebar
         await AppServices.Agents.SaveAsync(agentsState);
 
         var sessionsState = await AppServices.Sessions.LoadAsync();
+        // Release the app-owned socket (and any active run) for every conversation of this
+        // agent before dropping them, so a deleted agent leaves no live WebSocket behind.
+        foreach (var removed in sessionsState.Sessions.Where(session => session.AgentId == agentId))
+        {
+            await AppServices.RunManager.ReleaseConversationAsync(removed.Id);
+        }
         sessionsState.Sessions = sessionsState.Sessions
             .Where(session => session.AgentId != agentId)
             .ToList();
@@ -114,6 +120,7 @@ public sealed partial class ShellSidebar
         if (!await ConfirmDeleteAsync($"Delete {session.Title}?", "This local conversation will be removed.")) return;
 
         sessionsState.Sessions.Remove(session);
+        await AppServices.RunManager.ReleaseConversationAsync(sessionId);
         await AppServices.Conversations.DeleteMessagesAsync(sessionId);
         await AppServices.Conversations.DeleteExecutionsAndTracesAsync(sessionId);
 
