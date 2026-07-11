@@ -323,39 +323,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
             ["message"] = message,
         }, CancellationToken.None);
 
-    private static AskUserRequest ParseAskUser(WireMessage msg)
-    {
-        var options = new List<string>();
-        if (msg.TryGet("options", out var optsEl) && optsEl.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var opt in optsEl.EnumerateArray())
-            {
-                if (opt.ValueKind == JsonValueKind.String) options.Add(opt.GetString()!);
-            }
-        }
-
-        var fields = new List<AskUserField>();
-        if (msg.TryGet("fields", out var fieldsEl) && fieldsEl.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var f in fieldsEl.EnumerateArray())
-            {
-                if (f.ValueKind != JsonValueKind.Object) continue;
-                fields.Add(new AskUserField(
-                    f.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "",
-                    f.TryGetProperty("label", out var l) ? l.GetString() ?? "" : "",
-                    f.TryGetProperty("placeholder", out var p) ? p.GetString() : null,
-                    f.TryGetProperty("required", out var r) && r.ValueKind == JsonValueKind.True,
-                    f.TryGetProperty("type", out var t) ? t.GetString() : null));
-            }
-        }
-
-        return new AskUserRequest(
-            msg.GetString("id"),
-            msg.GetString("text") ?? msg.GetString("question") ?? "",
-            options,
-            msg.GetBool("multi_select"),
-            fields);
-    }
+    private static AskUserRequest ParseAskUser(WireMessage msg) => AgentInteractiveParsers.ParseAskUser(msg);
 
     private async Task ReceiveLoopAsync(CancellationToken ct)
     {

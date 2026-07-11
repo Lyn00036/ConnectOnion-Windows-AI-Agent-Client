@@ -282,7 +282,7 @@ public sealed partial class MainWindow
         Services.AppServices.WindowPresence.SetVisible(this, true);
     }
 
-    private void ExitApplication()
+    private async void ExitApplication()
     {
         _isExiting = true;
         foreach (var window in GetOpenWindowsSnapshot())
@@ -292,6 +292,16 @@ public sealed partial class MainWindow
                 mainWindow.DisposeTrayBehavior();
             }
         }
+
+        // Real exit (as opposed to minimize-to-tray): cancel in-flight turns, let them
+        // persist recoverable state, and release the sockets — all bounded so exit never
+        // hangs. ShutdownAsync self-limits; the extra cap is a hard backstop.
+        try
+        {
+            await Services.AppServices.RunManager.ShutdownAsync()
+                .WaitAsync(System.TimeSpan.FromSeconds(10));
+        }
+        catch { /* bounded best-effort shutdown; exit regardless */ }
 
         Application.Current.Exit();
     }

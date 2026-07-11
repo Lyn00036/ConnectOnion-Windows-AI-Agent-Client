@@ -1,6 +1,7 @@
 using System.Net.Http;
 using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Services.Notifications;
+using ConnectOnion.WinUIClient.Services.Runtime;
 
 namespace ConnectOnion.WinUIClient.Services;
 
@@ -21,6 +22,15 @@ public static class AppServices
 
     /// <summary>Single shared HttpClient for health probes and endpoint resolution.</summary>
     public static HttpClient Http { get; } = new();
+
+    /// <summary>
+    /// App-level owner of agent connections and in-flight turns. Pages/view models submit
+    /// sends here and subscribe to run updates rather than holding a connection or a
+    /// background task, so a reply keeps streaming (and persists) across page switches,
+    /// tray minimize, and re-opening the conversation. Depends on <see cref="Http"/> and
+    /// <see cref="Conversations"/>, so it is declared after them.
+    /// </summary>
+    public static AgentSessionManager RunManager { get; } = new(Http, Conversations);
 
     // ---- Notification subsystem (composition root) ----
     // Declaration order matters: the coordinator's dependencies must exist first.

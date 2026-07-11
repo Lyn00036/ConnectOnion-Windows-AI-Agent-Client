@@ -1,34 +1,36 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.IO;
 using System.Linq;
-using System.Text;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using ConnectOnion.Protocol;
+using ConnectOnion.Protocol.Runtime;
 using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
+using ConnectOnion.WinUIClient.Services.Runtime;
 using ConnectOnion.WinUIClient.Data;
 using Microsoft.UI.Dispatching;
 
 namespace ConnectOnion.WinUIClient.ViewModels;
 
 /// <summary>
-/// Backs the Chat page. This step builds the UI end-to-end against a SIMULATED
-/// agent reply and real conversation persistence; the real ConnectOnion
-/// transport replaces <see cref="SimulateReplyAsync"/> in Step 9.
-/// Port reference: <c>ChatPage.tsx</c> + <c>useDirectAgentForHuman.ts</c>.
+/// Backs the Chat page. It no longer owns the agent connection or the background turn —
+/// those live in the app-level <see cref="AgentSessionManager"/>. This view model only:
+/// loads persisted history, submits sends to the manager, subscribes to the conversation's
+/// run, and projects the run's stream into bubbles for <b>this</b> page's UI thread. A
+/// page created mid-turn therefore resumes the live stream instantly, and closing the page
+/// (see <see cref="Cleanup"/>) detaches the subscription without touching the run.
 /// </summary>
-public sealed partial class ChatViewModel : PresenceAwareViewModel
+public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProjectionTarget
 {
     private static readonly Regex GenericTitle = new(@"^Conversation \d+$", RegexOptions.Compiled);
     private static readonly Regex Whitespace = new(@"\s+", RegexOptions.Compiled);
 
-    // ------ Session data cache ------
-    // Re-opening a previously visited session skips the database round-trip.
+    // Re-opening a previously visited *idle* session skips the database round-trip. A
+    // session with an active run always loads fresh so the manager-persisted user message
+    // is present before the run's events are replayed on top of it.
     private static readonly Dictionary<string, CachedSession> SessionCache = new();
     private const int MaxCachedSessions = 4;
 
@@ -37,7 +39,6 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel
         SessionSummary Session,
         List<ChatMessage> Messages,
         long CreatedAt);
-    // -------------------------------
 
     private readonly DispatcherQueue _dispatcher = DispatcherQueue.GetForCurrentThread();
 
@@ -45,84 +46,33 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel
     private SessionSummary? _session;
     private SessionsState _sessionsState = new();
     private long _createdAt;
-    private string? _currentExecutionId;
 
-    // Trace events buffered in memory during execution, flushed to DB on OUTPUT.
-    private readonly List<(string EventId, string Type, string RawJson, double? Ts)> _pendingTraces = new();
-
-    // Accumulated across every llm_call/llm_result iteration of the current turn
-    // (a turn can run several LLM calls via the tool-use loop) — used to show one
-    // model+usage summary at the end instead of a bubble per iteration.
-    private string? _turnModel;
-    private long _turnTokensIn;
-    private long _turnTokensOut;
-    private bool _turnHasUsage;
-    private double _turnDurationMs;
-    private double? _turnContextPercent;
-    private long _turnToolCallsCount;
-
-    // Real transport when the agent exposes a Direct URL; null falls back to the
-    // simulated reply so the UI still works for agents without one.
-    private AgentConnectionService? _connection;
-    private string? _connectedAgentId;
-
-    // Held only when the page unloaded mid-turn: keeps the socket alive so the
-    // in-flight turn can run to completion (and persist its reply) before we
-    // dispose it. See Cleanup and the tail of SendAsync.
-    private AgentConnectionService? _pendingDisposeConnection;
+    // ---- Live run subscription (this page's view of the app-level run) ----
+    private IDisposable? _runSubscription;
+    private ChatTurnProjection? _liveProjection;
+    private string? _liveRunId;
+    private int _appliedEventCount;
+    // Set only when this page restored a history that already contains the current run's
+    // projection. The run can still be non-terminal for a few milliseconds while the registry
+    // finishes bookkeeping, so replaying its buffered events here would duplicate tool and
+    // interactive cards.
+    private string? _historyLoadedRunId;
 
     public ObservableCollection<ChatMessage> Messages { get; } = new();
 
-    /// <summary>The agent this chat tracks for presence (base class reads this).</summary>
     protected override AgentConfig? PresenceAgent => _agent;
 
-    /// <summary>Detaches from the shared presence service and disposes the connection. Call when the page unloads.</summary>
+    /// <summary>Detaches this page's run subscription and presence hook. Never cancels the
+    /// run or closes the shared connection — the turn keeps going and persists on its own.</summary>
     public void Cleanup()
     {
         DetachPresence();
-
-        var old = _connection;
-        _connection = null;
-        _connectedAgentId = null;
-        if (old is null) return;
-
-        // A turn is still streaming. Disposing the socket now would abort the
-        // pending SendInputAsync and drop the agent's reply — the "switch away
-        // mid-turn and lose the answer" bug. Keep the socket alive so the
-        // background SendAsync finishes (it still persists to the DB + session
-        // cache and fires the completion notification); it's disposed once the
-        // turn ends, at the tail of SendAsync.
-        if (IsProcessing)
-        {
-            _pendingDisposeConnection = old;
-            // Safety net against a turn that never completes — e.g. an abandoned
-            // ask_user/approval turn that pends on human input the user walked
-            // away from. Without this the socket + this whole view model (and its
-            // message list) would stay alive forever. A normal turn finishes and
-            // disposes well before this fires.
-            _ = ForceDisposePendingAfterAsync(old, TimeSpan.FromSeconds(90));
-            return;
-        }
-
-        _ = old.DisposeAsync();
-    }
-
-    /// <summary>Backstop for <see cref="Cleanup"/>: after the grace period, tear down a
-    /// still-pending deferred connection so an abandoned, never-completing turn can't
-    /// leak the socket and this view model. No-op if the turn already finished and
-    /// disposed it.</summary>
-    private async Task ForceDisposePendingAfterAsync(AgentConnectionService connection, TimeSpan delay)
-    {
-        await Task.Delay(delay).ConfigureAwait(false);
-        // Only dispose if this is still the pending connection; SendAsync's finally
-        // may have already disposed and cleared it on normal completion. Reference
-        // writes are atomic, and DisposeAsync is safe to call twice, so the narrow
-        // race with that finally is harmless.
-        if (ReferenceEquals(_pendingDisposeConnection, connection))
-        {
-            _pendingDisposeConnection = null;
-            await connection.DisposeAsync().ConfigureAwait(false);
-        }
+        _runSubscription?.Dispose();
+        _runSubscription = null;
+        _liveProjection = null;
+        _liveRunId = null;
+        _appliedEventCount = 0;
+        _historyLoadedRunId = null;
     }
 
     private bool _hasAgent;
@@ -146,7 +96,6 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel
             if (!SetProperty(ref _isProcessing, value)) return;
             OnPropertyChanged(nameof(CanSend));
             OnPropertyChanged(nameof(CanReconnect));
-            OnPropertyChanged(nameof(ConnectionDetail));
         }
     }
 
@@ -159,29 +108,21 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel
             if (!SetProperty(ref _isConnecting, value)) return;
             OnPropertyChanged(nameof(CanSend));
             OnPropertyChanged(nameof(CanReconnect));
-            OnPropertyChanged(nameof(ConnectionDetail));
         }
     }
 
-    // Sending is gated on the agent being confirmed online — matching the "green
-    // dot means you can chat" model — not on holding a live socket (the transport
-    // connects lazily on the first send).
+    // Sending is gated on the agent being confirmed online — matching the "green dot means
+    // you can chat" model — not on holding a live socket (the transport connects lazily).
     public bool CanSend => HasAgent && IsOnline && !IsProcessing && !IsConnecting;
     public bool CanReconnect => HasAgent && !IsProcessing && !IsConnecting && Presence != AgentPresence.Checking;
-    public bool HasEndpoint => _connection is not null;
-    public bool HasConnection => _connection?.IsConnected == true;
 
     public string SelectedAgentName => _agent?.Name ?? "Agent";
     public string SelectedAgentInitial => string.IsNullOrWhiteSpace(_agent?.Name) ? "?" : _agent!.Name[..1].ToUpperInvariant();
     public string SessionShortId => _session is null ? "" : _session.Id[..Math.Min(8, _session.Id.Length)];
-    /// <summary>The current conversation id, exposed for scroll-position caching.</summary>
     public string? SessionId => _session?.Id;
-    /// <summary>The current agent id, exposed so the page can report what it's viewing to the notification layer.</summary>
     public string? AgentId => _agent?.Id;
-    public string ConnectionDetail => IsConnecting ? "connecting" : IsProcessing ? "working" : "idle";
 
     private AgentAcceptedInputs? _acceptedInputs;
-    /// <summary>The connected agent's advertised <c>/info</c> capabilities. Null while unknown (never fetched, or the fetch failed) — attachment UI does not block on unknown capability, see <see cref="Services.AttachmentValidationService"/>.</summary>
     public AgentAcceptedInputs? AcceptedInputs
     {
         get => _acceptedInputs;
@@ -237,24 +178,18 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel
         HeaderText = $"{_agent.Name} - {_session.Title}";
         RaiseHeaderProperties();
 
-        SetupConnection();
         await RestoreConversationAsync();
 
-        // Probe once on open (offline bar stays hidden until it resolves, so a
-        // stale cached "offline" never flashes the reconnect UI before we've
-        // actually re-checked).
-        _ = ProbePresenceOnOpenAsync();
+        // Attach to the app-level run for this conversation. The manager fires the current
+        // snapshot immediately, so an in-flight turn is resumed (streaming continues) the
+        // moment the page opens — the core "switch away and come back" fix.
+        _runSubscription = AppServices.RunManager.Subscribe(
+            _session.Id, snapshot => _dispatcher.TryEnqueue(() => ApplyRunSnapshot(snapshot)));
 
-        // Fire-and-forget: gates the attachment UI once it resolves, but a slow
-        // or failed /info probe must never block the chat from opening.
+        _ = ProbePresenceOnOpenAsync();
         _ = RefreshAcceptedInputsAsync();
     }
 
-    /// <summary>
-    /// Fetches (or reuses the cached) <c>/info</c> response and updates
-    /// <see cref="AcceptedInputs"/> so the composer can gate image/file
-    /// attachments on the agent's real advertised capability.
-    /// </summary>
     private async Task RefreshAcceptedInputsAsync()
     {
         if (_agent is null) return;
@@ -274,66 +209,9 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel
         _dispatcher.TryEnqueue(() => AcceptedInputs = parsed);
     }
 
-    // Wire the real transport when the agent has a Direct URL. Stream events and
-    // connection-loss callbacks arrive on the receive-loop thread, so marshal
-    // them onto the UI thread before touching bound state.
-    private void SetupConnection()
-    {
-        if (_agent is null) return;
-        var hasDirect = !string.IsNullOrWhiteSpace(_agent.DirectUrl);
-        var hasAddress = !string.IsNullOrWhiteSpace(_agent.Address);
-        if (!hasDirect && !hasAddress) return;
-
-        // Already connected to this agent — nothing to do.
-        if (_connectedAgentId == _agent.Id && _connection is not null) return;
-
-        // Dispose the old connection (WebSocket + receive loop + watchdog).
-        var old = _connection;
-        _connection = null;
-        _connectedAgentId = null;
-        _ = old?.DisposeAsync();
-
-        var identity = IdentityStore.EnsureIdentity();
-        _connection = new AgentConnectionService(_agent.Address, _agent.DirectUrl, identity, AppServices.Http);
-        _connectedAgentId = _agent.Id;
-        _connection.StreamEvent += e =>
-            _dispatcher.TryEnqueue(() => ApplyStreamEvent(e));
-        _connection.ConnectionLost += ex =>
-            _dispatcher.TryEnqueue(() =>
-            {
-                StatusText = $"Disconnected: {ex.Message}";
-                RaiseConnectionProperties();
-                // Re-probe presence so a genuine drop surfaces the offline +
-                // reconnect bar (ShowOfflineNotice), while a transient blip
-                // simply re-confirms Online without a false "offline".
-                if (_agent is not null)
-                {
-                    _ = PresenceService.RefreshAsync(_agent);
-                    // Debounced: only notifies if it stays down past the grace period.
-                    AppServices.Notifications.NotifyConnectionLost(_agent.Id, _agent.Name);
-                }
-            });
-        _connection.OnboardRequired += () =>
-            _dispatcher.TryEnqueue(AddOnboardingBubble);
-        _connection.AskUserRequested += r =>
-            _dispatcher.TryEnqueue(() => AddAskUserBubble(r));
-        _connection.ApprovalRequested += r =>
-            _dispatcher.TryEnqueue(() =>
-            {
-                AddApprovalBubble(r);
-                if (_agent is not null && _session is not null)
-                    AppServices.Notifications.PublishApprovalRequired(
-                        _agent.Id, _agent.Name, _session.Id, r.Tool, r.Description, r.ArgumentsJson);
-            });
-        _connection.PlanReviewRequested += r =>
-            _dispatcher.TryEnqueue(() => AddPlanReviewBubble(r));
-        RaiseConnectionProperties();
-    }
-
     /// <summary>
-    /// Reuses the active session if it belongs to this agent, else the agent's
-    /// most recent conversation, else creates a fresh one. Port of the store's
-    /// <c>ensureSession</c>.
+    /// Reuses the active session if it belongs to this agent, else the agent's most recent
+    /// conversation, else creates a fresh one. Port of the store's <c>ensureSession</c>.
     /// </summary>
     private async Task<SessionSummary> ResolveSessionAsync(string agentId)
     {
@@ -354,9 +232,14 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel
     {
         if (_agent is null || _session is null) return;
 
-        // Reuse cached session data when re-opening a previously visited
-        // session — skip the database round-trip.
-        if (SessionCache.TryGetValue(_session.Id, out var cached)
+        // A conversation with an active/just-finished run must load from the DB (the manager
+        // persists the user message and, before Completed, the whole reply) so the replayed
+        // run events land on top of the authoritative history — never a stale cache.
+        var run = AppServices.RunManager.GetActiveRun(_session.Id);
+        var hasRun = run is not null;
+
+        if (!hasRun
+            && SessionCache.TryGetValue(_session.Id, out var cached)
             && cached.Agent.Id == _agent.Id)
         {
             Messages.Clear();
@@ -375,14 +258,18 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel
             _createdAt = messages[0].Id > 0 ? messages[0].Id : _createdAt;
         }
 
-        // Write to cache, evicting the oldest entry if at capacity.
-        if (SessionCache.Count >= MaxCachedSessions)
-        {
-            var oldest = SessionCache.Keys.First();
-            SessionCache.Remove(oldest);
-        }
-        SessionCache[_session.Id] = new CachedSession(
-            _agent, _session, Messages.ToList(), _createdAt);
+        // A completed turn is saved before its terminal snapshot is broadcast. If the page is
+        // opened in that tiny interval, the DB already contains every projected tool/event card
+        // while the snapshot still says Running. Remember that fact and skip its replay below.
+        // Re-read the snapshot because persistence may have completed while LoadMessagesAsync
+        // was in flight.
+        run = AppServices.RunManager.GetActiveRun(_session.Id);
+        _historyLoadedRunId = run is { IsTerminal: false }
+            && AppServices.RunManager.IsRunHistoryPersisted(run.RunId)
+                ? run.RunId
+                : null;
+
+        if (!hasRun) StoreSessionCache();
     }
 
     public async Task SendAsync(string text, IReadOnlyList<PendingAttachment>? attachments = null)
@@ -391,14 +278,12 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel
         var hasAttachments = attachments is { Count: > 0 };
         if ((text.Length == 0 && !hasAttachments) || _agent is null || _session is null || IsProcessing) return;
 
+        // Optimistic user bubble for instant feedback. The manager also persists an
+        // equivalent user message (this page won't reload during the session, so there is
+        // no double; a re-opened page loads the persisted one).
         var userMessage = new ChatMessage { Id = NextId(), Role = ChatRole.User, Content = text };
-        List<string>? imageDataUrls = null;
-        List<OutgoingFileAttachment>? fileAttachments = null;
-
         if (hasAttachments)
         {
-            imageDataUrls = new List<string>();
-            fileAttachments = new List<OutgoingFileAttachment>();
             foreach (var attachment in attachments!)
             {
                 userMessage.Attachments.Add(new ChatAttachment
@@ -410,129 +295,128 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel
                     LocalCachePath = attachment.LocalPath,
                     Status = AttachmentStatus.Sent,
                 });
-
-                if (attachment.DataUrl is null) continue; // shouldn't happen (composer only sends Ready attachments), skip defensively
-                if (attachment.Kind == AttachmentKind.Image) imageDataUrls.Add(attachment.DataUrl);
-                else fileAttachments.Add(new OutgoingFileAttachment(attachment.FileName, attachment.DataUrl));
             }
-            if (imageDataUrls.Count == 0) imageDataUrls = null;
-            if (fileAttachments.Count == 0) fileAttachments = null;
-
-            System.Diagnostics.Debug.WriteLine(
-                $"[Attachment] sending images={imageDataUrls?.Count ?? 0} files={fileAttachments?.Count ?? 0}");
         }
-
         Messages.Add(userMessage);
         TouchSession(text);
-        await PersistConversationAsync();
 
         IsProcessing = true;
-        StatusText = _connection is null ? "Working..." : "Connecting...";
-        var sent = false;
-        var executionId = Guid.NewGuid().ToString();
-        _currentExecutionId = executionId;
-        _pendingTraces.Clear();
-        _turnModel = null;
-        _turnTokensIn = 0;
-        _turnTokensOut = 0;
-        _turnHasUsage = false;
-        _turnDurationMs = 0;
-        _turnContextPercent = null;
-        _turnToolCallsCount = 0;
-        await AppServices.Conversations.InsertExecutionAsync(
-            executionId, _session.Id, null, text, "running");
+        StatusText = "Connecting...";
         try
         {
-            var reply = _connection is not null
-                ? await _connection.SendInputAsync(text, _session.Id, images: imageDataUrls, files: fileAttachments)
-                : await SimulateReplyAsync(text);
-            sent = true;
-            RaiseConnectionProperties();
-
-            // The agent may have already streamed this text via an `assistant`
-            // event. Match the SDK: add the final reply only if it differs from
-            // the last agent bubble, so the same text never renders twice.
-            if (!string.IsNullOrEmpty(reply))
-            {
-                var lastAgent = Messages.LastOrDefault(m => m.Role == ChatRole.Agent);
-                if (lastAgent is null || lastAgent.Content != reply)
-                {
-                    Messages.Add(new ChatMessage
-                    {
-                        Id = NextId(),
-                        Role = ChatRole.Agent,
-                        Content = reply,
-                        AgentName = _agent.Name,
-                    });
-                }
-            }
-            AddTurnSummaryBubble();
-            await PersistConversationAsync();
-            await PersistSessionMetadataAsync();
-            await FlushPendingTracesAsync();
-            await AppServices.Conversations.FinalizeExecutionAsync(
-                executionId, _session.Id, reply, "done",
-                _connection?.LastExecutionDurationMs ?? 0);
-
-            // Turn completed successfully → the connection is up; let the coordinator
-            // decide whether to notify (it suppresses when this conversation is in view).
-            AppServices.Notifications.NotifyConnectionRestored(_agent.Id);
-            AppServices.Notifications.PublishAgentTurnCompleted(
-                _agent.Id, _agent.Name, _session.Id, executionId,
-                reply, _turnToolCallsCount, _turnDurationMs);
+            // Hand off to the app-level manager. It persists the user message, opens/reuses
+            // the connection, and starts the run; the reply arrives back through our
+            // subscription (ApplyRunSnapshot), not by awaiting here.
+            await AppServices.RunManager.SendMessageAsync(_agent, _session.Id, text, attachments);
+        }
+        catch (InvalidOperationException)
+        {
+            // A run for this conversation is already active — ignore the duplicate send.
         }
         catch (Exception ex)
         {
+            IsProcessing = false;
             StatusText = $"Send failed: {UserFacingError(ex)}";
-            RaiseConnectionProperties();
+        }
+    }
+
+    /// <summary>Applies a run snapshot to this page's message list on the UI thread. Replays
+    /// any events not yet projected (so a resubscribing page catches up), updates busy/status,
+    /// and finalizes on terminal states — all idempotent per <see cref="ConversationRunSnapshot.Sequence"/>.</summary>
+    private void ApplyRunSnapshot(ConversationRunSnapshot snapshot)
+    {
+        if (snapshot.RunId == _historyLoadedRunId)
+        {
+            // The DB restore already contains this run's events, final reply, and summary.
+            // We still mirror its busy/status state until the terminal notification arrives.
+            IsProcessing = !snapshot.IsTerminal;
+            StatusText = StatusTextFor(snapshot);
+            if (snapshot.IsTerminal)
+            {
+                _historyLoadedRunId = null;
+                StoreSessionCache();
+            }
+            return;
+        }
+
+        if (snapshot.RunId != _liveRunId)
+        {
+            if (snapshot.IsTerminal)
+            {
+                // The run finished before this page attached; the DB load already reflects
+                // the whole turn, so just clear the busy state — never re-append it.
+                IsProcessing = false;
+                StatusText = "";
+                return;
+            }
+
+            // First time we see this (active) run — start a fresh projection over our list,
+            // which already holds the persisted history + optimistic user message.
+            _liveRunId = snapshot.RunId;
+            _liveProjection = new ChatTurnProjection(this);
+            _appliedEventCount = 0;
+        }
+
+        var events = snapshot.Events;
+        for (var i = _appliedEventCount; i < events.Count; i++) _liveProjection!.Apply(events[i]);
+        _appliedEventCount = events.Count;
+
+        IsProcessing = !snapshot.IsTerminal;
+        StatusText = StatusTextFor(snapshot);
+
+        if (!snapshot.IsTerminal) return;
+
+        // Terminal: mirror what the manager persisted so the live view matches the DB.
+        if (snapshot.Status == ConversationRunStatus.Completed)
+        {
+            _liveProjection!.AppendFinalReply(snapshot.PartialContent);
+            _liveProjection!.AppendTurnSummary();
+            _ = PersistSessionMetadataAsync();
+        }
+        else if (snapshot.Status == ConversationRunStatus.Failed)
+        {
             Messages.Add(new ChatMessage
             {
                 Id = NextId(),
                 Role = ChatRole.Agent,
-                Content = $"[connection error] {UserFacingError(ex)}",
-                AgentName = _agent.Name,
+                AgentName = _agent?.Name,
+                Content = $"[connection error] {snapshot.ErrorMessage}",
             });
-            // A failed turn (relay "Agent not connected", socket drop, timeout)
-            // re-probes reachability: if the agent really is offline the presence
-            // flip lights up the offline + reconnect bar; if it was transient the
-            // probe re-confirms Online so we don't falsely mark it offline.
-            _ = PresenceService.RefreshAsync(_agent);
-            await PersistConversationAsync();
-            await AppServices.Conversations.FinalizeExecutionAsync(
-                executionId, _session.Id, ex.Message, "error", 0);
-        }
-        finally
-        {
-            _currentExecutionId = null;
-            IsProcessing = false;
-            if (sent) StatusText = "";
-            RaiseConnectionProperties();
-
-            // Release the base64 payload now that the send attempt is over
-            // (success or failure) — it must not linger as long-held string state.
-            if (hasAttachments)
+            if (_agent is not null)
             {
-                foreach (var attachment in attachments!) attachment.DataUrl = null;
-            }
-
-            // Refresh the cache so re-opening this session shows the latest messages.
-            if (_session is not null)
-                SessionCache[_session.Id] = new CachedSession(
-                    _agent!, _session, Messages.ToList(), _createdAt);
-
-            // The page was torn down mid-turn and we deferred the socket teardown
-            // so this turn could finish; now that it has, dispose it.
-            if (_pendingDisposeConnection is { } pendingDispose)
-            {
-                _pendingDisposeConnection = null;
-                _ = pendingDispose.DisposeAsync();
+                _ = PresenceService.RefreshAsync(_agent);
+                AppServices.Notifications.NotifyConnectionLost(_agent.Id, _agent.Name);
             }
         }
+
+        _liveProjection = null;
+        _liveRunId = null;
+        _appliedEventCount = 0;
+        _historyLoadedRunId = null;
+        StoreSessionCache();
     }
+
+    private static string StatusTextFor(ConversationRunSnapshot snapshot) => snapshot.Status switch
+    {
+        ConversationRunStatus.Queued => "Working...",
+        ConversationRunStatus.Connecting => "Connecting...",
+        ConversationRunStatus.Running => snapshot.Events.Count > 0
+            ? snapshot.Events[^1].Description : "Working...",
+        ConversationRunStatus.Failed => $"Send failed: {snapshot.ErrorMessage}",
+        _ => "",
+    };
 
     public async Task NewConversationAsync()
     {
         if (_agent is null || IsProcessing) return;
+
+        // Re-point the subscription at the new conversation.
+        _runSubscription?.Dispose();
+        _runSubscription = null;
+        _liveProjection = null;
+        _liveRunId = null;
+        _appliedEventCount = 0;
+        _historyLoadedRunId = null;
 
         _session = SessionSummary.NewConversation(_agent.Id, _sessionsState.Sessions);
         _sessionsState.Sessions.Add(_session);
@@ -543,31 +427,23 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel
         _createdAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         HeaderText = $"{_agent.Name} - {_session.Title}";
         RaiseHeaderProperties();
+
+        _runSubscription = AppServices.RunManager.Subscribe(
+            _session.Id, snapshot => _dispatcher.TryEnqueue(() => ApplyRunSnapshot(snapshot)));
     }
 
+    /// <summary>Forces the app-owned socket for this conversation to reconnect to its session.</summary>
     public async Task ReconnectAsync()
     {
         if (_agent is null || _session is null) return;
 
-        if (_connection is null)
-        {
-            SetupConnection();
-        }
-
-        if (_connection is null)
-        {
-            StatusText = "No agent endpoint configured.";
-            RaiseConnectionProperties();
-            return;
-        }
+        var connection = AppServices.RunManager.Connections.GetOrCreate(_session.Id, _agent);
 
         IsConnecting = true;
         StatusText = "Reconnecting...";
-        RaiseConnectionProperties();
-
         try
         {
-            await _connection.ReconnectAsync(_session.Id);
+            await connection.ReconnectAsync(_session.Id);
             StatusText = "Connected.";
         }
         catch (Exception ex)
@@ -577,43 +453,11 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel
         finally
         {
             IsConnecting = false;
-            RaiseConnectionProperties();
         }
-    }
-
-    public async Task SubmitOnboardInviteCodeAsync(ChatMessage message)
-    {
-        if (_connection is null) return;
-
-        var inviteCode = message.OnboardInviteCode.Trim();
-        if (inviteCode.Length == 0) return;
-
-        message.IsOnboardingSubmitted = true;
-        message.Content = "Invite code submitted. Waiting for the agent to finish onboarding...";
-        StatusText = "Submitting invite code...";
-        OnPropertyChanged(nameof(Messages));
-
-        try
-        {
-            await _connection.SubmitOnboardInviteCodeAsync(inviteCode);
-        }
-        catch (Exception ex)
-        {
-            message.IsOnboardingSubmitted = false;
-            message.Content = $"Invite code submission failed: {ex.Message}";
-            StatusText = "";
-        }
-    }
-
-    // Placeholder for the real transport (Step 9). Kept isolated so swapping in
-    // AgentConnectionService touches only this method.
-    private static async Task<string> SimulateReplyAsync(string prompt)
-    {
-        await Task.Delay(600);
-        return $"(simulated) You said: {prompt}";
     }
 
     private long NextId() => Messages.Count == 0 ? 1 : Messages.Max(m => m.Id) + 1;
+
     private void TouchSession(string prompt)
     {
         if (_session is null) return;
@@ -636,14 +480,6 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel
         OnPropertyChanged(nameof(SessionShortId));
     }
 
-    private void RaiseConnectionProperties()
-    {
-        OnPropertyChanged(nameof(HasEndpoint));
-        OnPropertyChanged(nameof(HasConnection));
-        OnPropertyChanged(nameof(ConnectionDetail));
-    }
-
-    /// <summary>Also refresh the chat's own presence-gated commands.</summary>
     protected override void OnPresenceRaised()
     {
         OnPropertyChanged(nameof(CanSend));
@@ -651,29 +487,39 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel
     }
 
     private static string UserFacingError(Exception ex)
-        => ex is OperationCanceledException
-            ? "Connection timed out."
-            : ex.Message;
+        => ex is OperationCanceledException ? "Connection timed out." : ex.Message;
 
-    private Task PersistConversationAsync()
+    private void StoreSessionCache()
     {
-        if (_agent is null || _session is null) return Task.CompletedTask;
-
-        var toSave = Messages.Where(m => !m.IsOnboarding).ToList();
-        return AppServices.Conversations.SaveMessagesAsync(_session.Id, toSave);
+        if (_session is null || _agent is null) return;
+        if (SessionCache.Count >= MaxCachedSessions && !SessionCache.ContainsKey(_session.Id))
+        {
+            var oldest = SessionCache.Keys.First();
+            SessionCache.Remove(oldest);
+        }
+        SessionCache[_session.Id] = new CachedSession(_agent, _session, Messages.ToList(), _createdAt);
     }
 
-    /// <summary>
-    /// Persists the remote session id and last processed event id so reconnect
-    /// can skip already-seen events after a disconnect.
-    /// </summary>
+    /// <summary>Persists the remote session id + last processed event id so a later reconnect
+    /// can skip already-seen events.</summary>
     private async Task PersistSessionMetadataAsync()
     {
-        if (_agent is null || _session is null || _connection is null) return;
+        if (_agent is null || _session is null) return;
+        var connection = AppServices.RunManager.Connections.Get(_session.Id);
+        if (connection is null) return;
 
-        _session.RemoteSessionId = _connection.SessionId;
-        _session.LastProcessedEventId = _connection.LastProcessedEventId;
+        _session.RemoteSessionId = connection.SessionId;
+        _session.LastProcessedEventId = connection.LastProcessedEventId;
         _session.UpdatedAt = DateTime.UtcNow.ToString("o");
         await AppServices.Sessions.SaveAsync(_sessionsState);
     }
+
+    // ---- IChatProjectionTarget (live rendering into this page's list) ----
+
+    IList<ChatMessage> IChatProjectionTarget.Messages => Messages;
+    string? IChatProjectionTarget.AgentName => _agent?.Name;
+    long IChatProjectionTarget.NextId() => NextId();
+    void IChatProjectionTarget.Add(ChatMessage message) => Messages.Add(message);
+    void IChatProjectionTarget.ResolveAgentImage(string dataUrl, ChatAttachment attachment)
+        => _ = ResolveAgentImageAsync(dataUrl, attachment);
 }

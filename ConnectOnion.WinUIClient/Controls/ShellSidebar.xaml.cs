@@ -13,6 +13,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Shapes;
+using Microsoft.UI.Dispatching;
 
 namespace ConnectOnion.WinUIClient.Controls;
 
@@ -25,6 +26,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     private readonly AgentPresenceService _presence = AppServices.Presence;
+    private readonly DispatcherQueue? _dispatcher = DispatcherQueue.GetForCurrentThread();
     private readonly HashSet<string> _expandedAgentIds = new(StringComparer.Ordinal);
     private Type? _currentPageType;
     private int _onlineAgentCount;
@@ -64,7 +66,23 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         InitializeComponent();
         DataContext = this;
         _presence.PresenceChanged += OnPresenceChanged;
+
+        // The presence event is app-level and long-lived. Without detaching, a torn-down
+        // sidebar (e.g. after a forceReload navigation) keeps receiving events while its
+        // DispatcherQueue is null — the NullReferenceException in OnPresenceChanged. Detach
+        // on unload; re-attach on (re)load in case the control is moved in the tree.
+        Loaded += OnLoadedAttachPresence;
+        Unloaded += OnUnloadedDetachPresence;
     }
+
+    private void OnLoadedAttachPresence(object sender, RoutedEventArgs e)
+    {
+        _presence.PresenceChanged -= OnPresenceChanged;
+        _presence.PresenceChanged += OnPresenceChanged;
+    }
+
+    private void OnUnloadedDetachPresence(object sender, RoutedEventArgs e)
+        => _presence.PresenceChanged -= OnPresenceChanged;
 
     public void SetCurrentPage(Type? pageType)
         => _currentPageType = pageType;
@@ -137,7 +155,14 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     }
 
     private void OnPresenceChanged(string agentId)
-        => DispatcherQueue.TryEnqueue(() =>
+    {
+        // Fired from the app-level presence service, possibly on a background thread and
+        // possibly after this control left the visual tree. Guard the dispatcher: a null
+        // one means there is no live UI to update, so there is nothing to do.
+        var dispatcher = _dispatcher ?? DispatcherQueue;
+        if (dispatcher is null) return;
+
+        dispatcher.TryEnqueue(() =>
         {
             if (FindShellAgent(agentId) is { } agent)
             {
@@ -145,6 +170,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
             }
             UpdateOnlineAgentCount();
         });
+    }
 
     private void UpdateOnlineAgentCount()
         => OnlineAgentCount = ShellAgents.Count(agent => _presence.GetPresence(agent.Id) == AgentPresence.Online);
