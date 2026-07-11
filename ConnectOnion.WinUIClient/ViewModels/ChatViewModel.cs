@@ -66,6 +66,11 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel
     private AgentConnectionService? _connection;
     private string? _connectedAgentId;
 
+    // Held only when the page unloaded mid-turn: keeps the socket alive so the
+    // in-flight turn can run to completion (and persist its reply) before we
+    // dispose it. See Cleanup and the tail of SendAsync.
+    private AgentConnectionService? _pendingDisposeConnection;
+
     public ObservableCollection<ChatMessage> Messages { get; } = new();
 
     /// <summary>The agent this chat tracks for presence (base class reads this).</summary>
@@ -75,9 +80,49 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel
     public void Cleanup()
     {
         DetachPresence();
+
         var old = _connection;
         _connection = null;
-        _ = old?.DisposeAsync();
+        _connectedAgentId = null;
+        if (old is null) return;
+
+        // A turn is still streaming. Disposing the socket now would abort the
+        // pending SendInputAsync and drop the agent's reply — the "switch away
+        // mid-turn and lose the answer" bug. Keep the socket alive so the
+        // background SendAsync finishes (it still persists to the DB + session
+        // cache and fires the completion notification); it's disposed once the
+        // turn ends, at the tail of SendAsync.
+        if (IsProcessing)
+        {
+            _pendingDisposeConnection = old;
+            // Safety net against a turn that never completes — e.g. an abandoned
+            // ask_user/approval turn that pends on human input the user walked
+            // away from. Without this the socket + this whole view model (and its
+            // message list) would stay alive forever. A normal turn finishes and
+            // disposes well before this fires.
+            _ = ForceDisposePendingAfterAsync(old, TimeSpan.FromSeconds(90));
+            return;
+        }
+
+        _ = old.DisposeAsync();
+    }
+
+    /// <summary>Backstop for <see cref="Cleanup"/>: after the grace period, tear down a
+    /// still-pending deferred connection so an abandoned, never-completing turn can't
+    /// leak the socket and this view model. No-op if the turn already finished and
+    /// disposed it.</summary>
+    private async Task ForceDisposePendingAfterAsync(AgentConnectionService connection, TimeSpan delay)
+    {
+        await Task.Delay(delay).ConfigureAwait(false);
+        // Only dispose if this is still the pending connection; SendAsync's finally
+        // may have already disposed and cleared it on normal completion. Reference
+        // writes are atomic, and DisposeAsync is safe to call twice, so the narrow
+        // race with that finally is harmless.
+        if (ReferenceEquals(_pendingDisposeConnection, connection))
+        {
+            _pendingDisposeConnection = null;
+            await connection.DisposeAsync().ConfigureAwait(false);
+        }
     }
 
     private bool _hasAgent;
@@ -131,6 +176,8 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel
     public string SessionShortId => _session is null ? "" : _session.Id[..Math.Min(8, _session.Id.Length)];
     /// <summary>The current conversation id, exposed for scroll-position caching.</summary>
     public string? SessionId => _session?.Id;
+    /// <summary>The current agent id, exposed so the page can report what it's viewing to the notification layer.</summary>
+    public string? AgentId => _agent?.Id;
     public string ConnectionDetail => IsConnecting ? "connecting" : IsProcessing ? "working" : "idle";
 
     private AgentAcceptedInputs? _acceptedInputs;
@@ -259,14 +306,25 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel
                 // Re-probe presence so a genuine drop surfaces the offline +
                 // reconnect bar (ShowOfflineNotice), while a transient blip
                 // simply re-confirms Online without a false "offline".
-                if (_agent is not null) _ = PresenceService.RefreshAsync(_agent);
+                if (_agent is not null)
+                {
+                    _ = PresenceService.RefreshAsync(_agent);
+                    // Debounced: only notifies if it stays down past the grace period.
+                    AppServices.Notifications.NotifyConnectionLost(_agent.Id, _agent.Name);
+                }
             });
         _connection.OnboardRequired += () =>
             _dispatcher.TryEnqueue(AddOnboardingBubble);
         _connection.AskUserRequested += r =>
             _dispatcher.TryEnqueue(() => AddAskUserBubble(r));
         _connection.ApprovalRequested += r =>
-            _dispatcher.TryEnqueue(() => AddApprovalBubble(r));
+            _dispatcher.TryEnqueue(() =>
+            {
+                AddApprovalBubble(r);
+                if (_agent is not null && _session is not null)
+                    AppServices.Notifications.PublishApprovalRequired(
+                        _agent.Id, _agent.Name, _session.Id, r.Tool, r.Description, r.ArgumentsJson);
+            });
         _connection.PlanReviewRequested += r =>
             _dispatcher.TryEnqueue(() => AddPlanReviewBubble(r));
         RaiseConnectionProperties();
@@ -415,6 +473,13 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel
             await AppServices.Conversations.FinalizeExecutionAsync(
                 executionId, _session.Id, reply, "done",
                 _connection?.LastExecutionDurationMs ?? 0);
+
+            // Turn completed successfully → the connection is up; let the coordinator
+            // decide whether to notify (it suppresses when this conversation is in view).
+            AppServices.Notifications.NotifyConnectionRestored(_agent.Id);
+            AppServices.Notifications.PublishAgentTurnCompleted(
+                _agent.Id, _agent.Name, _session.Id, executionId,
+                reply, _turnToolCallsCount, _turnDurationMs);
         }
         catch (Exception ex)
         {
@@ -454,6 +519,14 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel
             if (_session is not null)
                 SessionCache[_session.Id] = new CachedSession(
                     _agent!, _session, Messages.ToList(), _createdAt);
+
+            // The page was torn down mid-turn and we deferred the socket teardown
+            // so this turn could finish; now that it has, dispose it.
+            if (_pendingDisposeConnection is { } pendingDispose)
+            {
+                _pendingDisposeConnection = null;
+                _ = pendingDispose.DisposeAsync();
+            }
         }
     }
 

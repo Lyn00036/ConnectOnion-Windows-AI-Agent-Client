@@ -443,5 +443,8 @@
                 </StackPanel>
             </Border>
         </Grid>
+
+        <!-- Top-most, non-blocking overlay for in-app notification toasts. -->
+        <controls:InAppNotificationHost x:Name="InAppNotifications" />
     </Grid>
 </Window>

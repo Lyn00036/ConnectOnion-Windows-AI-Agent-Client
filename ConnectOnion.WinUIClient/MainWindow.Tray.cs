@@ -9,6 +9,10 @@ namespace ConnectOnion.WinUIClient;
 public sealed partial class MainWindow
 {
     private const int WmClose = 0x0010;
+    private const int WmSize = 0x0005;
+    private const int SizeRestored = 0;
+    private const int SizeMinimized = 1;
+    private const int SizeMaximized = 2;
     private const int WmCommand = 0x0111;
     private const int WmLButtonDown = 0x0201;
     private const int WmLButtonUp = 0x0202;
@@ -185,6 +189,21 @@ public sealed partial class MainWindow
     {
         try
         {
+            // Track taskbar minimize/restore. WinUI's Window.Activated does not
+            // reliably fire on minimize, so without this the notification layer
+            // still thinks this window is actively showing the conversation and
+            // suppresses (or in-app-routes) replies that arrive while minimized.
+            // WM_SIZE always fires, so key visibility off it.
+            if (message == WmSize)
+            {
+                var sizeType = unchecked((int)wParam.ToUInt64()) & 0xffff;
+                if (sizeType == SizeMinimized)
+                    Services.AppServices.WindowPresence.SetVisible(this, false);
+                else if (sizeType is SizeRestored or SizeMaximized)
+                    Services.AppServices.WindowPresence.SetVisible(this, true);
+                return DefSubclassProc(hwnd, message, wParam, lParam);
+            }
+
             if (message == WmClose && !_isExiting)
             {
                 _ = DispatcherQueue.TryEnqueue(async () =>
@@ -250,6 +269,7 @@ public sealed partial class MainWindow
 
         EnsureTrayIconVisible();
         ShowWindow(_hwnd, SwHide);
+        Services.AppServices.WindowPresence.SetVisible(this, false);
     }
 
     private void RestoreFromTray()
@@ -259,6 +279,7 @@ public sealed partial class MainWindow
         ShowWindow(_hwnd, SwShow);
         SetForegroundWindow(_hwnd);
         Activate();
+        Services.AppServices.WindowPresence.SetVisible(this, true);
     }
 
     private void ExitApplication()

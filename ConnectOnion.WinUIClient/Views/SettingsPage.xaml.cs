@@ -1,4 +1,5 @@
 using ConnectOnion.WinUIClient.Models;
+using ConnectOnion.WinUIClient.Services;
 using ConnectOnion.WinUIClient.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -38,7 +39,50 @@ public sealed partial class SettingsPage : Page
         MicChoice.ItemsSource = _vm.Microphones;
         MicChoice.SelectedIndex = _vm.SelectedMicIndex;
 
+        LoadNotificationSettings();
+
         _initializing = false;
+    }
+
+    private void LoadNotificationSettings()
+    {
+        var s = AppServices.NotificationSettings.Current;
+        EnableNotificationsSwitch.IsOn = s.EnableNotifications;
+        NotifyAgentRepliesSwitch.IsOn = s.NotifyAgentReplies;
+        NotifyTaskCompletionSwitch.IsOn = s.NotifyTaskCompletion;
+        NotifyApprovalRequestsSwitch.IsOn = s.NotifyApprovalRequests;
+        NotifyConnectionProblemsSwitch.IsOn = s.NotifyConnectionProblems;
+        PlayNotificationSoundSwitch.IsOn = s.PlayNotificationSound;
+        ShowMessagePreviewSwitch.IsOn = s.ShowMessagePreview;
+        NotificationDetailPanel.IsEnabled = s.EnableNotifications;
+    }
+
+    private async void EnableNotificationsSwitch_Toggled(object sender, RoutedEventArgs e)
+    {
+        NotificationDetailPanel.IsEnabled = EnableNotificationsSwitch.IsOn;
+        if (_initializing) return;
+        await SaveNotificationSettingsAsync();
+    }
+
+    private async void NotificationDetail_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_initializing) return;
+        await SaveNotificationSettingsAsync();
+    }
+
+    private System.Threading.Tasks.Task SaveNotificationSettingsAsync()
+    {
+        var settings = new Models.Notifications.NotificationSettings
+        {
+            EnableNotifications = EnableNotificationsSwitch.IsOn,
+            NotifyAgentReplies = NotifyAgentRepliesSwitch.IsOn,
+            NotifyTaskCompletion = NotifyTaskCompletionSwitch.IsOn,
+            NotifyApprovalRequests = NotifyApprovalRequestsSwitch.IsOn,
+            NotifyConnectionProblems = NotifyConnectionProblemsSwitch.IsOn,
+            PlayNotificationSound = PlayNotificationSoundSwitch.IsOn,
+            ShowMessagePreview = ShowMessagePreviewSwitch.IsOn,
+        };
+        return AppServices.NotificationSettings.SaveAsync(settings);
     }
 
     private async void ThemeChoice_SelectionChanged(object sender, SelectionChangedEventArgs e)

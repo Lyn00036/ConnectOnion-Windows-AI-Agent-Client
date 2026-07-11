@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <!--
+    The notification "pure core" lives in the WinUI app project, which targets
+    net10.0-windows and pulls in WinUI/WindowsAppSDK — un-referenceable from a
+    headless test project. These files are deliberately WinUI-free, so we link
+    the sources directly and compile them into this assembly instead.
+  -->
+  <ItemGroup>
+    <Compile Include="..\ConnectOnion.WinUIClient\Models\Notifications\NotificationType.cs" Link="Core\NotificationType.cs" />
+    <Compile Include="..\ConnectOnion.WinUIClient\Models\Notifications\NotificationRequest.cs" Link="Core\NotificationRequest.cs" />
+    <Compile Include="..\ConnectOnion.WinUIClient\Models\Notifications\NotificationDecision.cs" Link="Core\NotificationDecision.cs" />
+    <Compile Include="..\ConnectOnion.WinUIClient\Models\Notifications\NotificationSettings.cs" Link="Core\NotificationSettings.cs" />
+    <Compile Include="..\ConnectOnion.WinUIClient\Services\Notifications\INotificationAbstractions.cs" Link="Core\INotificationAbstractions.cs" />
+    <Compile Include="..\ConnectOnion.WinUIClient\Services\Notifications\NotificationText.cs" Link="Core\NotificationText.cs" />
+    <Compile Include="..\ConnectOnion.WinUIClient\Services\Notifications\DedupCache.cs" Link="Core\DedupCache.cs" />
+    <Compile Include="..\ConnectOnion.WinUIClient\Services\Notifications\NotificationPolicy.cs" Link="Core\NotificationPolicy.cs" />
+    <Compile Include="..\ConnectOnion.WinUIClient\Services\Notifications\NotificationCoordinator.cs" Link="Core\NotificationCoordinator.cs" />
+  </ItemGroup>
+
+</Project>

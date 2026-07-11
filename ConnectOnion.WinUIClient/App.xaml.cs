@@ -16,6 +16,8 @@ using Windows.ApplicationModel.Activation;
 using Windows.Foundation;
 using Windows.Foundation.Collections;
 using ConnectOnion.WinUIClient.Data;
+using ConnectOnion.WinUIClient.Services;
+using ConnectOnion.WinUIClient.Services.Notifications;
 
 // To learn more about WinUI, the WinUI project structure,
 // and more about our project templates, see: http://aka.ms/winui-project-info.
@@ -53,9 +55,35 @@ namespace ConnectOnion.WinUIClient
         protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
             AppStorage.EnsureDirectories();
+            AppServices.InitializeNotifications();
             _window = new MainWindow();
             MainWindow = _window;
             _window.Activate();
+            HandleColdStartActivation();
+        }
+
+        /// <summary>
+        /// If the process was cold-started by clicking a toast, hand its arguments to
+        /// the activation router. The router buffers them until the main window signals
+        /// it's ready (see <c>MainWindow</c>'s notification wiring), so navigation never
+        /// runs before the UI exists.
+        /// </summary>
+        private static void HandleColdStartActivation()
+        {
+            try
+            {
+                var activation = Microsoft.Windows.AppLifecycle.AppInstance
+                    .GetCurrent().GetActivatedEventArgs();
+                if (activation?.Kind == Microsoft.Windows.AppLifecycle.ExtendedActivationKind.AppNotification
+                    && activation.Data is Microsoft.Windows.AppNotifications.AppNotificationActivatedEventArgs invoked)
+                {
+                    AppServices.NotificationActivation.HandleColdStart(invoked.Arguments);
+                }
+            }
+            catch (System.Exception ex)
+            {
+                NotificationLog.Warn("cold-start activation check failed", ex);
+            }
         }
     }
 }

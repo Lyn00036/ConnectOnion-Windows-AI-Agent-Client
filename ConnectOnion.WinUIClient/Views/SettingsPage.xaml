@@ -56,6 +56,60 @@
 
             <Border Margin="0,8,0,0" Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="20">
+                    <TextBlock Text="Notifications" Style="{StaticResource SubtitleTextBlockStyle}" />
+
+                    <controls:SettingRow Title="Enable notifications"
+                                         Description="Master switch for all in-app and Windows notifications.">
+                        <ToggleSwitch x:Name="EnableNotificationsSwitch"
+                                      Toggled="EnableNotificationsSwitch_Toggled" />
+                    </controls:SettingRow>
+
+                    <ContentControl x:Name="NotificationDetailPanel"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Stretch">
+                    <StackPanel Spacing="20">
+                        <controls:SettingRow Title="Agent replies"
+                                             Description="Notify when an agent finishes replying in a conversation you're not viewing.">
+                            <ToggleSwitch x:Name="NotifyAgentRepliesSwitch"
+                                          Toggled="NotificationDetail_Toggled" />
+                        </controls:SettingRow>
+
+                        <controls:SettingRow Title="Task completion"
+                                             Description="Notify when a longer, multi-step task finishes.">
+                            <ToggleSwitch x:Name="NotifyTaskCompletionSwitch"
+                                          Toggled="NotificationDetail_Toggled" />
+                        </controls:SettingRow>
+
+                        <controls:SettingRow Title="Approval requests"
+                                             Description="Notify when an agent needs your approval to continue.">
+                            <ToggleSwitch x:Name="NotifyApprovalRequestsSwitch"
+                                          Toggled="NotificationDetail_Toggled" />
+                        </controls:SettingRow>
+
+                        <controls:SettingRow Title="Connection problems"
+                                             Description="Notify when an agent stays disconnected for a while.">
+                            <ToggleSwitch x:Name="NotifyConnectionProblemsSwitch"
+                                          Toggled="NotificationDetail_Toggled" />
+                        </controls:SettingRow>
+
+                        <controls:SettingRow Title="Play sound"
+                                             Description="Play a sound with Windows notifications.">
+                            <ToggleSwitch x:Name="PlayNotificationSoundSwitch"
+                                          Toggled="NotificationDetail_Toggled" />
+                        </controls:SettingRow>
+
+                        <controls:SettingRow Title="Show message preview"
+                                             Description="Include a snippet of the reply. When off, notifications only say you have a new response.">
+                            <ToggleSwitch x:Name="ShowMessagePreviewSwitch"
+                                          Toggled="NotificationDetail_Toggled" />
+                        </controls:SettingRow>
+                    </StackPanel>
+                    </ContentControl>
+                </StackPanel>
+            </Border>
+
+            <Border Margin="0,8,0,0" Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="20">
                     <TextBlock Text="Audio" Style="{StaticResource SubtitleTextBlockStyle}" />
 
                     <controls:SettingRow Title="Microphone"

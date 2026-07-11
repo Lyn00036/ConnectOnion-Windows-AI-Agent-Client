@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
+using ConnectOnion.WinUIClient.Models.Notifications;
 
 namespace ConnectOnion.WinUIClient.Data;
 
@@ -10,4 +11,5 @@ namespace ConnectOnion.WinUIClient.Data;
     UseStringEnumConverter = true)]
 [JsonSerializable(typeof(Dictionary<string, string>))]
 [JsonSerializable(typeof(List<string>))]
+[JsonSerializable(typeof(NotificationSettings))]
 internal sealed partial class AppJsonContext : JsonSerializerContext;

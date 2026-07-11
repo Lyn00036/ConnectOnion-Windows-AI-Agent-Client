@@ -1,0 +1,185 @@
+using System;
+using System.Collections.Generic;
+using ConnectOnion.WinUIClient.Models.Notifications;
+
+namespace ConnectOnion.WinUIClient.Services.Notifications;
+
+/// <summary>
+/// The single place that decides whether and how to notify. Callers hand it
+/// high-level events (a completed turn, an approval, a lost connection); it
+/// de-duplicates, applies <see cref="NotificationPolicy"/>, and routes to the
+/// system or in-app channel. Nothing else in the app should call the OS toast
+/// APIs directly. Thread-safe and WinUI-free (channels handle their own UI
+/// marshaling), so it can be driven from background socket callbacks and unit-
+/// tested with fakes.
+/// </summary>
+public sealed class NotificationCoordinator
+{
+    private readonly INotificationChannel _system;
+    private readonly INotificationChannel _inApp;
+    private readonly IWindowPresence _presence;
+    private readonly INotificationSettingsProvider _settings;
+    private readonly INotificationScheduler _scheduler;
+    private readonly NotificationPolicy _policy;
+    private readonly Action<string, Exception>? _onError;
+
+    private readonly object _gate = new();
+    private readonly DedupCache _dedup = new(256);
+    private readonly Dictionary<string, IDisposable> _pendingConnection = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _notifiedDown = new(StringComparer.Ordinal);
+
+    /// <summary>How long a disconnect must persist before we notify. Short blips
+    /// that recover within this window are silent.</summary>
+    public TimeSpan ConnectionGracePeriod { get; set; } = TimeSpan.FromSeconds(10);
+
+    /// <summary>A turn is treated as a long-running "task" (not a chat reply) when
+    /// it ran tools or took at least this long.</summary>
+    public TimeSpan TaskDurationThreshold { get; set; } = TimeSpan.FromSeconds(12);
+
+    public NotificationCoordinator(
+        INotificationChannel systemChannel,
+        INotificationChannel inAppChannel,
+        IWindowPresence presence,
+        INotificationSettingsProvider settings,
+        INotificationScheduler scheduler,
+        NotificationPolicy? policy = null,
+        Action<string, Exception>? onError = null)
+    {
+        _system = systemChannel;
+        _inApp = inAppChannel;
+        _presence = presence;
+        _settings = settings;
+        _scheduler = scheduler;
+        _policy = policy ?? new NotificationPolicy();
+        _onError = onError;
+    }
+
+    /// <summary>Core entry point: de-dup, decide, and route a request.</summary>
+    public void Publish(NotificationRequest request)
+    {
+        try
+        {
+            lock (_gate)
+            {
+                if (!_dedup.Add(request.EffectiveDedupKey)) return;
+            }
+
+            var decision = _policy.Decide(request, _presence, _settings.Current);
+            if (decision.Channel == NotificationChannel.None) return;
+
+            var shaped = request with { Body = decision.Body ?? request.Body };
+            var channel = decision.Channel == NotificationChannel.System ? _system : _inApp;
+            channel.Show(shaped, decision.PlaySound);
+        }
+        catch (Exception ex)
+        {
+            // A notification failure must never bubble into the chat/save path.
+            _onError?.Invoke("Publish failed", ex);
+        }
+    }
+
+    /// <summary>An agent turn finished. Classified as a task (ran tools / slow) or
+    /// a plain reply; dedup keyed on the turn so a turn only ever notifies once.</summary>
+    public void PublishAgentTurnCompleted(
+        string agentId,
+        string agentName,
+        string conversationId,
+        string turnKey,
+        string? replyText,
+        long toolCallCount,
+        double durationMs)
+    {
+        var isTask = toolCallCount > 0 || durationMs >= TaskDurationThreshold.TotalMilliseconds;
+        var type = isTask ? NotificationType.TaskCompleted : NotificationType.AgentReply;
+        var preview = NotificationText.Preview(replyText);
+        if (string.IsNullOrEmpty(preview))
+            preview = NotificationText.GenericBody(type);
+
+        Publish(new NotificationRequest(
+            Title: agentName,
+            Body: preview,
+            Type: type,
+            AgentId: agentId,
+            ConversationId: conversationId,
+            DedupKey: $"turn:{conversationId}:{turnKey}"));
+    }
+
+    /// <summary>The agent asked the user to approve a sensitive action.</summary>
+    public void PublishApprovalRequired(
+        string agentId,
+        string agentName,
+        string conversationId,
+        string tool,
+        string? description,
+        string argumentsJson)
+    {
+        var body = string.IsNullOrWhiteSpace(description)
+            ? $"{agentName} wants to run \"{tool}\"."
+            : NotificationText.Preview(description);
+
+        Publish(new NotificationRequest(
+            Title: "Approval needed",
+            Body: body,
+            Type: NotificationType.ApprovalRequired,
+            AgentId: agentId,
+            ConversationId: conversationId,
+            ActionId: $"{conversationId}:{tool}",
+            DedupKey: $"approval:{conversationId}:{tool}:{Hash(argumentsJson)}"));
+    }
+
+    /// <summary>Report an important, user-actionable error.</summary>
+    public void PublishError(string agentId, string? conversationId, string title, string message)
+        => Publish(new NotificationRequest(
+            Title: title,
+            Body: NotificationText.Preview(message),
+            Type: NotificationType.Error,
+            AgentId: agentId,
+            ConversationId: conversationId,
+            DedupKey: $"error:{agentId}:{title}:{message}"));
+
+    /// <summary>A connection dropped. Notifies only if it stays down past the grace
+    /// period; a recovery (<see cref="NotifyConnectionRestored"/>) cancels it.</summary>
+    public void NotifyConnectionLost(string agentId, string agentName)
+    {
+        if (string.IsNullOrEmpty(agentId)) return;
+        lock (_gate)
+        {
+            if (_notifiedDown.Contains(agentId)) return;       // already told the user
+            if (_pendingConnection.ContainsKey(agentId)) return; // grace timer already armed
+            _pendingConnection[agentId] = _scheduler.Schedule(
+                ConnectionGracePeriod, () => OnGraceElapsed(agentId, agentName));
+        }
+    }
+
+    /// <summary>The connection came back (or a turn succeeded): cancel any pending
+    /// grace timer and re-arm for future disconnects.</summary>
+    public void NotifyConnectionRestored(string agentId)
+    {
+        if (string.IsNullOrEmpty(agentId)) return;
+        lock (_gate)
+        {
+            if (_pendingConnection.Remove(agentId, out var handle)) handle.Dispose();
+            _notifiedDown.Remove(agentId);
+        }
+    }
+
+    private void OnGraceElapsed(string agentId, string agentName)
+    {
+        lock (_gate)
+        {
+            if (!_pendingConnection.Remove(agentId, out var handle)) return;
+            handle.Dispose();
+            if (!_notifiedDown.Add(agentId)) return;
+        }
+
+        Publish(new NotificationRequest(
+            Title: "Connection lost",
+            Body: $"{agentName} is offline. Trying to reconnect…",
+            Type: NotificationType.ConnectionLost,
+            AgentId: agentId,
+            DedupKey: $"conn:{agentId}:{Guid.NewGuid():N}"));
+    }
+
+    private static string Hash(string? s)
+        => string.IsNullOrEmpty(s) ? "0" : ((uint)s.GetHashCode()).ToString();
+}

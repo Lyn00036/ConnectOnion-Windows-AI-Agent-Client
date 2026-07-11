@@ -37,6 +37,7 @@ public sealed partial class ChatPage : Page, IFindHost
     private bool _isAutoScrollQueued;
     private bool _stickToBottom = true;
     private ComposerSubmission? _pendingInitialSubmission;
+    private MainWindow? _hostWindow;
     private readonly List<FindMatch> _findMatches = new();
     private readonly DispatcherTimer _findDebounceTimer = new() { Interval = TimeSpan.FromMilliseconds(150) };
     private int _currentFindIndex = -1;
@@ -58,6 +59,9 @@ public sealed partial class ChatPage : Page, IFindHost
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        // No longer viewing this conversation — clear it so notifications resume.
+        ReportViewing(active: false);
+
         // Persist scroll position so returning to this conversation restores it.
         try
         {
@@ -70,6 +74,30 @@ public sealed partial class ChatPage : Page, IFindHost
         _findDebounceTimer.Stop();
         try { Vm.Cleanup(); }
         catch { /* Best-effort cleanup. */ }
+    }
+
+    /// <summary>Reports to <c>WindowPresenceService</c> whether this window is
+    /// currently showing this conversation, so the notification policy can suppress
+    /// notifications the user would already see. The host window is captured while
+    /// loaded so it can still be cleared during unload (when XamlRoot may be gone).</summary>
+    private void ReportViewing(bool active)
+    {
+        try
+        {
+            if (active)
+            {
+                _hostWindow = MainWindow.FromXamlRoot(XamlRoot);
+                if (_hostWindow is not null)
+                    AppServices.WindowPresence.SetViewing(_hostWindow, Vm.AgentId, Vm.SessionId);
+            }
+            else
+            {
+                if (_hostWindow is not null)
+                    AppServices.WindowPresence.SetViewing(_hostWindow, null, null);
+                _hostWindow = null;
+            }
+        }
+        catch { /* Best-effort presence reporting. */ }
     }
 
     private void Vm_PropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -122,6 +150,10 @@ public sealed partial class ChatPage : Page, IFindHost
         {
             _isLoadingConversation = false;
         }
+
+        // Tell the notification layer this window is now showing this conversation,
+        // so a reply that lands here is suppressed (the user already sees it).
+        ReportViewing(active: true);
 
         // Wait for the ListView to materialize its virtualized item containers
         // before removing the overlay.  A fixed delay cannot account for

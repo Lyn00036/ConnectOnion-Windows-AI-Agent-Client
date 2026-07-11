@@ -23,6 +23,7 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         TrackWindowLifetime();
+        InitializeNotificationPresence();
         _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         _appWindow = GetAppWindow(_hwnd);
         ConfigureCustomTitleBar();
@@ -65,6 +66,11 @@ public sealed partial class MainWindow : Window
             {
                 // Initialization is best-effort; a failure here should not
                 // prevent the window from being shown.
+            }
+            finally
+            {
+                // UI is ready — replay any notification click buffered at cold start.
+                AppServices.NotificationActivation.MarkReady();
             }
         };
     }
