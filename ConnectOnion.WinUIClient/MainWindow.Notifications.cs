@@ -63,18 +63,14 @@ public sealed partial class MainWindow : IChatWindow
     public void ShowInAppToast(InAppToastModel toast) => InAppNotifications.ShowToast(toast);
 
     /// <summary>Finds the shell window hosting a given XamlRoot (so a page can report
-    /// which conversation it is showing). Returns null if not found.</summary>
+    /// which conversation it is showing). Returns null if not found. Single-window app:
+    /// the only candidate is <see cref="App.MainWindow"/>.</summary>
     internal static MainWindow? FromXamlRoot(XamlRoot? root)
     {
         if (root is null) return null;
-        foreach (var window in GetOpenWindowsSnapshot())
-        {
-            if (window is MainWindow mainWindow
-                && ReferenceEquals(mainWindow.Content?.XamlRoot, root))
-            {
-                return mainWindow;
-            }
-        }
-        return null;
+        return App.MainWindow is MainWindow mainWindow
+            && ReferenceEquals(mainWindow.Content?.XamlRoot, root)
+            ? mainWindow
+            : null;
     }
 }

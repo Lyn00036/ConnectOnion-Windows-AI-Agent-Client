@@ -24,6 +24,7 @@ public sealed partial class MainWindow
 
     private const int SwHide = 0;
     private const int SwShow = 5;
+    private const int SwRestore = 9;
     private const int TrayIconId = 1;
     private const int OpenWindowCommandId = 1001;
     private const int ExitCommandId = 1002;
@@ -100,14 +101,10 @@ public sealed partial class MainWindow
                 if (mouseMessage is WmLButtonDown or WmLButtonUp
                     or WmLButtonDblClk or NinSelect)
                 {
-                    foreach (var window in GetOpenWindowsSnapshot())
+                    if (App.MainWindow is MainWindow mainWindow
+                        && mainWindow.DispatcherQueue is { } dq)
                     {
-                        if (window is MainWindow mainWindow
-                            && mainWindow.DispatcherQueue is { } dq)
-                        {
-                            _ = dq.TryEnqueue(() =>
-                                mainWindow.RestoreFromTray());
-                        }
+                        _ = dq.TryEnqueue(mainWindow.RestoreFromTray);
                     }
                     return IntPtr.Zero;
                 }
@@ -115,14 +112,10 @@ public sealed partial class MainWindow
                 // Right-click shows the context menu.
                 if (mouseMessage == WmRButtonUp)
                 {
-                    foreach (var window in GetOpenWindowsSnapshot())
+                    if (App.MainWindow is MainWindow mainWindow
+                        && mainWindow.DispatcherQueue is { } dq)
                     {
-                        if (window is MainWindow mainWindow
-                            && mainWindow.DispatcherQueue is { } dq)
-                        {
-                            _ = dq.TryEnqueue(() =>
-                                mainWindow.ShowTrayMenu());
-                        }
+                        _ = dq.TryEnqueue(mainWindow.ShowTrayMenu);
                     }
                     return IntPtr.Zero;
                 }
@@ -133,28 +126,20 @@ public sealed partial class MainWindow
                 var commandId = unchecked((int)wParam.ToUInt64()) & 0xffff;
                 if (commandId == OpenWindowCommandId)
                 {
-                    foreach (var window in GetOpenWindowsSnapshot())
+                    if (App.MainWindow is MainWindow mainWindow
+                        && mainWindow.DispatcherQueue is { } dq)
                     {
-                        if (window is MainWindow mainWindow
-                            && mainWindow.DispatcherQueue is { } dq)
-                        {
-                            _ = dq.TryEnqueue(() =>
-                                mainWindow.RestoreFromTray());
-                        }
+                        _ = dq.TryEnqueue(mainWindow.RestoreFromTray);
                     }
                     return IntPtr.Zero;
                 }
 
                 if (commandId == ExitCommandId)
                 {
-                    foreach (var window in GetOpenWindowsSnapshot())
+                    if (App.MainWindow is MainWindow mainWindow
+                        && mainWindow.DispatcherQueue is { } dq)
                     {
-                        if (window is MainWindow mainWindow
-                            && mainWindow.DispatcherQueue is { } dq)
-                        {
-                            _ = dq.TryEnqueue(
-                                mainWindow.ExitApplication);
-                        }
+                        _ = dq.TryEnqueue(mainWindow.ExitApplication);
                     }
                     return IntPtr.Zero;
                 }
@@ -168,15 +153,6 @@ public sealed partial class MainWindow
         }
 
         return DefWindowProcW(hwnd, msg, wParam, lParam);
-    }
-
-    /// <summary>Thread-safe snapshot of <see cref="OpenWindows"/> for consumption by the WndProc.</summary>
-    private static Window[] GetOpenWindowsSnapshot()
-    {
-        lock (OpenWindows)
-        {
-            return OpenWindows.ToArray();
-        }
     }
 
     private IntPtr WindowSubclassProc(
@@ -282,16 +258,30 @@ public sealed partial class MainWindow
         Services.AppServices.WindowPresence.SetVisible(this, true);
     }
 
+    /// <summary>Restores the window from a minimized or hidden (tray) state and brings it
+    /// to the foreground. Used when a second app launch is redirected to this — the only —
+    /// instance: it must wake the existing window, never create a new one. Safe against
+    /// teardown (a redirect arriving while the app is closing) and a temporarily
+    /// unavailable window handle.</summary>
+    public void BringToForeground()
+    {
+        if (_isExiting || _hwnd == IntPtr.Zero) return;
+
+        // SW_RESTORE un-minimizes and unhides in one call; SW_SHOW guarantees the window
+        // is visible even when it was hidden to the tray via SW_HIDE.
+        ShowWindow(_hwnd, SwRestore);
+        ShowWindow(_hwnd, SwShow);
+        SetForegroundWindow(_hwnd);
+        try { Activate(); }
+        catch { /* Activate can throw during teardown; best-effort. */ }
+        if (!_isTrayDisposed) Services.AppServices.WindowPresence.SetVisible(this, true);
+    }
+
     private async void ExitApplication()
     {
         _isExiting = true;
-        foreach (var window in GetOpenWindowsSnapshot())
-        {
-            if (window is MainWindow mainWindow)
-            {
-                mainWindow.DisposeTrayBehavior();
-            }
-        }
+        // Single window: this instance owns the only tray behavior to dispose.
+        DisposeTrayBehavior();
 
         // Real exit (as opposed to minimize-to-tray): cancel in-flight turns, let them
         // persist recoverable state, and release the sockets — all bounded so exit never

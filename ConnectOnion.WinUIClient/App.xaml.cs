@@ -32,12 +32,48 @@ namespace ConnectOnion.WinUIClient
         private Window? _window;
 
         /// <summary>
-        /// The active top-level window. Used by code that needs an HWND (e.g.
-        /// <c>FileOpenPicker</c>) but isn't itself a <see cref="Window"/> — most
-        /// notably controls like <c>ChatComposer</c>, which is hosted inside a
-        /// <see cref="Microsoft.UI.Xaml.Controls.Page"/> and has no HWND of its own.
+        /// The single top-level window. Created exactly once in <see cref="OnLaunched"/>;
+        /// every subsequent activation (a redirected second launch, a taskbar/shell
+        /// re-activation) reuses this instance via <see cref="ActivateMainWindow"/>.
+        /// Used by code that needs an HWND (e.g. <c>FileOpenPicker</c>) but isn't itself
+        /// a <see cref="Window"/> — most notably controls like <c>ChatComposer</c>,
+        /// which is hosted inside a <see cref="Microsoft.UI.Xaml.Controls.Page"/> and
+        /// has no HWND of its own.
         /// </summary>
         public static Window? MainWindow { get; private set; }
+
+        /// <summary>Set when a redirected second launch arrived before the main window
+        /// existed (cold start). Flushed once the window is created so the activation is
+        /// honored instead of dropped. Interlocked so it is safe from the non-UI thread
+        /// the <c>AppInstance.Activated</c> event fires on.</summary>
+        private static int _pendingActivation;
+
+        /// <summary>
+        /// Wakes the existing main window — restore from minimized/tray and bring to the
+        /// foreground — without ever creating one. Safe to call from any thread (a
+        /// redirected second launch arrives on a non-UI thread); the actual window work
+        /// is marshalled to the UI thread. If the window does not exist yet (a redirect
+        /// during cold start), the request is buffered and replayed by
+        /// <see cref="FlushPendingActivation"/> once the window is created.
+        /// </summary>
+        public static void ActivateMainWindow()
+        {
+            if (MainWindow is not MainWindow main)
+            {
+                System.Threading.Interlocked.Exchange(ref _pendingActivation, 1);
+                return;
+            }
+            _ = main.DispatcherQueue.TryEnqueue(main.BringToForeground);
+        }
+
+        /// <summary>Replays a buffered cold-start activation, if any. Called from
+        /// <see cref="OnLaunched"/> once the single main window exists.</summary>
+        internal static void FlushPendingActivation()
+        {
+            if (System.Threading.Interlocked.Exchange(ref _pendingActivation, 0) != 1) return;
+            if (MainWindow is MainWindow main)
+                _ = main.DispatcherQueue.TryEnqueue(main.BringToForeground);
+        }
 
         /// <summary>
         /// Initializes the singleton application object.  This is the first line of authored code
@@ -60,6 +96,8 @@ namespace ConnectOnion.WinUIClient
             MainWindow = _window;
             _window.Activate();
             HandleColdStartActivation();
+            // Honor any second launch that redirected to us before the window existed.
+            FlushPendingActivation();
         }
 
         /// <summary>

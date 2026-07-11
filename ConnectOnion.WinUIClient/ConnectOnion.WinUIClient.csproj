@@ -14,6 +14,10 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <WindowsPackageType Condition="'$(RunUnpackaged)' == 'true'">None</WindowsPackageType>
     <Nullable>enable</Nullable>
+    <!-- A custom entry point (Program.cs) enforces single-instance: a second launch
+         redirects to the running instance and exits before WinUI ever starts, so no
+         second window/Application can be constructed. -->
+    <DefineConstants>DISABLE_XAML_GENERATED_MAIN</DefineConstants>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Platform)' == 'AnyCPU' or '$(Platform)' == 'Any CPU'">

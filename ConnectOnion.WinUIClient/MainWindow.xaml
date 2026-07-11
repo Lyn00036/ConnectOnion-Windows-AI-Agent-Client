@@ -123,9 +123,6 @@
                          BorderThickness="0"
                          VerticalAlignment="Center">
                     <MenuBarItem Title="File">
-                        <MenuFlyoutItem Text="New Window"
-                                        KeyboardAcceleratorTextOverride="Ctrl+Shift+N"
-                                        Click="NewWindow_Click" />
                         <MenuFlyoutItem Text="New Chat"
                                         KeyboardAcceleratorTextOverride="Ctrl+N"
                                         Click="NewChat_Click" />

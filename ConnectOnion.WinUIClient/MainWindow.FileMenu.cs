@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using ConnectOnion.WinUIClient.Views;
@@ -13,20 +12,13 @@ namespace ConnectOnion.WinUIClient;
 
 public sealed partial class MainWindow
 {
-    private static readonly List<Window> OpenWindows = new();
-
     private void TrackWindowLifetime()
     {
-        lock (OpenWindows) { OpenWindows.Add(this); }
-        Closed += (_, _) => { lock (OpenWindows) { OpenWindows.Remove(this); } };
         RegisterFileMenuAccelerators();
         RegisterEditMenuAccelerators();
         RegisterViewMenuAccelerators();
         RegisterDragDropHint();
     }
-
-    private void NewWindow_Click(object sender, RoutedEventArgs e)
-        => OpenNewWindow();
 
     private async void NewChat_Click(object sender, RoutedEventArgs e)
         => await StartNewChatAsync();
@@ -43,12 +35,6 @@ public sealed partial class MainWindow
     private void Exit_Click(object sender, RoutedEventArgs e)
         => ExitApplication();
 
-    private void OpenNewWindow()
-    {
-        var window = new MainWindow();
-        window.Activate();
-    }
-
     private void RegisterFileMenuAccelerators()
         => RootGrid.KeyDown += FileMenuShortcut_KeyDown;
 
@@ -58,13 +44,6 @@ public sealed partial class MainWindow
 
         var hasShift = IsKeyDown(VirtualKey.Shift);
         var hasAlt = IsKeyDown(VirtualKey.Menu);
-
-        if (e.Key == VirtualKey.N && hasShift && !hasAlt)
-        {
-            OpenNewWindow();
-            e.Handled = true;
-            return;
-        }
 
         if (e.Key == VirtualKey.N && !hasShift && !hasAlt)
         {
