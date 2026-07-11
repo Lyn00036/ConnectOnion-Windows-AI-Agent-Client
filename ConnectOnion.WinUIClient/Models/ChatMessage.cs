@@ -38,9 +38,10 @@ public sealed class ChatMessage : ObservableObject
     private string? _eventMeta;
     private string? _eventArgs;
     private string? _eventResult;
-    private bool _isContentExpanded;
+    private bool _isContentExpanded = true;
     private string _findQuery = "";
     private int _activeFindMatchIndex = -1;
+    private ToolActivityViewModel? _toolActivity;
 
     [JsonPropertyName("id")]
     public long Id { get; set; }
@@ -82,6 +83,7 @@ public sealed class ChatMessage : ObservableObject
             if (!SetProperty(ref _eventKind, value)) return;
             OnPropertyChanged(nameof(IsActivityEvent));
             OnPropertyChanged(nameof(IsToolEvent));
+            OnPropertyChanged(nameof(IsToolActivityEvent));
             OnPropertyChanged(nameof(IsAskUserEvent));
             OnPropertyChanged(nameof(IsApprovalEvent));
             OnPropertyChanged(nameof(IsPlanReviewEvent));
@@ -132,6 +134,18 @@ public sealed class ChatMessage : ObservableObject
     [JsonIgnore]
     public string? EventKey { get; set; }
 
+    /// <summary>One compact, durable timeline for every tool call in an assistant turn.</summary>
+    [JsonIgnore]
+    public ToolActivityViewModel? ToolActivity
+    {
+        get => _toolActivity;
+        set
+        {
+            if (!SetProperty(ref _toolActivity, value)) return;
+            OnPropertyChanged(nameof(IsToolActivityEvent));
+        }
+    }
+
     [JsonPropertyName("agentName")]
     public string? AgentName { get; set; }
 
@@ -176,6 +190,9 @@ public sealed class ChatMessage : ObservableObject
     /// <summary>Tool card with a status badge and collapsible arguments/result.</summary>
     [JsonIgnore]
     public bool IsToolEvent => EventKind == "tool";
+
+    [JsonIgnore]
+    public bool IsToolActivityEvent => EventKind == "tool_activity" && ToolActivity is not null;
 
     /// <summary>An <c>ask_user</c> turn: question + inline answer controls.</summary>
     [JsonIgnore]

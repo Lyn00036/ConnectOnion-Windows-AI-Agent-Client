@@ -19,6 +19,7 @@
             <common:StringToVisibilityConverter x:Key="StringToVis" />
             <common:PresenceToBrushConverter x:Key="PresenceToBrush" />
             <common:EventStatusToBrushConverter x:Key="EventStatusToBrush" />
+            <common:ToolStatusToBrushConverter x:Key="ToolStatusToBrush" />
             <common:LocalPathToImageSourceConverter x:Key="PathToImage" />
             <common:RowStateToBackgroundConverter x:Key="RowStateToBackground" />
         </ResourceDictionary>

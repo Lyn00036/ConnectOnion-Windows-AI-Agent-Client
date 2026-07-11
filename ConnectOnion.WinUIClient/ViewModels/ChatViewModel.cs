@@ -249,7 +249,8 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         }
 
         Messages.Clear();
-        var messages = await AppServices.Conversations.LoadMessagesAsync(_session.Id);
+        var messages = ToolActivityMigration.UpgradeLegacyToolMessages(
+            await AppServices.Conversations.LoadMessagesAsync(_session.Id));
         _createdAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
         if (messages.Count > 0)
@@ -375,6 +376,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         }
         else if (snapshot.Status == ConversationRunStatus.Failed)
         {
+            _liveProjection?.CompleteToolActivity(ToolActivityStatus.Failed, snapshot.ErrorMessage);
             Messages.Add(new ChatMessage
             {
                 Id = NextId(),
@@ -387,6 +389,10 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
                 _ = PresenceService.RefreshAsync(_agent);
                 AppServices.Notifications.NotifyConnectionLost(_agent.Id, _agent.Name);
             }
+        }
+        else if (snapshot.Status == ConversationRunStatus.Cancelled)
+        {
+            _liveProjection?.CompleteToolActivity(ToolActivityStatus.Cancelled);
         }
 
         _liveProjection = null;

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Text.Json;
 using System.Threading.Tasks;
 using ConnectOnion.WinUIClient.Models;
 using Microsoft.Data.Sqlite;
@@ -194,6 +195,15 @@ public sealed class ConversationRepository
             Status = ParseEventStatus(ReadNullableString(reader, 12)),
             IsOnboarding = reader.GetInt32(13) != 0,
         };
+        // Tool activity is stored in the existing event_args payload column. This keeps the
+        // schema backward compatible while making the aggregate durable across page teardown
+        // and application restart. Legacy per-tool rows still load normally and are upgraded
+        // by the chat projection when they are next replayed/saved.
+        if (m.EventKind == "tool_activity" && !string.IsNullOrWhiteSpace(m.EventArgs))
+        {
+            try { m.ToolActivity = JsonSerializer.Deserialize<ToolActivityViewModel>(m.EventArgs); }
+            catch { m.EventKind = "activity"; m.EventTitle = "Tool execution history could not be restored"; }
+        }
         return m;
     }
 
@@ -210,7 +220,10 @@ public sealed class ConversationRepository
         AppDatabase.Add(cmd, "$event_title", string.IsNullOrEmpty(m.EventTitle) ? DBNull.Value : m.EventTitle);
         AppDatabase.Add(cmd, "$event_detail", m.EventDetail ?? (object)DBNull.Value);
         AppDatabase.Add(cmd, "$event_meta", m.EventMeta ?? (object)DBNull.Value);
-        AppDatabase.Add(cmd, "$event_args", m.EventArgs ?? (object)DBNull.Value);
+        var eventArgs = m.IsToolActivityEvent
+            ? JsonSerializer.Serialize(m.ToolActivity)
+            : m.EventArgs;
+        AppDatabase.Add(cmd, "$event_args", eventArgs ?? (object)DBNull.Value);
         AppDatabase.Add(cmd, "$event_result", m.EventResult ?? (object)DBNull.Value);
         AppDatabase.Add(cmd, "$event_status", m.Status switch
         {

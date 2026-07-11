@@ -25,6 +25,13 @@
     the sources directly and compile them into this assembly instead.
   -->
   <ItemGroup>
+    <ProjectReference Include="..\ConnectOnion.Protocol\ConnectOnion.Protocol.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\ConnectOnion.WinUIClient\Common\ObservableObject.cs" Link="Core\ObservableObject.cs" />
+    <Compile Include="..\ConnectOnion.WinUIClient\Models\ToolActivity.cs" Link="Core\ToolActivity.cs" />
+    <Compile Include="..\ConnectOnion.WinUIClient\Services\Runtime\ToolActivityProjector.cs" Link="Core\ToolActivityProjector.cs" />
     <Compile Include="..\ConnectOnion.WinUIClient\Models\Notifications\NotificationType.cs" Link="Core\NotificationType.cs" />
     <Compile Include="..\ConnectOnion.WinUIClient\Models\Notifications\NotificationRequest.cs" Link="Core\NotificationRequest.cs" />
     <Compile Include="..\ConnectOnion.WinUIClient\Models\Notifications\NotificationDecision.cs" Link="Core\NotificationDecision.cs" />

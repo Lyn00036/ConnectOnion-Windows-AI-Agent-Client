@@ -198,6 +198,9 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         var target = new ListProjectionTarget(history, agentName, _http);
         var projection = new ChatTurnProjection(target);
         foreach (var e in snapshot.Events) projection.Apply(e);
+        projection.CompleteToolActivity(
+            snapshot.Status == ConversationRunStatus.Cancelled ? ToolActivityStatus.Cancelled : ToolActivityStatus.Failed,
+            snapshot.ErrorMessage);
         if (target.PendingImages.Count > 0)
         {
             try { await Task.WhenAll(target.PendingImages).ConfigureAwait(false); } catch { /* best-effort */ }

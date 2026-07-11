@@ -33,6 +33,7 @@ public sealed class ChatTurnProjection
     private double _turnDurationMs;
     private double? _turnContextPercent;
     private long _turnToolCallsCount;
+    private ToolActivityProjector? _toolActivity;
 
     public ChatTurnProjection(IChatProjectionTarget target) => _target = target;
 
@@ -72,37 +73,15 @@ public sealed class ChatTurnProjection
                 ? v.ValueKind == JsonValueKind.True ? true
                     : v.ValueKind == JsonValueKind.False ? false : (bool?)null
                 : null;
-        string? RawObj(string name) => root.ValueKind == JsonValueKind.Object
-            && root.TryGetProperty(name, out var v) && v.ValueKind is JsonValueKind.Object or JsonValueKind.Array
-                ? PrettyJson(v.GetRawText()) : null;
-
         switch (e.Type)
         {
             case "tool_call":
-                Add(new ChatMessage
-                {
-                    Id = NextId(),
-                    Role = ChatRole.Event,
-                    EventKind = "tool",
-                    EventKey = Str("tool_id") ?? Str("id"),
-                    EventEyebrow = "Tool",
-                    EventTitle = Str("name") ?? "tool",
-                    EventArgs = RawObj("args"),
-                    Status = EventStatus.Running,
-                });
+                GetToolActivity().ApplyCall(e);
                 break;
 
             case "tool_result":
-            {
-                var existing = FindEvent(Str("tool_id") ?? Str("id"), "tool");
-                if (existing is not null)
-                {
-                    existing.Status = Str("status") == "error" ? EventStatus.Error : EventStatus.Done;
-                    existing.EventResult = Str("result");
-                    if (Num("timing_ms") is { } timing) existing.EventMeta = FormatDuration(timing);
-                }
+                _toolActivity?.ApplyResult(e);
                 break;
-            }
 
             case "llm_call":
                 if (Str("model") is { } callModel) _turnModel = callModel;
@@ -186,18 +165,7 @@ public sealed class ChatTurnProjection
             }
 
             case "tool_blocked":
-                Add(new ChatMessage
-                {
-                    Id = NextId(),
-                    Role = ChatRole.Event,
-                    EventKind = "tool",
-                    EventEyebrow = "Tool blocked",
-                    EventTitle = Str("tool") ?? "tool",
-                    EventDetail = Str("message"),
-                    EventMeta = Str("reason"),
-                    EventResult = Str("command"),
-                    Status = EventStatus.Error,
-                });
+                GetToolActivity().AddBlocked(e);
                 break;
 
             case "agent_image":
@@ -310,6 +278,7 @@ public sealed class ChatTurnProjection
             }
 
             case "approval_needed":
+                _toolActivity?.WaitForConfirmation();
                 Add(new ChatMessage
                 {
                     Id = NextId(),
@@ -346,6 +315,7 @@ public sealed class ChatTurnProjection
     /// </summary>
     public void AppendFinalReply(string reply)
     {
+        _toolActivity?.Complete();
         if (string.IsNullOrEmpty(reply)) return;
         var lastAgent = Messages.LastOrDefault(m => m.Role == ChatRole.Agent);
         if (lastAgent is not null && lastAgent.Content == reply) return;
@@ -381,6 +351,34 @@ public sealed class ChatTurnProjection
             EventMeta = parts.Count > 0 ? string.Join(" · ", parts) : null,
             Status = EventStatus.Done,
         });
+    }
+
+    /// <summary>Finalizes the current compact timeline when the whole assistant turn fails
+    /// or is cancelled. The error stays in the activity details rather than becoming a second
+    /// oversized tool bubble.</summary>
+    public void CompleteToolActivity(ToolActivityStatus status, string? error = null)
+        => _toolActivity?.Complete(status, error);
+
+    private ToolActivityProjector GetToolActivity()
+    {
+        if (_toolActivity is not null) return _toolActivity;
+        var activity = new ToolActivityViewModel
+        {
+            TurnId = Guid.NewGuid().ToString("N"),
+            DisplayMode = ToolDisplayMode.Compact,
+            IsExpanded = true,
+        };
+        Add(new ChatMessage
+        {
+            Id = NextId(),
+            Role = ChatRole.Event,
+            EventKind = "tool_activity",
+            EventTitle = "Tool execution",
+            Status = EventStatus.Running,
+            ToolActivity = activity,
+        });
+        _toolActivity = new ToolActivityProjector(activity);
+        return _toolActivity;
     }
 
     // ---- helpers (relocated verbatim) ----

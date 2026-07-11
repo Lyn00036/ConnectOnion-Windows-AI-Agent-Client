@@ -247,81 +247,9 @@
                             </Grid>
                         </Border>
 
-                        <!-- Tool card: eyebrow + name + status badge + collapsible args/result + timing
-                             (tool_call merged with tool_result, and tool_blocked). -->
-                        <Border MaxWidth="700"
-                                HorizontalAlignment="Left"
-                                CornerRadius="10"
-                                Padding="14,11"
-                                Background="{ThemeResource SurfaceElevatedBrush}"
-                                BorderBrush="{ThemeResource BorderDefaultBrush}"
-                                BorderThickness="1"
-                                Visibility="{x:Bind IsToolEvent, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                            <StackPanel Spacing="8">
-                                <Grid ColumnSpacing="8">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0"
-                                               Text="{x:Bind EventEyebrow, Mode=OneWay}"
-                                               FontSize="10"
-                                               FontWeight="Bold"
-                                               VerticalAlignment="Center"
-                                               Foreground="{ThemeResource TextTertiaryBrush}" />
-                                    <TextBlock Grid.Column="1"
-                                               Text="{x:Bind EventTitle, Mode=OneWay}"
-                                               FontSize="13"
-                                               FontWeight="SemiBold"
-                                               VerticalAlignment="Center"
-                                               TextTrimming="CharacterEllipsis" />
-                                    <Border Grid.Column="2"
-                                            CornerRadius="8"
-                                            Padding="8,2"
-                                            VerticalAlignment="Center"
-                                            Background="{ThemeResource SurfaceSecondaryBrush}">
-                                        <TextBlock Text="{x:Bind StatusBadge, Mode=OneWay}"
-                                                   FontSize="10"
-                                                   FontWeight="SemiBold"
-                                                   Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource EventStatusToBrush}}" />
-                                    </Border>
-                                </Grid>
-                                <TextBlock Text="{x:Bind EventDetail, Mode=OneWay}"
-                                           FontSize="12"
-                                           TextWrapping="Wrap"
-                                           Foreground="{ThemeResource TextSecondaryBrush}"
-                                           Visibility="{x:Bind HasEventDetail, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-                                <Expander Header="Arguments"
-                                          HorizontalAlignment="Stretch"
-                                          HorizontalContentAlignment="Stretch"
-                                          Visibility="{x:Bind HasEventArgs, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                                    <ScrollViewer MaxHeight="220" HorizontalScrollBarVisibility="Auto">
-                                        <TextBlock Text="{x:Bind EventArgs, Mode=OneWay}"
-                                                   FontFamily="Consolas"
-                                                   FontSize="12"
-                                                   IsTextSelectionEnabled="True"
-                                                   TextWrapping="NoWrap" />
-                                    </ScrollViewer>
-                                </Expander>
-                                <Expander Header="Result"
-                                          HorizontalAlignment="Stretch"
-                                          HorizontalContentAlignment="Stretch"
-                                          Visibility="{x:Bind HasEventResult, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                                    <ScrollViewer MaxHeight="260" HorizontalScrollBarVisibility="Auto">
-                                        <TextBlock Text="{x:Bind EventResult, Mode=OneWay}"
-                                                   FontFamily="Consolas"
-                                                   FontSize="12"
-                                                   IsTextSelectionEnabled="True"
-                                                   TextWrapping="Wrap" />
-                                    </ScrollViewer>
-                                </Expander>
-                                <TextBlock Text="{x:Bind EventMeta, Mode=OneWay}"
-                                           FontSize="10"
-                                           Foreground="{ThemeResource TextTertiaryBrush}"
-                                           Visibility="{x:Bind HasEventMeta, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-                            </StackPanel>
-                        </Border>
+                        <controls:ToolActivityView Activity="{x:Bind ToolActivity, Mode=OneWay}"
+                                                   HorizontalAlignment="Left"
+                                                   Visibility="{x:Bind IsToolActivityEvent, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
 
                         <!-- Ask-user card: question + inline answer controls (dynamic fields,
                              single/multi-select options, or free text), submit button. -->
