@@ -40,6 +40,9 @@ public sealed partial class MainWindow
 
     private async void FileMenuShortcut_KeyDown(object sender, KeyRoutedEventArgs e)
     {
+        // While a modal overlay is open it owns all input — don't fire background
+        // accelerators behind it.
+        if (IsModalOverlayOpen) return;
         if (!IsKeyDown(VirtualKey.Control)) return;
 
         var hasShift = IsKeyDown(VirtualKey.Shift);

@@ -196,7 +196,14 @@
                                         KeyboardAcceleratorTextOverride="F11"
                                         Click="ToggleFullScreen_Click" />
                     </MenuBarItem>
-                    <MenuBarItem Title="Help">
+                    <MenuBarItem x:Name="HelpMenuBarItem" Title="Help">
+                        <MenuFlyoutItem Text="Keyboard shortcuts"
+                                        Click="KeyboardShortcuts_Click">
+                            <MenuFlyoutItem.Icon>
+                                <FontIcon Glyph="&#xE765;" />
+                            </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                        <MenuFlyoutSeparator />
                         <MenuFlyoutItem Text="About ConnectOnion"
                                         Click="AboutConnectOnion_Click" />
                     </MenuBarItem>
@@ -245,6 +252,7 @@
               Grid.RowSpan="2"
               Canvas.ZIndex="100">
             <controls:SettingsOverlay x:Name="SettingsOverlay" Canvas.ZIndex="1000" />
+            <controls:KeyboardShortcutsDialog x:Name="KeyboardShortcutsDialog" Canvas.ZIndex="1001" />
             <Border x:Name="FindOverlayPanel"
                     Width="380"
                     MinHeight="36"

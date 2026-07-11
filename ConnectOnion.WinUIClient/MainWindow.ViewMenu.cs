@@ -86,6 +86,7 @@ public sealed partial class MainWindow
     private void ViewMenuShortcut_KeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (e.Handled) return;
+        if (IsModalOverlayOpen) return;
 
         var hasControl = IsKeyDown(VirtualKey.Control);
         var hasShift = IsKeyDown(VirtualKey.Shift);

@@ -17,6 +17,9 @@ public sealed partial class SettingsOverlay : UserControl
         SizeChanged += (_, e) => UpdateModalSize(e.NewSize.Width, e.NewSize.Height);
     }
 
+    /// <summary>Whether the settings modal is currently shown.</summary>
+    public bool IsOpen => Visibility == Visibility.Visible;
+
     public void Show(FrameworkElement? focusReturnTarget)
     {
         _focusReturnTarget = focusReturnTarget;

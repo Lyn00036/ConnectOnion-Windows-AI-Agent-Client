@@ -51,6 +51,8 @@ public sealed partial class MainWindow
 
     private async void EditMenuShortcut_KeyDown(object sender, KeyRoutedEventArgs e)
     {
+        if (IsModalOverlayOpen) return;
+
         // TextBox natively handles Ctrl+C/V/X/Z/Y/A/Delete.  Don't double-fire
         // by routing the same key through our custom handler while the TextBox
         // (or a child of one) is focused.
