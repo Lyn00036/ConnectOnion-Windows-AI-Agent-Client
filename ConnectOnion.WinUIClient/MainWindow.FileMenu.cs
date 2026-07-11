@@ -30,7 +30,7 @@ public sealed partial class MainWindow
         => MinimizeToTray();
 
     private void SettingsMenu_Click(object sender, RoutedEventArgs e)
-        => NavigateTo(typeof(SettingsPage));
+        => ShowSettingsOverlay(sender as FrameworkElement);
 
     private void Exit_Click(object sender, RoutedEventArgs e)
         => ExitApplication();
@@ -68,7 +68,7 @@ public sealed partial class MainWindow
 
         if ((int)e.Key == 188 && !hasShift && !hasAlt)
         {
-            NavigateTo(typeof(SettingsPage));
+            ShowSettingsOverlay();
             e.Handled = true;
             return;
         }

@@ -60,6 +60,14 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
 
     public ObservableCollection<ChatMessage> Messages { get; } = new();
 
+    public ChatViewModel()
+    {
+        RetryCommand = new RelayCommand(Retry, () => CanRetry);
+    }
+
+    /// <summary>Re-runs the last failed turn. Bound to the failure bar's Retry button.</summary>
+    public RelayCommand RetryCommand { get; }
+
     protected override AgentConfig? PresenceAgent => _agent;
 
     /// <summary>Detaches this page's run subscription and presence hook. Never cancels the
@@ -115,6 +123,26 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     // you can chat" model — not on holding a live socket (the transport connects lazily).
     public bool CanSend => HasAgent && IsOnline && !IsProcessing && !IsConnecting;
     public bool CanReconnect => HasAgent && !IsProcessing && !IsConnecting && Presence != AgentPresence.Checking;
+
+    private bool _canRetry;
+    /// <summary>True when the conversation's last run failed and is still retryable (only within
+    /// the same app session — a restart clears the registry's retryable state). Drives the
+    /// failure bar and <see cref="RetryCommand"/>.</summary>
+    public bool CanRetry
+    {
+        get => _canRetry;
+        private set
+        {
+            if (!SetProperty(ref _canRetry, value)) return;
+            RetryCommand.RaiseCanExecuteChanged();
+            OnPropertyChanged(nameof(ShowRetryBar));
+        }
+    }
+
+    /// <summary>The failure/Retry bar is kept mutually exclusive with the offline bar so the two
+    /// never stack in the same bottom-center slot; when the agent is offline, Recheck is the
+    /// right action and retrying would just fail again.</summary>
+    public bool ShowRetryBar => CanRetry && !ShowOfflineNotice;
 
     public string SelectedAgentName => _agent?.Name ?? "Agent";
     public string SelectedAgentInitial => string.IsNullOrWhiteSpace(_agent?.Name) ? "?" : _agent!.Name[..1].ToUpperInvariant();
@@ -279,6 +307,9 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         var hasAttachments = attachments is { Count: > 0 };
         if ((text.Length == 0 && !hasAttachments) || _agent is null || _session is null || IsProcessing) return;
 
+        // A new send supersedes any prior failure — the old attempt is no longer retryable.
+        CanRetry = false;
+
         // Optimistic user bubble for instant feedback. The manager also persists an
         // equivalent user message (this page won't reload during the session, so there is
         // no double; a re-opened page loads the persisted one).
@@ -334,6 +365,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
             StatusText = StatusTextFor(snapshot);
             if (snapshot.IsTerminal)
             {
+                CanRetry = snapshot.Status == ConversationRunStatus.Failed;
                 _historyLoadedRunId = null;
                 StoreSessionCache();
             }
@@ -345,9 +377,11 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
             if (snapshot.IsTerminal)
             {
                 // The run finished before this page attached; the DB load already reflects
-                // the whole turn, so just clear the busy state — never re-append it.
+                // the whole turn, so just clear the busy state — never re-append it. A failed
+                // run stays retryable, so reopening a failed conversation still offers Retry.
                 IsProcessing = false;
                 StatusText = "";
+                CanRetry = snapshot.Status == ConversationRunStatus.Failed;
                 return;
             }
 
@@ -372,6 +406,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         {
             _liveProjection!.AppendFinalReply(snapshot.PartialContent);
             _liveProjection!.AppendTurnSummary();
+            CanRetry = false;
             _ = PersistSessionMetadataAsync();
         }
         else if (snapshot.Status == ConversationRunStatus.Failed)
@@ -384,6 +419,10 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
                 AgentName = _agent?.Name,
                 Content = $"[connection error] {snapshot.ErrorMessage}",
             });
+            // The error is shown as a bubble plus the Retry bar; suppress the redundant
+            // "Send failed" status banner set above so the two don't stack.
+            StatusText = "";
+            CanRetry = true;
             if (_agent is not null)
             {
                 _ = PresenceService.RefreshAsync(_agent);
@@ -393,6 +432,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         else if (snapshot.Status == ConversationRunStatus.Cancelled)
         {
             _liveProjection?.CompleteToolActivity(ToolActivityStatus.Cancelled);
+            CanRetry = false;
         }
 
         _liveProjection = null;
@@ -423,6 +463,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         _liveRunId = null;
         _appliedEventCount = 0;
         _historyLoadedRunId = null;
+        CanRetry = false;
 
         _session = SessionSummary.NewConversation(_agent.Id, _sessionsState.Sessions);
         _sessionsState.Sessions.Add(_session);
@@ -462,6 +503,46 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         }
     }
 
+    /// <summary>Re-runs the last failed turn: the app-level manager reuses the original user
+    /// message but mints a fresh run id. The page's existing run subscription streams the new
+    /// run's events back through <see cref="ApplyRunSnapshot"/>, so no extra wiring is needed
+    /// here. Bound to <see cref="RetryCommand"/>.</summary>
+    public void Retry()
+    {
+        if (_agent is null || _session is null || IsProcessing || !CanRetry) return;
+
+        // Ask the manager first: if the run is no longer retryable (the registry cleared it, or
+        // a restart lost it), keep the error bubble as history rather than dropping it silently.
+        if (AppServices.RunManager.RetryRun(_agent, _session.Id) is null)
+        {
+            CanRetry = false;
+            return;
+        }
+
+        CanRetry = false;
+        RemoveLastFailureBubble();
+        IsProcessing = true;
+        StatusText = "Connecting...";
+    }
+
+    /// <summary>Drops the "[connection error]" bubble for the last failed turn (whether it was
+    /// added live or restored from history) so a successful retry doesn't leave a stale error
+    /// above the fresh reply.</summary>
+    private void RemoveLastFailureBubble()
+    {
+        for (var i = Messages.Count - 1; i >= 0; i--)
+        {
+            var m = Messages[i];
+            if (m.Role == ChatRole.Agent
+                && m.Content is not null
+                && m.Content.StartsWith("[connection error]", StringComparison.Ordinal))
+            {
+                Messages.RemoveAt(i);
+                return;
+            }
+        }
+    }
+
     private long NextId() => Messages.Count == 0 ? 1 : Messages.Max(m => m.Id) + 1;
 
     private void TouchSession(string prompt)
@@ -490,6 +571,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     {
         OnPropertyChanged(nameof(CanSend));
         OnPropertyChanged(nameof(CanReconnect));
+        OnPropertyChanged(nameof(ShowRetryBar));
     }
 
     private static string UserFacingError(Exception ex)

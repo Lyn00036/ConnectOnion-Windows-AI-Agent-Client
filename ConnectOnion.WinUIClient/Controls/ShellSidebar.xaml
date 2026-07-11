@@ -435,7 +435,9 @@
             <Button Style="{StaticResource ShellNavButtonStyle}" Click="AddAgent_Click">
                 <local:IconText Glyph="Add" IconSize="Size20" Spacing="9" Text="Add Agent" />
             </Button>
-            <Button Style="{StaticResource ShellNavButtonStyle}" Click="Settings_Click">
+            <Button Style="{StaticResource ShellNavButtonStyle}"
+                    Click="Settings_Click"
+                    AutomationProperties.Name="Open settings">
                 <local:IconText Glyph="Settings" IconSize="Size20" Spacing="9" Text="Settings" />
             </Button>
         </StackPanel>

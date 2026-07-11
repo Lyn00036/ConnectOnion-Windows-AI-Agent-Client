@@ -97,6 +97,10 @@
             <SolidColorBrush x:Key="SidebarItemPressedBrush" Color="{ThemeResource SidebarItemPressedColor}" />
             <SolidColorBrush x:Key="SidebarItemSelectedBrush" Color="{ThemeResource SidebarItemSelectedColor}" />
             <SolidColorBrush x:Key="SidebarSelectedAccentBrush" Color="{ThemeResource SidebarSelectedAccentColor}" />
+            <SolidColorBrush x:Key="SettingsBackdropBrush" Color="{ThemeResource SettingsBackdropColor}" />
+            <SolidColorBrush x:Key="SettingsNavigationBrush" Color="{ThemeResource SettingsNavigationColor}" />
+            <SolidColorBrush x:Key="SettingsContentBrush" Color="{ThemeResource SettingsContentColor}" />
+            <SolidColorBrush x:Key="SettingsModalBorderBrush" Color="{ThemeResource SettingsModalBorderColor}" />
 
             <!-- ============ Legacy keys (kept for source compatibility, now sourced from the tokens above) ============ -->
 
@@ -246,6 +250,10 @@
             <SolidColorBrush x:Key="SidebarItemPressedBrush" Color="{ThemeResource SidebarItemPressedColor}" />
             <SolidColorBrush x:Key="SidebarItemSelectedBrush" Color="{ThemeResource SidebarItemSelectedColor}" />
             <SolidColorBrush x:Key="SidebarSelectedAccentBrush" Color="{ThemeResource SidebarSelectedAccentColor}" />
+            <SolidColorBrush x:Key="SettingsBackdropBrush" Color="{ThemeResource SettingsBackdropColor}" />
+            <SolidColorBrush x:Key="SettingsNavigationBrush" Color="{ThemeResource SettingsNavigationColor}" />
+            <SolidColorBrush x:Key="SettingsContentBrush" Color="{ThemeResource SettingsContentColor}" />
+            <SolidColorBrush x:Key="SettingsModalBorderBrush" Color="{ThemeResource SettingsModalBorderColor}" />
 
             <!-- ============ Legacy keys (kept for source compatibility, now sourced from the tokens above) ============ -->
 

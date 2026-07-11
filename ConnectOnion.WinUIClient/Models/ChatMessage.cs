@@ -99,6 +99,7 @@ public sealed class ChatMessage : ObservableObject
             if (!SetProperty(ref _status, value)) return;
             OnPropertyChanged(nameof(StatusBadge));
             OnPropertyChanged(nameof(IsAwaitingResponse));
+            OnPropertyChanged(nameof(ShowAskUserFreeText));
         }
     }
 
@@ -330,6 +331,13 @@ public sealed class ChatMessage : ObservableObject
 
     [JsonIgnore]
     public bool HasAskUserMultiOptions => AskUserMultiSelect && AskUserOptionEntries.Count > 0;
+
+    /// <summary>The free-text answer box only makes sense while still awaiting a response and
+    /// when the turn has no structured fields. Gating on <see cref="IsAwaitingResponse"/> too
+    /// keeps an empty box from reappearing on a resolved bubble reloaded from history (whose
+    /// options/fields aren't persisted, so <see cref="HasAskUserFields"/> reads false).</summary>
+    [JsonIgnore]
+    public bool ShowAskUserFreeText => IsAwaitingResponse && !HasAskUserFields;
 
     public ChatMessage()
     {

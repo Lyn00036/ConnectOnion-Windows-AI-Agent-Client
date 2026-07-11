@@ -1,3 +1,4 @@
+using System;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
 using ConnectOnion.WinUIClient.ViewModels;
@@ -10,6 +11,7 @@ public sealed partial class SettingsPage : Page
 {
     private readonly SettingsViewModel _vm = new();
     private bool _initializing;
+    private string _currentCategory = "General";
 
     public SettingsPage()
     {
@@ -117,10 +119,34 @@ public sealed partial class SettingsPage : Page
 
     private void MicChoice_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        // SelectionChanged on ComboBox is two-way through the VM binding;
-        // the VM's SelectedMicIndex setter triggers the save.
+        if (_initializing) return;
+        _vm.SelectedMicIndex = MicChoice.SelectedIndex;
     }
 
-    private void Identity_Click(object sender, RoutedEventArgs e)
-        => Frame.Navigate(typeof(IdentityPage));
+    public void SelectCategory(string category)
+    {
+        _currentCategory = category;
+        GeneralSection.Visibility = category == "General" ? Visibility.Visible : Visibility.Collapsed;
+        NotificationsSection.Visibility = category == "Notifications" ? Visibility.Visible : Visibility.Collapsed;
+        AudioSection.Visibility = category == "Audio" ? Visibility.Visible : Visibility.Collapsed;
+        ContentScrollViewer.ChangeView(null, 0, null, true);
+    }
+
+    public void Filter(string query)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            SelectCategory(_currentCategory);
+            return;
+        }
+
+        var value = query.Trim();
+        GeneralSection.Visibility = Contains(value, "general appearance theme enter send text size identity") ? Visibility.Visible : Visibility.Collapsed;
+        NotificationsSection.Visibility = Contains(value, "notifications agent replies task completion approval connection sound preview") ? Visibility.Visible : Visibility.Collapsed;
+        AudioSection.Visibility = Contains(value, "audio microphone voice input") ? Visibility.Visible : Visibility.Collapsed;
+        ContentScrollViewer.ChangeView(null, 0, null, true);
+    }
+
+    private static bool Contains(string query, string terms)
+        => terms.Contains(query, StringComparison.OrdinalIgnoreCase);
 }

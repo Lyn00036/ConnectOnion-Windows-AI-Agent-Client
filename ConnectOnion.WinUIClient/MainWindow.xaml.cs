@@ -29,6 +29,8 @@ public sealed partial class MainWindow : Window
         ConfigureCustomTitleBar();
         InitializeTrayBehavior();
         ShellSidebar.NavigationRequested += NavigateTo;
+        ShellSidebar.SettingsRequested += ShowSettingsOverlay;
+        SettingsOverlay.CloseRequested += (_, _) => CloseSettingsOverlay();
         ContentFrame.Navigated += async (_, _) =>
         {
             try
@@ -213,4 +215,10 @@ public sealed partial class MainWindow : Window
                 ContentFrame.BackStack.RemoveAt(ContentFrame.BackStack.Count - 1);
         }
     }
+
+    private void ShowSettingsOverlay(FrameworkElement? opener = null)
+        => SettingsOverlay.Show(opener);
+
+    private void CloseSettingsOverlay()
+        => SettingsOverlay.Hide();
 }

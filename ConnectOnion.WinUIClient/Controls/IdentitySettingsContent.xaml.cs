@@ -1,17 +1,17 @@
 using ConnectOnion.Protocol;
-using ConnectOnion.WinUIClient.Services;
 using ConnectOnion.WinUIClient.Data;
+using ConnectOnion.WinUIClient.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
-namespace ConnectOnion.WinUIClient.Views;
+namespace ConnectOnion.WinUIClient.Controls;
 
-public sealed partial class IdentityPage : Page
+public sealed partial class IdentitySettingsContent : UserControl
 {
     private string _address = "";
     private string _publicKey = "";
 
-    public IdentityPage()
+    public IdentitySettingsContent()
     {
         InitializeComponent();
         Loaded += OnLoaded;
@@ -22,21 +22,9 @@ public sealed partial class IdentityPage : Page
         var identity = IdentityStore.EnsureIdentity();
         _address = identity.Address;
         _publicKey = Hex.ToLowerString(identity.PublicKey);
-
         AddressText.Text = _address;
         PublicKeyText.Text = _publicKey;
         StorageText.Text = AppDatabase.DatabasePath;
-    }
-
-    private void Back_Click(object sender, RoutedEventArgs e)
-    {
-        if (Frame.CanGoBack)
-        {
-            Frame.GoBack();
-            return;
-        }
-
-        Frame.Navigate(typeof(SettingsPage));
     }
 
     private async void Copy_Click(object sender, RoutedEventArgs e)
@@ -48,9 +36,7 @@ public sealed partial class IdentityPage : Page
             _ => "",
         };
         if (string.IsNullOrWhiteSpace(value)) return;
-
         ClipboardService.CopyText(value);
-
         if (sender is Button button)
         {
             var original = button.Content;

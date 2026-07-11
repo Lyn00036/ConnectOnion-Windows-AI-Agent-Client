@@ -83,6 +83,12 @@
             <Color x:Key="SidebarItemSelectedColor">#FFE8E0F5</Color>
             <Color x:Key="SidebarSelectedAccentColor">#FF673AB7</Color>
 
+            <!-- Settings modal -->
+            <Color x:Key="SettingsBackdropColor">#99000000</Color>
+            <Color x:Key="SettingsNavigationColor">#FFF1EFF5</Color>
+            <Color x:Key="SettingsContentColor">#FFF8F7FA</Color>
+            <Color x:Key="SettingsModalBorderColor">#FFD8D2DF</Color>
+
         </ResourceDictionary>
 
         <ResourceDictionary x:Key="Dark">
@@ -150,6 +156,12 @@
             <Color x:Key="SidebarItemPressedColor">#FF463F52</Color>
             <Color x:Key="SidebarItemSelectedColor">#FF3D3455</Color>
             <Color x:Key="SidebarSelectedAccentColor">#FF9D7BFF</Color>
+
+            <!-- Settings modal -->
+            <Color x:Key="SettingsBackdropColor">#A6000000</Color>
+            <Color x:Key="SettingsNavigationColor">#FF211F27</Color>
+            <Color x:Key="SettingsContentColor">#FF292631</Color>
+            <Color x:Key="SettingsModalBorderColor">#FF4B4554</Color>
 
         </ResourceDictionary>
 

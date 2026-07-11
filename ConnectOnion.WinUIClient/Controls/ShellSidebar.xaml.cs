@@ -23,6 +23,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     public ObservableCollection<ShellSessionItem> PinnedSessions { get; } = new();
 
     public event Action<Type, bool>? NavigationRequested;
+    public event Action<FrameworkElement>? SettingsRequested;
     public event PropertyChangedEventHandler? PropertyChanged;
 
     private readonly AgentPresenceService _presence = AppServices.Presence;
@@ -530,6 +531,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     private async void Settings_Click(object sender, RoutedEventArgs e)
     {
         await RefreshAsync();
-        RequestNavigation(typeof(SettingsPage));
+        if (sender is FrameworkElement opener)
+            SettingsRequested?.Invoke(opener);
     }
 }

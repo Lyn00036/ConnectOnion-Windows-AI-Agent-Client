@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl x:Class="ConnectOnion.WinUIClient.Controls.SettingsOverlay"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:ConnectOnion.WinUIClient.Controls"
+    xmlns:views="using:ConnectOnion.WinUIClient.Views"
+    HorizontalAlignment="Stretch"
+    VerticalAlignment="Stretch"
+    Visibility="Collapsed"
+    IsHitTestVisible="False"
+    IsTabStop="False">
+    <UserControl.Resources>
+        <Style x:Key="SettingsNavButtonStyle" TargetType="RadioButton">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="MinHeight" Value="40" />
+            <Setter Property="Padding" Value="12,8" />
+            <Setter Property="Margin" Value="0,2" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style x:Key="SettingsCloseButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+            <Setter Property="Width" Value="36" /><Setter Property="Height" Value="36" />
+            <Setter Property="MinWidth" Value="0" /><Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="0" /><Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="8" /><Setter Property="Background" Value="Transparent" />
+        </Style>
+    </UserControl.Resources>
+    <Grid x:Name="OverlayRoot" KeyDown="OverlayRoot_KeyDown">
+        <Rectangle Fill="{ThemeResource SettingsBackdropBrush}" Tapped="Backdrop_Tapped" />
+        <Border x:Name="ModalContainer" MaxWidth="1100" MaxHeight="820" Margin="32"
+                HorizontalAlignment="Center" VerticalAlignment="Center"
+                Background="{ThemeResource SettingsContentBrush}" BorderBrush="{ThemeResource SettingsModalBorderBrush}"
+                BorderThickness="1" CornerRadius="14" Tapped="ModalContainer_Tapped">
+            <Border.Shadow><ThemeShadow /></Border.Shadow>
+            <Grid MinWidth="0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition x:Name="NavigationColumn" Width="210" />
+                    <ColumnDefinition Width="1" /><ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid Grid.Column="0" MinWidth="0" Background="{ThemeResource SettingsNavigationBrush}" Padding="14,18">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                    <TextBox x:Name="SearchBox" PlaceholderText="Search settings" TextChanged="SearchBox_TextChanged"
+                             AutomationProperties.Name="Search settings" />
+                    <ScrollViewer Grid.Row="1" Margin="0,14,0,0"
+                                  HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollMode="Enabled" VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <RadioButton x:Name="GeneralNav" GroupName="SettingsCategory" IsChecked="True"
+                                Style="{StaticResource SettingsNavButtonStyle}" Click="GeneralNav_Click"
+                                AutomationProperties.Name="General settings">
+                                <StackPanel Orientation="Horizontal" Spacing="10"><SymbolIcon Symbol="Setting"/><TextBlock Text="General"/></StackPanel>
+                            </RadioButton>
+                            <RadioButton GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
+                                Click="NotificationsNav_Click" AutomationProperties.Name="Notification settings">
+                                <StackPanel Orientation="Horizontal" Spacing="10"><SymbolIcon Symbol="Message"/><TextBlock Text="Notifications"/></StackPanel>
+                            </RadioButton>
+                            <RadioButton GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
+                                Click="AudioNav_Click" AutomationProperties.Name="Audio settings">
+                                <StackPanel Orientation="Horizontal" Spacing="10"><SymbolIcon Symbol="Audio"/><TextBlock Text="Audio"/></StackPanel>
+                            </RadioButton>
+                            <RadioButton GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
+                                Click="IdentityNav_Click" AutomationProperties.Name="Identity settings">
+                                <StackPanel Orientation="Horizontal" Spacing="10"><SymbolIcon Symbol="Contact"/><TextBlock Text="Identity"/></StackPanel>
+                            </RadioButton>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+                <Rectangle Grid.Column="1" Fill="{ThemeResource DividerBrush}" />
+                <Grid Grid.Column="2" MinWidth="0" HorizontalAlignment="Stretch">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                    <Grid MinWidth="0" Padding="28,20,20,14">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <TextBlock x:Name="CategoryTitle" Text="General" Style="{StaticResource TitleTextBlockStyle}" VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Style="{StaticResource SettingsCloseButtonStyle}" Click="CloseButton_Click"
+                                AutomationProperties.Name="Close settings" ToolTipService.ToolTip="Close settings (Esc)">
+                            <SymbolIcon Symbol="Cancel" />
+                        </Button>
+                    </Grid>
+                    <views:SettingsPage x:Name="SettingsContent" Grid.Row="1" MinWidth="0"
+                                        HorizontalAlignment="Stretch" />
+                    <ScrollViewer x:Name="IdentityScrollViewer" Grid.Row="1" Visibility="Collapsed"
+                                  HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollMode="Enabled" VerticalScrollBarVisibility="Auto"
+                                  HorizontalContentAlignment="Stretch">
+                        <controls:IdentitySettingsContent Margin="28,6,28,28" />
+                    </ScrollViewer>
+                </Grid>
+            </Grid>
+        </Border>
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup>
+                <VisualState x:Name="Compact">
+                    <VisualState.StateTriggers><AdaptiveTrigger MinWindowWidth="0" /></VisualState.StateTriggers>
+                    <VisualState.Setters><Setter Target="NavigationColumn.Width" Value="156"/><Setter Target="ModalContainer.Margin" Value="24"/></VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="Regular">
+                    <VisualState.StateTriggers><AdaptiveTrigger MinWindowWidth="860" /></VisualState.StateTriggers>
+                    <VisualState.Setters><Setter Target="NavigationColumn.Width" Value="210"/><Setter Target="ModalContainer.Margin" Value="32"/></VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+    </Grid>
+</UserControl>

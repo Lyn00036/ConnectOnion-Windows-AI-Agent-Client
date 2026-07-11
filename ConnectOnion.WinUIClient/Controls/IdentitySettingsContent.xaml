@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl x:Class="ConnectOnion.WinUIClient.Controls.IdentitySettingsContent"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:ic="using:FluentIcons.WinUI"
+    MinWidth="0" HorizontalAlignment="Stretch">
+    <StackPanel MinWidth="0" HorizontalAlignment="Stretch" Spacing="16">
+        <TextBlock Text="This desktop client uses an Ed25519 identity to sign ConnectOnion messages. The private seed is stored locally and is not shown here."
+                   TextWrapping="Wrap" Foreground="{ThemeResource TextSecondaryBrush}" />
+        <Border Style="{StaticResource SettingsSectionStyle}" HorizontalAlignment="Stretch">
+            <StackPanel Spacing="18">
+                <Grid MinWidth="0" ColumnSpacing="14">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" MinWidth="0" Spacing="4">
+                        <TextBlock Text="Address" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                        <TextBlock x:Name="AddressText" TextWrapping="Wrap" IsTextSelectionEnabled="True" FontFamily="Consolas" />
+                    </StackPanel>
+                    <Button Grid.Column="1" Tag="address" Padding="10,6" VerticalAlignment="Center"
+                            Click="Copy_Click" AutomationProperties.Name="Copy identity address" ToolTipService.ToolTip="Copy address">
+                        <ic:FluentIcon Icon="Copy" IconVariant="Regular" IconSize="Size16" />
+                    </Button>
+                </Grid>
+                <Grid MinWidth="0" ColumnSpacing="14">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" MinWidth="0" Spacing="4">
+                        <TextBlock Text="Public key" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                        <TextBlock x:Name="PublicKeyText" TextWrapping="Wrap" IsTextSelectionEnabled="True" FontFamily="Consolas" />
+                    </StackPanel>
+                    <Button Grid.Column="1" Tag="publicKey" Padding="10,6" VerticalAlignment="Center"
+                            Click="Copy_Click" AutomationProperties.Name="Copy public key" ToolTipService.ToolTip="Copy public key">
+                        <ic:FluentIcon Icon="Copy" IconVariant="Regular" IconSize="Size16" />
+                    </Button>
+                </Grid>
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Storage" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                    <TextBlock x:Name="StorageText" TextWrapping="Wrap" IsTextSelectionEnabled="True"
+                               FontFamily="Consolas" Foreground="{ThemeResource TextSecondaryBrush}" />
+                </StackPanel>
+                <TextBlock Text="Private seed is stored DPAPI-encrypted in the local SQLite identity_keys table and is intentionally hidden."
+                           TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextSecondaryBrush}" />
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>

@@ -303,7 +303,7 @@
 
                                 <TextBox PlaceholderText="Type your answer"
                                          Text="{x:Bind AskUserFreeText, Mode=TwoWay}"
-                                         Visibility="{x:Bind HasAskUserFields, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
+                                         Visibility="{x:Bind ShowAskUserFreeText, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
 
                                 <Button Content="Submit"
                                         HorizontalAlignment="Right"
@@ -490,6 +490,32 @@
                        FontSize="11"
                        Foreground="{ThemeResource TextSecondaryBrush}"
                        TextTrimming="CharacterEllipsis" />
+        </Border>
+
+        <!-- Failure bar: appears when the last run failed and is still retryable. Mutually
+             exclusive with the offline bar (see Vm.ShowRetryBar) so the two never stack. -->
+        <Border Grid.Row="1"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Bottom"
+                Margin="0,0,0,16"
+                MaxWidth="520"
+                CornerRadius="14"
+                Padding="14,8"
+                Background="{ThemeResource SurfaceElevatedBrush}"
+                BorderBrush="{ThemeResource BorderDefaultBrush}"
+                BorderThickness="1"
+                Visibility="{x:Bind Vm.ShowRetryBar, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                <TextBlock Text="Couldn't reach the agent."
+                           FontSize="12"
+                           VerticalAlignment="Center"
+                           Foreground="{ThemeResource TextSecondaryBrush}" />
+                <Button Command="{x:Bind Vm.RetryCommand}"
+                        Padding="12,5"
+                        CornerRadius="8">
+                    <controls:IconText Glyph="ArrowClockwise" IconSize="Size16" Spacing="6" FontSize="12" Text="Retry" />
+                </Button>
+            </StackPanel>
         </Border>
 
         <controls:OfflineNoticeBar Grid.Row="1"
