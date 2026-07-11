@@ -3,7 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using ConnectOnion.Protocol;
 
-namespace ConnectOnion.WinUIClient.Services;
+namespace ConnectOnion.WinUIClient.Services.Attachments;
 
 /// <summary>
 /// Encodes a validated attachment file into the wire's <c>data:</c> URL format.

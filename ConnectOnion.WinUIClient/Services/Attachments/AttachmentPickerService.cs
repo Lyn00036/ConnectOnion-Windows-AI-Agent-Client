@@ -6,7 +6,7 @@ using ConnectOnion.WinUIClient.Models;
 using Windows.Storage;
 using Windows.Storage.Pickers;
 
-namespace ConnectOnion.WinUIClient.Services;
+namespace ConnectOnion.WinUIClient.Services.Attachments;
 
 /// <summary>
 /// Wraps <see cref="FileOpenPicker"/> for attachment selection. HWND init follows

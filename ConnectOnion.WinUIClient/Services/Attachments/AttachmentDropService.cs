@@ -6,7 +6,7 @@ using ConnectOnion.WinUIClient.Models;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
 
-namespace ConnectOnion.WinUIClient.Services;
+namespace ConnectOnion.WinUIClient.Services.Attachments;
 
 /// <summary>
 /// Turns a drag-and-drop payload into composer attachments. The drop counterpart to

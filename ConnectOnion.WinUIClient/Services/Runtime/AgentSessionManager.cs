@@ -10,6 +10,7 @@ using ConnectOnion.Protocol;
 using ConnectOnion.Protocol.Runtime;
 using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Models;
+using ConnectOnion.WinUIClient.Services.Attachments;
 using ConnectOnion.WinUIClient.Services.Notifications;
 
 namespace ConnectOnion.WinUIClient.Services.Runtime;

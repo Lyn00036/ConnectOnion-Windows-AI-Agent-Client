@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 using ConnectOnion.Protocol;
 using ConnectOnion.WinUIClient.Data;
 
-namespace ConnectOnion.WinUIClient.Services;
+namespace ConnectOnion.WinUIClient.Services.Attachments;
 
 /// <summary>
 /// Resolves an inbound image reference (from an <c>agent_image</c> event) into a

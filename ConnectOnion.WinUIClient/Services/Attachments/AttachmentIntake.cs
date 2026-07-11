@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 using ConnectOnion.WinUIClient.Models;
 using Windows.Storage;
 
-namespace ConnectOnion.WinUIClient.Services;
+namespace ConnectOnion.WinUIClient.Services.Attachments;
 
 /// <summary>
 /// Shared <see cref="StorageFile"/> → <see cref="PendingAttachment"/> description step,

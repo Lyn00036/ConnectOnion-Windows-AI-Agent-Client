@@ -18,7 +18,7 @@ namespace ConnectOnion.WinUIClient.Rendering;
 /// <summary>
 /// A small Markdig renderer that maps common markdown nodes to WinUI document elements.
 /// </summary>
-public sealed class WinUiMarkdownRenderer : RendererBase
+public sealed partial class WinUiMarkdownRenderer : RendererBase
 {
     private readonly RichTextBlock _target;
     private readonly Stack<InlineCollection> _inlineScopes = new();
@@ -435,105 +435,4 @@ public sealed class WinUiMarkdownRenderer : RendererBase
     private static SolidColorBrush ResolveBrush(string key)
         => (SolidColorBrush)Application.Current.Resources[key];
 
-    private sealed class DocumentRenderer : MarkdownObjectRenderer<WinUiMarkdownRenderer, MarkdownDocument>
-    {
-        protected override void Write(WinUiMarkdownRenderer renderer, MarkdownDocument obj)
-            => renderer.WriteDocument(obj);
-    }
-
-    private sealed class HeadingRenderer : MarkdownObjectRenderer<WinUiMarkdownRenderer, HeadingBlock>
-    {
-        protected override void Write(WinUiMarkdownRenderer renderer, HeadingBlock obj)
-            => renderer.WriteHeadingBlock(obj);
-    }
-
-    private sealed class ParagraphRenderer : MarkdownObjectRenderer<WinUiMarkdownRenderer, ParagraphBlock>
-    {
-        protected override void Write(WinUiMarkdownRenderer renderer, ParagraphBlock obj)
-            => renderer.WriteParagraphBlock(obj);
-    }
-
-    private sealed class QuoteBlockRenderer : MarkdownObjectRenderer<WinUiMarkdownRenderer, QuoteBlock>
-    {
-        protected override void Write(WinUiMarkdownRenderer renderer, QuoteBlock obj)
-            => renderer.WriteQuoteBlock(obj);
-    }
-
-    private sealed class ListBlockRenderer : MarkdownObjectRenderer<WinUiMarkdownRenderer, ListBlock>
-    {
-        protected override void Write(WinUiMarkdownRenderer renderer, ListBlock obj)
-            => renderer.WriteListBlock(obj);
-    }
-
-    private sealed class FencedCodeBlockRenderer : MarkdownObjectRenderer<WinUiMarkdownRenderer, FencedCodeBlock>
-    {
-        protected override void Write(WinUiMarkdownRenderer renderer, FencedCodeBlock obj)
-            => renderer.WriteFencedCodeBlock(obj);
-    }
-
-    private sealed class CodeBlockRenderer : MarkdownObjectRenderer<WinUiMarkdownRenderer, CodeBlock>
-    {
-        protected override void Write(WinUiMarkdownRenderer renderer, CodeBlock obj)
-            => renderer.WriteCodeBlock(obj);
-    }
-
-    private sealed class ThematicBreakRenderer : MarkdownObjectRenderer<WinUiMarkdownRenderer, ThematicBreakBlock>
-    {
-        protected override void Write(WinUiMarkdownRenderer renderer, ThematicBreakBlock obj)
-            => renderer.WriteThematicBreak();
-    }
-
-    private sealed class TableBlockRenderer : MarkdownObjectRenderer<WinUiMarkdownRenderer, Table>
-    {
-        protected override void Write(WinUiMarkdownRenderer renderer, Table obj)
-            => renderer.WriteTable(obj);
-    }
-
-    private sealed class HtmlBlockRenderer : MarkdownObjectRenderer<WinUiMarkdownRenderer, HtmlBlock>
-    {
-        protected override void Write(WinUiMarkdownRenderer renderer, HtmlBlock obj)
-            => renderer.WriteHtmlBlock(obj);
-    }
-
-    private sealed class LiteralInlineRenderer : MarkdownObjectRenderer<WinUiMarkdownRenderer, LiteralInline>
-    {
-        protected override void Write(WinUiMarkdownRenderer renderer, LiteralInline obj)
-            => renderer.WriteLiteral(obj);
-    }
-
-    private sealed class LineBreakInlineRenderer : MarkdownObjectRenderer<WinUiMarkdownRenderer, LineBreakInline>
-    {
-        protected override void Write(WinUiMarkdownRenderer renderer, LineBreakInline obj)
-            => renderer.WriteLineBreak(obj);
-    }
-
-    private sealed class CodeInlineRenderer : MarkdownObjectRenderer<WinUiMarkdownRenderer, CodeInline>
-    {
-        protected override void Write(WinUiMarkdownRenderer renderer, CodeInline obj)
-            => renderer.WriteCodeInline(obj);
-    }
-
-    private sealed class EmphasisInlineRenderer : MarkdownObjectRenderer<WinUiMarkdownRenderer, EmphasisInline>
-    {
-        protected override void Write(WinUiMarkdownRenderer renderer, EmphasisInline obj)
-            => renderer.WriteEmphasis(obj);
-    }
-
-    private sealed class LinkInlineRenderer : MarkdownObjectRenderer<WinUiMarkdownRenderer, LinkInline>
-    {
-        protected override void Write(WinUiMarkdownRenderer renderer, LinkInline obj)
-            => renderer.WriteLink(obj);
-    }
-
-    private sealed class ContainerInlineRenderer : MarkdownObjectRenderer<WinUiMarkdownRenderer, ContainerInline>
-    {
-        protected override void Write(WinUiMarkdownRenderer renderer, ContainerInline obj)
-            => renderer.WriteContainerInline(obj);
-    }
-
-    private sealed class HtmlInlineRenderer : MarkdownObjectRenderer<WinUiMarkdownRenderer, HtmlInline>
-    {
-        protected override void Write(WinUiMarkdownRenderer renderer, HtmlInline obj)
-            => renderer.WriteHtmlInline(obj);
-    }
 }

@@ -4,7 +4,7 @@ using System.IO;
 using ConnectOnion.Protocol;
 using ConnectOnion.WinUIClient.Models;
 
-namespace ConnectOnion.WinUIClient.Services;
+namespace ConnectOnion.WinUIClient.Services.Attachments;
 
 /// <summary>
 /// Client-side preflight validation. This is scope-limiting only — the extension

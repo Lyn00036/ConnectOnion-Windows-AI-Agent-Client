@@ -1,4 +1,5 @@
 using ConnectOnion.WinUIClient.Services;
+using ConnectOnion.WinUIClient.Services.Attachments;
 using Microsoft.UI.Xaml;
 using Windows.ApplicationModel.DataTransfer;
 

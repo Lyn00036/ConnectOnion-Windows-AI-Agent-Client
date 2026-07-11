@@ -7,6 +7,7 @@ using ConnectOnion.Protocol;
 using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
+using ConnectOnion.WinUIClient.Services.Attachments;
 
 namespace ConnectOnion.WinUIClient.ViewModels;
 
