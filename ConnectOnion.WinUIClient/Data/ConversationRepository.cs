@@ -51,7 +51,8 @@ public sealed class ConversationRepository
     }
 
     private static async Task LoadAttachmentsIntoAsync(
-        SqliteConnection connection, string conversationId, IReadOnlyList<ChatMessage> messages)
+        SqliteConnection connection, string conversationId, IReadOnlyList<ChatMessage> messages,
+        long? onlyMessageId = null)
     {
         if (messages.Count == 0) return;
 
@@ -59,14 +60,23 @@ public sealed class ConversationRepository
         foreach (var m in messages) byId[m.Id] = m;
 
         await using var command = connection.CreateCommand();
-        command.CommandText = """
-            SELECT message_id, id, kind, file_name, mime_type, size_bytes,
-                   local_cache_path, remote_uri, status
-            FROM message_attachments
-            WHERE conversation_id = $conversation_id
-            ORDER BY message_id, rowid;
-            """;
+        command.CommandText = onlyMessageId is null
+            ? """
+                SELECT message_id, id, kind, file_name, mime_type, size_bytes,
+                       local_cache_path, remote_uri, status
+                FROM message_attachments
+                WHERE conversation_id = $conversation_id
+                ORDER BY message_id, rowid;
+                """
+            : """
+                SELECT message_id, id, kind, file_name, mime_type, size_bytes,
+                       local_cache_path, remote_uri, status
+                FROM message_attachments
+                WHERE conversation_id = $conversation_id AND message_id = $message_id
+                ORDER BY rowid;
+                """;
         AppDatabase.Add(command, "$conversation_id", conversationId);
+        if (onlyMessageId is { } scopedMessageId) AppDatabase.Add(command, "$message_id", scopedMessageId);
         await using var reader = await command.ExecuteReaderAsync().ConfigureAwait(false);
         while (await reader.ReadAsync().ConfigureAwait(false))
         {
@@ -112,80 +122,83 @@ public sealed class ConversationRepository
         }
     }
 
-    /// <summary>Inserts a single bubble (and its attachments) without touching the rest of the
-    /// conversation. Used for the user's message at the top of a turn, which is a pure append —
-    /// the reconciling full save happens once at the end of the turn.</summary>
-    public async Task AppendMessageAsync(string conversationId, ChatMessage message)
+    /// <summary>
+    /// The conversation's most recent agent bubble (with its attachments), or null if it has
+    /// none yet. This is the only pre-existing row a turn's projection can still touch — an
+    /// <c>agent_image</c> event hangs its attachment on the last agent bubble, and the final
+    /// reply is deduped against it — so loading just this row is what lets a turn be persisted
+    /// without reading the whole conversation back first.
+    /// </summary>
+    public async Task<ChatMessage?> LoadLastAgentMessageAsync(string conversationId)
     {
         try
         {
             await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
-            await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync().ConfigureAwait(false);
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT id, role, content, agent_name,
+                       event_kind, event_key, event_eyebrow, event_title,
+                       event_detail, event_meta, event_args, event_result,
+                       event_status, is_onboarding, created_at
+                FROM messages
+                WHERE conversation_id = $conversation_id AND role = 'agent'
+                ORDER BY id DESC
+                LIMIT 1;
+                """;
+            AppDatabase.Add(command, "$conversation_id", conversationId);
 
-            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            await using var insertMessage = CreateMessageInsert(connection, transaction);
-            BindMessage(insertMessage, message, conversationId, now);
-            await insertMessage.ExecuteNonQueryAsync().ConfigureAwait(false);
-
-            if (message.Attachments.Count > 0)
+            ChatMessage? message = null;
+            await using (var reader = await command.ExecuteReaderAsync().ConfigureAwait(false))
             {
-                await using var insertAttachment = CreateAttachmentInsert(connection, transaction);
-                foreach (var attachment in message.Attachments)
-                {
-                    BindAttachment(insertAttachment, attachment, conversationId, message.Id, now);
-                    await insertAttachment.ExecuteNonQueryAsync().ConfigureAwait(false);
-                }
+                if (await reader.ReadAsync().ConfigureAwait(false)) message = RowToMessage(reader);
             }
+            if (message is null) return null;
 
-            await transaction.CommitAsync().ConfigureAwait(false);
+            await LoadAttachmentsIntoAsync(connection, conversationId, new[] { message }, message.Id)
+                .ConfigureAwait(false);
+            return message;
         }
         catch (Exception ex)
         {
-            // Best-effort: keep the live conversation working if the write fails.
-            LogFailure(nameof(AppendMessageAsync), conversationId, ex);
+            LogFailure(nameof(LoadLastAgentMessageAsync), conversationId, ex);
+            return null;
         }
     }
 
     /// <summary>
-    /// Replaces the conversation's rows with <paramref name="messages"/>. Still a
-    /// delete-then-reinsert (the end-of-turn projection is a reconcile, not an append: it can
-    /// stamp results onto interactive cards it created earlier in the same turn), but the whole
-    /// thing now rides two reused commands inside one transaction instead of building a fresh
-    /// SqliteCommand — and re-parsing the same INSERT — for every row and every attachment.
+    /// Writes <paramref name="messages"/> — and only those rows — into the conversation, inserting
+    /// the ones that are new and updating the ones already there. Nothing else in the conversation
+    /// is read, deleted, or rewritten, so the cost of persisting a turn scales with the size of the
+    /// turn rather than the length of the conversation.
+    ///
+    /// Each written row's attachments are replaced wholesale (a single indexed delete plus its own
+    /// inserts): an attachment's id is content-derived rather than stable, and an existing agent
+    /// bubble can gain an image mid-turn, so diffing them per attachment would cost more than
+    /// rewriting the handful a bubble has. <c>created_at</c> is deliberately left alone on update —
+    /// a row keeps the timestamp it was first written with.
     /// </summary>
-    public async Task SaveMessagesAsync(string conversationId, IReadOnlyList<ChatMessage> messages)
+    public async Task UpsertMessagesAsync(string conversationId, IReadOnlyList<ChatMessage> messages)
     {
-        if (messages.Count == 0)
-        {
-            await DeleteMessagesAsync(conversationId).ConfigureAwait(false);
-            return;
-        }
+        if (messages.Count == 0) return;
 
         try
         {
             await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
             await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync().ConfigureAwait(false);
 
-            // Remove old rows then re-insert the full list.
-            await using (var del = connection.CreateCommand())
-            {
-                del.Transaction = transaction;
-                del.CommandText = """
-                    DELETE FROM message_attachments WHERE conversation_id = $conversation_id;
-                    DELETE FROM messages WHERE conversation_id = $conversation_id;
-                    """;
-                AppDatabase.Add(del, "$conversation_id", conversationId);
-                await del.ExecuteNonQueryAsync().ConfigureAwait(false);
-            }
-
             var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            await using var insertMessage = CreateMessageInsert(connection, transaction);
+            await using var upsertMessage = CreateMessageUpsert(connection, transaction);
+            await using var clearAttachments = CreateAttachmentDelete(connection, transaction);
             await using var insertAttachment = CreateAttachmentInsert(connection, transaction);
 
             foreach (var message in messages)
             {
-                BindMessage(insertMessage, message, conversationId, now);
-                await insertMessage.ExecuteNonQueryAsync().ConfigureAwait(false);
+                BindMessage(upsertMessage, message, conversationId, now);
+                await upsertMessage.ExecuteNonQueryAsync().ConfigureAwait(false);
+
+                clearAttachments.Parameters["$conversation_id"].Value = conversationId;
+                clearAttachments.Parameters["$message_id"].Value = message.Id;
+                await clearAttachments.ExecuteNonQueryAsync().ConfigureAwait(false);
 
                 foreach (var attachment in message.Attachments)
                 {
@@ -199,7 +212,7 @@ public sealed class ConversationRepository
         catch (Exception ex)
         {
             // Best-effort: keep the live conversation working if the write fails.
-            LogFailure(nameof(SaveMessagesAsync), conversationId, ex);
+            LogFailure(nameof(UpsertMessagesAsync), conversationId, ex);
         }
     }
 
@@ -273,12 +286,12 @@ public sealed class ConversationRepository
         return m;
     }
 
-    // The insert commands below are built once per transaction and rebound per row. Microsoft.Data
+    // The write commands below are built once per transaction and rebound per row. Microsoft.Data
     // .Sqlite caches the compiled statement on the command object, so reusing one command means the
-    // INSERT is parsed once rather than once per bubble — which is what made saving a long
+    // statement is parsed once rather than once per bubble — which is what made saving a long
     // conversation scale badly, far more than the row writes themselves.
 
-    private static SqliteCommand CreateMessageInsert(SqliteConnection connection, SqliteTransaction transaction)
+    private static SqliteCommand CreateMessageUpsert(SqliteConnection connection, SqliteTransaction transaction)
     {
         var cmd = connection.CreateCommand();
         cmd.Transaction = transaction;
@@ -292,7 +305,21 @@ public sealed class ConversationRepository
               ($id, $conversation_id, $role, $content, $agent_name,
                $event_kind, $event_key, $event_eyebrow, $event_title,
                $event_detail, $event_meta, $event_args, $event_result,
-               $event_status, $is_onboarding, $created_at);
+               $event_status, $is_onboarding, $created_at)
+            ON CONFLICT(conversation_id, id) DO UPDATE SET
+               role = excluded.role,
+               content = excluded.content,
+               agent_name = excluded.agent_name,
+               event_kind = excluded.event_kind,
+               event_key = excluded.event_key,
+               event_eyebrow = excluded.event_eyebrow,
+               event_title = excluded.event_title,
+               event_detail = excluded.event_detail,
+               event_meta = excluded.event_meta,
+               event_args = excluded.event_args,
+               event_result = excluded.event_result,
+               event_status = excluded.event_status,
+               is_onboarding = excluded.is_onboarding;
             """;
         cmd.Parameters.Add("$id", SqliteType.Integer);
         cmd.Parameters.Add("$conversation_id", SqliteType.Text);
@@ -310,6 +337,20 @@ public sealed class ConversationRepository
         cmd.Parameters.Add("$event_status", SqliteType.Text);
         cmd.Parameters.Add("$is_onboarding", SqliteType.Integer);
         cmd.Parameters.Add("$created_at", SqliteType.Integer);
+        return cmd;
+    }
+
+    private static SqliteCommand CreateAttachmentDelete(SqliteConnection connection, SqliteTransaction transaction)
+    {
+        var cmd = connection.CreateCommand();
+        cmd.Transaction = transaction;
+        // (conversation_id, message_id) is a prefix of the table's primary key, so this is a seek.
+        cmd.CommandText = """
+            DELETE FROM message_attachments
+            WHERE conversation_id = $conversation_id AND message_id = $message_id;
+            """;
+        cmd.Parameters.Add("$conversation_id", SqliteType.Text);
+        cmd.Parameters.Add("$message_id", SqliteType.Integer);
         return cmd;
     }
 

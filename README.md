@@ -55,8 +55,12 @@ Current SQLite tables:
 | `identity_keys` | address, private_seed (DPAPI-protected, base64-encoded) |
 
 `messages` is one row per rendered chat bubble (not a serialized conversation
-envelope) — `ConversationRepository` deletes and reinserts the full message
-list per save. `message_attachments` stores attachment metadata only; the
+envelope), keyed `(conversation_id, id)`. Saves are incremental:
+`ConversationRepository.UpsertMessagesAsync` writes only the rows it is handed
+(upsert on the primary key), and rewrites attachments only for those rows — a
+finished turn no longer reads the conversation back and rewrites every row of
+it, so persisting a turn costs the size of the turn rather than the length of
+the conversation. `message_attachments` stores attachment metadata only; the
 base64 payload is never persisted. The database uses WAL journal mode and
 enforces foreign keys.
 
@@ -74,65 +78,89 @@ connectonion-desktop/
     MainWindow.EditMenu.cs           Undo/redo/cut/copy/paste/select-all + accelerators
     MainWindow.ViewMenu.cs           Sidebar toggle, zoom, full screen, find overlay
     MainWindow.DragDrop.cs           Window-level drag-and-drop attachment handling
+    MainWindow.Notifications.cs      In-app toast host, notification activation routing
     Views/
       HomePage                        Agent selection landing page
       ChatPage                        Real-time chat with streaming events
+      ChatPage.Find.cs                In-chat find (IFindHost implementation)
       AgentDetailPage                 Agent edit, /info display, connection test, delete
       SessionsPage                    Per-agent session management
-      IdentityPage                    Local Ed25519 identity display
-      SettingsPage                    Theme, sidebar, font size, shortcuts
+      SettingsPage                    Theme, sidebar, font size, shortcuts, identity
+      IFindHost.cs                    Contract the shared Ctrl+F overlay drives a page through
     ViewModels/
-      ChatViewModel.cs                 Session/connection lifecycle, SendAsync
-      ChatViewModel.StreamEvents.cs    Stream-event -> ChatMessage mapping, interactive turns
+      ChatViewModel.cs                 Session lifecycle, run subscription, SendAsync
+      ChatViewModel.StreamEvents.cs    Live stream-event -> ChatMessage projection target
       SessionsViewModel.cs             Session CRUD, active session tracking
       AgentDetailViewModel.cs          Agent form state, /info loading, connection testing
       SettingsViewModel.cs             Preference read/write
+      KeyboardShortcutsViewModel.cs    Shortcut catalog + overrides for the help dialog
+      PresenceAwareViewModel.cs        Shared online/offline status base for pages
     Controls/
       ShellSidebar.xaml[.cs]          Agent list + session list navigation
       AddAgentForm.xaml[.cs]          Inline agent creation form
       ChatComposer.xaml[.cs]          Message input, attachment picker/drop, mic device
+      ToolActivityView.xaml[.cs]      Collapsible per-turn tool execution timeline
+      SettingsOverlay.xaml[.cs]       Modal settings surface over the shell
+      IdentitySettingsContent.xaml    Local Ed25519 identity panel (inside settings)
+      InAppNotificationHost.xaml      In-app toast surface
+      KeyboardShortcutsDialog.xaml    Shortcut help dialog
+      OfflineNoticeBar.xaml           Agent-offline banner
+      MarkdownTextBlock.cs            Markdown chat bubble rendering host
+      HighlightedTextBlock.cs         Find-match highlighting
     Models/
       AgentConfig.cs                  Saved agent connection
       AgentHealthResponse.cs          /health endpoint shape
       ChatMessage.cs                  Chat bubble (user/agent/event), generic Event* fields
       ChatAttachment.cs               Resolved attachment metadata for a chat bubble
       PendingAttachment.cs            Picked/dropped attachment awaiting send
+      ToolActivity.cs                 Per-turn tool timeline aggregate (persisted as event_args)
       AskUserEntries.cs               ask_user interactive turn field models
       OnboardSubmission.cs            Onboarding invite code payload
       PreferencesSnapshot.cs          Theme, font size, sidebar, shortcuts, mic device
       SessionSummary.cs               Indexed conversation metadata
       ShellAgentItem.cs               Sidebar agent list item
       ShellSessionItem.cs             Sidebar session list item
+      Notifications/                  Notification request/decision/settings models
     Data/
       AppDatabase.cs                  SQLite initialization and schema
       AppStorage.cs                   Local filesystem directory setup
       AgentRepository.cs              Agent CRUD (SQLite)
       SessionRepository.cs            Session CRUD (SQLite)
-      ConversationRepository.cs       Message/attachment persistence (SQLite)
+      ConversationRepository.cs       Message/attachment persistence, incremental upsert (SQLite)
       PreferencesRepository.cs        Preference persistence (SQLite)
       IdentityStore.cs                Local Ed25519 identity persistence, DPAPI-encrypted seed
     Services/
       AppServices.cs                  Process-wide singleton service locator
+      ConversationCache.cs            LRU cache of the last few idle conversations
       ConnectionTester.cs             Direct URL and relay reachability probes
       AgentInfoService.cs             /info fetch, 5-minute cache, change detection
       AgentPresenceService.cs         In-memory online status cache with TTL
       ThemeService.cs                 Light/dark theme management, raw Color lookup
-      AttachmentPickerService.cs      FileOpenPicker for outgoing images/files
-      AttachmentDropService.cs        Drag-and-drop attachment handling
-      AttachmentValidationService.cs  Preflight checks against agent /info capabilities
-      AttachmentEncoder.cs            Off-UI-thread data: URL encoding
-      AttachmentImageCacheService.cs  Decode/cache incoming agent_image attachments
-      AttachmentIntake.cs             Shared picker/drop -> validated attachment pipeline
       MimeTypeResolver.cs             Extension -> MIME type lookup
+      Runtime/
+        AgentSessionManager.cs        App-level turn lifecycle: send, run, project, persist
+        AgentConnectionRegistry.cs    Per-conversation app-owned WebSockets, idle eviction
+        AgentTurnExecutor.cs          Drives one turn over a connection
+        ChatTurnProjection.cs         The single stream-event -> ChatMessage mapping
+        ToolActivityProjector.cs      tool_call/tool_result -> tool timeline aggregation
+      Attachments/
+        AttachmentPickerService.cs    FileOpenPicker for outgoing images/files
+        AttachmentDropService.cs      Drag-and-drop attachment handling
+        AttachmentValidationService.cs Preflight checks against agent /info capabilities
+        AttachmentEncoder.cs          Off-UI-thread data: URL encoding
+        AttachmentImageCacheService.cs Decode/cache incoming agent_image attachments
+        AttachmentIntake.cs           Shared picker/drop -> validated attachment pipeline
+      Notifications/                  Windows toasts, in-app toasts, dedup/policy, routing
     Rendering/
       WinUiMarkdownRenderer.cs        Markdown -> WinUI inline/block rendering for chat
     Common/
       ObservableObject.cs             INotifyPropertyChanged base class
       RelayCommand.cs                 ICommand implementation
+      ChatMessageTemplateSelector.cs  Dispatches each bubble kind to its own DataTemplate
       BoolToVisibilityConverter.cs    XAML value converters
       ChatRoleConverters.cs           Role-based alignment and color converters
       RowStateToBackgroundConverter.cs  Unified hover/selected row background
-      LocalPathToImageSourceConverter.cs  Cached image path -> BitmapImage
+      LocalPathToImageSourceConverter.cs  Cached image path -> size-capped BitmapImage
     Styles/
       Colors.xaml                     Raw Light/Dark Color resources (brand palette)
       Brushes.xaml                    Semantic brushes + re-pointed Fluent theme keys
@@ -344,12 +372,19 @@ Known deployed development agents:
 ## Implemented
 
 - Native WinUI 3 desktop shell with Mica backdrop and custom title bar
-- Home, Chat, Agent Detail, Sessions, Identity, and Settings pages
+- Home, Chat, Agent Detail, Sessions, and Settings pages (local identity lives inside Settings)
 - Agent add, edit, delete, select, and connection testing (Direct URL + relay)
 - Agent /info fetch with 5-minute cache and change detection
 - Agent online presence with TTL-based caching and per-agent status indicators
-- Per-agent sessions with message/attachment persistence (one row per chat bubble)
-- Local Ed25519 identity display (Identity page), seed encrypted at rest via DPAPI
+- App-level run runtime: turns are owned by `AgentSessionManager`, not the page — a turn keeps
+  running (and completes, persists, and notifies) after its chat page is closed, and idle
+  conversation sockets are evicted after a completed turn
+- Per-agent sessions with message/attachment persistence (one row per chat bubble, incremental
+  per-turn upserts rather than rewriting the conversation)
+- Turn completion / approval-required notifications (Windows toasts plus in-app toasts, deduped,
+  suppressed when the relevant chat is already on screen)
+- Per-turn tool execution timeline (collapsible, persisted across restart)
+- Local Ed25519 identity display (Settings), seed encrypted at rest via DPAPI
 - SQLite-backed local storage with WAL journal mode and foreign keys
 - Direct URL and relay connection paths
 - WebSocket protocol handling through `ConnectOnion.Protocol`

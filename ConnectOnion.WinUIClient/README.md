@@ -63,51 +63,69 @@ ConnectOnion.WinUIClient/
 │   ├── ChatPage                         Real-time chat with streaming events
 │   ├── SessionsPage                     Per-agent session list & management
 │   ├── AgentDetailPage                  Agent edit / connection test / info
-│   ├── IdentityPage                     Local Ed25519 identity display
-│   └── SettingsPage                     Theme, sidebar, font size, shortcuts
+│   └── SettingsPage                     Theme, sidebar, font size, shortcuts, identity
 │
 ├── ViewModels/                         MVVM state & commands
-│   ├── ChatViewModel                    Message list, send input, event rendering
+│   ├── ChatViewModel                    Message list, run subscription, send input
 │   ├── SessionsViewModel                Session CRUD, active session tracking
 │   ├── AgentDetailViewModel             Agent form state, connection testing
+│   ├── KeyboardShortcutsViewModel       Shortcut catalog & user overrides
 │   └── SettingsViewModel                Preference read/write
 │
-├── Models/                             Data types (mirror TypeScript types)
+├── Models/                             Data types
 │   ├── AgentConfig                      Saved agent connection
 │   ├── ChatMessage                      Chat bubble (user / agent / event)
+│   ├── ChatAttachment                   Attachment metadata on a bubble (never base64)
+│   ├── PendingAttachment                Picked / dropped attachment awaiting send
+│   ├── ToolActivity                     Per-turn tool execution timeline aggregate
 │   ├── SessionSummary                   Indexed conversation metadata
 │   ├── PreferencesSnapshot              Theme, font size, sidebar, shortcuts
-│   ├── ChatEnvelope                     Serialized conversation payload
 │   ├── AgentHealthResponse              /health endpoint shape
 │   ├── OnboardSubmission                Onboarding invite code payload
 │   ├── ShellAgentItem / ShellSessionItem Sidebar list items
-│   └── ...
+│   └── Notifications/                   Notification request / decision / settings models
 │
-├── Services/                           Business logic & persistence
-│   ├── AppServices                      Process-wide singleton locator
-│   ├── AppDatabase                      SQLite schema init (WAL, FK, 7 tables)
+├── Data/                               SQLite persistence
+│   ├── AppDatabase                      Schema init (WAL, FK, idempotent CREATE IF NOT EXISTS)
 │   ├── AppStorage                       Local filesystem directory setup
-│   ├── AgentRepository                  Agent CRUD (SQLite)
-│   ├── SessionRepository                Session CRUD (SQLite)
-│   ├── ConversationRepository           Conversation envelope persistence (SQLite)
-│   ├── PreferencesRepository            Preferences persistence (SQLite)
-│   ├── IdentityStore                    Ed25519 key pair persistence (SQLite)
+│   ├── AgentRepository                  Agent CRUD
+│   ├── SessionRepository                Session CRUD
+│   ├── ConversationRepository           Message / attachment rows, incremental upsert
+│   ├── PreferencesRepository            Preferences persistence
+│   ├── IdentityStore                    Ed25519 key pair (private seed DPAPI-protected)
+│   └── AppJsonContext                   System.Text.Json source-gen context
+│
+├── Services/                           Business logic
+│   ├── AppServices                      Process-wide singleton locator
+│   ├── ConversationCache                LRU cache of the last few idle conversations
 │   ├── ConnectionTester                 /health probe + relay resolution
 │   ├── AgentInfoService                 /info fetch & change detection
 │   ├── AgentPresenceService             In-memory online status cache
-│   ├── ThemeService                     Light/dark theme apply
-│   └── AppJsonContext                   System.Text.Json source-gen context
+│   ├── ThemeService                     Light/dark theme apply, raw Color lookup
+│   ├── Runtime/                         App-level turn lifecycle (owns sockets and runs)
+│   │   ├── AgentSessionManager          Send → run → project → persist, page-independent
+│   │   ├── AgentConnectionRegistry      Per-conversation WebSockets, idle eviction
+│   │   ├── ChatTurnProjection           The single stream-event → ChatMessage mapping
+│   │   └── ToolActivityProjector        tool_call / tool_result → timeline aggregation
+│   ├── Attachments/                     Picker, drop, validation, encoding, image cache
+│   └── Notifications/                   Windows + in-app toasts, dedup, policy, routing
 │
 ├── Controls/                           Reusable UI components
 │   ├── ShellSidebar                     Agent list + session list navigation
+│   ├── ChatComposer                     Input, attachment picker / drop target, mic
+│   ├── ToolActivityView                 Collapsible tool execution timeline
+│   ├── SettingsOverlay                  Modal settings surface (theme, shortcuts, identity)
 │   └── AddAgentForm                     Inline agent creation form
 │
 ├── Common/                             Shared utilities
 │   ├── ObservableObject                 INotifyPropertyChanged base
 │   ├── RelayCommand                     ICommand implementation
+│   ├── ChatMessageTemplateSelector      One DataTemplate per bubble kind
+│   ├── LocalPathToImageSourceConverter  Cached path → size-capped BitmapImage
 │   ├── BoolToVisibilityConverter        XAML value converters
 │   └── ChatRoleConverters               Role-based alignment & color converters
 │
+├── Styles/                             Colors.xaml + Brushes.xaml (single color source of truth)
 └── Assets/                             App icons & splash images
 ```
 
@@ -116,27 +134,34 @@ ConnectOnion.WinUIClient/
 ```
 User
   └─ WinUI 3 Window (MainWindow)
-       ├─ Custom title bar (Mica backdrop, nav buttons, menu placeholders)
+       ├─ Custom title bar (Mica backdrop, nav buttons, File/Edit/View menus)
+       ├─ System tray icon (minimize to tray, restore, exit)
        ├─ ShellSidebar (agent list → session list → content)
+       ├─ Find overlay (Ctrl+F, driven against whatever page implements IFindHost)
+       ├─ SettingsOverlay (theme, font, shortcuts, local identity)
        └─ Frame navigation
             ├─ HomePage      Select an agent to start
             ├─ ChatPage      WebSocket-powered chat with streaming events
             ├─ SessionsPage  Manage per-agent conversations
             ├─ AgentDetailPage Edit / test / delete agent
-            ├─ IdentityPage  View local Ed25519 public key
-            └─ SettingsPage  Theme, sidebar, font, shortcuts
+            └─ SettingsPage  Theme, sidebar, font, shortcuts, identity
 ```
 
-**Data flow:**
+**Data flow:** a turn belongs to the app, not to the page. `ChatPage` subscribes to a run;
+it does not own the socket, and closing it does not cancel the turn.
 
 ```
-ChatPage → ChatViewModel → ConnectOnion.Protocol (WebSocket)
-                                  ↓
-                           AppServices.Http (REST)
-                                  ↓
-ChatPage ← ChatViewModel ← Stream events → ChatMessage list
-                                  ↓
-                    ConversationRepository → SQLite
+ChatPage → ChatViewModel ─send─→ AgentSessionManager (app-level)
+                                      ├─ AgentConnectionRegistry → ConnectOnion.Protocol (WebSocket)
+                                      └─ ConversationRunRegistry  → run lifecycle
+                                                 │
+                              stream events ─────┤
+                                                 ↓
+                                        ChatTurnProjection  (one mapping, two drivers)
+                                          ↙                  ↘
+                       live: ChatViewModel                    headless: persist path
+                       → ObservableCollection<ChatMessage>    → ConversationRepository → SQLite
+                                                                (incremental upsert per turn)
 ```
 
 ## Local Data
@@ -153,10 +178,16 @@ Schema tables:
 | --- | --- |
 | `agents` | Saved agent connections (name, address, Direct URL, invite code) |
 | `sessions` | Per-agent conversation sessions (id, title, timestamps) |
-| `conversations` | Full chat envelopes as JSON blobs |
+| `messages` | One row per rendered chat bubble, keyed `(conversation_id, id)` |
+| `message_attachments` | Attachment metadata only (kind, name, mime, size, cache path) — never base64 |
+| `executions` | One row per turn (prompt, result, status, duration) |
+| `trace_events` | Raw stream events of a turn, for diagnostics |
 | `preferences` | Theme, sidebar, font size, shortcut overrides |
 | `identity_keys` | Local Ed25519 key pair (private seed DPAPI-encrypted at rest) |
 | `app_meta` | Key-value application metadata |
+
+Received `agent_image` attachments are cached under `%AppData%\ConnectOnion\cache\images\`,
+named by the content's SHA-256 — the database holds the path, never the payload.
 
 ## Connecting to an Agent
 
@@ -179,8 +210,16 @@ Agent hosts must expose:
 
 - **Agent management** — add, edit, delete, connection testing (Direct URL + relay)
 - **Real-time chat** — persistent WebSocket, streaming events (thinking, tool calls, results)
+- **Page-independent turns** — a turn is owned by `AgentSessionManager`; it keeps running,
+  persists, and notifies even with its chat page closed
 - **Session management** — per-agent sessions, touch/rename, conversation persistence
-- **Event cards** — activity events (thinking, intent, eval) and tool events (args/result collapsible)
+- **Event cards** — activity events (thinking, intent, eval) and a collapsible per-turn tool timeline
+- **Interactive turns** — `ask_user` / `approval_needed` / `plan_review` as inline chat bubbles;
+  the chosen answer is persisted into history
+- **Multimodal attachments** — outgoing image/file pick and drag-and-drop with capability
+  preflight; incoming `agent_image` decoded and cached to disk
+- **Notifications** — turn-completed / approval-required toasts (Windows + in-app), deduped
+- **Find in chat** — Ctrl+F overlay with match highlighting
 - **Light/dark theme** — persisted preference with shell-aware title bar colors
 - **Custom title bar** — Mica backdrop, back/forward navigation, sidebar toggle
 - **Responsive sidebar** — width adapts to window size

@@ -128,7 +128,7 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
             Content = prompt,
         };
         foreach (var attachment in userAttachments) userMessage.Attachments.Add(attachment);
-        await _conversations.AppendMessageAsync(conversationId, userMessage).ConfigureAwait(false);
+        await _conversations.UpsertMessagesAsync(conversationId, new[] { userMessage }).ConfigureAwait(false);
 
         var runId = Guid.NewGuid().ToString();
         var request = new TurnRequest(
@@ -217,8 +217,8 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
     {
         var agentName = _agentsById.TryGetValue(snapshot.AgentId, out var a) ? a.Name : null;
 
-        var history = (await _conversations.LoadMessagesAsync(snapshot.ConversationId).ConfigureAwait(false)).ToList();
-        var target = new ListProjectionTarget(history, agentName, _http);
+        var (window, nextId) = await LoadTurnWindowAsync(snapshot.ConversationId).ConfigureAwait(false);
+        var target = new ListProjectionTarget(window, agentName, _http, nextId);
         var projection = new ChatTurnProjection(target);
         foreach (var e in snapshot.Events) projection.Apply(e);
         projection.AppendFinalReply(finalReply);
@@ -229,10 +229,10 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
             catch { /* a single bad image must not fail the whole persist */ }
         }
 
-        ResolveInteractiveCards(snapshot.ConversationId, history);
+        ResolveInteractiveCards(snapshot.ConversationId, window);
 
-        await _conversations.SaveMessagesAsync(
-            snapshot.ConversationId, history.Where(m => !m.IsOnboarding).ToList()).ConfigureAwait(false);
+        await _conversations.UpsertMessagesAsync(
+            snapshot.ConversationId, window.Where(m => !m.IsOnboarding).ToList()).ConfigureAwait(false);
 
         // Set this immediately after the conversation write (rather than after trace/execution
         // bookkeeping) because a newly created page can subscribe during that interval.
@@ -261,8 +261,8 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
     {
         var agentName = _agentsById.TryGetValue(snapshot.AgentId, out var a) ? a.Name : null;
 
-        var history = (await _conversations.LoadMessagesAsync(snapshot.ConversationId).ConfigureAwait(false)).ToList();
-        var target = new ListProjectionTarget(history, agentName, _http);
+        var (window, nextId) = await LoadTurnWindowAsync(snapshot.ConversationId).ConfigureAwait(false);
+        var target = new ListProjectionTarget(window, agentName, _http, nextId);
         var projection = new ChatTurnProjection(target);
         foreach (var e in snapshot.Events) projection.Apply(e);
         projection.CompleteToolActivity(
@@ -286,15 +286,34 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
             });
         }
 
-        ResolveInteractiveCards(snapshot.ConversationId, history);
+        ResolveInteractiveCards(snapshot.ConversationId, window);
 
-        await _conversations.SaveMessagesAsync(
-            snapshot.ConversationId, history.Where(m => !m.IsOnboarding).ToList()).ConfigureAwait(false);
+        await _conversations.UpsertMessagesAsync(
+            snapshot.ConversationId, window.Where(m => !m.IsOnboarding).ToList()).ConfigureAwait(false);
         MarkHistoryPersisted(snapshot.RunId);
         await _conversations.FinalizeExecutionAsync(
             snapshot.RunId, snapshot.ConversationId, snapshot.ErrorMessage ?? "", "error", 0).ConfigureAwait(false);
 
         await _connections.TrimIdleAsync(cid => _runs.GetActiveRun(cid) is not null).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The slice of the conversation a finished turn's projection actually needs, plus the id its
+    /// first new bubble takes. The projection only ever appends bubbles or edits ones it created
+    /// itself, with one exception: an <c>agent_image</c> event hangs its attachment on the last
+    /// agent bubble, and the final reply is deduped against that same bubble. So seeding the list
+    /// with that one row reproduces the old full-history behaviour exactly, while the persist that
+    /// follows writes only the rows in this window — a turn no longer costs a full read of the
+    /// conversation and a full rewrite of every row in it.
+    /// </summary>
+    private async Task<(List<ChatMessage> Window, long NextId)> LoadTurnWindowAsync(string conversationId)
+    {
+        var nextId = await _conversations.GetNextMessageIdAsync(conversationId).ConfigureAwait(false);
+        var lastAgent = await _conversations.LoadLastAgentMessageAsync(conversationId).ConfigureAwait(false);
+
+        var window = new List<ChatMessage>();
+        if (lastAgent is not null) window.Add(lastAgent);
+        return (window, nextId);
     }
 
     private Task PersistTraceAsync(ConversationRunSnapshot snapshot)
@@ -372,21 +391,15 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         private long _nextId;
         public readonly List<Task> PendingImages = new();
 
-        public ListProjectionTarget(List<ChatMessage> messages, string? agentName, HttpClient http)
+        /// <param name="nextId">The id for the first bubble this turn adds. Passed in (rather than
+        /// derived from <paramref name="messages"/>) because the list is a window onto the tail of
+        /// the conversation, not the whole of it — the max id lives in the database.</param>
+        public ListProjectionTarget(List<ChatMessage> messages, string? agentName, HttpClient http, long nextId)
         {
             _messages = messages;
             AgentName = agentName;
             _http = http;
-
-            // Seeded once from the loaded history, then handed out monotonically — the projection
-            // asks for an id per bubble, so rescanning the list each time would make persisting a
-            // turn O(messages x events).
-            long max = 0;
-            foreach (var message in messages)
-            {
-                if (message.Id > max) max = message.Id;
-            }
-            _nextId = max + 1;
+            _nextId = nextId;
         }
 
         public IList<ChatMessage> Messages => _messages;
