@@ -28,18 +28,6 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     private static readonly Regex GenericTitle = new(@"^Conversation \d+$", RegexOptions.Compiled);
     private static readonly Regex Whitespace = new(@"\s+", RegexOptions.Compiled);
 
-    // Re-opening a previously visited *idle* session skips the database round-trip. A
-    // session with an active run always loads fresh so the manager-persisted user message
-    // is present before the run's events are replayed on top of it.
-    private static readonly Dictionary<string, CachedSession> SessionCache = new();
-    private const int MaxCachedSessions = 4;
-
-    private sealed record CachedSession(
-        AgentConfig Agent,
-        SessionSummary Session,
-        List<ChatMessage> Messages,
-        long CreatedAt);
-
     private readonly DispatcherQueue _dispatcher = DispatcherQueue.GetForCurrentThread();
 
     private AgentConfig? _agent;
@@ -266,13 +254,12 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         var run = AppServices.RunManager.GetActiveRun(_session.Id);
         var hasRun = run is not null;
 
-        if (!hasRun
-            && SessionCache.TryGetValue(_session.Id, out var cached)
-            && cached.Agent.Id == _agent.Id)
+        if (!hasRun && ConversationCache.Get(_session.Id, _agent.Id) is { } cached)
         {
             Messages.Clear();
             foreach (var message in cached.Messages) Messages.Add(message);
             _createdAt = cached.CreatedAt;
+            ResetIdCounter();
             return;
         }
 
@@ -286,6 +273,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
             foreach (var message in messages) Messages.Add(message);
             _createdAt = messages[0].Id > 0 ? messages[0].Id : _createdAt;
         }
+        ResetIdCounter();
 
         // A completed turn is saved before its terminal snapshot is broadcast. If the page is
         // opened in that tiny interval, the DB already contains every projected tool/event card
@@ -471,6 +459,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         await AppServices.Sessions.SaveAsync(_sessionsState);
 
         Messages.Clear();
+        ResetIdCounter();
         _createdAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         HeaderText = $"{_agent.Name} - {_session.Title}";
         RaiseHeaderProperties();
@@ -543,7 +532,23 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         }
     }
 
-    private long NextId() => Messages.Count == 0 ? 1 : Messages.Max(m => m.Id) + 1;
+    // Ids are handed out from a counter rather than rescanned off Messages: the projection asks
+    // for one per bubble, so a Max() scan would make a turn cost O(messages x events) on the UI
+    // thread. The counter only ever moves forward, so a removed bubble just leaves a gap — ids
+    // stay unique within the conversation, which is all the (conversation_id, id) key needs.
+    private long _nextId = 1;
+
+    private void ResetIdCounter()
+    {
+        long max = 0;
+        foreach (var message in Messages)
+        {
+            if (message.Id > max) max = message.Id;
+        }
+        _nextId = max + 1;
+    }
+
+    private long NextId() => _nextId++;
 
     private void TouchSession(string prompt)
     {
@@ -557,7 +562,8 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         _session.UpdatedAt = DateTime.UtcNow.ToString("o");
         HeaderText = $"{_agent!.Name} - {_session.Title}";
         RaiseHeaderProperties();
-        _ = AppServices.Sessions.SaveAsync(_sessionsState);
+        // Only this one row changed — no need to reconcile the whole session index on every send.
+        _ = AppServices.Sessions.UpdateSessionAsync(_session);
     }
 
     private void RaiseHeaderProperties()
@@ -580,12 +586,9 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     private void StoreSessionCache()
     {
         if (_session is null || _agent is null) return;
-        if (SessionCache.Count >= MaxCachedSessions && !SessionCache.ContainsKey(_session.Id))
-        {
-            var oldest = SessionCache.Keys.First();
-            SessionCache.Remove(oldest);
-        }
-        SessionCache[_session.Id] = new CachedSession(_agent, _session, Messages.ToList(), _createdAt);
+        ConversationCache.Store(
+            _session.Id,
+            new ConversationCache.Entry(_agent, _session, Messages.ToList(), _createdAt));
     }
 
     /// <summary>Persists the remote session id + last processed event id so a later reconnect
@@ -599,7 +602,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         _session.RemoteSessionId = connection.SessionId;
         _session.LastProcessedEventId = connection.LastProcessedEventId;
         _session.UpdatedAt = DateTime.UtcNow.ToString("o");
-        await AppServices.Sessions.SaveAsync(_sessionsState);
+        await AppServices.Sessions.UpdateSessionAsync(_session);
     }
 
     // ---- IChatProjectionTarget (live rendering into this page's list) ----

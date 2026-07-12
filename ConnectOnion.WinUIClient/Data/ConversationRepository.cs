@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Diagnostics;
 using System.Text.Json;
 using System.Threading.Tasks;
 using ConnectOnion.WinUIClient.Models;
@@ -41,9 +42,10 @@ public sealed class ConversationRepository
 
             await LoadAttachmentsIntoAsync(connection, conversationId, messages).ConfigureAwait(false);
         }
-        catch
+        catch (Exception ex)
         {
             // Missing / corrupt table → start fresh.
+            LogFailure(nameof(LoadMessagesAsync), conversationId, ex);
         }
         return messages;
     }
@@ -85,6 +87,72 @@ public sealed class ConversationRepository
         }
     }
 
+    /// <summary>
+    /// The id to give the next bubble appended to this conversation, without reading the
+    /// conversation itself. Callers that only need to append (rather than reconcile the whole
+    /// turn) have no reason to pull every row across just to take a maximum.
+    /// </summary>
+    public async Task<long> GetNextMessageIdAsync(string conversationId)
+    {
+        try
+        {
+            await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
+            await using var command = connection.CreateCommand();
+            command.CommandText = "SELECT COALESCE(MAX(id), 0) + 1 FROM messages WHERE conversation_id = $conversation_id;";
+            AppDatabase.Add(command, "$conversation_id", conversationId);
+            var value = await command.ExecuteScalarAsync().ConfigureAwait(false);
+            return value is long next && next > 0 ? next : 1;
+        }
+        catch (Exception ex)
+        {
+            // Falling back to 1 on a conversation that already has rows would collide with the
+            // primary key and lose the append — worth finding in the log rather than guessing at.
+            LogFailure(nameof(GetNextMessageIdAsync), conversationId, ex);
+            return 1;
+        }
+    }
+
+    /// <summary>Inserts a single bubble (and its attachments) without touching the rest of the
+    /// conversation. Used for the user's message at the top of a turn, which is a pure append —
+    /// the reconciling full save happens once at the end of the turn.</summary>
+    public async Task AppendMessageAsync(string conversationId, ChatMessage message)
+    {
+        try
+        {
+            await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
+            await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync().ConfigureAwait(false);
+
+            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            await using var insertMessage = CreateMessageInsert(connection, transaction);
+            BindMessage(insertMessage, message, conversationId, now);
+            await insertMessage.ExecuteNonQueryAsync().ConfigureAwait(false);
+
+            if (message.Attachments.Count > 0)
+            {
+                await using var insertAttachment = CreateAttachmentInsert(connection, transaction);
+                foreach (var attachment in message.Attachments)
+                {
+                    BindAttachment(insertAttachment, attachment, conversationId, message.Id, now);
+                    await insertAttachment.ExecuteNonQueryAsync().ConfigureAwait(false);
+                }
+            }
+
+            await transaction.CommitAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            // Best-effort: keep the live conversation working if the write fails.
+            LogFailure(nameof(AppendMessageAsync), conversationId, ex);
+        }
+    }
+
+    /// <summary>
+    /// Replaces the conversation's rows with <paramref name="messages"/>. Still a
+    /// delete-then-reinsert (the end-of-turn projection is a reconcile, not an append: it can
+    /// stamp results onto interactive cards it created earlier in the same turn), but the whole
+    /// thing now rides two reused commands inside one transaction instead of building a fresh
+    /// SqliteCommand — and re-parsing the same INSERT — for every row and every attachment.
+    /// </summary>
     public async Task SaveMessagesAsync(string conversationId, IReadOnlyList<ChatMessage> messages)
     {
         if (messages.Count == 0)
@@ -111,37 +179,16 @@ public sealed class ConversationRepository
             }
 
             var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            await using var insertMessage = CreateMessageInsert(connection, transaction);
+            await using var insertAttachment = CreateAttachmentInsert(connection, transaction);
+
             foreach (var message in messages)
             {
-                await using var insert = connection.CreateCommand();
-                insert.Transaction = transaction;
-                insert.CommandText = """
-                    INSERT INTO messages
-                      (id, conversation_id, role, content, agent_name,
-                       event_kind, event_key, event_eyebrow, event_title,
-                       event_detail, event_meta, event_args, event_result,
-                       event_status, is_onboarding, created_at)
-                    VALUES
-                      ($id, $conversation_id, $role, $content, $agent_name,
-                       $event_kind, $event_key, $event_eyebrow, $event_title,
-                       $event_detail, $event_meta, $event_args, $event_result,
-                       $event_status, $is_onboarding, $created_at);
-                    """;
-                BindMessage(insert, message, conversationId, now);
-                await insert.ExecuteNonQueryAsync().ConfigureAwait(false);
+                BindMessage(insertMessage, message, conversationId, now);
+                await insertMessage.ExecuteNonQueryAsync().ConfigureAwait(false);
 
                 foreach (var attachment in message.Attachments)
                 {
-                    await using var insertAttachment = connection.CreateCommand();
-                    insertAttachment.Transaction = transaction;
-                    insertAttachment.CommandText = """
-                        INSERT INTO message_attachments
-                          (id, conversation_id, message_id, kind, file_name, mime_type,
-                           size_bytes, local_cache_path, remote_uri, status, created_at)
-                        VALUES
-                          ($id, $conversation_id, $message_id, $kind, $file_name, $mime_type,
-                           $size_bytes, $local_cache_path, $remote_uri, $status, $created_at);
-                        """;
                     BindAttachment(insertAttachment, attachment, conversationId, message.Id, now);
                     await insertAttachment.ExecuteNonQueryAsync().ConfigureAwait(false);
                 }
@@ -149,9 +196,10 @@ public sealed class ConversationRepository
 
             await transaction.CommitAsync().ConfigureAwait(false);
         }
-        catch
+        catch (Exception ex)
         {
             // Best-effort: keep the live conversation working if the write fails.
+            LogFailure(nameof(SaveMessagesAsync), conversationId, ex);
         }
     }
 
@@ -168,13 +216,23 @@ public sealed class ConversationRepository
             AppDatabase.Add(command, "$conversation_id", conversationId);
             await command.ExecuteNonQueryAsync().ConfigureAwait(false);
         }
-        catch
+        catch (Exception ex)
         {
-            // Ignore delete failures.
+            LogFailure(nameof(DeleteMessagesAsync), conversationId, ex);
         }
     }
 
     // --- helpers ---
+
+    /// <summary>
+    /// Every write here is best-effort: a failed save must not take the live conversation down
+    /// with it. That is a deliberate trade, but a silent one is not — a message the user can see
+    /// on screen and that is quietly missing after a restart should leave a trace to find. Debug
+    /// output is the only sink this app has today; if a real logger ever lands, this is the one
+    /// place to route it through.
+    /// </summary>
+    private static void LogFailure(string operation, string conversationId, Exception ex)
+        => Debug.WriteLine($"[db] {operation} failed for conversation {conversationId}: {ex}");
 
     private static ChatMessage RowToMessage(SqliteDataReader reader)
     {
@@ -201,53 +259,128 @@ public sealed class ConversationRepository
         // by the chat projection when they are next replayed/saved.
         if (m.EventKind == "tool_activity" && !string.IsNullOrWhiteSpace(m.EventArgs))
         {
-            try { m.ToolActivity = JsonSerializer.Deserialize<ToolActivityViewModel>(m.EventArgs); }
-            catch { m.EventKind = "activity"; m.EventTitle = "Tool execution history could not be restored"; }
+            try
+            {
+                m.ToolActivity = JsonSerializer.Deserialize<ToolActivityViewModel>(m.EventArgs);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[db] tool activity payload for message {m.Id} could not be restored: {ex}");
+                m.EventKind = "activity";
+                m.EventTitle = "Tool execution history could not be restored";
+            }
         }
         return m;
     }
 
+    // The insert commands below are built once per transaction and rebound per row. Microsoft.Data
+    // .Sqlite caches the compiled statement on the command object, so reusing one command means the
+    // INSERT is parsed once rather than once per bubble — which is what made saving a long
+    // conversation scale badly, far more than the row writes themselves.
+
+    private static SqliteCommand CreateMessageInsert(SqliteConnection connection, SqliteTransaction transaction)
+    {
+        var cmd = connection.CreateCommand();
+        cmd.Transaction = transaction;
+        cmd.CommandText = """
+            INSERT INTO messages
+              (id, conversation_id, role, content, agent_name,
+               event_kind, event_key, event_eyebrow, event_title,
+               event_detail, event_meta, event_args, event_result,
+               event_status, is_onboarding, created_at)
+            VALUES
+              ($id, $conversation_id, $role, $content, $agent_name,
+               $event_kind, $event_key, $event_eyebrow, $event_title,
+               $event_detail, $event_meta, $event_args, $event_result,
+               $event_status, $is_onboarding, $created_at);
+            """;
+        cmd.Parameters.Add("$id", SqliteType.Integer);
+        cmd.Parameters.Add("$conversation_id", SqliteType.Text);
+        cmd.Parameters.Add("$role", SqliteType.Text);
+        cmd.Parameters.Add("$content", SqliteType.Text);
+        cmd.Parameters.Add("$agent_name", SqliteType.Text);
+        cmd.Parameters.Add("$event_kind", SqliteType.Text);
+        cmd.Parameters.Add("$event_key", SqliteType.Text);
+        cmd.Parameters.Add("$event_eyebrow", SqliteType.Text);
+        cmd.Parameters.Add("$event_title", SqliteType.Text);
+        cmd.Parameters.Add("$event_detail", SqliteType.Text);
+        cmd.Parameters.Add("$event_meta", SqliteType.Text);
+        cmd.Parameters.Add("$event_args", SqliteType.Text);
+        cmd.Parameters.Add("$event_result", SqliteType.Text);
+        cmd.Parameters.Add("$event_status", SqliteType.Text);
+        cmd.Parameters.Add("$is_onboarding", SqliteType.Integer);
+        cmd.Parameters.Add("$created_at", SqliteType.Integer);
+        return cmd;
+    }
+
+    private static SqliteCommand CreateAttachmentInsert(SqliteConnection connection, SqliteTransaction transaction)
+    {
+        var cmd = connection.CreateCommand();
+        cmd.Transaction = transaction;
+        cmd.CommandText = """
+            INSERT INTO message_attachments
+              (id, conversation_id, message_id, kind, file_name, mime_type,
+               size_bytes, local_cache_path, remote_uri, status, created_at)
+            VALUES
+              ($id, $conversation_id, $message_id, $kind, $file_name, $mime_type,
+               $size_bytes, $local_cache_path, $remote_uri, $status, $created_at);
+            """;
+        cmd.Parameters.Add("$id", SqliteType.Text);
+        cmd.Parameters.Add("$conversation_id", SqliteType.Text);
+        cmd.Parameters.Add("$message_id", SqliteType.Integer);
+        cmd.Parameters.Add("$kind", SqliteType.Text);
+        cmd.Parameters.Add("$file_name", SqliteType.Text);
+        cmd.Parameters.Add("$mime_type", SqliteType.Text);
+        cmd.Parameters.Add("$size_bytes", SqliteType.Integer);
+        cmd.Parameters.Add("$local_cache_path", SqliteType.Text);
+        cmd.Parameters.Add("$remote_uri", SqliteType.Text);
+        cmd.Parameters.Add("$status", SqliteType.Text);
+        cmd.Parameters.Add("$created_at", SqliteType.Integer);
+        return cmd;
+    }
+
     private static void BindMessage(SqliteCommand cmd, ChatMessage m, string conversationId, long now)
     {
-        AppDatabase.Add(cmd, "$id", m.Id);
-        AppDatabase.Add(cmd, "$conversation_id", conversationId);
-        AppDatabase.Add(cmd, "$role", m.Role.ToString().ToLowerInvariant());
-        AppDatabase.Add(cmd, "$content", string.IsNullOrEmpty(m.Content) ? DBNull.Value : m.Content);
-        AppDatabase.Add(cmd, "$agent_name", m.AgentName ?? (object)DBNull.Value);
-        AppDatabase.Add(cmd, "$event_kind", string.IsNullOrEmpty(m.EventKind) ? DBNull.Value : m.EventKind);
-        AppDatabase.Add(cmd, "$event_key", m.EventKey ?? (object)DBNull.Value);
-        AppDatabase.Add(cmd, "$event_eyebrow", string.IsNullOrEmpty(m.EventEyebrow) ? DBNull.Value : m.EventEyebrow);
-        AppDatabase.Add(cmd, "$event_title", string.IsNullOrEmpty(m.EventTitle) ? DBNull.Value : m.EventTitle);
-        AppDatabase.Add(cmd, "$event_detail", m.EventDetail ?? (object)DBNull.Value);
-        AppDatabase.Add(cmd, "$event_meta", m.EventMeta ?? (object)DBNull.Value);
         var eventArgs = m.IsToolActivityEvent
             ? JsonSerializer.Serialize(m.ToolActivity)
             : m.EventArgs;
-        AppDatabase.Add(cmd, "$event_args", eventArgs ?? (object)DBNull.Value);
-        AppDatabase.Add(cmd, "$event_result", m.EventResult ?? (object)DBNull.Value);
-        AppDatabase.Add(cmd, "$event_status", m.Status switch
+
+        cmd.Parameters["$id"].Value = m.Id;
+        cmd.Parameters["$conversation_id"].Value = conversationId;
+        cmd.Parameters["$role"].Value = m.Role.ToString().ToLowerInvariant();
+        cmd.Parameters["$content"].Value = string.IsNullOrEmpty(m.Content) ? DBNull.Value : m.Content;
+        cmd.Parameters["$agent_name"].Value = m.AgentName ?? (object)DBNull.Value;
+        cmd.Parameters["$event_kind"].Value = string.IsNullOrEmpty(m.EventKind) ? DBNull.Value : m.EventKind;
+        cmd.Parameters["$event_key"].Value = m.EventKey ?? (object)DBNull.Value;
+        cmd.Parameters["$event_eyebrow"].Value = string.IsNullOrEmpty(m.EventEyebrow) ? DBNull.Value : m.EventEyebrow;
+        cmd.Parameters["$event_title"].Value = string.IsNullOrEmpty(m.EventTitle) ? DBNull.Value : m.EventTitle;
+        cmd.Parameters["$event_detail"].Value = m.EventDetail ?? (object)DBNull.Value;
+        cmd.Parameters["$event_meta"].Value = m.EventMeta ?? (object)DBNull.Value;
+        cmd.Parameters["$event_args"].Value = eventArgs ?? (object)DBNull.Value;
+        cmd.Parameters["$event_result"].Value = m.EventResult ?? (object)DBNull.Value;
+        cmd.Parameters["$event_status"].Value = m.Status switch
         {
             EventStatus.Running => "running",
             EventStatus.Error => "error",
             _ => "done",
-        });
-        AppDatabase.Add(cmd, "$is_onboarding", m.IsOnboarding ? 1 : 0);
-        AppDatabase.Add(cmd, "$created_at", now);
+        };
+        cmd.Parameters["$is_onboarding"].Value = m.IsOnboarding ? 1 : 0;
+        cmd.Parameters["$created_at"].Value = now;
     }
 
     private static void BindAttachment(SqliteCommand cmd, ChatAttachment a, string conversationId, long messageId, long now)
     {
-        AppDatabase.Add(cmd, "$id", a.Id);
-        AppDatabase.Add(cmd, "$conversation_id", conversationId);
-        AppDatabase.Add(cmd, "$message_id", messageId);
-        AppDatabase.Add(cmd, "$kind", a.Kind == AttachmentKind.Image ? "image" : "file");
-        AppDatabase.Add(cmd, "$file_name", a.FileName);
-        AppDatabase.Add(cmd, "$mime_type", a.MimeType ?? (object)DBNull.Value);
-        AppDatabase.Add(cmd, "$size_bytes", a.SizeBytes);
-        AppDatabase.Add(cmd, "$local_cache_path", a.LocalCachePath ?? (object)DBNull.Value);
-        AppDatabase.Add(cmd, "$remote_uri", a.RemoteUri ?? (object)DBNull.Value);
-        AppDatabase.Add(cmd, "$status", a.Status == AttachmentStatus.Failed ? "failed" : "sent");
-        AppDatabase.Add(cmd, "$created_at", now);
+        cmd.Parameters["$id"].Value = a.Id;
+        cmd.Parameters["$conversation_id"].Value = conversationId;
+        cmd.Parameters["$message_id"].Value = messageId;
+        cmd.Parameters["$kind"].Value = a.Kind == AttachmentKind.Image ? "image" : "file";
+        cmd.Parameters["$file_name"].Value = a.FileName;
+        cmd.Parameters["$mime_type"].Value = a.MimeType ?? (object)DBNull.Value;
+        cmd.Parameters["$size_bytes"].Value = a.SizeBytes;
+        cmd.Parameters["$local_cache_path"].Value = a.LocalCachePath ?? (object)DBNull.Value;
+        cmd.Parameters["$remote_uri"].Value = a.RemoteUri ?? (object)DBNull.Value;
+        cmd.Parameters["$status"].Value = a.Status == AttachmentStatus.Failed ? "failed" : "sent";
+        cmd.Parameters["$created_at"].Value = now;
     }
 
     private static ChatRole ParseRole(string value)
@@ -291,7 +424,10 @@ public sealed class ConversationRepository
             AppDatabase.Add(cmd, "$ts", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
             await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
         }
-        catch { /* best-effort */ }
+        catch (Exception ex)
+        {
+            LogFailure(nameof(InsertExecutionAsync), conversationId, ex);
+        }
     }
 
     public async Task FinalizeExecutionAsync(
@@ -313,33 +449,65 @@ public sealed class ConversationRepository
             AppDatabase.Add(cmd, "$conv", conversationId);
             await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
         }
-        catch { /* best-effort */ }
+        catch (Exception ex)
+        {
+            LogFailure(nameof(FinalizeExecutionAsync), conversationId, ex);
+        }
     }
 
     // ---- trace events ----
 
-    public async Task InsertTraceEventAsync(
-        string eventId, string conversationId, string? executionId,
-        string? sessionId, string type, string payloadJson, double? ts)
+    /// <summary>One trace row, as handed to <see cref="InsertTraceEventsAsync"/>.</summary>
+    public readonly record struct TraceEventRow(
+        string EventId, string? ExecutionId, string? SessionId,
+        string Type, string PayloadJson, double? Ts);
+
+    /// <summary>
+    /// Writes a turn's whole trace in one connection and one transaction, reusing a single
+    /// prepared command. A turn emits dozens of events, so the previous row-at-a-time API meant
+    /// dozens of connection acquisitions and dozens of implicit commits.
+    /// </summary>
+    public async Task InsertTraceEventsAsync(string conversationId, IReadOnlyList<TraceEventRow> events)
     {
+        if (events.Count == 0) return;
+
         try
         {
             await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
+            await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync().ConfigureAwait(false);
             await using var cmd = connection.CreateCommand();
+            cmd.Transaction = transaction;
             cmd.CommandText = """
                 INSERT OR REPLACE INTO trace_events (id, conversation_id, execution_id, session_id, type, payload_json, ts)
                 VALUES ($id, $conv, $exec, $sess, $type, $payload, $ts);
                 """;
-            AppDatabase.Add(cmd, "$id", eventId);
-            AppDatabase.Add(cmd, "$conv", conversationId);
-            AppDatabase.Add(cmd, "$exec", executionId ?? (object)DBNull.Value);
-            AppDatabase.Add(cmd, "$sess", sessionId ?? (object)DBNull.Value);
-            AppDatabase.Add(cmd, "$type", type);
-            AppDatabase.Add(cmd, "$payload", payloadJson);
-            AppDatabase.Add(cmd, "$ts", ts ?? (object)DBNull.Value);
-            await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+
+            var id = cmd.Parameters.Add("$id", SqliteType.Text);
+            cmd.Parameters.AddWithValue("$conv", conversationId);
+            var exec = cmd.Parameters.Add("$exec", SqliteType.Text);
+            var sess = cmd.Parameters.Add("$sess", SqliteType.Text);
+            var type = cmd.Parameters.Add("$type", SqliteType.Text);
+            var payload = cmd.Parameters.Add("$payload", SqliteType.Text);
+            var ts = cmd.Parameters.Add("$ts", SqliteType.Real);
+            cmd.Prepare();
+
+            foreach (var e in events)
+            {
+                id.Value = e.EventId;
+                exec.Value = e.ExecutionId ?? (object)DBNull.Value;
+                sess.Value = e.SessionId ?? (object)DBNull.Value;
+                type.Value = e.Type;
+                payload.Value = e.PayloadJson;
+                ts.Value = e.Ts ?? (object)DBNull.Value;
+                await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+            }
+
+            await transaction.CommitAsync().ConfigureAwait(false);
         }
-        catch { /* best-effort */ }
+        catch (Exception ex)
+        {
+            LogFailure(nameof(InsertTraceEventsAsync), conversationId, ex);
+        }
     }
 
     public async Task DeleteExecutionsAndTracesAsync(string conversationId)
@@ -355,6 +523,9 @@ public sealed class ConversationRepository
             AppDatabase.Add(cmd, "$conv", conversationId);
             await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
         }
-        catch { /* best-effort */ }
+        catch (Exception ex)
+        {
+            LogFailure(nameof(DeleteExecutionsAndTracesAsync), conversationId, ex);
+        }
     }
 }

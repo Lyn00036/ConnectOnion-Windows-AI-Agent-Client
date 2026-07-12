@@ -120,6 +120,7 @@ public sealed partial class ShellSidebar
         if (!await ConfirmDeleteAsync($"Delete {session.Title}?", "This local conversation will be removed.")) return;
 
         sessionsState.Sessions.Remove(session);
+        ConversationCache.Invalidate(sessionId);
         await AppServices.RunManager.ReleaseConversationAsync(sessionId);
         await AppServices.Conversations.DeleteMessagesAsync(sessionId);
         await AppServices.Conversations.DeleteExecutionsAndTracesAsync(sessionId);

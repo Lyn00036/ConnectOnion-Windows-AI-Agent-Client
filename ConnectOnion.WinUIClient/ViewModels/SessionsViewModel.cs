@@ -87,6 +87,7 @@ public sealed class SessionsViewModel : ObservableObject
     public async Task RemoveSessionAsync(SessionSummary session)
     {
         Sessions.Remove(session);
+        ConversationCache.Invalidate(session.Id);
         await AppServices.Conversations.DeleteMessagesAsync(session.Id);
         await AppServices.Conversations.DeleteExecutionsAndTracesAsync(session.Id);
         if (ReferenceEquals(_selected, session))
@@ -105,6 +106,7 @@ public sealed class SessionsViewModel : ObservableObject
         foreach (var session in removed)
         {
             Sessions.Remove(session);
+            ConversationCache.Invalidate(session.Id);
             await AppServices.Conversations.DeleteMessagesAsync(session.Id);
             await AppServices.Conversations.DeleteExecutionsAndTracesAsync(session.Id);
         }

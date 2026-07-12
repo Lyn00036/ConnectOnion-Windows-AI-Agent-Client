@@ -127,9 +127,6 @@ public static class AppDatabase
                 FOREIGN KEY (conversation_id) REFERENCES sessions(id)
             );
 
-            CREATE INDEX IF NOT EXISTS ix_messages_conversation
-                ON messages(conversation_id, id);
-
             CREATE TABLE IF NOT EXISTS message_attachments (
                 id TEXT NOT NULL,
                 conversation_id TEXT NOT NULL,
@@ -146,8 +143,12 @@ public static class AppDatabase
                 FOREIGN KEY (conversation_id) REFERENCES sessions(id)
             );
 
-            CREATE INDEX IF NOT EXISTS ix_message_attachments_message
-                ON message_attachments(conversation_id, message_id);
+            -- Both of these duplicated the index SQLite already builds for the composite primary
+            -- key above them ((conversation_id, id) exactly; (conversation_id, message_id) as a
+            -- prefix), so they served no read and cost a second b-tree write on every insert.
+            -- Dropped explicitly so databases created before this change shed them too.
+            DROP INDEX IF EXISTS ix_messages_conversation;
+            DROP INDEX IF EXISTS ix_message_attachments_message;
 
             CREATE TABLE IF NOT EXISTS executions (
                 id TEXT PRIMARY KEY,

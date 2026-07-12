@@ -83,6 +83,42 @@ public sealed class SessionRepository
         return state;
     }
 
+    /// <summary>
+    /// Updates the mutable fields of one existing session row. <see cref="SaveAsync"/> reconciles
+    /// the entire index — it upserts every session and deletes the ones that vanished — which is
+    /// what you want after adding or removing a conversation, but is far too much for renaming the
+    /// active one or stamping its last-seen event id, both of which happen on every message sent.
+    /// Does nothing if the row isn't there; the caller is editing a session it just loaded.
+    /// </summary>
+    public async Task UpdateSessionAsync(SessionSummary session)
+    {
+        if (string.IsNullOrWhiteSpace(session.Id) ||
+            string.IsNullOrWhiteSpace(session.AgentId) ||
+            string.IsNullOrWhiteSpace(session.Title))
+        {
+            return;
+        }
+
+        await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE sessions
+            SET title = $title,
+                remote_session_id = $remote_session_id,
+                last_processed_event_id = $last_processed_event_id,
+                updated_at = $updated_at
+            WHERE id = $id;
+            """;
+        AppDatabase.Add(command, "$title", session.Title);
+        AppDatabase.Add(command, "$remote_session_id", session.RemoteSessionId);
+        AppDatabase.Add(command, "$last_processed_event_id", session.LastProcessedEventId);
+        AppDatabase.Add(command, "$updated_at", session.UpdatedAt);
+        AppDatabase.Add(command, "$id", session.Id);
+        await command.ExecuteNonQueryAsync().ConfigureAwait(false);
+
+        SessionsChanged?.Invoke();
+    }
+
     public async Task SaveAsync(SessionsState state)
     {
         await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);

@@ -118,18 +118,17 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         }
 
         // Persist the user message up front so a page opening this conversation mid-turn
-        // loads it from the DB and then replays the run's events on top.
-        var history = (await _conversations.LoadMessagesAsync(conversationId).ConfigureAwait(false)).ToList();
+        // loads it from the DB and then replays the run's events on top. This is a pure append —
+        // reading the whole conversation back just to take a max(id) and then rewriting every row
+        // of it was two full table scans per turn for one new bubble.
         var userMessage = new ChatMessage
         {
-            Id = NextLongId(history),
+            Id = await _conversations.GetNextMessageIdAsync(conversationId).ConfigureAwait(false),
             Role = ChatRole.User,
             Content = prompt,
         };
         foreach (var attachment in userAttachments) userMessage.Attachments.Add(attachment);
-        history.Add(userMessage);
-        await _conversations.SaveMessagesAsync(
-            conversationId, history.Where(m => !m.IsOnboarding).ToList()).ConfigureAwait(false);
+        await _conversations.AppendMessageAsync(conversationId, userMessage).ConfigureAwait(false);
 
         var runId = Guid.NewGuid().ToString();
         var request = new TurnRequest(
@@ -298,14 +297,20 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         await _connections.TrimIdleAsync(cid => _runs.GetActiveRun(cid) is not null).ConfigureAwait(false);
     }
 
-    private async Task PersistTraceAsync(ConversationRunSnapshot snapshot)
+    private Task PersistTraceAsync(ConversationRunSnapshot snapshot)
     {
+        var rows = new List<ConversationRepository.TraceEventRow>(snapshot.Events.Count);
         foreach (var e in snapshot.Events)
         {
-            await _conversations.InsertTraceEventAsync(
-                e.EventId ?? Guid.NewGuid().ToString(), snapshot.ConversationId, snapshot.RunId,
-                snapshot.ConversationId, e.Type, e.RawJson, TryParseTs(e.RawJson)).ConfigureAwait(false);
+            rows.Add(new ConversationRepository.TraceEventRow(
+                EventId: e.EventId ?? Guid.NewGuid().ToString(),
+                ExecutionId: snapshot.RunId,
+                SessionId: snapshot.ConversationId,
+                Type: e.Type,
+                PayloadJson: e.RawJson,
+                Ts: TryParseTs(e.RawJson)));
         }
+        return _conversations.InsertTraceEventsAsync(snapshot.ConversationId, rows);
     }
 
     private static double? TryParseTs(string rawJson)
@@ -357,9 +362,6 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         }
     }
 
-    private static long NextLongId(IReadOnlyList<ChatMessage> messages)
-        => messages.Count == 0 ? 1 : messages.Max(m => m.Id) + 1;
-
     /// <summary>Projection target backed by a plain list, used by the headless persistence
     /// path. Agent-image resolution is collected as awaitable tasks so the caller can await
     /// them before saving (the cache path must be known when the row is written).</summary>
@@ -367,6 +369,7 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
     {
         private readonly List<ChatMessage> _messages;
         private readonly HttpClient _http;
+        private long _nextId;
         public readonly List<Task> PendingImages = new();
 
         public ListProjectionTarget(List<ChatMessage> messages, string? agentName, HttpClient http)
@@ -374,11 +377,21 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
             _messages = messages;
             AgentName = agentName;
             _http = http;
+
+            // Seeded once from the loaded history, then handed out monotonically — the projection
+            // asks for an id per bubble, so rescanning the list each time would make persisting a
+            // turn O(messages x events).
+            long max = 0;
+            foreach (var message in messages)
+            {
+                if (message.Id > max) max = message.Id;
+            }
+            _nextId = max + 1;
         }
 
         public IList<ChatMessage> Messages => _messages;
         public string? AgentName { get; }
-        public long NextId() => _messages.Count == 0 ? 1 : _messages.Max(m => m.Id) + 1;
+        public long NextId() => _nextId++;
         public void Add(ChatMessage message) => _messages.Add(message);
 
         public void ResolveAgentImage(string dataUrl, ChatAttachment attachment)
