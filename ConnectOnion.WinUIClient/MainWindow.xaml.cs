@@ -72,8 +72,10 @@ public sealed partial class MainWindow : Window
             }
             finally
             {
-                // UI is ready — replay any notification click buffered at cold start.
+                // UI is ready — replay any notification click buffered at cold start, and report an
+                // identity that was reset before this window existed to show it.
                 AppServices.NotificationActivation.MarkReady();
+                ReportIdentityResetIfAny();
             }
         };
     }

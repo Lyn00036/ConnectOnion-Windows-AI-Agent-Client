@@ -43,7 +43,12 @@ public static class AppDatabase
 
             await ExecuteAsync(connection, "PRAGMA journal_mode = WAL;").ConfigureAwait(false);
             await ExecuteAsync(connection, "PRAGMA foreign_keys = ON;").ConfigureAwait(false);
+
+            // Baseline first (creates anything missing), then step any older database forward.
+            // CreateSchemaAsync alone cannot evolve a table that already exists — that is what
+            // SchemaMigrator is for. See its doc comment before changing any table above.
             await CreateSchemaAsync(connection).ConfigureAwait(false);
+            await SchemaMigrator.ApplyAsync(connection).ConfigureAwait(false);
 
             _initialized = true;
         }

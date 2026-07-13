@@ -25,16 +25,53 @@ public static class IdentityStore
 
     private static AgentIdentity? _cached;
 
+    /// <summary>
+    /// Raised when an identity row existed on disk but could not be recovered, so a brand-new
+    /// identity was generated in its place. This is not a routine event: the app's address changes,
+    /// and any authorization an agent had granted the old address is gone. The user has to be told
+    /// — silently swapping identities is how someone loses access without ever knowing why.
+    /// Fires once per process, before the replacement identity is returned.
+    /// </summary>
+    public static event Action<string>? IdentityReset;
+
+    /// <summary>
+    /// Set when <see cref="EnsureIdentity"/> had to discard an unreadable identity. Latched because
+    /// the identity is usually first needed before any window exists to show a message — the shell
+    /// checks this on load (see <c>MainWindow.Notifications.cs</c>) and reports it then.
+    /// </summary>
+    public static bool WasReset { get; private set; }
+
+    /// <summary>Human-readable reason for <see cref="WasReset"/>, or null.</summary>
+    public static string? ResetReason { get; private set; }
+
     public static AgentIdentity EnsureIdentity()
     {
         if (_cached is not null) return _cached;
 
-        _cached = Load() ?? Create();
+        var (identity, fault) = Load();
+        if (identity is not null)
+        {
+            _cached = identity;
+            return _cached;
+        }
+
+        // No row at all is the normal first-run path — generate quietly. A row we could not read is
+        // a different story: report it, because the old identity is being thrown away.
+        if (fault is not null) ReportReset(fault);
+
+        _cached = Create();
         return _cached;
     }
 
-    private static AgentIdentity? Load()
+    /// <summary>
+    /// Reads the stored identity. Returns <c>(null, null)</c> when there is simply nothing stored
+    /// yet (first run), and <c>(null, reason)</c> when a row exists but is unusable — the caller
+    /// must not treat those two the same, which is exactly the bug this split fixes.
+    /// </summary>
+    private static (AgentIdentity? Identity, string? Fault) Load()
     {
+        string storedSeed;
+
         try
         {
             using var connection = AppDatabase.OpenAsync().GetAwaiter().GetResult();
@@ -45,21 +82,46 @@ public static class IdentityStore
                 WHERE id = 1;
                 """;
             using var reader = command.ExecuteReader();
-            if (!reader.Read()) return null;
+            if (!reader.Read()) return (null, null);          // first run — nothing stored
 
-            var storedSeed = reader.GetString(0);
-            if (string.IsNullOrEmpty(storedSeed)) return null;
+            storedSeed = reader.GetString(0);
+            if (string.IsNullOrEmpty(storedSeed))
+                return (null, "the stored identity was empty");
+        }
+        catch (Exception ex)
+        {
+            // The database itself is unreadable. Don't claim the identity was lost — we don't know
+            // that — but don't pretend this is a clean first run either.
+            return (null, $"the identity could not be read from the database ({ex.Message})");
+        }
 
+        try
+        {
             var protectedBytes = Convert.FromBase64String(storedSeed);
             var seed = ProtectedData.Unprotect(protectedBytes, Entropy, DataProtectionScope.CurrentUser);
-            if (seed.Length != 32) return null;
 
-            return AgentIdentity.FromSeed(seed);
+            if (seed.Length != 32)
+                return (null, "the stored identity was the wrong size");
+
+            return (AgentIdentity.FromSeed(seed), null);
         }
-        catch
+        catch (Exception ex)
         {
-            return null;
+            // DPAPI is scoped to the Windows user + machine. The usual causes are a copied .db file,
+            // a restored user profile, or a database written before seeds were encrypted at all.
+            return (null, $"the stored identity could not be decrypted ({ex.Message})");
         }
+    }
+
+    private static void ReportReset(string reason)
+    {
+        WasReset = true;
+        ResetReason = reason;
+
+        System.Diagnostics.Debug.WriteLine($"[IdentityStore] identity reset: {reason}");
+
+        try { IdentityReset?.Invoke(reason); }
+        catch { /* a listener must never block identity creation */ }
     }
 
     private static AgentIdentity Create()

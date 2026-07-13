@@ -1,5 +1,6 @@
 using System.Linq;
 using System.Threading.Tasks;
+using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Models.Notifications;
 using ConnectOnion.WinUIClient.Services;
 using ConnectOnion.WinUIClient.Services.Notifications;
@@ -21,12 +22,36 @@ public sealed partial class MainWindow : IChatWindow
     {
         AppServices.WindowPresence.Register(this);
         Activated += OnActivatedForPresence;
+        IdentityStore.IdentityReset += OnIdentityReset;
         Closed += (_, _) =>
         {
             Activated -= OnActivatedForPresence;
+            IdentityStore.IdentityReset -= OnIdentityReset;
             AppServices.WindowPresence.Unregister(this);
         };
     }
+
+    /// <summary>
+    /// Losing the stored identity is silent by nature — the app just carries on under a new
+    /// address, and every authorization the old one had is gone. Say so. The identity is often
+    /// first needed before this window exists, so both the latched flag (checked once the shell
+    /// loads) and the live event route here.
+    /// </summary>
+    private void ReportIdentityResetIfAny()
+    {
+        if (!IdentityStore.WasReset || IdentityStore.ResetReason is not { } reason) return;
+        OnIdentityReset(reason);
+    }
+
+    private void OnIdentityReset(string reason)
+        => DispatcherQueue.TryEnqueue(() => ShowInAppToast(new InAppToastModel(
+            "New identity generated",
+            $"Your previous ConnectOnion identity could not be recovered — {reason}. "
+                + "Agents that authorized the old address will need to authorize this one again.",
+            NotificationType.Error,
+            AgentId: null,
+            ConversationId: null,
+            ActionId: null)));
 
     private void OnActivatedForPresence(object sender, WindowActivatedEventArgs e)
         => AppServices.WindowPresence.SetActive(
