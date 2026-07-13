@@ -58,6 +58,7 @@ public sealed class ToolActivityViewModel : ObservableObject
         {
             if (!SetProperty(ref _displayMode, value)) return;
             foreach (var step in Steps) step.IsDeveloperDetails = value == ToolDisplayMode.Detailed;
+            if (value == ToolDisplayMode.Detailed) IsExpanded = true;
             OnPresentationChanged();
         }
     }
@@ -78,7 +79,10 @@ public sealed class ToolActivityViewModel : ObservableObject
 
     [JsonIgnore] public bool IsTerminal => Status is ToolActivityStatus.Success or ToolActivityStatus.PartialSuccess or ToolActivityStatus.Failed or ToolActivityStatus.Cancelled;
     [JsonIgnore] public bool IsVisible => DisplayMode != ToolDisplayMode.Hidden || !IsTerminal || Status is ToolActivityStatus.Failed or ToolActivityStatus.PartialSuccess or ToolActivityStatus.WaitingForConfirmation or ToolActivityStatus.WaitingForPermission || Steps.Any(step => step.IsHighRisk);
-    [JsonIgnore] public bool IsTimelineVisible => IsVisible && (DisplayMode == ToolDisplayMode.Detailed || !IsTerminal || IsExpanded || Status is ToolActivityStatus.Failed or ToolActivityStatus.WaitingForConfirmation or ToolActivityStatus.WaitingForPermission);
+    // Only IsExpanded gates the timeline. Status and DisplayMode choose the *default* expansion
+    // (see ToolActivityProjector), never override it — ORing "Failed" in here left the header
+    // toggle dead for exactly the runs a user most wants to collapse.
+    [JsonIgnore] public bool IsTimelineVisible => IsVisible && IsExpanded;
     [JsonIgnore] public bool IsDetailed => DisplayMode == ToolDisplayMode.Detailed;
     [JsonIgnore] public string StatusGlyph => Status switch
     {

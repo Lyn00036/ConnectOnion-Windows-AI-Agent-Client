@@ -206,7 +206,7 @@
                            FontWeight="SemiBold"
                            Foreground="{ThemeResource TextSecondaryBrush}"
                            Margin="8,0,0,4" />
-                <ItemsRepeater ItemsSource="{Binding ShellAgents}">
+                <ItemsRepeater ItemsSource="{Binding ShellAgents}" AutomationProperties.AutomationId="AgentList">
                 <ItemsRepeater.ItemTemplate>
                     <DataTemplate>
                         <StackPanel Margin="0,2">
@@ -451,12 +451,13 @@
             <!-- IconText paints its icon and label from its own Foreground, so each site must
                  supply one (see IconText.xaml) — without it these two read as washed-out in both
                  themes. TextPrimary keeps them legible on the sidebar background either way. -->
-            <Button Style="{StaticResource ShellNavButtonStyle}" Click="AddAgent_Click">
+            <Button Style="{StaticResource ShellNavButtonStyle}" Click="AddAgent_Click" AutomationProperties.AutomationId="AddAgentButton">
                 <local:IconText Glyph="Add" IconSize="Size20" Spacing="9" Text="Add Agent"
                                 Foreground="{ThemeResource TextPrimaryBrush}" />
             </Button>
             <Button Style="{StaticResource ShellNavButtonStyle}"
                     Click="Settings_Click"
+                    AutomationProperties.AutomationId="SettingsButton"
                     AutomationProperties.Name="Open settings">
                 <local:IconText Glyph="Settings" IconSize="Size20" Spacing="9" Text="Settings"
                                 Foreground="{ThemeResource TextPrimaryBrush}" />

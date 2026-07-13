@@ -14,7 +14,8 @@
         <MicaBackdrop />
     </Window.SystemBackdrop>
 
-    <Grid x:Name="RootGrid" Background="{ThemeResource AppBackgroundBrush}" SizeChanged="RootGrid_SizeChanged">
+    <Grid x:Name="RootGrid" AutomationProperties.AutomationId="MainWindow"
+          Background="{ThemeResource AppBackgroundBrush}" SizeChanged="RootGrid_SizeChanged">
         <Grid.Resources>
             <Style x:Key="ShellMenuButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
                 <Setter Property="Background" Value="Transparent" />
@@ -196,14 +197,14 @@
                                         KeyboardAcceleratorTextOverride="F11"
                                         Click="ToggleFullScreen_Click" />
                     </MenuBarItem>
-                    <MenuBarItem x:Name="HelpMenuBarItem" Title="Help">
-                        <MenuFlyoutItem Text="Keyboard shortcuts"
+                    <MenuBarItem x:Name="HelpMenuBarItem" Title="Help" AutomationProperties.AutomationId="HelpMenuButton">
+                        <MenuFlyoutItem Text="Keyboard shortcuts" AutomationProperties.AutomationId="KeyboardShortcutsMenuItem"
                                         KeyboardAcceleratorTextOverride="Ctrl+Shift+/"
                                         Click="KeyboardShortcuts_Click" />
-                        <MenuFlyoutItem Text="ConnectOnion Docs"
+                        <MenuFlyoutItem Text="ConnectOnion Docs" AutomationProperties.AutomationId="ConnectOnionDocsMenuItem"
                                         Click="ConnectOnionDocs_Click" />
                         <MenuFlyoutSeparator />
-                        <MenuFlyoutItem Text="About ConnectOnion"
+                        <MenuFlyoutItem Text="About ConnectOnion" AutomationProperties.AutomationId="AboutMenuItem"
                                         Click="AboutConnectOnion_Click" />
                     </MenuBarItem>
                 </MenuBar>
@@ -250,9 +251,9 @@
               Grid.Row="0"
               Grid.RowSpan="2"
               Canvas.ZIndex="100">
-            <controls:SettingsOverlay x:Name="SettingsOverlay" Canvas.ZIndex="1000" />
-            <controls:KeyboardShortcutsDialog x:Name="KeyboardShortcutsDialog" Canvas.ZIndex="1001" />
-            <controls:AboutOverlay x:Name="AboutOverlay" Canvas.ZIndex="1002" />
+            <controls:SettingsOverlay x:Name="SettingsOverlay" Canvas.ZIndex="1000" AutomationProperties.AutomationId="SettingsOverlay" />
+            <controls:KeyboardShortcutsDialog x:Name="KeyboardShortcutsDialog" Canvas.ZIndex="1001" AutomationProperties.AutomationId="KeyboardShortcutsOverlay" />
+            <controls:AboutOverlay x:Name="AboutOverlay" Canvas.ZIndex="1002" AutomationProperties.AutomationId="AboutOverlay" />
             <Border x:Name="FindOverlayPanel"
                     Width="380"
                     MinHeight="36"

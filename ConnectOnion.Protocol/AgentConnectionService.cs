@@ -31,12 +31,16 @@ public sealed class AgentConnectionService : IAsyncDisposable
 {
     private const int ConnectTimeoutMs = 30_000;
     private const int SilenceTimeoutMs = 60_000;
+    private const int WatchdogIntervalMs = 10_000;
 
     private readonly string _address;
     private readonly string? _directUrl;
     private readonly string _relayUrl;
     private readonly AgentIdentity _identity;
     private readonly HttpClient _http;
+    private readonly TimeSpan _connectTimeout;
+    private readonly TimeSpan _silenceTimeout;
+    private readonly TimeSpan _watchdogInterval;
 
     // Resolved lazily on first connect. isDirect=false means the relay /ws/input
     // path, where every message must carry `to`.
@@ -49,6 +53,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
     private CancellationTokenSource? _loopCts;
     private bool _authenticated;
     private DateTime _lastActivityUtc;
+    private volatile bool _awaitingHumanResponse;
 
     private TaskCompletionSource<WireMessage>? _connectTcs;
     private TaskCompletionSource<string>? _inputTcs;
@@ -101,13 +106,19 @@ public sealed class AgentConnectionService : IAsyncDisposable
         string? directUrl,
         AgentIdentity identity,
         HttpClient? http = null,
-        string relayUrl = EndpointResolver.DefaultRelay)
+        string relayUrl = EndpointResolver.DefaultRelay,
+        TimeSpan? connectTimeout = null,
+        TimeSpan? silenceTimeout = null,
+        TimeSpan? watchdogInterval = null)
     {
         _address = address;
         _directUrl = string.IsNullOrWhiteSpace(directUrl) ? null : directUrl.TrimEnd('/');
         _identity = identity;
         _http = http ?? new HttpClient();
         _relayUrl = EndpointResolver.NormalizeRelayUrl(relayUrl);
+        _connectTimeout = connectTimeout ?? TimeSpan.FromMilliseconds(ConnectTimeoutMs);
+        _silenceTimeout = silenceTimeout ?? TimeSpan.FromMilliseconds(SilenceTimeoutMs);
+        _watchdogInterval = watchdogInterval ?? TimeSpan.FromMilliseconds(WatchdogIntervalMs);
     }
 
     // Port of _resolveWsUrl + _resolveEndpointOnce. Direct URL wins; otherwise
@@ -206,7 +217,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
         if (_ws is { State: WebSocketState.Open } && _authenticated) return;
 
         using var connectCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        connectCts.CancelAfter(ConnectTimeoutMs);
+        connectCts.CancelAfter(_connectTimeout);
         var connectToken = connectCts.Token;
 
         await ResolveConnectionAsync(connectToken).ConfigureAwait(false);
@@ -252,7 +263,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
 
         // The connect deadline is the only bounded wait; ONBOARD_REQUIRED
         // cancels it (a human/onboarding step now owns the connection).
-        _connectTimeoutCts = new CancellationTokenSource(ConnectTimeoutMs);
+        _connectTimeoutCts = new CancellationTokenSource(_connectTimeout);
         await using (_connectTimeoutCts.Token.Register(() =>
                          connectTcs.TrySetException(new TimeoutException("Authentication timed out"))))
         await using (connectToken.Register(() => connectTcs.TrySetCanceled()))
@@ -293,11 +304,14 @@ public sealed class AgentConnectionService : IAsyncDisposable
 
     /// <summary>Answers an ask_user turn. Port of the ASK_USER_RESPONSE message.</summary>
     public Task RespondAskUserAsync(string answer)
-        => SendJsonAsync(new Dictionary<string, object?>
+    {
+        _awaitingHumanResponse = false;
+        return SendJsonAsync(new Dictionary<string, object?>
         {
             ["type"] = "ASK_USER_RESPONSE",
             ["answer"] = answer,
         }, CancellationToken.None);
+    }
 
     /// <summary>
     /// Responds to an approval_needed turn. <paramref name="scope"/> is
@@ -305,6 +319,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
     /// </summary>
     public Task RespondApprovalAsync(bool approved, string scope = "once")
     {
+        _awaitingHumanResponse = false;
         var msg = new Dictionary<string, object?>
         {
             ["type"] = "APPROVAL_RESPONSE",
@@ -317,11 +332,14 @@ public sealed class AgentConnectionService : IAsyncDisposable
 
     /// <summary>Responds to a plan_review turn. Port of PLAN_REVIEW_RESPONSE.</summary>
     public Task RespondPlanReviewAsync(string message)
-        => SendJsonAsync(new Dictionary<string, object?>
+    {
+        _awaitingHumanResponse = false;
+        return SendJsonAsync(new Dictionary<string, object?>
         {
             ["type"] = "PLAN_REVIEW_RESPONSE",
             ["message"] = message,
         }, CancellationToken.None);
+    }
 
     private static AskUserRequest ParseAskUser(WireMessage msg) => AgentInteractiveParsers.ParseAskUser(msg);
 
@@ -379,6 +397,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
 
             case "OUTPUT":
             {
+                _awaitingHumanResponse = false;
                 var result = msg.GetString("result") ?? "";
                 if (msg.TryGet("duration_ms", out var d) && d.ValueKind == JsonValueKind.Number)
                     LastExecutionDurationMs = d.GetDouble();
@@ -437,10 +456,12 @@ public sealed class AgentConnectionService : IAsyncDisposable
                 return;
 
             case "ask_user":
+                _awaitingHumanResponse = true;
                 AskUserRequested?.Invoke(ParseAskUser(msg));
                 return;
 
             case "approval_needed":
+                _awaitingHumanResponse = true;
                 ApprovalRequested?.Invoke(new ApprovalRequest(
                     msg.GetString("tool") ?? "",
                     msg.GetString("description"),
@@ -448,6 +469,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
                 return;
 
             case "plan_review":
+                _awaitingHumanResponse = true;
                 PlanReviewRequested?.Invoke(new PlanReviewRequest(msg.GetString("plan_content") ?? ""));
                 return;
 
@@ -472,8 +494,8 @@ public sealed class AgentConnectionService : IAsyncDisposable
         {
             while (!ct.IsCancellationRequested)
             {
-                await Task.Delay(10_000, ct).ConfigureAwait(false);
-                if ((DateTime.UtcNow - _lastActivityUtc).TotalMilliseconds > SilenceTimeoutMs)
+                await Task.Delay(_watchdogInterval, ct).ConfigureAwait(false);
+                if (!_awaitingHumanResponse && DateTime.UtcNow - _lastActivityUtc > _silenceTimeout)
                 {
                     HandleConnectionLoss(new TimeoutException("Connection went silent"));
                     return;
@@ -486,6 +508,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
     private void HandleConnectionLoss(Exception ex)
     {
         _authenticated = false;
+        _awaitingHumanResponse = false;
         _connectTcs?.TrySetException(ex);
         _inputTcs?.TrySetException(ex);
         _loopCts?.Cancel();
@@ -504,6 +527,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
     {
         _loopCts?.Cancel();
         _authenticated = false;
+        _awaitingHumanResponse = false;
 
         // Drain the receive loop so it cannot race with the socket close
         // below and spuriously call HandleConnectionLoss (which would

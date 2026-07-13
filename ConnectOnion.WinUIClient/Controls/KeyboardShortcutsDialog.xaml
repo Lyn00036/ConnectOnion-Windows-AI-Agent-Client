@@ -61,6 +61,7 @@
                         <ic:FluentIcon Icon="Search" IconVariant="Regular" IconSize="Size16"
                                        VerticalAlignment="Center" Foreground="{ThemeResource TextSecondaryBrush}" />
                         <TextBox x:Name="SearchBox" Grid.Column="1" TabIndex="0" BorderThickness="0" Background="Transparent"
+                                 AutomationProperties.AutomationId="ShortcutsSearchBox"
                                  PlaceholderText="Search shortcuts" TextChanged="SearchBox_TextChanged"
                                  AutomationProperties.Name="Search shortcuts" />
                     </Grid>

@@ -1,7 +1,7 @@
 # ConnectOnion Desktop — Test Plan & Test Cases
 
-> Version 1.0 · Branch `main` · Written against commit `1184bd4`
-> Every class, page, method, table, and constant cited below exists in this repository. Statements of the form "currently missing / does not exist" are verified findings, not assumptions.
+> Version 1.1 · Branch `main` · Implementation status refreshed 2026-07-13 against working tree based on commit `79872fe`
+> Every class, page, method, table, and constant cited below exists in this repository. Status markers describe the current working tree; planned files are explicitly labelled as planned.
 
 ---
 
@@ -97,7 +97,7 @@ Path: unpackaged → `%AppData%\ConnectOnion\connectonion.db`; packaged → MSIX
 
 **Tables**: `app_meta`, `agents`, `sessions`, `preferences`, `messages` (one row per rendered bubble, *not* a JSON blob), `message_attachments` (**metadata + local cache path only — never the base64 payload**), `executions`, `trace_events`, `identity_keys` (`private_seed` is a DPAPI-protected, base64-encoded blob).
 
-**⚠️ Critical fact: there is no migration framework.** `AppDatabase.CreateSchemaAsync` uses only `CREATE TABLE IF NOT EXISTS` plus a couple of `DROP INDEX IF EXISTS`. Adding, renaming, or removing a column has **no upgrade path whatsoever**. This is the single highest data risk in the project (see §10.4 and `DB-MIGRATION-*`).
+**Migration status:** `SchemaMigrator` versions the database with `PRAGMA user_version`, applies ordered forward migrations transactionally, and rejects databases created by a newer app version. Schema evolution remains high-risk, so every migration must add an old-snapshot integration test (see §10.4 and `DB-MIGRATION-*`).
 
 Write path: `ConversationRepository.UpsertMessagesAsync` is the **only** writer — incremental `INSERT ... ON CONFLICT(conversation_id, id) DO UPDATE`, with each written row's attachments replaced wholesale by a `message_id`-scoped delete + re-insert.
 
@@ -122,29 +122,34 @@ Write path: `ConversationRepository.UpsertMessagesAsync` is the **only** writer 
 
 ### 2.8 Existing tests
 
+**Current automated baseline (2026-07-13): 247 passing tests** — 66 protocol, 139 headless WinUI-client unit tests, and 42 SQLite/Windows integration tests. `ConnectOnion.Protocol.Conformance` is an additional executable CI gate and is not included in the xunit count.
+
 | Location | Content | Framework | In CI |
 |---|---|---|---|
 | `tests/ConnectOnion.Protocol.Tests/InputMessageBuilderTests.cs` | INPUT wire shape (text / images / files / mixed) | xunit 2.9.3 | ✅ |
 | `tests/ConnectOnion.Protocol.Tests/DataUrlCodecTests.cs` | data-URL encode/decode + malformed input | xunit | ✅ |
 | `tests/ConnectOnion.Protocol.Tests/AttachmentWireEventsTests.cs` | `agent_image` / `files_received` parsing | xunit | ✅ |
 | `tests/ConnectOnion.Protocol.Tests/ConversationRunRegistryTests.cs` | Run registry state machine | xunit | ✅ |
+| `tests/ConnectOnion.Protocol.Tests/AgentConnectionServiceTests.cs` | Handshake, input/output, ping/pong, timeout, watchdog pause, disconnect and disposal against `FakeAgentServer` | xunit | ✅ |
 | `tests/ConnectOnion.WinUIClient.UnitTests/Runtime/` | `ChatTurnProjection`, `ToolActivityProjector`, legacy tool-message migration | xunit | ✅ |
 | `tests/ConnectOnion.WinUIClient.UnitTests/Services/Notifications/` | `NotificationPolicy.Decide`, `NotificationCoordinator` (turn dedup, approval dedup, disconnect grace period), `DedupCache`, preview text | xunit | ✅ |
-| `tests/ConnectOnion.WinUIClient.UnitTests/Services/` | `ConversationCache` LRU eviction, keyboard-shortcut catalog | xunit | ✅ |
-| `tests/ConnectOnion.WinUIClient.UnitTests/Models/`, `ViewModels/`, `Common/` | `ChatMessage` interactive-card outcomes, notification models, shortcuts view model, grapheme-safe initials | xunit | ✅ |
-| `tests/ConnectOnion.IntegrationTests/Database/` | Schema + migrations, agent/session/conversation/usage repositories, `IdentityStore` reset detection | xunit | ✅ |
+| `tests/ConnectOnion.WinUIClient.UnitTests/Services/` | Attachment validation/encoding, `ConversationCache`, keyboard shortcuts, MIME resolution | xunit | ✅ |
+| `tests/ConnectOnion.WinUIClient.UnitTests/Models/`, `ViewModels/`, `Common/` | Attachment state/formatting, usage models, `ChatMessage`, preferences, notification models, shortcuts, grapheme-safe initials | xunit | ✅ |
+| `tests/ConnectOnion.WinUIClient.UnitTests/Accessibility/` | Critical `AutomationId` XAML contract and Help-menu source contract | xunit | ✅ |
+| `tests/ConnectOnion.IntegrationTests/Database/` | Schema + migrations, agent/session/conversation/usage/preferences repositories, `IdentityStore` reset detection, app version | xunit | ✅ |
+| `tests/ConnectOnion.IntegrationTests/Runtime/` | `AgentConnectionRegistry` concurrency, conversation isolation, removal, LRU idle eviction and cleanup | xunit | ✅ |
 | `ConnectOnion.Protocol.Conformance/Program.cs` | Signing / canonical JSON vs. Node reference | console asserts | ✅ **the signing gate** |
 
 > **Note on frameworks**: the brief asks for MSTest, but the repo already standardizes on **xunit**. This plan uses **xunit** for all headless testing and MSTest *only* for the WinUI Unit Test App (whose template mandates it). Rationale in §6.
 
 ### 2.9 Missing tests
 
-Closed since this plan was written: the protocol tests are in CI, the database layer has integration tests, and the WinUI client's headless surfaces (projection, notifications, caches, view models) are covered. What remains open:
+Closed since this plan was written: all headless test projects run in CI; database repositories and migrations have real-file integration coverage; `AgentConnectionService` now runs against `FakeAgentServer`; and 24 critical XAML controls have stable `AutomationId`s guarded by a static contract test. What remains open:
 
-- `AgentConnectionService` — the most complex class in the protocol library (timeouts, reconnect, dispose) — **has no unit tests**. It needs a fake `WebSocket` seam first.
-- Converters and `ChatMessageTemplateSelector` are untested.
-- **No UI automation infrastructure exists**, and anything requiring a XAML runtime (navigation, drag-and-drop, the find overlay) is therefore untested.
-- **No `AutomationId` anywhere** — 0 occurrences repo-wide; only 48 `AutomationProperties.Name`.
+- Converters and `ChatMessageTemplateSelector` still need a WinUI-capable test host.
+- `AgentSessionManager`, reconnect behavior, shutdown draining, and activation buffering need additional seams or integration coverage. `AgentConnectionRegistry` concurrency and idle eviction are covered.
+- **No WinUI Unit Test App or FlaUI project exists yet**, so navigation, drag-and-drop, focus behavior, rendered Markdown, tray behavior, and the 15 end-to-end flows remain manual.
+- Automation IDs cover the critical first slice, not the complete E2E locator set; remaining IDs are tracked in §13.1.
 
 ### 2.10 High-risk modules and flows
 
@@ -152,7 +157,7 @@ Ranked by *probability × blast radius*:
 
 | # | Module | Risk |
 |---|---|---|
-| 🔴 1 | `AppDatabase` schema evolution | No migration framework. Adding a column breaks old databases or silently loses data. CLAUDE.md's answer is "delete the `.db`" — unacceptable for a shipped build. |
+| 🔴 1 | `AppDatabase` schema evolution | A migration framework now exists, but forward-only schema changes can still cause irreversible data loss without old-snapshot and rollback-on-failure coverage. |
 | 🔴 2 | `AgentSessionManager` + `ConversationRunRegistry` | Cross-page ownership of connections and turns. In-flight runs during page close / conversation switch / app exit are a concurrency minefield. |
 | 🔴 3 | `ConversationRepository.UpsertMessagesAsync` | The single write path, incremental upsert plus attachment delete+insert. A bug here permanently corrupts user data. |
 | 🔴 4 | `ChatTurnProjection` | The single event→bubble mapping, **driven by both the live and the headless path**. Divergence between the two produces double-rendered bubbles. |
@@ -335,9 +340,9 @@ Note the test steps pass no `-p:Platform`. The solution build maps the conforman
 | **UT-CONN-006** | Service unreachable | C | **P0** | Point at a closed port | Fails fast; UI can retry | ✅ | xunit | `ConnectionTester`, `EndpointResolver` |
 | **UT-CONN-007** | User-initiated disconnect | C | P1 | Dispose | `ConnectionLost` is **not** raised (deliberate vs. abnormal must differ) | ✅ | xunit | `AgentConnectionService.DisposeAsync:543` |
 | **UT-CONN-008** | Dispose is idempotent | C | P1 | `DisposeAsync()` ×3 | No exception | ✅ | xunit | same |
-| **UT-CONN-009** | Rapid repeated Connect creates one socket | C | **P0** | Click connect 5× fast | Exactly one socket | ✅ | xunit | `AgentConnectionRegistry` |
-| **UT-CONN-010** | Per-conversation connection isolation | C | **P0** | Two conversations connect | Independent sockets; dropping one does not affect the other | ✅ | xunit | `AgentConnectionRegistry` |
-| **UT-CONN-011** | Idle socket eviction | C | P1 | Conversation idle with no active run | `TrimIdleAsync` releases the socket | ✅ | xunit | `AgentSessionManager` (~line 247) |
+| **UT-CONN-009** | Rapid repeated Connect creates one socket | C | **P0** | Call `GetOrCreate` concurrently 20× | Exactly one connection instance and one factory invocation | ✅ implemented | xunit | `AgentConnectionRegistryTests.GetOrCreate_ConcurrentCallsForSameConversation_CreateOneConnection` |
+| **UT-CONN-010** | Per-conversation connection isolation | C | **P0** | Create two conversation connections; remove one | Independent instances; removing one leaves the other registered | ✅ implemented | xunit | `AgentConnectionRegistryTests` |
+| **UT-CONN-011** | Idle socket eviction | C | P1 | Create more than five idle connections with a controlled clock | Least-recently-used idle sockets are released; busy sockets are spared | ✅ implemented | xunit | `AgentConnectionRegistryTests.TrimIdleAsync_*` |
 | **UT-CONN-012** | Switch agent while connecting | C | P1 | Navigate away mid-connect | Old connection cleaned up; no leak | ✅ | xunit | `ChatViewModel.Cleanup:63` |
 | **E2E-CONN-001** | Manual reconnect after a drop | E | **P0** | See E2E-005 | — | ⚠️ | FlaUI | `ChatViewModel.ReconnectAsync:472` |
 
@@ -346,7 +351,7 @@ Note the test steps pass no `-p:Platform`. The solution build maps the conforman
 | ID | Title | Layer | Pri | Steps | Expected | Auto | Framework | Code location |
 |---|---|---|---|---|---|---|---|---|
 | **DB-SCHEMA-001** | Schema creation is idempotent | D | **P0** | Init ×3 | No error; schema unchanged | ✅ | xunit | `CreateSchemaAsync` |
-| **DB-MIGRATION-001** | **An old DB (v0 snapshot) opens under the current build** | D | **P0** | Launch current code against `db/v0.db` | No crash, no data loss | ✅ | xunit | `AppDatabase` — 🔴 **There is no migration framework. Today this can only assert "same schema". The day someone adds a column, this test goes red — which is exactly its purpose.** |
+| **DB-MIGRATION-001** | **An old DB (v0 snapshot) opens under the current build** | D | **P0** | Initialize current code against the legacy schema fixture | No crash, no data loss; `user_version` advances | ✅ | xunit | `SchemaMigrationTests` exercises the real `SchemaMigrator` against a temporary SQLite file. |
 | **DB-MIGRATION-002** | A DB missing a column fails loudly | D | P1 | Hand-craft a DB with a column removed | Explicit error, not silent data loss | ✅ | xunit | same |
 | **DB-MSG-001** | Incremental upsert touches only the given rows | D | **P0** | 100 existing rows, upsert 3 | Only 3 rows written; others' `created_at` unchanged | ✅ | xunit | `ConversationRepository.UpsertMessagesAsync` |
 | **DB-MSG-002** | `created_at` survives an update | D | **P0** | Upsert an existing id | `created_at` not overwritten (it is absent from the DO UPDATE list) | ✅ | xunit | same |
@@ -509,7 +514,7 @@ Note the test steps pass no `-p:Platform`. The solution build maps the conforman
 
 | ID | Title | Layer | Pri | Expected | Auto |
 |---|---|---|---|---|---|
-| **A11Y-ID-001** | **Key controls carry an `AutomationId`** | B | **P0** | Per the table in §13.1 | ✅ | 🔴 **0 exist today — this is the blocking prerequisite for all UI automation** |
+| **A11Y-ID-001** | **Key controls carry an `AutomationId`** | B | **P0** | Per the table in §13.1 | ✅ partial | 24 critical IDs exist and are guarded by `AutomationContractTests`; complete the remaining E2E locators before adding FlaUI |
 | **A11Y-NAME-001** | Icon-only buttons carry `AutomationProperties.Name` | B | **P0** | 48 exist; all icon buttons must be covered | ✅ static scan |
 | **A11Y-NAME-002** | Interactive card headers announce their state | B | P1 | `InteractiveAccessibilityName` includes eyebrow, title, outcome, expanded/collapsed | ⚠️ |
 | **A11Y-NAME-003** | Keycaps are not double-announced | B | P2 | Keycaps are `AccessibilityView=Raw`; the group name carries the full combo | ⚠️ | `KeyboardShortcutsDialog.xaml` |
@@ -560,29 +565,31 @@ Note the test steps pass no `-p:Platform`. The solution build maps the conforman
 
 ## 13. UI Automation Standards
 
-### 13.1 `AutomationId`s that must be added (currently zero exist)
+### 13.1 `AutomationId` implementation status
 
-This is prerequisite task **INFRA-1**. Proposed names, matching the E2E flows above:
+The first **INFRA-1** slice is complete: 24 IDs exist and `Accessibility/AutomationContractTests.cs` prevents accidental removal. The remaining rows are required before the corresponding FlaUI flows can be implemented.
 
-| AutomationId | Location |
-|---|---|
-| `MainWindow` | `MainWindow.xaml` root |
-| `AgentList` | `ShellSidebar` agent `ItemsRepeater` |
-| `AddAgentButton` | `ShellSidebar.xaml` |
-| `AgentNameInput` / `AgentAddressInput` / `AgentDirectUrlInput` | `AddAgentForm.xaml` |
-| `TestConnectionButton` / `SubmitAgentButton` | `AddAgentForm.xaml` |
-| `ConnectAgentButton` / `DisconnectAgentButton` / `ReconnectButton` | `ChatPage.xaml` |
-| `NewConversationButton` | `ShellSidebar.xaml` |
-| `ConversationList` | `ShellSidebar` session `ItemsRepeater` |
-| `MessageList` | `ChatPage.xaml` message list |
-| `MessageInput` / `SendMessageButton` / `StopResponseButton` | `ChatComposer.xaml` |
-| `ConnectionStatus` | `ChatPage.xaml` status text |
-| `SettingsButton` | `ShellSidebar.xaml` |
-| `HelpMenuButton` | `MainWindow.xaml` `HelpMenuBarItem` |
-| `AboutMenuItem` / `ConnectOnionDocsMenuItem` / `KeyboardShortcutsMenuItem` | `MainWindow.xaml` Help menu |
-| `SettingsOverlay` / `AboutOverlay` / `KeyboardShortcutsOverlay` | the three overlay roots |
-| `AboutOkButton` / `ShortcutsSearchBox` | inside their overlays |
-| `InteractiveCardHeader` / `ApproveOnceButton` / `RejectButton` | `ChatPage.xaml` interactive cards |
+| AutomationId | Location | Status |
+|---|---|---|
+| `MainWindow` | `MainWindow.xaml` root | ✅ |
+| `AgentList` | `ShellSidebar` agent `ItemsRepeater` | ✅ |
+| `AddAgentButton` | `ShellSidebar.xaml` | ✅ |
+| `AgentAddressInput` / `AgentDirectUrlInput` | `AddAgentForm.xaml` | ✅ |
+| `TestConnectionButton` / `SubmitAgentButton` | `AddAgentForm.xaml` | ✅ |
+| `MessageList` | `ChatPage.xaml` message list | ✅ |
+| `MessageInput` / `SendMessageButton` / `StopResponseButton` | `ChatComposer.xaml` | ✅ |
+| `ConnectionStatus` | `ChatPage.xaml` status text | ✅ |
+| `SettingsButton` | `ShellSidebar.xaml` | ✅ |
+| `HelpMenuButton` | `MainWindow.xaml` `HelpMenuBarItem` | ✅ |
+| `AboutMenuItem` / `ConnectOnionDocsMenuItem` / `KeyboardShortcutsMenuItem` | `MainWindow.xaml` Help menu | ✅ |
+| `SettingsOverlay` / `AboutOverlay` / `KeyboardShortcutsOverlay` | the three overlay roots | ✅ |
+| `AboutOkButton` / `ShortcutsSearchBox` | inside their overlays | ✅ |
+| `ApproveOnceButton` / `RejectButton` | `ChatPage.xaml` interactive cards | ✅ |
+| `ConnectAgentButton` / `DisconnectAgentButton` / `ReconnectButton` | connection actions in `ChatPage.xaml` | ⏳ pending |
+| `NewConversationButton` / `ConversationList` | conversation navigation in `ShellSidebar.xaml` | ⏳ pending |
+| `InteractiveCardHeader` | interactive-card expander/header | ⏳ pending |
+
+`AgentNameInput` was removed from the locator contract because the current add-agent form has no agent-name field.
 
 ### 13.2 Hard prohibitions
 
@@ -700,7 +707,7 @@ All of the following must hold before release:
 In addition to §18:
 
 - [x] Every test project is wired into the `.sln` **and** CI
-- [ ] All new test projects run in CI on every PR
+- [x] All current test projects run in CI on every push and pull request (66 protocol + 139 client unit + 42 integration)
 - [ ] Coverage: `ConnectOnion.Protocol` ≥ 80%; `Services/Runtime` + `Data` ≥ 70%
 - [ ] Performance baselines met: `PERF-START-001`, `PERF-MSG-001`
 - [ ] A manual pass over Light/Dark × 100%/150%/200% DPI
@@ -710,7 +717,7 @@ In addition to §18:
 
 ## 20. Test Directory Structure
 
-Production `.csproj` files sit at the repo root; **every test project lives under `tests/`**:
+Production `.csproj` files sit at the repo root; **every implemented automated test project lives under `tests/`**. The tree below is the target layout: the three existing xunit projects are implemented, while `WinUITests`, `UITests`, and `PerfTests` are planned phase-3 projects rather than current files.
 
 ```
 connectonion-desktop/
@@ -835,8 +842,8 @@ connectonion-desktop/
 | ID | Task | Why |
 |---|---|---|
 | ~~**INFRA-0**~~ | ~~Add `ConnectOnion.Protocol.Tests` to the `.sln` and CI~~ | ✅ **Done** — it now lives at `tests/ConnectOnion.Protocol.Tests` and runs in CI alongside the two new suites |
-| **INFRA-1** | Add the `AutomationId`s from §13.1 | 🔴 Zero exist → UI automation cannot begin |
-| **INFRA-2** | Build `FakeAgentServer` (HttpListener + WebSocket) | Foundation for every connection and streaming test |
+| **INFRA-1** | Add the `AutomationId`s from §13.1 | 🟡 **Partial** — 24 critical IDs are present and contract-tested; connection/conversation/card locators remain |
+| ~~**INFRA-2**~~ | ~~Build `FakeAgentServer` (HttpListener + WebSocket)~~ | ✅ **Done** — protocol connection tests cover handshake, timeout, watchdog, responses and disposal |
 | ~~**INFRA-3**~~ | ~~Build a temp-DB fixture (isolated from `%AppData%`)~~ | ✅ **Done** — `tests/ConnectOnion.IntegrationTests/Database/TempDatabaseFixture.cs` |
 | ~~**INFRA-4**~~ | ~~Extract `IUriLauncher` (wrapping `Launcher.LaunchUriAsync`)~~ | ✅ **Done** — `Services/UriLauncher.cs`, injectable via `AppServices.UriLauncher` |
 | **INFRA-5** | Extract `PendingActivationBuffer` from static `App` | Otherwise the cold-start activation race cannot be tested |
@@ -855,7 +862,7 @@ Database + fake server + `AgentSessionManager`. **This phase locks down data saf
 
 ### 21.4 Phase 3 — UI automation (3–4 weeks)
 
-FlaUI + the 15 E2E flows. Blocked on INFRA-1.
+FlaUI + the 15 E2E flows. Blocked on completing INFRA-1 and creating a launch/isolation fixture. These tests must not be run as part of ordinary headless development unless application launch is explicitly requested.
 
 ### 21.5 Keep manual for now
 
@@ -871,7 +878,7 @@ Multi-monitor, DPI switching, high contrast, Narrator reading order, Focus Assis
 
 ### 21.7 Biggest infrastructure gap today
 
-See §21.0. The CI gap is closed — headless tests now run on every push. The two remaining blockers are **`FakeAgentServer`** (INFRA-2), without which nothing about connection, streaming, or recovery can be tested, and **`AutomationId`s** (INFRA-1), without which UI automation cannot begin at all.
+See §21.0. CI, the fake server, temp databases, connection registry tests, and the first critical AutomationId slice are complete. The biggest gap is now the **WinUI/FlaUI test host and process-isolation fixture**. Headless coverage can continue independently for session lifecycle and activation buffering.
 
 ### 21.8 The first 20 tests to write
 
@@ -887,18 +894,18 @@ Ranked by risk ÷ cost — all headless, all writable in a day:
 | ~~6~~ | ~~`UT-NOTIF-001…006`~~ | ✅ Done — `NotificationPolicyTests` + `NotificationCoordinatorTests` |
 | 7 | `UT-CHAT-003` | `CanSend` truth table |
 | 8 | `UT-TOOL-004` | `EventKind` → template mapping |
-| 9 | `UT-CONN-004` | `ask_user` does not trip the watchdog — **needs INFRA-2** |
+| ~~9~~ | ~~`UT-CONN-004`~~ | ✅ Done — `AgentConnectionServiceTests` verifies human-response waits pause the watchdog |
 | ~~10~~ | ~~`UT-STREAM-003`~~ | ✅ Done — `ChatTurnProjectionTests.AppendFinalReply_*` |
 | 11 | `UT-STREAM-011/012` | Interactive answers persist; unanswered sealed as "No selection" |
 | 12 | `UT-SESSION-004` | Active-run conversations bypass the cache |
-| 13 | `UT-ABOUT-002` | Version is not hard-coded |
-| 14 | `UT-KBD-001` | Shortcut catalog matches real handlers |
+| ~~13~~ | ~~`UT-ABOUT-002`~~ | ✅ Done — `AppVersionServiceTests` verifies assembly metadata and fallback behavior |
+| ~~14~~ | ~~`UT-KBD-001`~~ | ✅ Done — shortcut catalog and source-contract tests cover catalog/handler agreement |
 | 15 | `UI-MD-007` | Highlight match counting (the fallback path must count too) |
-| 16 | `DB-SCHEMA-001` | Schema creation is idempotent |
-| 17 | `DB-ID-001` | Identity seed is not stored in plaintext |
+| ~~16~~ | ~~`DB-SCHEMA-001`~~ | ✅ Done — `AppDatabaseSchemaTests` verifies idempotent initialization |
+| ~~17~~ | ~~`DB-ID-001`~~ | ✅ Done — `IdentityStoreTests` verifies DPAPI-protected persistence |
 | 18 | `UT-CHAT-001/002` | Empty and whitespace-only messages |
-| 19 | `UT-CONN-009` | Repeated connect yields one socket |
-| 20 | `DB-MIGRATION-001` | Old-DB snapshot opens (**it will save you the day someone adds a column**) |
+| ~~19~~ | ~~`UT-CONN-009`~~ | ✅ Done — concurrent `GetOrCreate` calls invoke the connection factory exactly once |
+| ~~20~~ | ~~`DB-MIGRATION-001`~~ | ✅ Done — migration tests open and upgrade legacy schema snapshots |
 
 ---
 

@@ -26,18 +26,32 @@ public sealed class AgentConnectionRegistry
     /// conversations are never counted against this — they are always kept.</summary>
     private const int MaxIdleConnections = 5;
 
-    private readonly HttpClient _http;
+    private readonly Func<AgentConfig, AgentConnectionService> _connectionFactory;
+    private readonly Func<long> _clock;
     private readonly ConcurrentDictionary<string, Lazy<AgentConnectionService>> _connections = new();
     // Last-touched tick per conversation, so idle eviction can drop the least recently used.
     private readonly ConcurrentDictionary<string, long> _lastUsed = new();
 
-    public AgentConnectionRegistry(HttpClient http) => _http = http;
+    public AgentConnectionRegistry(
+        HttpClient http,
+        Func<AgentConfig, AgentConnectionService>? connectionFactory = null,
+        Func<long>? clock = null)
+    {
+        ArgumentNullException.ThrowIfNull(http);
+        _connectionFactory = connectionFactory
+            ?? (agent => new AgentConnectionService(
+                agent.Address,
+                agent.DirectUrl,
+                IdentityStore.EnsureIdentity(),
+                http));
+        _clock = clock ?? (() => Environment.TickCount64);
+    }
 
     public AgentConnectionService GetOrCreate(string conversationId, AgentConfig agent)
     {
-        _lastUsed[conversationId] = Environment.TickCount64;
+        _lastUsed[conversationId] = _clock();
         return _connections.GetOrAdd(conversationId,
-            _ => new Lazy<AgentConnectionService>(() => Create(agent))).Value;
+            _ => new Lazy<AgentConnectionService>(() => _connectionFactory(agent))).Value;
     }
 
     /// <summary>The existing socket for a conversation (for interactive-turn responses and
@@ -46,7 +60,7 @@ public sealed class AgentConnectionRegistry
     {
         if (_connections.TryGetValue(conversationId, out var lazy) && lazy.IsValueCreated)
         {
-            _lastUsed[conversationId] = Environment.TickCount64;
+            _lastUsed[conversationId] = _clock();
             return lazy.Value;
         }
         return null;
@@ -90,7 +104,4 @@ public sealed class AgentConnectionRegistry
         _connections.Clear();
         _lastUsed.Clear();
     }
-
-    private AgentConnectionService Create(AgentConfig agent)
-        => new(agent.Address, agent.DirectUrl, IdentityStore.EnsureIdentity(), _http);
 }

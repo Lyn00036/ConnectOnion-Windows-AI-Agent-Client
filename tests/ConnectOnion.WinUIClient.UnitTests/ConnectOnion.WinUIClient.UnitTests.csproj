@@ -35,6 +35,9 @@
     <Compile Include="..\..\ConnectOnion.WinUIClient\Models\KeyboardShortcutItem.cs" Link="Production\Models\KeyboardShortcutItem.cs" />
     <Compile Include="..\..\ConnectOnion.WinUIClient\Models\ToolActivity.cs" Link="Production\Models\ToolActivity.cs" />
     <Compile Include="..\..\ConnectOnion.WinUIClient\Models\SessionSummary.cs" Link="Production\Models\SessionSummary.cs" />
+    <Compile Include="..\..\ConnectOnion.WinUIClient\Models\PendingAttachment.cs" Link="Production\Models\PendingAttachment.cs" />
+    <Compile Include="..\..\ConnectOnion.WinUIClient\Models\PreferencesSnapshot.cs" Link="Production\Models\PreferencesSnapshot.cs" />
+    <Compile Include="..\..\ConnectOnion.WinUIClient\Models\UsageModels.cs" Link="Production\Models\UsageModels.cs" />
     <Compile Include="..\..\ConnectOnion.WinUIClient\Models\Notifications\NotificationDecision.cs" Link="Production\Models\Notifications\NotificationDecision.cs" />
     <Compile Include="..\..\ConnectOnion.WinUIClient\Models\Notifications\NotificationRequest.cs" Link="Production\Models\Notifications\NotificationRequest.cs" />
     <Compile Include="..\..\ConnectOnion.WinUIClient\Models\Notifications\NotificationSettings.cs" Link="Production\Models\Notifications\NotificationSettings.cs" />
@@ -45,10 +48,14 @@
     <Compile Include="..\..\ConnectOnion.WinUIClient\Services\Notifications\NotificationPolicy.cs" Link="Production\Services\Notifications\NotificationPolicy.cs" />
     <Compile Include="..\..\ConnectOnion.WinUIClient\Services\Notifications\NotificationText.cs" Link="Production\Services\Notifications\NotificationText.cs" />
     <Compile Include="..\..\ConnectOnion.WinUIClient\Services\ConversationCache.cs" Link="Production\Services\ConversationCache.cs" />
+    <Compile Include="..\..\ConnectOnion.WinUIClient\Services\Attachments\AttachmentEncoder.cs" Link="Production\Services\Attachments\AttachmentEncoder.cs" />
+    <Compile Include="..\..\ConnectOnion.WinUIClient\Services\Attachments\AttachmentValidationService.cs" Link="Production\Services\Attachments\AttachmentValidationService.cs" />
     <Compile Include="..\..\ConnectOnion.WinUIClient\Services\KeyboardShortcutCatalog.cs" Link="Production\Services\KeyboardShortcutCatalog.cs" />
+    <Compile Include="..\..\ConnectOnion.WinUIClient\Services\MimeTypeResolver.cs" Link="Production\Services\MimeTypeResolver.cs" />
     <Compile Include="..\..\ConnectOnion.WinUIClient\Services\Runtime\ChatTurnProjection.cs" Link="Production\Services\Runtime\ChatTurnProjection.cs" />
     <Compile Include="..\..\ConnectOnion.WinUIClient\Services\Runtime\ToolActivityMigration.cs" Link="Production\Services\Runtime\ToolActivityMigration.cs" />
     <Compile Include="..\..\ConnectOnion.WinUIClient\Services\Runtime\ToolActivityProjector.cs" Link="Production\Services\Runtime\ToolActivityProjector.cs" />
+    <Compile Include="..\..\ConnectOnion.WinUIClient\Services\Runtime\UsageProjector.cs" Link="Production\Services\Runtime\UsageProjector.cs" />
     <Compile Include="..\..\ConnectOnion.WinUIClient\ViewModels\KeyboardShortcutsViewModel.cs" Link="Production\ViewModels\KeyboardShortcutsViewModel.cs" />
   </ItemGroup>
 </Project>

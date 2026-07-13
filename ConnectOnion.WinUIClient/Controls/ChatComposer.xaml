@@ -166,6 +166,7 @@
                 </Grid.RowDefinitions>
 
                 <TextBox x:Name="InputBox"
+                         AutomationProperties.AutomationId="MessageInput"
                          Grid.Row="0"
                          MinHeight="48"
                          MaxHeight="160"
@@ -282,6 +283,7 @@
                     </Button>
 
                     <Button x:Name="StopSpeechButton"
+                            AutomationProperties.AutomationId="StopResponseButton"
                             Grid.Column="3"
                             Width="36"
                             Height="36"
@@ -302,6 +304,7 @@
                     </Button>
 
                     <Button x:Name="SendButton"
+                            AutomationProperties.AutomationId="SendMessageButton"
                             Grid.Column="4"
                             Width="36"
                             Height="36"

@@ -90,6 +90,7 @@
                     </Grid.RowDefinitions>
                     <Border Height="1" Background="{ThemeResource DividerBrush}" />
                     <Button x:Name="OkButton" Grid.Row="1" TabIndex="0"
+                            AutomationProperties.AutomationId="AboutOkButton"
                             Style="{StaticResource AccentButtonStyle}"
                             Content="OK" MinWidth="88" Margin="16,14,16,16"
                             HorizontalAlignment="Right" Click="OkButton_Click"

@@ -45,10 +45,12 @@
             </Grid>
 
             <TextBox x:Name="AddressBox"
+                     AutomationProperties.AutomationId="AgentAddressInput"
                      PlaceholderText="0x address (optional)"
                      TextChanged="AddAgentField_TextChanged"
                      MinHeight="38" />
             <TextBox x:Name="DirectUrlBox"
+                     AutomationProperties.AutomationId="AgentDirectUrlInput"
                      PlaceholderText="Optional direct URL"
                      TextChanged="AddAgentField_TextChanged"
                      MinHeight="38" />
@@ -62,11 +64,13 @@
 
                 <Button Grid.Column="0"
                         x:Name="TestButton"
+                        AutomationProperties.AutomationId="TestConnectionButton"
                         Content="Test connection"
                         Click="TestConnection_Click"
                         HorizontalAlignment="Stretch" />
                 <Button Grid.Column="1"
                         x:Name="SubmitButton"
+                        AutomationProperties.AutomationId="SubmitAgentButton"
                         Content="{Binding SubmitLabel, ElementName=Root}"
                         Style="{StaticResource AccentButtonStyle}"
                         IsEnabled="False"
