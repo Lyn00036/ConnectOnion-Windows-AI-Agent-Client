@@ -1,6 +1,36 @@
 # ConnectOnion Desktop WinUI3 Native Migration Plan
 
-This document explains how to migrate the current `frontend` project from `React + Vite + TypeScript + Electron` to a fully native Windows application built with `C# + .NET + WinUI3`.
+> **Status: COMPLETE — this document is a historical record, not a guide to the current codebase.**
+>
+> The migration described below was carried out and finished. Steps 1–10 are done, the protocol port
+> passes its conformance gate against the TypeScript reference signer, and the WinUI app is the only
+> actively developed client.
+>
+> **For how the application is actually built today, read [`CLAUDE.md`](../CLAUDE.md)** — it is kept
+> current; this file is not. The plan is retained because it records *why* the migration was
+> sequenced the way it was, which is still useful context when reading the result.
+>
+> The plan's own project-layout and storage proposals were superseded during implementation. The
+> table below reconciles them so nobody follows a stale instruction by accident.
+
+## As Built: Where the Result Diverges From This Plan
+
+| Topic | This plan proposed | What was actually built | Why |
+|---|---|---|---|
+| Project location | `windows_desktop/ConnectOnion.Desktop/` | `ConnectOnion.WinUIClient/` at the repo root | Sibling projects at the root keep the `.csproj` relative references flat |
+| Solution layout | One app project | Five projects: `ConnectOnion.WinUIClient`, `ConnectOnion.Protocol`, `.Protocol.Tests`, `.Protocol.Conformance`, `.Protocol.LiveTest` | The protocol was extracted into a library with **zero WinUI dependency** so it is unit-testable headless — the single most valuable structural decision of the migration |
+| Local persistence (Step 3) | JSON files (`agents.json`, `sessions.json`, …), "do not introduce SQLite at the beginning" | **SQLite** (`%AppData%\ConnectOnion\connectonion.db`, WAL, FK on) from early on | Per-bubble message rows and incremental upserts are not expressible as whole-file JSON rewrites without O(conversation) cost per turn |
+| Schema evolution | not addressed | `PRAGMA user_version` + `Data/SchemaMigrator.cs` | Added after the fact; see [`TEST_PLAN.md`](./TEST_PLAN.md) Appendix A |
+| Navigation (Step 4) | `NavigationView` + `Frame` | Custom `ShellSidebar` (`ItemsRepeater`) + `Frame`, custom title bar | `NavigationView` could not express the agent → session tree |
+| Pages | `ChatPage`, `AgentsPage`, `SessionsPage`, `SettingsPage` | `HomePage`, `ChatPage`, `AgentDetailPage`, `SessionsPage`, `SettingsPage` | "Agents" became a home surface plus a per-agent detail page |
+| Modals | (unspecified) | In-window overlays (`SettingsOverlay`, `KeyboardShortcutsDialog`, `AboutOverlay`) — **not** `ContentDialog`, **not** separate `Window`s | Keeps the shell single-window and the decision visible in chat history |
+| Connection ownership | per-page `AgentConnectionService` | App-level `AgentSessionManager` + `ConversationRunRegistry` | A reply must survive page close, conversation switch, and tray minimize |
+| MVVM | (unspecified) | Hand-rolled `ObservableObject` / `RelayCommand`; no CommunityToolkit.Mvvm, no DI container | Kept the dependency surface small |
+| Packaging (Step 10) | MSIX installer | MSIX **configured but not wired into CI** | Still open — see "Not implemented yet" in `CLAUDE.md` |
+
+Everything below this line is the original plan as written before the work started.
+
+---
 
 ## Current Project State
 

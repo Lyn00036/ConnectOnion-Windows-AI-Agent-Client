@@ -1,7 +1,48 @@
 # 99 - ConnectOnion Windows Desktop Client: Native Access to AI Agents
 
-**Client:** Aaron Xie  
+**Client:** Aaron Xie
 **Allowed groups:** 3 groups
+
+> **This is the original project brief, reproduced verbatim.** It is the requirements source, not a
+> description of what was built — do not edit the body to match the implementation. The traceability
+> table immediately below maps each stated requirement to where it is satisfied in this repository,
+> and is the honest current status (including what is *not* done).
+
+## Requirement → Implementation Traceability
+
+### Core functional requirements
+
+| # | Requirement | Status | Where |
+|---|---|---|---|
+| 1 | Agent connection, status display, graceful failure | ✅ | `ConnectOnion.Protocol/AgentConnectionService.cs` (WebSocket state machine, 30s connect timeout, 60s silence watchdog), `EndpointResolver` (relay lookup + direct probe + `/info`), `ConnectionTester`, `AgentPresenceService`; offline/retry surfaces in `ChatViewModel` + `OfflineNoticeBar` |
+| 2 | Desktop chat interaction | ✅ | `Views/ChatPage.xaml`, `Controls/ChatComposer`, per-bubble `DataTemplate`s dispatched by `Common/ChatMessageTemplateSelector` |
+| 3 | Streaming responses / progress feedback | ✅ | `Services/Runtime/ChatTurnProjection.cs` maps `thinking` / `tool_call` / `tool_result` / `assistant` / … to bubbles; `Controls/ToolActivityView` renders the per-turn tool timeline |
+| 4 | Conversation & session management | ✅ | `SessionRepository`, `ConversationRepository` (SQLite), agent → session tree in `Controls/ShellSidebar` |
+| 5 | Agent configuration management | ✅ | `AgentRepository`, `Controls/AddAgentForm`, `Views/AgentDetailPage` |
+| 5b | Secure handling of credentials | ✅ | `Data/IdentityStore.cs` — the Ed25519 seed is DPAPI-protected (`CurrentUser`) at rest, never plaintext; an unreadable identity is now reported to the user rather than silently replaced |
+| 6 | Windows desktop UX (layout, keyboard, long responses, settings, light/dark) | ✅ | Custom title bar + `ShellSidebar`; `Services/KeyboardShortcutCatalog` + `KeyboardShortcutsDialog`; `MarkdownTextBlock` for long responses; `SettingsOverlay`; full Light/Dark token system in `Styles/Colors.xaml` + `Styles/Brushes.xaml` |
+| 7 | Reliability: interruption, timeout, failure, invalid config, reconnect | ✅ | Timeouts and `ConnectionLost` in `AgentConnectionService`; failed/cancelled runs persist their partial output plus an error bubble (`AgentSessionManager.PersistFailedAsync`); manual reconnect via `ChatViewModel.ReconnectAsync` |
+| 8 | Testing and documentation | ⚠️ **Partial** | Docs: `CLAUDE.md`, this `docs/` folder. Tests: `ConnectOnion.Protocol.Conformance` is the CI gate; `ConnectOnion.Protocol.Tests` (xunit) exists but is **not yet in CI**, and the WinUI layer has **no automated tests yet**. The full plan and backlog are in [`TEST_PLAN.md`](./TEST_PLAN.md) |
+
+### Optional stretch goals
+
+| Goal | Status | Where |
+|---|---|---|
+| System tray integration | ✅ | `MainWindow.Tray.cs`, `MainWindow.Tray.Interop.cs` |
+| Desktop notifications for completed tasks | ✅ | `Services/Notifications/` — `NotificationCoordinator` + `NotificationPolicy` decide suppress / in-app toast / system toast; clicking one routes to the right conversation, including from a cold start |
+| Multiple-agent workspace management | ✅ | Multiple agents, each with its own conversations; per-conversation connections isolated by `AgentConnectionRegistry` |
+| File drag-and-drop | ✅ | `Services/Attachments/AttachmentDropService.cs`; `Controls/ChatComposer` is the drop target |
+| Keyboard shortcuts | ✅ | `MainWindow.{File,Edit,View,Help}Menu.cs`; the catalog is surfaced in-app via Ctrl+Shift+/ |
+| Installer packaging / release-ready build | ⚠️ **Not done** | MSIX is configured in the `.csproj` but is **not wired into CI**, and there is no release automation |
+
+### Known limitations (as of this commit)
+
+- No automated test coverage of the WinUI layer; `ConnectOnion.Protocol.Tests` is not in CI (see `TEST_PLAN.md` §21.0).
+- No installer / release pipeline.
+- No `AutomationId`s in the XAML, so UI automation cannot be written yet.
+- `frontend/` (the legacy Electron client) is retained only as a behavioral reference and is not maintained.
+
+---
 
 ## Project background & goals
 

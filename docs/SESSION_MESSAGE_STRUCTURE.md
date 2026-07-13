@@ -1,7 +1,33 @@
 # ConnectOnion Conversation Interaction and Session Message Structure
 
-> This document summarizes the interaction model based on the current ConnectOnion WebSocket Protocol and Session Reconnect documentation, together with the actual `sessions` JSON data discussed in this conversation.  
-> It is tailored to a WinUI 3 + C# + SQLite desktop client architecture.
+> This document summarizes the interaction model based on the ConnectOnion WebSocket Protocol and
+> Session Reconnect documentation, together with real `sessions` JSON data captured from a live agent.
+> It is tailored to a WinUI 3 + C# + SQLite desktop client.
+
+## How to read this document (status)
+
+Sections **1–31 describe the wire protocol** — what the agent actually sends and expects. They remain
+the reference for anything touching `CONNECT` / `INPUT` / `OUTPUT`, streaming events, `session_id`,
+reconnect, and `last_msg_id`. Treat them as authoritative.
+
+Sections **32–39 were design *recommendations*** written before the client existed (suggested DTO
+layers, SQLite schema, client mapping, state machine). **The implementation has since diverged from
+them.** Where they disagree with the code, the code wins. Concretely:
+
+| Recommendation here | What the code actually does |
+|---|---|
+| §32–34 typed request/response DTO classes | `ConnectOnion.Protocol` uses `WireMessage` (a thin `JsonElement` wrapper) for inbound and plain `Dictionary<string, object?>` for outbound. **No attribute-based DTOs, no source-gen context.** Follow that convention for new message types. |
+| §35 recommended SQLite schema | The real schema lives in `AppDatabase.CreateSchemaAsync`, versioned by `PRAGMA user_version` via `Data/SchemaMigrator.cs`. Notably `messages` is **one row per rendered bubble**, not a session JSON blob, and `message_attachments` stores metadata + a local cache path only — **never a base64 payload**. |
+| §36 recommended client mapping | The single stream-event → bubble mapping is `Services/Runtime/ChatTurnProjection.cs`, driven identically by the live view model and the headless persist path. Do not add event handling anywhere else. |
+| §37 recommended WinUI state machine | Connections and in-flight turns are owned app-level by `AgentSessionManager` + `ConversationRunRegistry`, **not by a page**. A turn survives page close, conversation switch, and tray minimize. |
+
+Where the protocol is implemented in this repo:
+
+- Connection state machine, timeouts (`ConnectTimeoutMs = 30_000`, `SilenceTimeoutMs = 60_000`) — `ConnectOnion.Protocol/AgentConnectionService.cs`
+- `INPUT` frame construction (text / images / files / mixed) — `ConnectOnion.Protocol/InputMessageBuilder.cs`
+- Interactive turns (`ask_user`, `approval_needed`, `plan_review`) — `ConnectOnion.Protocol/AgentInteractiveParsers.cs`
+- Attachment wire events + data-URL codec — `ConnectOnion.Protocol/AttachmentModels.cs`
+- Ed25519 / canonical-JSON signing — `AgentIdentity.cs`, `CanonicalJson.cs`, verified byte-for-byte against the Node reference signer by `ConnectOnion.Protocol.Conformance`
 
 ---
 

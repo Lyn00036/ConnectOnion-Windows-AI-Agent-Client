@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ConnectOnion Desktop is a native Windows client (WinUI 3, C#, .NET 10) for chatting with ConnectOnion-compatible agents over WebSocket. `frontend/` is the **legacy** Electron + React + TypeScript implementation, kept only as reference for prior UX/business behavior — do not build new features there unless explicitly asked; all active work happens in the WinUI projects at the repo root.
 
+Prose docs live in `docs/` (see `docs/README.md`): the wire protocol (`SESSION_MESSAGE_STRUCTURE.md`), the test plan and backlog (`TEST_PLAN.md`), the requirements brief, and a historical record of the Electron → WinUI migration. **This file is the authoritative description of the architecture — where a document in `docs/` disagrees with it, this one is right.**
+
 ## Solution Layout
 
 Five sibling `.csproj` projects at the repo root. Only three are wired into the `.sln` — keep this in mind when running `dotnet build`/`dotnet test` against the solution vs. a project directly:
@@ -54,9 +56,13 @@ There is no lint/format command configured for this repo.
 
 ## Local data
 
-SQLite at `%AppData%\ConnectOnion\connectonion.db` when run unpackaged (`dotnet run`), or under `%LOCALAPPDATA%\Packages\<msix-identity>\LocalState\ConnectOnion\` when run packaged/deployed from Visual Studio. Schema is created idempotently (`CREATE TABLE IF NOT EXISTS` in `AppDatabase.CreateSchemaAsync`, no migration framework) — to reset state during development, just delete the `.db` file and relaunch. WAL journal mode, foreign keys on.
+SQLite at `%AppData%\ConnectOnion\connectonion.db` when run unpackaged (`dotnet run`), or under `%LOCALAPPDATA%\Packages\<msix-identity>\LocalState\ConnectOnion\` when run packaged/deployed from Visual Studio. WAL journal mode, foreign keys on.
 
-Tables: `app_meta`, `agents`, `sessions`, `preferences`, `messages` (one row per chat bubble, not a JSON blob — see the WinUI client architecture notes below), `message_attachments` (attachment **metadata only**: kind/filename/mime/size/cache-path — never the base64 payload), `executions`, `trace_events`, `identity_keys` (`private_seed` is a DPAPI-protected (`CurrentUser` scope) blob, base64-encoded — never plaintext; a row written before DPAPI encryption was added won't decrypt, so `IdentityStore` just regenerates a fresh identity rather than migrating it — delete the `.db` file if you have a pre-DPAPI dev database).
+**Schema changes go through `Data/SchemaMigrator.cs` — `CREATE TABLE IF NOT EXISTS` alone cannot evolve a table that already exists.** `AppDatabase.EnsureInitializedAsync` first ensures the baseline (`CreateSchemaAsync`), then steps any older database forward. The version lives in SQLite's own `PRAGMA user_version` (a header integer: no table needed, no query cost, and written inside the same transaction as the migration it records) — not in `app_meta`. To add a column: append one `Migration(n, sql)` to `SchemaMigrator.Migrations` and bump `LatestVersion`; never edit or renumber a released migration, because databases in the wild have already recorded running it. Each migration runs in its own transaction, so schema change and version bump commit together or not at all. `user_version == 0` means "never versioned" and is stamped as the version-1 baseline (pre-versioning builds produced exactly that shape); a database at a version *newer* than this build throws rather than running against a shape it doesn't understand. Deleting the `.db` file still works to reset dev state, but it is a convenience — no longer the upgrade path.
+
+Tables: `app_meta`, `agents`, `sessions`, `preferences`, `messages` (one row per chat bubble, not a JSON blob — see the WinUI client architecture notes below), `message_attachments` (attachment **metadata only**: kind/filename/mime/size/cache-path — never the base64 payload), `executions`, `trace_events`, `identity_keys` (`private_seed` is a DPAPI-protected (`CurrentUser` scope) blob, base64-encoded — never plaintext).
+
+`IdentityStore` distinguishes *nothing stored* (first run → generate quietly) from *stored but unreadable* (a copied `.db`, a restored profile, or a pre-DPAPI row). The second case still regenerates — there is nothing to recover — but it is **not silent**: it raises `IdentityStore.IdentityReset`, latches `WasReset`/`ResetReason`, and `MainWindow` surfaces an error toast, because the app's address changes and every agent that authorized the old one must authorize the new one. Don't collapse those two paths back together.
 
 Image cache for received `agent_image` attachments lives under `%AppData%\ConnectOnion\cache\images\`, filenames are the content's SHA-256 hash (never trust a remote-provided filename).
 
@@ -99,9 +105,10 @@ Worth knowing before you re-discover them via a build or runtime failure:
 
 ## Git conventions
 
-Conventional Commits, enforced by convention rather than tooling: `<type>(<scope>): <summary>` (types: `feat`/`fix`/`docs`/`test`/`refactor`/`style`/`chore`/`build`/`ci`; recommended scopes include `chat`, `agent`, `sessions`, `storage`, `settings`, `files`, `ui`, `ci`, `build` — see `git_commit_convention.md` for the full list). PRs use the same format for their title.
+Conventional Commits, enforced by convention rather than tooling: `<type>(<scope>): <summary>` (types: `feat`/`fix`/`docs`/`test`/`refactor`/`style`/`chore`/`build`/`ci`; recommended scopes include `chat`, `agent`, `sessions`, `storage`, `settings`, `files`, `ui`, `ci`, `build` — see `docs/GIT_COMMIT_CONVENTION.md` for the full list). PRs use the same format for their title.
 
 ## Not implemented yet
 
 - Production installer/release automation (MSIX packaging is configured but not wired into CI)
-- Migration tooling for older local app data formats
+- Automated tests for the WinUI layer. `ConnectOnion.Protocol.Tests` exists but is in neither the `.sln` nor CI, so today the Conformance gate is the only test CI runs — see `docs/TEST_PLAN.md` for the plan and backlog.
+- No `AutomationId` anywhere in the XAML, so UI automation can't be written against the app yet.

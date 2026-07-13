@@ -443,9 +443,26 @@ depends on how the app is launched:
 To reset app data during development, delete the file and restart the app —
 the database is recreated from the embedded schema on next launch.
 
+The schema is versioned (`PRAGMA user_version`) and stepped forward by
+`Data/SchemaMigrator.cs`, so an existing database is upgraded rather than
+discarded; deleting the file is a development convenience, not the upgrade path.
+
+## Documentation
+
+All project documentation lives in [`docs/`](./docs/):
+
+| Document | What it is |
+|---|---|
+| [Project brief](./docs/PROJECT_BRIEF.md) | The original requirements, plus a requirement → implementation traceability table and known limitations |
+| [Test plan](./docs/TEST_PLAN.md) | Layered test strategy, test cases, E2E flows, and the testing backlog |
+| [Session & message structure](./docs/SESSION_MESSAGE_STRUCTURE.md) | The ConnectOnion wire protocol: `CONNECT`/`INPUT`/`OUTPUT`, streaming events, sessions, reconnect |
+| [WinUI 3 migration notes](./docs/WINUI3_NATIVE_MIGRATION.md) | Historical record of the Electron → WinUI migration, and how the result diverged from the plan |
+| [Commit convention](./docs/GIT_COMMIT_CONVENTION.md) | Conventional Commits types and scopes used in this repo |
+
+[`CLAUDE.md`](./CLAUDE.md) is the authoritative description of the current architecture.
+
 ## References
 
 - [WinUIClient project README](./ConnectOnion.WinUIClient/README.md)
-- [WinUI 3 native migration notes](./WINUI3_NATIVE_MIGRATION.md)
 - [ConnectOnion Python repository](https://github.com/openonion/connectonion)
 - [ConnectOnion TypeScript repository](https://github.com/openonion/connectonion-ts)
