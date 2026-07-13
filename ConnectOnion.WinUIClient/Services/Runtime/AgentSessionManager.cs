@@ -26,6 +26,7 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
 {
     private readonly HttpClient _http;
     private readonly ConversationRepository _conversations;
+    private readonly UsageRepository _usage;
     private readonly AgentConnectionRegistry _connections;
     private readonly ConversationRunRegistry _runs;
     private readonly ConcurrentDictionary<string, AgentConfig> _agentsById = new();
@@ -53,10 +54,14 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
     /// "Approved once", "Rejected") and the status it resolves the card to.</summary>
     private readonly record struct InteractiveAnswer(string Meta, EventStatus Status);
 
-    public AgentSessionManager(HttpClient http, ConversationRepository conversations)
+    /// <param name="usage">Optional so existing callers and tests that don't care about accounting
+    /// can omit it; a default instance is used when it isn't supplied.</param>
+    public AgentSessionManager(
+        HttpClient http, ConversationRepository conversations, UsageRepository? usage = null)
     {
         _http = http;
         _conversations = conversations;
+        _usage = usage ?? new UsageRepository();
         _connections = new AgentConnectionRegistry(http);
         _runs = new ConversationRunRegistry(this, new DebugRunLogger(), onError: ex =>
             Debug.WriteLine($"[run] error: {ex}"));
@@ -239,6 +244,7 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         MarkHistoryPersisted(snapshot.RunId);
 
         await PersistTraceAsync(snapshot).ConfigureAwait(false);
+        await PersistUsageAsync(snapshot, agentName).ConfigureAwait(false);
         await _conversations.FinalizeExecutionAsync(
             snapshot.RunId, snapshot.ConversationId, finalReply, "done", projection.TurnDurationMs).ConfigureAwait(false);
 
@@ -291,6 +297,12 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         await _conversations.UpsertMessagesAsync(
             snapshot.ConversationId, window.Where(m => !m.IsOnboarding).ToList()).ConfigureAwait(false);
         MarkHistoryPersisted(snapshot.RunId);
+
+        // A failed or cancelled turn still burned tokens on every LLM call it managed to make, so
+        // it is recorded exactly like a successful one. A ledger that only counts successes does
+        // not add up — and the turns that fail late are often the expensive ones.
+        await PersistUsageAsync(snapshot, agentName).ConfigureAwait(false);
+
         await _conversations.FinalizeExecutionAsync(
             snapshot.RunId, snapshot.ConversationId, snapshot.ErrorMessage ?? "", "error", 0).ConfigureAwait(false);
 
@@ -314,6 +326,17 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         var window = new List<ChatMessage>();
         if (lastAgent is not null) window.Add(lastAgent);
         return (window, nextId);
+    }
+
+    /// <summary>
+    /// Appends this run's token spend to the usage ledger. Runs on the app-level persist path, so a
+    /// turn that completed with no page open (or with the window in the tray) is still accounted
+    /// for — same reason the bubbles are written here rather than by a page.
+    /// </summary>
+    private Task PersistUsageAsync(ConversationRunSnapshot snapshot, string? agentName)
+    {
+        var rows = UsageProjector.Extract(snapshot, agentName);
+        return rows.Count == 0 ? Task.CompletedTask : _usage.InsertAsync(rows);
     }
 
     private Task PersistTraceAsync(ConversationRunSnapshot snapshot)

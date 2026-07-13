@@ -19,6 +19,8 @@
             <TextBlock Text="Desktop preferences for this app."
                        Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextSecondaryBrush}" />
 
+            <!-- Appearance is strictly how the app looks. Anything about how chat behaves or reads
+                 lives in the Chat card below — both are shown for the "General" category. -->
             <Border x:Name="GeneralSection" Style="{StaticResource SettingsSectionStyle}">
                 <StackPanel Spacing="20">
                     <TextBlock Text="Appearance" Style="{StaticResource SubtitleTextBlockStyle}" />
@@ -34,12 +36,12 @@
                         </RadioButtons>
                     </controls:SettingRow>
 
-                    <controls:SettingRow Title="Enter to send"
-                                         Description="When enabled, Enter sends and Shift+Enter inserts a new line.">
-                        <ToggleSwitch x:Name="EnterToSendSwitch"
-                                      AutomationProperties.Name="Enter to send"
-                                      Toggled="EnterToSendSwitch_Toggled" />
-                    </controls:SettingRow>
+                </StackPanel>
+            </Border>
+
+            <Border x:Name="ChatSection" Style="{StaticResource SettingsSectionStyle}">
+                <StackPanel Spacing="20">
+                    <TextBlock Text="Chat" Style="{StaticResource SubtitleTextBlockStyle}" />
 
                     <controls:SettingRow Title="Message text size"
                                          Description="Adjust how large chat messages appear.">
@@ -50,6 +52,13 @@
                             <x:String>Medium</x:String>
                             <x:String>Large</x:String>
                         </RadioButtons>
+                    </controls:SettingRow>
+
+                    <controls:SettingRow Title="Enter to send"
+                                         Description="When enabled, Enter sends and Shift+Enter inserts a new line.">
+                        <ToggleSwitch x:Name="EnterToSendSwitch"
+                                      AutomationProperties.Name="Enter to send"
+                                      Toggled="EnterToSendSwitch_Toggled" />
                     </controls:SettingRow>
 
                 </StackPanel>

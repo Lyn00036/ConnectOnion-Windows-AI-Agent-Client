@@ -17,6 +17,10 @@ public static class AppServices
     public static PreferencesRepository Preferences { get; } = new();
     public static ConversationRepository Conversations { get; } = new();
 
+    /// <summary>Token-usage ledger. Deliberately independent of conversation/agent lifetime —
+    /// deleting a chat never erases the record that its tokens were spent.</summary>
+    public static UsageRepository Usage { get; } = new();
+
     /// <summary>Session-lived cache of each agent's online status.</summary>
     public static AgentPresenceService Presence { get; } = new();
 
@@ -34,7 +38,7 @@ public static class AppServices
     /// tray minimize, and re-opening the conversation. Depends on <see cref="Http"/> and
     /// <see cref="Conversations"/>, so it is declared after them.
     /// </summary>
-    public static AgentSessionManager RunManager { get; } = new(Http, Conversations);
+    public static AgentSessionManager RunManager { get; } = new(Http, Conversations, Usage);
 
     // ---- Notification subsystem (composition root) ----
     // Declaration order matters: the coordinator's dependencies must exist first.

@@ -24,9 +24,13 @@ public sealed partial class SettingsOverlay : UserControl
     {
         _focusReturnTarget = focusReturnTarget;
         GeneralNav.IsChecked = true;
-        CategoryTitle.Text = "General";
         SearchBox.Text = string.Empty;
-        SettingsContent.SelectCategory("General");
+
+        // Go through SelectCategory rather than setting the title by hand: it is what resets the
+        // pane visibility too. Setting only the title left the previously shown standalone pane
+        // (Identity, now also Usage) on screen under a "General" heading.
+        SelectCategory("General");
+
         Visibility = Visibility.Visible;
         IsHitTestVisible = true;
         UpdateModalSize(ActualWidth, ActualHeight);
@@ -64,14 +68,30 @@ public sealed partial class SettingsOverlay : UserControl
     private void NotificationsNav_Click(object sender, RoutedEventArgs e) => SelectCategory("Notifications");
     private void AudioNav_Click(object sender, RoutedEventArgs e) => SelectCategory("Audio");
     private void IdentityNav_Click(object sender, RoutedEventArgs e) => SelectCategory("Identity");
+    private void UsageNav_Click(object sender, RoutedEventArgs e) => SelectCategory("Usage");
+
+    /// <summary>
+    /// Swaps the right-hand pane. Identity and Usage are standalone controls; every other category
+    /// is a section of <see cref="SettingsContent"/>, which stays hidden while one of them is shown.
+    /// </summary>
     private void SelectCategory(string category)
     {
         CategoryTitle.Text = category;
+
         var isIdentity = category == "Identity";
-        SettingsContent.Visibility = isIdentity ? Visibility.Collapsed : Visibility.Visible;
+        var isUsage = category == "Usage";
+        var isSettingsPage = !isIdentity && !isUsage;
+
+        SettingsContent.Visibility = isSettingsPage ? Visibility.Visible : Visibility.Collapsed;
         IdentityScrollViewer.Visibility = isIdentity ? Visibility.Visible : Visibility.Collapsed;
-        if (!isIdentity)
+        UsageScrollViewer.Visibility = isUsage ? Visibility.Visible : Visibility.Collapsed;
+
+        if (isSettingsPage)
             SettingsContent.SelectCategory(category);
+
+        // Re-read the ledger on entry: a turn may well have finished while Settings sat open.
+        if (isUsage)
+            UsageContent.Refresh();
     }
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) => SettingsContent.Filter(SearchBox.Text);
 }

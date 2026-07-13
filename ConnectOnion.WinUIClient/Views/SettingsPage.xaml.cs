@@ -126,7 +126,12 @@ public sealed partial class SettingsPage : Page
     public void SelectCategory(string category)
     {
         _currentCategory = category;
-        GeneralSection.Visibility = category == "General" ? Visibility.Visible : Visibility.Collapsed;
+
+        // "General" is two cards: Appearance (how the app looks) and Chat (how chat behaves/reads).
+        var isGeneral = category == "General";
+        GeneralSection.Visibility = isGeneral ? Visibility.Visible : Visibility.Collapsed;
+        ChatSection.Visibility = isGeneral ? Visibility.Visible : Visibility.Collapsed;
+
         NotificationsSection.Visibility = category == "Notifications" ? Visibility.Visible : Visibility.Collapsed;
         AudioSection.Visibility = category == "Audio" ? Visibility.Visible : Visibility.Collapsed;
         ContentScrollViewer.ChangeView(null, 0, null, true);
@@ -141,7 +146,8 @@ public sealed partial class SettingsPage : Page
         }
 
         var value = query.Trim();
-        GeneralSection.Visibility = Contains(value, "general appearance theme enter send text size identity") ? Visibility.Visible : Visibility.Collapsed;
+        GeneralSection.Visibility = Contains(value, "general appearance theme light dark system") ? Visibility.Visible : Visibility.Collapsed;
+        ChatSection.Visibility = Contains(value, "general chat message text size font enter send newline") ? Visibility.Visible : Visibility.Collapsed;
         NotificationsSection.Visibility = Contains(value, "notifications agent replies task completion approval connection sound preview") ? Visibility.Visible : Visibility.Collapsed;
         AudioSection.Visibility = Contains(value, "audio microphone voice input") ? Visibility.Visible : Visibility.Collapsed;
         ContentScrollViewer.ChangeView(null, 0, null, true);

@@ -25,6 +25,15 @@
             <Setter Property="Padding" Value="0" /><Setter Property="BorderThickness" Value="0" />
             <Setter Property="CornerRadius" Value="8" /><Setter Property="Background" Value="Transparent" />
         </Style>
+
+        <!-- Category icons. FontIcon rather than SymbolIcon because SymbolIcon has no FontSize and
+             always renders at 20px, which is oversized next to a 14px nav label. Same Segoe Fluent
+             Icons glyphs the Symbol enum maps to, so nothing changes but the size. -->
+        <Style x:Key="SettingsNavIconStyle" TargetType="FontIcon">
+            <Setter Property="FontFamily" Value="Segoe Fluent Icons" />
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="Foreground" Value="{ThemeResource TextSecondaryBrush}" />
+        </Style>
     </UserControl.Resources>
     <Grid x:Name="OverlayRoot" KeyDown="OverlayRoot_KeyDown">
         <Rectangle Fill="{ThemeResource SettingsBackdropBrush}" Tapped="Backdrop_Tapped" />
@@ -49,19 +58,23 @@
                             <RadioButton x:Name="GeneralNav" GroupName="SettingsCategory" IsChecked="True"
                                 Style="{StaticResource SettingsNavButtonStyle}" Click="GeneralNav_Click"
                                 AutomationProperties.Name="General settings">
-                                <StackPanel Orientation="Horizontal" Spacing="10"><SymbolIcon Symbol="Setting"/><TextBlock Text="General"/></StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Style="{StaticResource SettingsNavIconStyle}" Glyph="&#xE713;"/><TextBlock Text="General"/></StackPanel>
                             </RadioButton>
                             <RadioButton GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
                                 Click="NotificationsNav_Click" AutomationProperties.Name="Notification settings">
-                                <StackPanel Orientation="Horizontal" Spacing="10"><SymbolIcon Symbol="Message"/><TextBlock Text="Notifications"/></StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Style="{StaticResource SettingsNavIconStyle}" Glyph="&#xE8BD;"/><TextBlock Text="Notifications"/></StackPanel>
                             </RadioButton>
                             <RadioButton GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
                                 Click="AudioNav_Click" AutomationProperties.Name="Audio settings">
-                                <StackPanel Orientation="Horizontal" Spacing="10"><SymbolIcon Symbol="Audio"/><TextBlock Text="Audio"/></StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Style="{StaticResource SettingsNavIconStyle}" Glyph="&#xE8D6;"/><TextBlock Text="Audio"/></StackPanel>
                             </RadioButton>
                             <RadioButton GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
                                 Click="IdentityNav_Click" AutomationProperties.Name="Identity settings">
-                                <StackPanel Orientation="Horizontal" Spacing="10"><SymbolIcon Symbol="Contact"/><TextBlock Text="Identity"/></StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Style="{StaticResource SettingsNavIconStyle}" Glyph="&#xE77B;"/><TextBlock Text="Identity"/></StackPanel>
+                            </RadioButton>
+                            <RadioButton GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
+                                Click="UsageNav_Click" AutomationProperties.Name="Token usage">
+                                <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Style="{StaticResource SettingsNavIconStyle}" Glyph="&#xE8EF;"/><TextBlock Text="Usage"/></StackPanel>
                             </RadioButton>
                         </StackPanel>
                     </ScrollViewer>
@@ -84,6 +97,12 @@
                                   VerticalScrollMode="Enabled" VerticalScrollBarVisibility="Auto"
                                   HorizontalContentAlignment="Stretch">
                         <controls:IdentitySettingsContent Margin="28,6,28,28" />
+                    </ScrollViewer>
+                    <ScrollViewer x:Name="UsageScrollViewer" Grid.Row="1" Visibility="Collapsed"
+                                  HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollMode="Enabled" VerticalScrollBarVisibility="Auto"
+                                  HorizontalContentAlignment="Stretch">
+                        <controls:UsageSettingsContent x:Name="UsageContent" Margin="28,6,28,28" />
                     </ScrollViewer>
                 </Grid>
             </Grid>

@@ -32,19 +32,44 @@ internal static class SchemaMigrator
     private const int BaselineVersion = 1;
 
     /// <summary>The schema version this build expects. Bump when you append to <see cref="Migrations"/>.</summary>
-    internal const int LatestVersion = 1;
+    internal const int LatestVersion = 2;
 
     /// <summary>
     /// Ordered forward migrations. Each runs exactly once, in its own transaction, on databases
     /// whose recorded version is below it.
     /// </summary>
-    /// <example>
-    /// The next one will look like:
-    /// <code>
-    /// new(2, "ALTER TABLE agents ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;"),
-    /// </code>
-    /// </example>
-    private static readonly IReadOnlyList<Migration> Migrations = Array.Empty<Migration>();
+    private static readonly IReadOnlyList<Migration> Migrations = new Migration[]
+    {
+        // v2 — token usage ledger.
+        //
+        // Deliberately has NO foreign key to sessions, and is never touched by conversation or
+        // agent deletion. Usage is a *ledger*: it records that tokens were spent, and that stays
+        // true after the conversation is gone. A cascade here would make the totals silently
+        // shrink whenever a user tidies up their chat list, and a totals panel that changes when
+        // you delete things cannot answer any question honestly.
+        //
+        // conversation_id / agent_id are therefore plain (possibly dangling) references kept only
+        // for drill-down, and agent_name is snapshotted at write time so a deleted agent's rows can
+        // still be labelled. Clearing usage is its own explicit user action — see UsageRepository.
+        new(2, """
+            CREATE TABLE IF NOT EXISTS usage_events (
+                id                 TEXT PRIMARY KEY,
+                conversation_id    TEXT,
+                agent_id           TEXT,
+                agent_name         TEXT,
+                model              TEXT NOT NULL,
+                input_tokens       INTEGER NOT NULL DEFAULT 0,
+                output_tokens      INTEGER NOT NULL DEFAULT 0,
+                cached_tokens      INTEGER NOT NULL DEFAULT 0,
+                cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+                duration_ms        REAL,
+                created_at         INTEGER NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS ix_usage_created ON usage_events(created_at DESC);
+            CREATE INDEX IF NOT EXISTS ix_usage_model_created ON usage_events(model, created_at DESC);
+            """),
+    };
 
     private sealed record Migration(int Version, string Sql);
 

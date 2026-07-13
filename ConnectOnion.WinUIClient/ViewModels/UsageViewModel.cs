@@ -1,0 +1,195 @@
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Linq;
+using System.Threading.Tasks;
+using ConnectOnion.WinUIClient.Common;
+using ConnectOnion.WinUIClient.Data;
+using ConnectOnion.WinUIClient.Models;
+using ConnectOnion.WinUIClient.Services;
+
+namespace ConnectOnion.WinUIClient.ViewModels;
+
+/// <summary>
+/// Backs the Usage panel in Settings: per-model token totals for a chosen time window, read
+/// straight out of the usage ledger with SQL aggregation.
+///
+/// Shows tokens, never money. The wire protocol carries no pricing, an agent can be backed by any
+/// model, and rates change — a hard-coded price table would be a confidently-stated lie. If cost
+/// ever ships it has to be a rate table the user maintains, labelled as their own estimate.
+/// </summary>
+public sealed class UsageViewModel : ObservableObject
+{
+    private readonly UsageRepository _usage;
+
+    private UsageRange _range = UsageRange.Last7Days;
+    private bool _isLoading;
+    private string _firstRecordedText = "";
+
+    public UsageViewModel() : this(AppServices.Usage) { }
+
+    public UsageViewModel(UsageRepository usage) => _usage = usage;
+
+    /// <summary>One row per model, biggest spender first.</summary>
+    public ObservableCollection<UsageRowViewModel> Rows { get; } = new();
+
+    public IReadOnlyList<UsageRange> Ranges { get; } = new[]
+    {
+        UsageRange.Today, UsageRange.Last7Days, UsageRange.Last30Days, UsageRange.AllTime,
+    };
+
+    public UsageRange Range
+    {
+        get => _range;
+        set
+        {
+            if (!SetProperty(ref _range, value)) return;
+            _ = LoadAsync();
+        }
+    }
+
+    public bool IsLoading
+    {
+        get => _isLoading;
+        private set
+        {
+            if (!SetProperty(ref _isLoading, value)) return;
+            OnPropertyChanged(nameof(ShowEmptyState));
+            OnPropertyChanged(nameof(ShowContent));
+        }
+    }
+
+    /// <summary>"Recording since 3 Jul 2026", or empty when nothing has been recorded. Makes it
+    /// explicit that history begins when the feature shipped rather than at first launch.</summary>
+    public string FirstRecordedText
+    {
+        get => _firstRecordedText;
+        private set
+        {
+            if (!SetProperty(ref _firstRecordedText, value)) return;
+            OnPropertyChanged(nameof(HasFirstRecorded));
+        }
+    }
+
+    public bool HasFirstRecorded => !string.IsNullOrEmpty(FirstRecordedText);
+
+    public bool ShowEmptyState => !IsLoading && Rows.Count == 0;
+
+    public bool ShowContent => !IsLoading && Rows.Count > 0;
+
+    // ---- Totals across every model in the window ----
+
+    public long TotalTokens => Rows.Sum(r => r.TotalTokens);
+    public long TotalInputTokens => Rows.Sum(r => r.InputTokens);
+    public long TotalOutputTokens => Rows.Sum(r => r.OutputTokens);
+    public long TotalCalls => Rows.Sum(r => r.Calls);
+
+    public string TotalTokensText => UsageFormat.Tokens(TotalTokens);
+    public string TotalInputTokensText => UsageFormat.Tokens(TotalInputTokens);
+    public string TotalOutputTokensText => UsageFormat.Tokens(TotalOutputTokens);
+    public string TotalCallsText => TotalCalls.ToString("N0");
+
+    public async Task LoadAsync()
+    {
+        IsLoading = true;
+        try
+        {
+            var summaries = await _usage.GetByModelAsync(Range.SinceUnixMs()).ConfigureAwait(true);
+            var first = await _usage.GetFirstRecordedAsync().ConfigureAwait(true);
+
+            Rows.Clear();
+
+            // Each row's share bar is relative to the biggest model in the window, not to the sum,
+            // so a single dominant model doesn't squash every other bar into invisibility.
+            var max = summaries.Count == 0 ? 0 : summaries.Max(s => s.TotalTokens);
+            foreach (var s in summaries) Rows.Add(new UsageRowViewModel(s, max));
+
+            FirstRecordedText = first is null
+                ? ""
+                : $"Recording since {first.Value.ToLocalTime():d MMM yyyy}";
+        }
+        finally
+        {
+            IsLoading = false;
+            RaiseTotals();
+        }
+    }
+
+    /// <summary>Erases the ledger. Only ever called from an explicit, confirmed user action — no
+    /// other code path deletes usage, and deleting a conversation never does.</summary>
+    public async Task ClearAllAsync()
+    {
+        await _usage.ClearAsync().ConfigureAwait(true);
+        await LoadAsync().ConfigureAwait(true);
+    }
+
+    private void RaiseTotals()
+    {
+        OnPropertyChanged(nameof(TotalTokens));
+        OnPropertyChanged(nameof(TotalInputTokens));
+        OnPropertyChanged(nameof(TotalOutputTokens));
+        OnPropertyChanged(nameof(TotalCalls));
+        OnPropertyChanged(nameof(TotalTokensText));
+        OnPropertyChanged(nameof(TotalInputTokensText));
+        OnPropertyChanged(nameof(TotalOutputTokensText));
+        OnPropertyChanged(nameof(TotalCallsText));
+        OnPropertyChanged(nameof(ShowEmptyState));
+        OnPropertyChanged(nameof(ShowContent));
+    }
+}
+
+/// <summary>One model's row in the Usage table. Plain get-only properties: the type is bound from
+/// an <c>x:Bind</c> DataTemplate, which needs settable/plain members rather than <c>required</c>
+/// or <c>init</c> accessors (see the XAML gotchas in CLAUDE.md).</summary>
+public sealed class UsageRowViewModel
+{
+    public UsageRowViewModel(ModelUsageSummary summary, long maxTotalTokens)
+    {
+        Model = summary.Model;
+        Calls = summary.Calls;
+        InputTokens = summary.InputTokens;
+        OutputTokens = summary.OutputTokens;
+        CachedTokens = summary.CachedTokens;
+        TotalTokens = summary.TotalTokens;
+        CacheHitRatio = summary.CacheHitRatio;
+        SharePercent = maxTotalTokens <= 0 ? 0 : 100.0 * summary.TotalTokens / maxTotalTokens;
+    }
+
+    public string Model { get; }
+    public long Calls { get; }
+    public long InputTokens { get; }
+    public long OutputTokens { get; }
+    public long CachedTokens { get; }
+    public long TotalTokens { get; }
+    public double CacheHitRatio { get; }
+
+    /// <summary>Width of the share bar, 0–100, relative to the window's biggest model.</summary>
+    public double SharePercent { get; }
+
+    public string CallsText => Calls.ToString("N0");
+    public string InputTokensText => UsageFormat.Tokens(InputTokens);
+    public string OutputTokensText => UsageFormat.Tokens(OutputTokens);
+    public string TotalTokensText => UsageFormat.Tokens(TotalTokens);
+
+    /// <summary>Cache hits are only worth showing when there are any — a permanent "0%" column just
+    /// adds noise for agents whose model does not do prompt caching.</summary>
+    public bool HasCacheHits => CachedTokens > 0;
+
+    public string CacheText => $"{CacheHitRatio:P0} cached";
+
+    public string AccessibilityName =>
+        $"{Model}: {TotalTokensText} tokens across {CallsText} calls, " +
+        $"{InputTokensText} in, {OutputTokensText} out.";
+}
+
+internal static class UsageFormat
+{
+    /// <summary>Compact token counts (1.2K, 3.4M). Matches how the per-turn summary bubble already
+    /// formats them, so the same number never appears in two different shapes.</summary>
+    public static string Tokens(long tokens) => tokens switch
+    {
+        >= 1_000_000 => $"{tokens / 1_000_000.0:0.#}M",
+        >= 1_000 => $"{tokens / 1000.0:0.#}K",
+        _ => tokens.ToString(),
+    };
+}
