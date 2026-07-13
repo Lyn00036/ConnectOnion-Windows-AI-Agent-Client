@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Services;
 
 namespace ConnectOnion.WinUIClient.Models;
@@ -13,7 +14,7 @@ public sealed class ShellAgentItem : RowStateItem
 
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
-    public string Initial => string.IsNullOrWhiteSpace(Name) ? "?" : Name[..1].ToUpperInvariant();
+    public string Initial => NameInitial.From(Name);
     public int SessionCount => Sessions.Count;
     public ObservableCollection<ShellSessionItem> Sessions { get; } = new();
 

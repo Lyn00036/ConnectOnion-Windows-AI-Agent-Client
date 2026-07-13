@@ -60,9 +60,7 @@ public sealed partial class HomePage : Page
             {
                 Id = agent.Id,
                 Name = agent.Name,
-                Initial = string.IsNullOrWhiteSpace(agent.Name)
-                    ? "?"
-                    : agent.Name[..1].ToUpperInvariant(),
+                Initial = NameInitial.From(agent.Name),
                 ShortAddress = ShortenAddress(agent),
                 IsOnline = _presence.GetPresence(agent.Id) == AgentPresence.Online,
             });

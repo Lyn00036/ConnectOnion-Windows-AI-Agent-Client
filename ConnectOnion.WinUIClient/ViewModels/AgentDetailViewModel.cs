@@ -50,7 +50,7 @@ public sealed class AgentDetailViewModel : PresenceAwareViewModel
     }
 
     public string AgentName => _agent?.Name ?? "";
-    public string AgentInitial => string.IsNullOrWhiteSpace(AgentName) ? "?" : AgentName[..1].ToUpperInvariant();
+    public string AgentInitial => NameInitial.From(AgentName);
     public string AgentAddress => _agent?.Address ?? "";
     public string? DirectUrl => _agent?.DirectUrl;
     public bool HasAgent => _agent is not null;

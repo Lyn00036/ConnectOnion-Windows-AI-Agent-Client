@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -91,11 +92,57 @@ public sealed class HighlightedTextBlock : UserControl
 
         AddHighlightedRuns(
             paragraph.Inlines, Text ?? string.Empty, SearchQuery ?? string.Empty, ActiveMatchIndex,
-            fontSize: _textBlock.FontSize);
+            fontSize: _textBlock.FontSize, fontFamily: _textBlock.FontFamily);
     }
 
-    /// <summary>Rough descender height as a fraction of the font size (Segoe UI is ~0.21 em).</summary>
-    private const double DescentRatio = 0.22;
+    /// <summary>Last-resort descender ratio, used only if a font's real metrics can't be measured
+    /// (Segoe UI's descender is ~0.21 em, so this is close for the default UI font and merely
+    /// approximate for anything else — which is exactly why it is not the primary path).</summary>
+    private const double FallbackDescentRatio = 0.22;
+
+    /// <summary>Measured descents, keyed by font family + size. Measuring is cheap but not free,
+    /// and the renderer asks for the same handful of (family, size) pairs on every re-render.</summary>
+    private static readonly Dictionary<(string Family, double Size), double> DescentCache = new();
+
+    /// <summary>
+    /// The real descender height of <paramref name="fontFamily"/> at <paramref name="fontSize"/>,
+    /// in DIPs — obtained by measuring a probe <see cref="TextBlock"/> and subtracting its
+    /// <see cref="TextBlock.BaselineOffset"/> (distance from the top of the line to the baseline)
+    /// from its measured height. This replaces a guessed em-ratio with the font's actual metrics,
+    /// so changing the UI font or mixing in a monospace face stays correctly aligned with no
+    /// constant to re-tune.
+    /// </summary>
+    internal static double DescentFor(FontFamily? fontFamily, double fontSize)
+    {
+        if (fontSize <= 0) return 0;
+
+        var key = (fontFamily?.Source ?? string.Empty, fontSize);
+        if (DescentCache.TryGetValue(key, out var cached)) return cached;
+
+        var descent = FallbackDescentRatio * fontSize;
+
+        try
+        {
+            // "Hg" spans the full ascender-to-descender range, so the measured height is the real
+            // line height rather than the height of whatever glyphs happened to be on screen.
+            var probe = new TextBlock { Text = "Hg", FontSize = fontSize };
+            if (fontFamily is not null) probe.FontFamily = fontFamily;
+
+            probe.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+
+            var measured = probe.DesiredSize.Height - probe.BaselineOffset;
+            if (measured > 0 && !double.IsNaN(measured) && !double.IsInfinity(measured))
+                descent = measured;
+        }
+        catch
+        {
+            // Measuring needs the UI thread and a live XAML runtime; if either is missing, the
+            // approximation above is still far better than no nudge at all.
+        }
+
+        DescentCache[key] = descent;
+        return descent;
+    }
 
     /// <summary>
     /// An <see cref="InlineUIContainer"/> aligns the <i>bottom edge</i> of its child with the
@@ -106,10 +153,14 @@ public sealed class HighlightedTextBlock : UserControl
     /// This is a <see cref="RenderTransform"/> on purpose: it shifts the element without changing
     /// the line box, so re-aligning a highlight can't reflow the paragraph it sits in.
     /// </summary>
-    internal static void ApplyBaselineNudge(FrameworkElement element, double fontSize, double bottomPadding = 0)
+    /// <param name="fontFamily">The font whose descender governs the alignment: the font of the text
+    /// <i>inside</i> the container when aligning that text (inline code), or the font of the
+    /// surrounding prose when aligning the box itself (a code block).</param>
+    internal static void ApplyBaselineNudge(
+        FrameworkElement element, double fontSize, double bottomPadding = 0, FontFamily? fontFamily = null)
         => element.RenderTransform = new TranslateTransform
         {
-            Y = Math.Round(fontSize * DescentRatio + bottomPadding),
+            Y = Math.Round(DescentFor(fontFamily, fontSize) + bottomPadding),
         };
 
     /// <summary>
@@ -131,7 +182,8 @@ public sealed class HighlightedTextBlock : UserControl
         int activeMatchIndex,
         ref int matchIndex,
         bool allowInlineUIContainers = true,
-        double fontSize = 14)
+        double fontSize = 14,
+        FontFamily? fontFamily = null)
     {
         if (string.IsNullOrEmpty(text))
         {
@@ -195,15 +247,18 @@ public sealed class HighlightedTextBlock : UserControl
             var matchText = new TextBlock
             {
                 Text = matched,
-                // Match the surrounding text's size, or the highlighted word renders at the
-                // TextBlock default (14) and jumps out of line with the prose around it.
+                // Match the surrounding text's size and face. A TextBlock inside an
+                // InlineUIContainer inherits neither, so without this a highlighted word renders at
+                // the default 14px UI font — visibly larger than 13px prose, and proportional in
+                // the middle of a monospace code block.
                 FontSize = fontSize,
                 Foreground = (Brush)Application.Current.Resources["SearchMatchTextBrush"],
                 FontWeight = isActive ? FontWeights.Bold : FontWeights.Normal,
             };
+            if (fontFamily is not null) matchText.FontFamily = fontFamily;
 
             border.Child = matchText;
-            ApplyBaselineNudge(border, fontSize);
+            ApplyBaselineNudge(border, fontSize, fontFamily: fontFamily);
             inlines.Add(new InlineUIContainer { Child = border });
             matchIndex++;
             cursor = index + query.Length;
@@ -211,9 +266,12 @@ public sealed class HighlightedTextBlock : UserControl
     }
 
     private static void AddHighlightedRuns(
-        InlineCollection inlines, string text, string query, int activeMatchIndex, double fontSize)
+        InlineCollection inlines, string text, string query, int activeMatchIndex,
+        double fontSize, FontFamily? fontFamily)
     {
         var matchIndex = 0;
-        AddHighlightedRuns(inlines, text, query, activeMatchIndex, ref matchIndex, fontSize: fontSize);
+        AddHighlightedRuns(
+            inlines, text, query, activeMatchIndex, ref matchIndex,
+            fontSize: fontSize, fontFamily: fontFamily);
     }
 }

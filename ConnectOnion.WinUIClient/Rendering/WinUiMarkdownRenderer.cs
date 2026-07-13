@@ -20,6 +20,11 @@ namespace ConnectOnion.WinUIClient.Rendering;
 /// </summary>
 public sealed partial class WinUiMarkdownRenderer : RendererBase
 {
+    /// <summary>The monospace face used for inline code, fenced blocks, and any search highlight
+    /// inside them. One instance: it is immutable, and the descent cache in
+    /// <see cref="HighlightedTextBlock"/> keys off its <c>Source</c>.</summary>
+    private static readonly FontFamily CodeFont = new("Consolas");
+
     private readonly RichTextBlock _target;
     private readonly Stack<InlineCollection> _inlineScopes = new();
     private readonly string _searchQuery;
@@ -226,10 +231,11 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
         {
             var codeSpan = new Span
             {
-                FontFamily = new FontFamily("Consolas"),
+                FontFamily = CodeFont,
                 Foreground = ResolveBrush("CodeTextBrush"),
             };
-            WriteHighlightedText(inline.Content, codeSpan.Inlines, allowInlineUIContainers: false);
+            WriteHighlightedText(
+                inline.Content, codeSpan.Inlines, allowInlineUIContainers: false, fontFamily: CodeFont);
             CurrentInlines.Add(codeSpan);
             return;
         }
@@ -244,12 +250,12 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
         // only a RichTextBlock paragraph may host.
         var codeText = new RichTextBlock
         {
-            FontFamily = new FontFamily("Consolas"),
+            FontFamily = CodeFont,
             FontSize = _target.FontSize,
             Foreground = ResolveBrush("CodeTextBrush"),
         };
         var codeParagraph = new Paragraph();
-        WriteHighlightedText(inline.Content, codeParagraph.Inlines);
+        WriteHighlightedText(inline.Content, codeParagraph.Inlines, fontFamily: CodeFont);
         codeText.Blocks.Add(codeParagraph);
 
         var border = new Border
@@ -260,9 +266,10 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
             Child = codeText,
         };
 
-        // Drop the chip back onto the text baseline; without this the code sits a descender
-        // (plus its own bottom padding) above the prose it is inline with.
-        HighlightedTextBlock.ApplyBaselineNudge(border, _target.FontSize, bottomPadding: 1);
+        // Drop the chip back onto the text baseline. Here we are aligning the code *text* with the
+        // prose text, so the offset is the code font's own descender plus the padding under it.
+        HighlightedTextBlock.ApplyBaselineNudge(
+            border, _target.FontSize, bottomPadding: 1, fontFamily: CodeFont);
         CurrentInlines.Add(new InlineUIContainer { Child = border });
     }
 
@@ -396,13 +403,13 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
         // a highlighted search match is an InlineUIContainer, which a TextBlock rejects.
         var codeText = new RichTextBlock
         {
-            FontFamily = new FontFamily("Consolas"),
+            FontFamily = CodeFont,
             FontSize = _target.FontSize,
             Foreground = ResolveBrush("CodeTextBrush"),
             TextWrapping = TextWrapping.NoWrap,
         };
         var codeParagraph = new Paragraph();
-        WriteHighlightedText(code.TrimEnd(), codeParagraph.Inlines);
+        WriteHighlightedText(code.TrimEnd(), codeParagraph.Inlines, fontFamily: CodeFont);
         codeText.Blocks.Add(codeParagraph);
 
         var border = new Border
@@ -422,9 +429,9 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
 
         // The block's own (otherwise empty) line still has a baseline, and the container hangs the
         // border's bottom edge off it — so without this the whole block rides up over its line and
-        // the gap beneath it looks too big. No bottom padding term here: this aligns the box, not
-        // the text inside it.
-        HighlightedTextBlock.ApplyBaselineNudge(border, _target.FontSize);
+        // the gap beneath it looks too big. This aligns the *box* to the surrounding line, not the
+        // text inside it: hence the document's font, and no bottom-padding term.
+        HighlightedTextBlock.ApplyBaselineNudge(border, _target.FontSize, fontFamily: _target.FontFamily);
 
         var paragraph = CreateParagraph();
         paragraph.Margin = new Thickness(0, 6, 0, 6);
@@ -448,11 +455,15 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
         => WriteHighlightedText(text, CurrentInlines, CanHostUIContainer);
 
     /// <summary>Set <paramref name="allowInlineUIContainers"/> to false whenever the target is not
-    /// a Paragraph of the RichTextBlock — see <see cref="HighlightedTextBlock.AddHighlightedRuns"/>.</summary>
-    private void WriteHighlightedText(string text, InlineCollection inlines, bool allowInlineUIContainers = true)
+    /// a Paragraph of the RichTextBlock — see <see cref="HighlightedTextBlock.AddHighlightedRuns"/>.
+    /// <paramref name="fontFamily"/> is the face the text renders in (the code font inside a code
+    /// container, otherwise the document's own); it governs both the highlight's face and how far
+    /// it has to drop to sit on the baseline.</summary>
+    private void WriteHighlightedText(
+        string text, InlineCollection inlines, bool allowInlineUIContainers = true, FontFamily? fontFamily = null)
         => HighlightedTextBlock.AddHighlightedRuns(
             inlines, text, _searchQuery, _activeMatchIndex, ref _matchIndex,
-            allowInlineUIContainers, _target.FontSize);
+            allowInlineUIContainers, _target.FontSize, fontFamily ?? _target.FontFamily);
 
     private void WriteInlineContainer(ContainerInline container, InlineCollection inlines)
         => WriteNestedInlines(container, inlines);

@@ -133,7 +133,8 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     public bool ShowRetryBar => CanRetry && !ShowOfflineNotice;
 
     public string SelectedAgentName => _agent?.Name ?? "Agent";
-    public string SelectedAgentInitial => string.IsNullOrWhiteSpace(_agent?.Name) ? "?" : _agent!.Name[..1].ToUpperInvariant();
+
+    public string SelectedAgentInitial => NameInitial.From(_agent?.Name);
     public string SessionShortId => _session is null ? "" : _session.Id[..Math.Min(8, _session.Id.Length)];
     public string? SessionId => _session?.Id;
     public string? AgentId => _agent?.Id;
