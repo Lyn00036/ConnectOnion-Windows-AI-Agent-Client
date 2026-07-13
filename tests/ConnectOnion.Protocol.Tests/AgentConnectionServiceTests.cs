@@ -11,12 +11,14 @@ public sealed class AgentConnectionServiceTests
     {
         string? connectJson = null;
         string? inputJson = null;
+        var releaseServer = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         await using var server = new FakeAgentServer(async (socket, ct) =>
         {
             connectJson = await FakeAgentServer.ReceiveTextAsync(socket, ct);
             await FakeAgentServer.SendTextAsync(socket, "{\"type\":\"CONNECTED\",\"session_id\":\"session-1\"}", ct);
             inputJson = await FakeAgentServer.ReceiveTextAsync(socket, ct);
             await FakeAgentServer.SendTextAsync(socket, "{\"type\":\"OUTPUT\",\"result\":\"done\",\"duration_ms\":42}", ct);
+            await releaseServer.Task.WaitAsync(ct);
         });
         await using var service = Service(server);
 
@@ -30,6 +32,7 @@ public sealed class AgentConnectionServiceTests
         var input = WireMessage.Parse(inputJson!);
         Assert.Equal("INPUT", input.Type);
         Assert.Equal("hello", input.GetString("prompt"));
+        releaseServer.TrySetResult();
         await server.Completion;
     }
 
