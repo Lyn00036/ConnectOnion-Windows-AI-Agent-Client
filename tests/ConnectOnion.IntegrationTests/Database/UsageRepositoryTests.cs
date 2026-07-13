@@ -1,0 +1,119 @@
+using ConnectOnion.WinUIClient.Data;
+using ConnectOnion.WinUIClient.Models;
+
+namespace ConnectOnion.IntegrationTests.Database;
+
+[Collection(DatabaseCollection.Name)]
+public sealed class UsageRepositoryTests
+{
+    private readonly TempDatabaseFixture _fixture;
+    private readonly UsageRepository _usage = new();
+    private readonly ConversationRepository _conversations = new();
+
+    public UsageRepositoryTests(TempDatabaseFixture fixture) => _fixture = fixture;
+
+    [Fact]
+    public async Task InsertAsync_SameEventTwice_UpdatesWithoutDoubleCounting()
+    {
+        await _usage.ClearAsync();
+        await _usage.InsertAsync(new[] { Record("same-event", input: 100, output: 20) });
+        await _usage.InsertAsync(new[] { Record("same-event", input: 150, output: 30) });
+
+        var summary = Assert.Single(await _usage.GetByModelAsync(null));
+        Assert.Equal(1, summary.Calls);
+        Assert.Equal(150, summary.InputTokens);
+        Assert.Equal(30, summary.OutputTokens);
+    }
+
+    [Fact]
+    public async Task DeleteMessagesAsync_Conversation_DoesNotEraseUsageLedger()
+    {
+        await _usage.ClearAsync();
+        await _fixture.CreateSessionAsync("usage-conversation");
+        await _conversations.UpsertMessagesAsync("usage-conversation", new[]
+        {
+            new ChatMessage { Id = 1, Role = ChatRole.User, Content = "hello" },
+        });
+        await _usage.InsertAsync(new[] { Record("survives-delete", conversationId: "usage-conversation") });
+
+        await _conversations.DeleteMessagesAsync("usage-conversation");
+
+        var summary = Assert.Single(await _usage.GetByModelAsync(null));
+        Assert.Equal(1, summary.Calls);
+        Assert.Equal(120, summary.TotalTokens);
+    }
+
+    [Fact]
+    public async Task GetByModelAsync_GroupsOrdersAndFiltersInSql()
+    {
+        await _usage.ClearAsync();
+        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        await _usage.InsertAsync(new[]
+        {
+            Record("a-1", model: "model-a", agentId: "agent-a", input: 100, output: 50, createdAt: now),
+            Record("a-2", model: "model-a", agentId: "agent-a", input: 200, output: 50, createdAt: now),
+            Record("b-1", model: "model-b", agentId: "agent-b", input: 10, output: 5, createdAt: now - 100_000),
+        });
+
+        var all = await _usage.GetByModelAsync(null);
+        Assert.Equal(new[] { "model-a", "model-b" }, all.Select(item => item.Model));
+        Assert.Equal(2, all[0].Calls);
+        Assert.Equal(400, all[0].TotalTokens);
+        Assert.Single(await _usage.GetByModelAsync(null, "agent-b"));
+        Assert.Single(await _usage.GetByModelAsync(now - 1_000));
+    }
+
+    [Fact]
+    public async Task GetFirstRecordedAsync_RecordsExist_ReturnsOldestTimestamp()
+    {
+        await _usage.ClearAsync();
+        var oldest = DateTimeOffset.UtcNow.AddDays(-2).ToUnixTimeMilliseconds();
+        await _usage.InsertAsync(new[]
+        {
+            Record("newer", createdAt: oldest + 10_000),
+            Record("oldest", createdAt: oldest),
+        });
+
+        var actual = await _usage.GetFirstRecordedAsync();
+
+        Assert.NotNull(actual);
+        Assert.Equal(oldest, actual.Value.ToUnixTimeMilliseconds());
+    }
+
+    [Fact]
+    public async Task ClearAsync_SinceTimestamp_DeletesOnlyRecentUsage()
+    {
+        await _usage.ClearAsync();
+        var cutoff = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        await _usage.InsertAsync(new[]
+        {
+            Record("old", createdAt: cutoff - 1),
+            Record("recent", createdAt: cutoff),
+        });
+
+        await _usage.ClearAsync(cutoff);
+
+        var summary = Assert.Single(await _usage.GetByModelAsync(null));
+        Assert.Equal(1, summary.Calls);
+    }
+
+    private static UsageRecord Record(
+        string id,
+        string model = "test-model",
+        string? agentId = "agent-1",
+        string? conversationId = null,
+        long input = 100,
+        long output = 20,
+        long? createdAt = null) => new(
+            Id: id,
+            ConversationId: conversationId,
+            AgentId: agentId,
+            AgentName: "Agent",
+            Model: model,
+            InputTokens: input,
+            OutputTokens: output,
+            CachedTokens: 10,
+            CacheWriteTokens: 5,
+            DurationMs: 42,
+            CreatedAt: createdAt ?? DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+}

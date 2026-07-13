@@ -18,9 +18,13 @@ namespace ConnectOnion.WinUIClient.Data;
 /// </summary>
 public static class AppStorage
 {
-    public static readonly string RootDir = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "ConnectOnion");
+    /// <summary>
+    /// Optional data-root override for isolated automation and portable development runs.
+    /// Production leaves this unset and continues to use %AppData%\ConnectOnion.
+    /// </summary>
+    public const string DataRootEnvironmentVariable = "CONNECTONION_DATA_ROOT";
+
+    public static readonly string RootDir = ResolveRootDir();
 
     public static readonly string ConversationsDir = Path.Combine(RootDir, "conversations");
 
@@ -52,6 +56,14 @@ public static class AppStorage
     }
 
     public static string PathFor(string fileName) => Path.Combine(RootDir, fileName);
+
+    private static string ResolveRootDir()
+    {
+        var configured = Environment.GetEnvironmentVariable(DataRootEnvironmentVariable);
+        return string.IsNullOrWhiteSpace(configured)
+            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ConnectOnion")
+            : Path.GetFullPath(configured);
+    }
 
     /// <summary>
     /// Reads and deserializes a store file. Treats the file as untrusted input:

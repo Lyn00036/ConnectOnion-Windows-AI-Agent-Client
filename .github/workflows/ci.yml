@@ -76,6 +76,18 @@ jobs:
           -p:PublishReadyToRun=false
           -p:PublishTrimmed=false
 
+      - name: Run protocol unit tests
+        shell: pwsh
+        run: dotnet test ConnectOnion.Protocol.Tests/ConnectOnion.Protocol.Tests.csproj --configuration $env:CONFIGURATION
+
+      - name: Run WinUI client headless unit tests
+        shell: pwsh
+        run: dotnet test tests/ConnectOnion.WinUIClient.UnitTests/ConnectOnion.WinUIClient.UnitTests.csproj --configuration $env:CONFIGURATION
+
+      - name: Run database integration tests
+        shell: pwsh
+        run: dotnet test tests/ConnectOnion.IntegrationTests/ConnectOnion.IntegrationTests.csproj --configuration $env:CONFIGURATION
+
       - name: Run protocol conformance gate
         shell: pwsh
         run: >

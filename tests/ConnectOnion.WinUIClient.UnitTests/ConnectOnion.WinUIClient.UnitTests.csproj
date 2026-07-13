@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\ConnectOnion.Protocol\ConnectOnion.Protocol.csproj" />
+  </ItemGroup>
+
+  <!-- Compile the WinUI-free production surfaces directly so this test assembly
+       stays headless and never requires the Windows App SDK/XAML runtime. -->
+  <ItemGroup>
+    <Compile Include="..\..\ConnectOnion.WinUIClient\Common\NameInitial.cs" Link="Production\Common\NameInitial.cs" />
+    <Compile Include="..\..\ConnectOnion.WinUIClient\Common\ObservableObject.cs" Link="Production\Common\ObservableObject.cs" />
+    <Compile Include="..\..\ConnectOnion.WinUIClient\Models\AskUserEntries.cs" Link="Production\Models\AskUserEntries.cs" />
+    <Compile Include="..\..\ConnectOnion.WinUIClient\Models\AgentConfig.cs" Link="Production\Models\AgentConfig.cs" />
+    <Compile Include="..\..\ConnectOnion.WinUIClient\Models\ChatAttachment.cs" Link="Production\Models\ChatAttachment.cs" />
+    <Compile Include="..\..\ConnectOnion.WinUIClient\Models\ChatMessage.cs" Link="Production\Models\ChatMessage.cs" />
+    <Compile Include="..\..\ConnectOnion.WinUIClient\Models\KeyBinding.cs" Link="Production\Models\KeyBinding.cs" />
+    <Compile Include="..\..\ConnectOnion.WinUIClient\Models\KeyboardShortcutGroup.cs" Link="Production\Models\KeyboardShortcutGroup.cs" />
+    <Compile Include="..\..\ConnectOnion.WinUIClient\Models\KeyboardShortcutItem.cs" Link="Production\Models\KeyboardShortcutItem.cs" />
+    <Compile Include="..\..\ConnectOnion.WinUIClient\Models\ToolActivity.cs" Link="Production\Models\ToolActivity.cs" />
+    <Compile Include="..\..\ConnectOnion.WinUIClient\Models\SessionSummary.cs" Link="Production\Models\SessionSummary.cs" />
+    <Compile Include="..\..\ConnectOnion.WinUIClient\Models\Notifications\NotificationDecision.cs" Link="Production\Models\Notifications\NotificationDecision.cs" />
+    <Compile Include="..\..\ConnectOnion.WinUIClient\Models\Notifications\NotificationRequest.cs" Link="Production\Models\Notifications\NotificationRequest.cs" />
+    <Compile Include="..\..\ConnectOnion.WinUIClient\Models\Notifications\NotificationSettings.cs" Link="Production\Models\Notifications\NotificationSettings.cs" />
+    <Compile Include="..\..\ConnectOnion.WinUIClient\Models\Notifications\NotificationType.cs" Link="Production\Models\Notifications\NotificationType.cs" />
+    <Compile Include="..\..\ConnectOnion.WinUIClient\Services\Notifications\DedupCache.cs" Link="Production\Services\Notifications\DedupCache.cs" />
+    <Compile Include="..\..\ConnectOnion.WinUIClient\Services\Notifications\INotificationAbstractions.cs" Link="Production\Services\Notifications\INotificationAbstractions.cs" />
+    <Compile Include="..\..\ConnectOnion.WinUIClient\Services\Notifications\NotificationPolicy.cs" Link="Production\Services\Notifications\NotificationPolicy.cs" />
+    <Compile Include="..\..\ConnectOnion.WinUIClient\Services\Notifications\NotificationText.cs" Link="Production\Services\Notifications\NotificationText.cs" />
+    <Compile Include="..\..\ConnectOnion.WinUIClient\Services\ConversationCache.cs" Link="Production\Services\ConversationCache.cs" />
+    <Compile Include="..\..\ConnectOnion.WinUIClient\Services\KeyboardShortcutCatalog.cs" Link="Production\Services\KeyboardShortcutCatalog.cs" />
+    <Compile Include="..\..\ConnectOnion.WinUIClient\Services\Runtime\ChatTurnProjection.cs" Link="Production\Services\Runtime\ChatTurnProjection.cs" />
+    <Compile Include="..\..\ConnectOnion.WinUIClient\Services\Runtime\ToolActivityMigration.cs" Link="Production\Services\Runtime\ToolActivityMigration.cs" />
+    <Compile Include="..\..\ConnectOnion.WinUIClient\Services\Runtime\ToolActivityProjector.cs" Link="Production\Services\Runtime\ToolActivityProjector.cs" />
+    <Compile Include="..\..\ConnectOnion.WinUIClient\ViewModels\KeyboardShortcutsViewModel.cs" Link="Production\ViewModels\KeyboardShortcutsViewModel.cs" />
+  </ItemGroup>
+</Project>
