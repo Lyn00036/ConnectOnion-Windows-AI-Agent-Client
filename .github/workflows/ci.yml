@@ -78,7 +78,7 @@ jobs:
 
       - name: Run protocol unit tests
         shell: pwsh
-        run: dotnet test ConnectOnion.Protocol.Tests/ConnectOnion.Protocol.Tests.csproj --configuration $env:CONFIGURATION
+        run: dotnet test tests/ConnectOnion.Protocol.Tests/ConnectOnion.Protocol.Tests.csproj --configuration $env:CONFIGURATION
 
       - name: Run WinUI client headless unit tests
         shell: pwsh

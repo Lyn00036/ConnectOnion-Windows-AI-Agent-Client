@@ -19,7 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\ConnectOnion.Protocol\ConnectOnion.Protocol.csproj" />
+    <ProjectReference Include="..\..\ConnectOnion.Protocol\ConnectOnion.Protocol.csproj" />
   </ItemGroup>
 
 </Project>

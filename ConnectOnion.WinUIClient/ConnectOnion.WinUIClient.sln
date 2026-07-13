@@ -9,7 +9,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConnectOnion.Protocol", "..
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConnectOnion.Protocol.Conformance", "..\ConnectOnion.Protocol.Conformance\ConnectOnion.Protocol.Conformance.csproj", "{6F17E072-630A-4455-9C28-CE02742CA0EE}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConnectOnion.Protocol.Tests", "..\ConnectOnion.Protocol.Tests\ConnectOnion.Protocol.Tests.csproj", "{F112F3C4-86B9-44BD-872A-07FE8C773DEC}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConnectOnion.Protocol.Tests", "..\tests\ConnectOnion.Protocol.Tests\ConnectOnion.Protocol.Tests.csproj", "{F112F3C4-86B9-44BD-872A-07FE8C773DEC}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConnectOnion.WinUIClient.UnitTests", "..\tests\ConnectOnion.WinUIClient.UnitTests\ConnectOnion.WinUIClient.UnitTests.csproj", "{6172EA4C-F36B-4346-8006-AFB32A09D136}"
 EndProject

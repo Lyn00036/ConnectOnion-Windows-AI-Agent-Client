@@ -22,7 +22,7 @@
 | 5b | Secure handling of credentials | ✅ | `Data/IdentityStore.cs` — the Ed25519 seed is DPAPI-protected (`CurrentUser`) at rest, never plaintext; an unreadable identity is now reported to the user rather than silently replaced |
 | 6 | Windows desktop UX (layout, keyboard, long responses, settings, light/dark) | ✅ | Custom title bar + `ShellSidebar`; `Services/KeyboardShortcutCatalog` + `KeyboardShortcutsDialog`; `MarkdownTextBlock` for long responses; `SettingsOverlay`; full Light/Dark token system in `Styles/Colors.xaml` + `Styles/Brushes.xaml` |
 | 7 | Reliability: interruption, timeout, failure, invalid config, reconnect | ✅ | Timeouts and `ConnectionLost` in `AgentConnectionService`; failed/cancelled runs persist their partial output plus an error bubble (`AgentSessionManager.PersistFailedAsync`); manual reconnect via `ChatViewModel.ReconnectAsync` |
-| 8 | Testing and documentation | ⚠️ **Partial** | Docs: `CLAUDE.md`, this `docs/` folder. Tests: `ConnectOnion.Protocol.Conformance` is the CI gate; `ConnectOnion.Protocol.Tests` (xunit) exists but is **not yet in CI**, and the WinUI layer has **no automated tests yet**. The full plan and backlog are in [`TEST_PLAN.md`](./TEST_PLAN.md) |
+| 8 | Testing and documentation | ✅ | Docs: `CLAUDE.md`, this `docs/` folder. Tests: CI runs `ConnectOnion.Protocol.Conformance` (the signing gate) plus three xunit projects under `tests/` — protocol, headless WinUI-layer units, and SQLite integration. UI-level (XAML runtime) tests remain the open gap; the plan and backlog are in [`TEST_PLAN.md`](./TEST_PLAN.md) |
 
 ### Optional stretch goals
 
@@ -37,7 +37,7 @@
 
 ### Known limitations (as of this commit)
 
-- No automated test coverage of the WinUI layer; `ConnectOnion.Protocol.Tests` is not in CI (see `TEST_PLAN.md` §21.0).
+- No test coverage of the WinUI layer *above* its headless surfaces — anything needing a XAML runtime (navigation, template selection, drag-and-drop, the find overlay) is untested (see `TEST_PLAN.md`).
 - No installer / release pipeline.
 - No `AutomationId`s in the XAML, so UI automation cannot be written yet.
 - `frontend/` (the legacy Electron client) is retained only as a behavioral reference and is not maintained.

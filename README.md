@@ -182,9 +182,13 @@ connectonion-desktop/
     Program.cs                        C# vs JS signing conformance runner
     ref-sign.js                       Reference JavaScript signer
 
-  ConnectOnion.Protocol.Tests/        xunit tests for ConnectOnion.Protocol (not in .sln/CI yet)
   ConnectOnion.Protocol.LiveTest/
     Program.cs                        Optional live WebSocket integration test
+
+  tests/
+    ConnectOnion.Protocol.Tests/      xunit tests for ConnectOnion.Protocol
+    ConnectOnion.WinUIClient.UnitTests/  Headless tests for the WinUI-free app surfaces
+    ConnectOnion.IntegrationTests/    SQLite schema/repository tests against a real database file
 
   agent/                              Python agent implementations (email, browser, memory, simple)
   frontend/                           Legacy Electron + React client
@@ -279,6 +283,19 @@ dotnet build ConnectOnion.WinUIClient\ConnectOnion.WinUIClient.sln `
 
 ## Tests And Validation
 
+Run the automated test suites (all three run in CI):
+
+```powershell
+dotnet test tests\ConnectOnion.Protocol.Tests\ConnectOnion.Protocol.Tests.csproj
+dotnet test tests\ConnectOnion.WinUIClient.UnitTests\ConnectOnion.WinUIClient.UnitTests.csproj
+dotnet test tests\ConnectOnion.IntegrationTests\ConnectOnion.IntegrationTests.csproj
+```
+
+`ConnectOnion.Protocol.Tests` covers the wire protocol, `ConnectOnion.WinUIClient.UnitTests`
+covers the WinUI-free app surfaces (chat projection, notifications, caches, view models), and
+`ConnectOnion.IntegrationTests` exercises schema migrations and the repositories against a real
+SQLite file.
+
 Run the protocol conformance gate:
 
 ```powershell
@@ -321,6 +338,7 @@ Current CI behavior:
 - Builds `ConnectOnion.WinUIClient\ConnectOnion.WinUIClient.sln`
 - Uses `Platform=x64`
 - Disables package signing and app package generation for CI builds
+- Runs `ConnectOnion.Protocol.Tests`, `ConnectOnion.WinUIClient.UnitTests`, and `ConnectOnion.IntegrationTests`
 - Runs `ConnectOnion.Protocol.Conformance`
 
 The CI workflow intentionally does not build the old `frontend/` app.
@@ -415,7 +433,8 @@ Known deployed development agents:
 ## Not Implemented Yet
 
 - Production installer/release pipeline (MSIX packaging is configured but not yet automated)
-- `ConnectOnion.Protocol.Tests` is not wired into the `.sln` or CI (run directly with `dotnet test`)
+- UI-level tests: the headless surfaces are covered, but anything needing a XAML runtime
+  (navigation, drag-and-drop, the find overlay) has no tests and no `AutomationId`s to target
 - Live protocol tests in CI
 - Full migration tooling for preserving older local app data (a pre-DPAPI identity row is
   regenerated rather than migrated; a database created before the `messages` schema isn't migrated)

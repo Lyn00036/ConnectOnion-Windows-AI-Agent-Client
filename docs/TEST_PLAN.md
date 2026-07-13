@@ -45,15 +45,19 @@
 
 ### 2.1 Main modules
 
-Five `.csproj` files sit at the repo root; only three are in the `.sln`:
+Production projects sit at the repo root, test projects under `tests/`. Everything except the live smoke test is in the `.sln`:
 
 | Project | In `.sln` | In CI | Responsibility |
 |---|---|---|---|
 | `ConnectOnion.WinUIClient` | ✅ | ✅ build | The WinUI 3 app (`net10.0-windows10.0.19041.0`) |
 | `ConnectOnion.Protocol` | ✅ | ✅ build | Transport-agnostic protocol library (`net10.0`), zero WinUI dependency → headless-testable |
 | `ConnectOnion.Protocol.Conformance` | ✅ | ✅ **CI gate** | Cross-checks Ed25519 / canonical JSON against the Node.js `ref-sign.js` |
-| `ConnectOnion.Protocol.Tests` | ❌ | ❌ | xunit unit tests — **they exist but are wired into nothing** |
 | `ConnectOnion.Protocol.LiveTest` | ❌ | ❌ | Manual smoke run against a real deployed agent |
+| `tests/ConnectOnion.Protocol.Tests` | ✅ | ✅ | xunit unit tests for the wire protocol |
+| `tests/ConnectOnion.WinUIClient.UnitTests` | ✅ | ✅ | Headless xunit tests for the app's WinUI-free surfaces |
+| `tests/ConnectOnion.IntegrationTests` | ✅ | ✅ | xunit tests against a real SQLite file (schema, migrations, repositories, identity) |
+
+The two projects that test the app can't reference it (`net10.0-windows` + Windows App SDK won't load in a headless test host), so they `<Compile Include>` the individual WinUI-free production files they exercise. Extending that link list is how a new file comes under test.
 
 `frontend/` is the legacy Electron implementation and is **out of scope**.
 
@@ -120,23 +124,27 @@ Write path: `ConversationRepository.UpsertMessagesAsync` is the **only** writer 
 
 | Location | Content | Framework | In CI |
 |---|---|---|---|
-| `ConnectOnion.Protocol.Tests/InputMessageBuilderTests.cs` | INPUT wire shape (text / images / files / mixed) | xunit 2.9.3 | ❌ |
-| `ConnectOnion.Protocol.Tests/DataUrlCodecTests.cs` | data-URL encode/decode + malformed input | xunit | ❌ |
-| `ConnectOnion.Protocol.Tests/AttachmentWireEventsTests.cs` | `agent_image` / `files_received` parsing | xunit | ❌ |
-| `ConnectOnion.Protocol.Tests/ConversationRunRegistryTests.cs` | Run registry state machine | xunit | ❌ |
-| `ConnectOnion.Protocol.Conformance/Program.cs` | Signing / canonical JSON vs. Node reference | console asserts | ✅ **the only gate** |
+| `tests/ConnectOnion.Protocol.Tests/InputMessageBuilderTests.cs` | INPUT wire shape (text / images / files / mixed) | xunit 2.9.3 | ✅ |
+| `tests/ConnectOnion.Protocol.Tests/DataUrlCodecTests.cs` | data-URL encode/decode + malformed input | xunit | ✅ |
+| `tests/ConnectOnion.Protocol.Tests/AttachmentWireEventsTests.cs` | `agent_image` / `files_received` parsing | xunit | ✅ |
+| `tests/ConnectOnion.Protocol.Tests/ConversationRunRegistryTests.cs` | Run registry state machine | xunit | ✅ |
+| `tests/ConnectOnion.WinUIClient.UnitTests/Runtime/` | `ChatTurnProjection`, `ToolActivityProjector`, legacy tool-message migration | xunit | ✅ |
+| `tests/ConnectOnion.WinUIClient.UnitTests/Services/Notifications/` | `NotificationPolicy.Decide`, `NotificationCoordinator` (turn dedup, approval dedup, disconnect grace period), `DedupCache`, preview text | xunit | ✅ |
+| `tests/ConnectOnion.WinUIClient.UnitTests/Services/` | `ConversationCache` LRU eviction, keyboard-shortcut catalog | xunit | ✅ |
+| `tests/ConnectOnion.WinUIClient.UnitTests/Models/`, `ViewModels/`, `Common/` | `ChatMessage` interactive-card outcomes, notification models, shortcuts view model, grapheme-safe initials | xunit | ✅ |
+| `tests/ConnectOnion.IntegrationTests/Database/` | Schema + migrations, agent/session/conversation/usage repositories, `IdentityStore` reset detection | xunit | ✅ |
+| `ConnectOnion.Protocol.Conformance/Program.cs` | Signing / canonical JSON vs. Node reference | console asserts | ✅ **the signing gate** |
 
 > **Note on frameworks**: the brief asks for MSTest, but the repo already standardizes on **xunit**. This plan uses **xunit** for all headless testing and MSTest *only* for the WinUI Unit Test App (whose template mandates it). Rationale in §6.
 
 ### 2.9 Missing tests
 
-- The WinUI client (105 `.cs` files) has **zero test coverage** — no ViewModel, Service, Data, Converter, or TemplateSelector test exists.
-- `AgentConnectionService` — the most complex class in the protocol library (timeouts, reconnect, dispose) — **has no unit tests**.
-- The **entire database layer is untested**. `ConversationRepository`'s incremental upsert is both the highest-risk code and completely uncovered.
-- `NotificationPolicy.Decide` is a pure function (trivially testable) and is **untested**.
-- **No UI automation infrastructure exists.**
+Closed since this plan was written: the protocol tests are in CI, the database layer has integration tests, and the WinUI client's headless surfaces (projection, notifications, caches, view models) are covered. What remains open:
+
+- `AgentConnectionService` — the most complex class in the protocol library (timeouts, reconnect, dispose) — **has no unit tests**. It needs a fake `WebSocket` seam first.
+- Converters and `ChatMessageTemplateSelector` are untested.
+- **No UI automation infrastructure exists**, and anything requiring a XAML runtime (navigation, drag-and-drop, the find overlay) is therefore untested.
 - **No `AutomationId` anywhere** — 0 occurrences repo-wide; only 48 `AutomationProperties.Name`.
-- **`ConnectOnion.Protocol.Tests` is not in CI** — meaning the existing tests currently protect nothing.
 
 ### 2.10 High-risk modules and flows
 
@@ -186,7 +194,7 @@ Ranked by *probability × blast radius*:
 
 ## 5. Test Strategy
 
-1. **Infrastructure before cases.** `ConnectOnion.Protocol.Tests` is not in CI today, so no amount of new tests produces protection. **Step zero is wiring tests into CI.**
+1. **Infrastructure before cases.** A test that isn't in CI protects nothing. Step zero — wiring every test project into the `.sln` and the workflow — is **done**; keep it that way by adding new test projects to both in the same commit that creates them.
 2. **Push logic out of the UI.** The protocol layer already has zero WinUI dependency and is headless-testable. The WinUI layer should copy that: anything worth testing gets extracted into a pure class. `NotificationPolicy.Decide`, `ChatTurnProjection`, and `AppVersionService` are already good examples.
 3. **Invert the pyramid by cost**: xunit headless (fast, stable, many) → WinUI Unit Test App (slow, needs a UI thread, few) → UI automation (slowest, most brittle, exactly 15 E2E flows).
 4. **Failure paths before happy paths.** Somebody has manually clicked "send a message". Nobody manually tests reconnect-after-drop, background-run-survives-page-close, or restart-restores-history.
@@ -221,15 +229,16 @@ Ranked by *probability × blast radius*:
 | DPI | 100% / 150% / 200% (UI and A11Y layers) |
 | Theme | Light and Dark, both (control and A11Y layers) |
 
-Suggested CI additions to the existing `.github/workflows/ci.yml`:
+`.github/workflows/ci.yml` builds the `.sln` and then runs, in order:
 
 ```yaml
-# Today: builds the .sln + runs Conformance only.
-# Add:
-- run: dotnet test ConnectOnion.Protocol.Tests/ConnectOnion.Protocol.Tests.csproj -c Release
+- run: dotnet test tests/ConnectOnion.Protocol.Tests/ConnectOnion.Protocol.Tests.csproj -c Release
 - run: dotnet test tests/ConnectOnion.WinUIClient.UnitTests/ConnectOnion.WinUIClient.UnitTests.csproj -c Release
 - run: dotnet test tests/ConnectOnion.IntegrationTests/ConnectOnion.IntegrationTests.csproj -c Release
+- run: dotnet run --project ConnectOnion.Protocol.Conformance/... -c Release --no-build
 ```
+
+Note the test steps pass no `-p:Platform`. The solution build maps the conformance project to `Any CPU`, so pushing `x64` through to a standalone `dotnet test`/`dotnet run` makes it look for output under `bin\x64\...` that the solution never produced.
 
 ---
 
@@ -690,7 +699,7 @@ All of the following must hold before release:
 
 In addition to §18:
 
-- [ ] `ConnectOnion.Protocol.Tests` **is wired into CI** (today it is not — this is a blocker)
+- [x] Every test project is wired into the `.sln` **and** CI
 - [ ] All new test projects run in CI on every PR
 - [ ] Coverage: `ConnectOnion.Protocol` ≥ 80%; `Services/Runtime` + `Data` ≥ 70%
 - [ ] Performance baselines met: `PERF-START-001`, `PERF-MSG-001`
@@ -701,23 +710,24 @@ In addition to §18:
 
 ## 20. Test Directory Structure
 
-Following the repo's existing convention (sibling `.csproj` at the root; tests consolidated under `tests/`):
+Production `.csproj` files sit at the repo root; **every test project lives under `tests/`**:
 
 ```
 connectonion-desktop/
 ├── ConnectOnion.WinUIClient/           # existing
 ├── ConnectOnion.Protocol/              # existing
-├── ConnectOnion.Protocol.Conformance/  # existing (CI gate)
-├── ConnectOnion.Protocol.LiveTest/     # existing (manual smoke)
-├── ConnectOnion.Protocol.Tests/        # existing xunit — ADD TO .sln + CI NOW
-│   ├── InputMessageBuilderTests.cs
-│   ├── DataUrlCodecTests.cs
-│   ├── AttachmentWireEventsTests.cs
-│   ├── ConversationRunRegistryTests.cs
-│   └── AgentConnectionServiceTests.cs        # new: timeouts / watchdog / dispose
+├── ConnectOnion.Protocol.Conformance/  # existing (signing gate)
+├── ConnectOnion.Protocol.LiveTest/     # existing (manual smoke, not in CI)
 │
-└── tests/                                     # new
-    ├── ConnectOnion.WinUIClient.UnitTests/    # xunit · net10.0 · no UI thread
+└── tests/
+    ├── ConnectOnion.Protocol.Tests/          # xunit · in .sln + CI
+    │   ├── InputMessageBuilderTests.cs
+    │   ├── DataUrlCodecTests.cs
+    │   ├── AttachmentWireEventsTests.cs
+    │   ├── ConversationRunRegistryTests.cs
+    │   └── AgentConnectionServiceTests.cs    # new: timeouts / watchdog / dispose
+    │
+    ├── ConnectOnion.WinUIClient.UnitTests/   # xunit · net10.0 · no UI thread
     │   ├── ViewModels/
     │   │   ├── ChatViewModelTests.cs                 # CanSend truth table, empty send, retry
     │   │   └── KeyboardShortcutsViewModelTests.cs
@@ -727,6 +737,8 @@ connectonion-desktop/
     │   │   ├── KeyboardShortcutCatalogTests.cs       # catalog vs. real handlers
     │   │   └── Notifications/
     │   │       ├── NotificationPolicyTests.cs        # every Decide branch
+    │   │       ├── NotificationCoordinatorTests.cs   # turn/approval dedup, disconnect grace
+    │   │       ├── NotificationTextTests.cs
     │   │       └── DedupCacheTests.cs
     │   ├── Runtime/
     │   │   ├── ChatTurnProjectionTests.cs            # live/headless parity
@@ -822,10 +834,10 @@ connectonion-desktop/
 
 | ID | Task | Why |
 |---|---|---|
-| **INFRA-0** | Add `ConnectOnion.Protocol.Tests` to the `.sln` and CI | 🔴 The 4 existing test files **currently protect nothing** |
+| ~~**INFRA-0**~~ | ~~Add `ConnectOnion.Protocol.Tests` to the `.sln` and CI~~ | ✅ **Done** — it now lives at `tests/ConnectOnion.Protocol.Tests` and runs in CI alongside the two new suites |
 | **INFRA-1** | Add the `AutomationId`s from §13.1 | 🔴 Zero exist → UI automation cannot begin |
 | **INFRA-2** | Build `FakeAgentServer` (HttpListener + WebSocket) | Foundation for every connection and streaming test |
-| **INFRA-3** | Build a temp-DB fixture (isolated from `%AppData%`) | Foundation for every DB test; also prevents trashing a developer's real data |
+| ~~**INFRA-3**~~ | ~~Build a temp-DB fixture (isolated from `%AppData%`)~~ | ✅ **Done** — `tests/ConnectOnion.IntegrationTests/Database/TempDatabaseFixture.cs` |
 | ~~**INFRA-4**~~ | ~~Extract `IUriLauncher` (wrapping `Launcher.LaunchUriAsync`)~~ | ✅ **Done** — `Services/UriLauncher.cs`, injectable via `AppServices.UriLauncher` |
 | **INFRA-5** | Extract `PendingActivationBuffer` from static `App` | Otherwise the cold-start activation race cannot be tested |
 
@@ -859,7 +871,7 @@ Multi-monitor, DPI switching, high contrast, Narrator reading order, Focus Assis
 
 ### 21.7 Biggest infrastructure gap today
 
-See §21.0. In one sentence: **writing tests right now has zero marginal value, because no test runs in CI.**
+See §21.0. The CI gap is closed — headless tests now run on every push. The two remaining blockers are **`FakeAgentServer`** (INFRA-2), without which nothing about connection, streaming, or recovery can be tested, and **`AutomationId`s** (INFRA-1), without which UI automation cannot begin at all.
 
 ### 21.8 The first 20 tests to write
 
@@ -867,16 +879,16 @@ Ranked by risk ÷ cost — all headless, all writable in a day:
 
 | # | Test ID | Why this one |
 |---|---|---|
-| 1 | INFRA-0 (wire existing tests into CI) | Not a test, but the precondition for every test |
-| 2 | `UT-STREAM-002` | Live/headless projection parity — the core architectural invariant |
-| 3 | `DB-MSG-001` | Incremental upsert touches only the given rows |
-| 4 | `DB-MSG-002` | `created_at` is not overwritten |
-| 5 | `DB-MSG-004` | Attachment delete + re-insert is correct |
-| 6 | `UT-NOTIF-001…006` | Every `NotificationPolicy.Decide` branch (pure function, 6 cases in one sitting) |
+| ~~1~~ | ~~INFRA-0 (wire existing tests into CI)~~ | ✅ Done — the precondition for every test below |
+| ~~2~~ | ~~`UT-STREAM-002`~~ | ✅ Done — `ChatTurnProjectionTests` |
+| ~~3~~ | ~~`DB-MSG-001`~~ | ✅ Done — `ConversationRepositoryTests` |
+| ~~4~~ | ~~`DB-MSG-002`~~ | ✅ Done — `ConversationRepositoryTests` |
+| ~~5~~ | ~~`DB-MSG-004`~~ | ✅ Done — `ConversationRepositoryTests` |
+| ~~6~~ | ~~`UT-NOTIF-001…006`~~ | ✅ Done — `NotificationPolicyTests` + `NotificationCoordinatorTests` |
 | 7 | `UT-CHAT-003` | `CanSend` truth table |
 | 8 | `UT-TOOL-004` | `EventKind` → template mapping |
-| 9 | `UT-CONN-004` | `ask_user` does not trip the watchdog |
-| 10 | `UT-STREAM-003` | Final-reply de-duplication |
+| 9 | `UT-CONN-004` | `ask_user` does not trip the watchdog — **needs INFRA-2** |
+| ~~10~~ | ~~`UT-STREAM-003`~~ | ✅ Done — `ChatTurnProjectionTests.AppendFinalReply_*` |
 | 11 | `UT-STREAM-011/012` | Interactive answers persist; unanswered sealed as "No selection" |
 | 12 | `UT-SESSION-004` | Active-run conversations bypass the cache |
 | 13 | `UT-ABOUT-002` | Version is not hard-coded |

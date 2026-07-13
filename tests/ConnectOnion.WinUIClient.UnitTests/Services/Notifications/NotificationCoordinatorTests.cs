@@ -1,13 +1,13 @@
 using ConnectOnion.WinUIClient.Models.Notifications;
 using ConnectOnion.WinUIClient.Services.Notifications;
 
-namespace ConnectOnion.WinUIClient.Tests.Notifications;
+namespace ConnectOnion.WinUIClient.UnitTests.Services.Notifications;
 
-public class NotificationCoordinatorTests
+public sealed class NotificationCoordinatorTests
 {
     private const string AgentId = "agent-1";
     private const string AgentName = "Helper";
-    private const string ConvId = "conv-1";
+    private const string ConvId = "conversation-1";
 
     private sealed class Harness
     {
@@ -26,7 +26,7 @@ public class NotificationCoordinatorTests
     }
 
     [Fact]
-    public void AgentReply_ViewingConversation_NoNotification()
+    public void PublishAgentTurnCompleted_ViewingConversation_SuppressesNotification()
     {
         var h = new Harness();
         h.Presence.IsForeground = true;
@@ -39,7 +39,7 @@ public class NotificationCoordinatorTests
     }
 
     [Fact]
-    public void AgentReply_ForegroundOtherConversation_InApp()
+    public void PublishAgentTurnCompleted_ForegroundOnAnotherConversation_RoutesInApp()
     {
         var h = new Harness();
         h.Presence.IsForeground = true;
@@ -53,7 +53,7 @@ public class NotificationCoordinatorTests
     }
 
     [Fact]
-    public void AgentReply_Background_System()
+    public void PublishAgentTurnCompleted_Background_RoutesToSystem()
     {
         var h = new Harness();
         h.Presence.IsForeground = false;
@@ -65,7 +65,7 @@ public class NotificationCoordinatorTests
     }
 
     [Fact]
-    public void SameTurn_NotifiesOnce()
+    public void PublishAgentTurnCompleted_SameTurnTwice_NotifiesOnce()
     {
         var h = new Harness();
         h.Presence.IsForeground = false;
@@ -77,7 +77,7 @@ public class NotificationCoordinatorTests
     }
 
     [Fact]
-    public void ToolCalls_ClassifiedAsTaskCompleted()
+    public void PublishAgentTurnCompleted_WithToolCalls_ClassifiesAsTaskCompleted()
     {
         var h = new Harness();
         h.Presence.IsForeground = false;
@@ -88,7 +88,7 @@ public class NotificationCoordinatorTests
     }
 
     [Fact]
-    public void LongDuration_ClassifiedAsTaskCompleted()
+    public void PublishAgentTurnCompleted_LongDuration_ClassifiesAsTaskCompleted()
     {
         var h = new Harness();
         h.Presence.IsForeground = false;
@@ -99,7 +99,7 @@ public class NotificationCoordinatorTests
     }
 
     [Fact]
-    public void Approval_Deduped_ByToolAndArgs()
+    public void PublishApprovalRequired_SameToolAndArguments_DedupesToOneNotification()
     {
         var h = new Harness();
         h.Presence.IsForeground = false;
@@ -112,20 +112,20 @@ public class NotificationCoordinatorTests
     }
 
     [Fact]
-    public void BriefDisconnect_RecoveredWithinGrace_Silent()
+    public void NotifyConnectionRestored_WithinGracePeriod_StaysSilent()
     {
         var h = new Harness();
         h.Presence.IsForeground = false;
 
         h.Coordinator.NotifyConnectionLost(AgentId, AgentName);
         h.Coordinator.NotifyConnectionRestored(AgentId);
-        h.Scheduler.FireAll(); // grace timer would fire here, but it was cancelled
+        h.Scheduler.FireAll(); // the grace timer would fire here, but it was cancelled
 
         Assert.Equal(0, h.System.Count);
     }
 
     [Fact]
-    public void SustainedDisconnect_PastGrace_Notifies()
+    public void NotifyConnectionLost_GracePeriodElapses_Notifies()
     {
         var h = new Harness();
         h.Presence.IsForeground = false;
@@ -138,7 +138,7 @@ public class NotificationCoordinatorTests
     }
 
     [Fact]
-    public void RepeatedConnectionLost_ArmsGraceOnce()
+    public void NotifyConnectionLost_RepeatedForSameAgent_ArmsGraceTimerOnce()
     {
         var h = new Harness();
 
@@ -149,7 +149,7 @@ public class NotificationCoordinatorTests
     }
 
     [Fact]
-    public void MasterSwitchOff_NoNotification()
+    public void PublishAgentTurnCompleted_NotificationsDisabled_SuppressesNotification()
     {
         var h = new Harness();
         h.Settings.Current = new NotificationSettings { EnableNotifications = false };
@@ -162,7 +162,7 @@ public class NotificationCoordinatorTests
     }
 
     [Fact]
-    public void PreviewOff_SystemBodyIsGeneric()
+    public void PublishAgentTurnCompleted_MessagePreviewDisabled_OmitsContentFromBody()
     {
         var h = new Harness();
         h.Settings.Current = new NotificationSettings { ShowMessagePreview = false };
@@ -175,12 +175,14 @@ public class NotificationCoordinatorTests
     }
 
     [Fact]
-    public void ChannelThrows_DoesNotBubble()
+    public void PublishAgentTurnCompleted_ChannelThrows_DoesNotBubbleToCaller()
     {
-        var throwing = new ThrowingChannel();
-        var presence = new FakeWindowPresence { IsForeground = false };
         var coordinator = new NotificationCoordinator(
-            throwing, new RecordingChannel(), presence, new FakeSettingsProvider(), new ManualScheduler());
+            new ThrowingChannel(),
+            new RecordingChannel(),
+            new FakeWindowPresence { IsForeground = false },
+            new FakeSettingsProvider(),
+            new ManualScheduler());
 
         var ex = Record.Exception(() =>
             coordinator.PublishAgentTurnCompleted(AgentId, AgentName, ConvId, "turn-1", "hi", 0, 100));
@@ -191,6 +193,6 @@ public class NotificationCoordinatorTests
     private sealed class ThrowingChannel : INotificationChannel
     {
         public void Show(NotificationRequest request, bool playSound)
-            => throw new System.InvalidOperationException("boom");
+            => throw new InvalidOperationException("boom");
     }
 }

@@ -234,6 +234,9 @@ Agent hosts must expose:
 | `ConnectOnion.Protocol` | C# protocol library (WebSocket state machine, Ed25519 signing, relay resolution) |
 | `ConnectOnion.Protocol.Conformance` | Cross-language canonical-JSON signing verification (C# vs JS) |
 | `ConnectOnion.Protocol.LiveTest` | Optional live WebSocket integration test |
+| `tests/ConnectOnion.Protocol.Tests` | xunit tests for the wire protocol |
+| `tests/ConnectOnion.WinUIClient.UnitTests` | Headless xunit tests for this app's WinUI-free surfaces |
+| `tests/ConnectOnion.IntegrationTests` | SQLite schema/repository tests against a real database file |
 | `agent/` | Python agent implementations (email-agent, browser-agent) |
 | `frontend/` | Legacy Electron + React client (reference only) |
 

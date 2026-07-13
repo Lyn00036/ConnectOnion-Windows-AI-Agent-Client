@@ -41,6 +41,7 @@
     <Compile Include="..\..\ConnectOnion.WinUIClient\Models\Notifications\NotificationType.cs" Link="Production\Models\Notifications\NotificationType.cs" />
     <Compile Include="..\..\ConnectOnion.WinUIClient\Services\Notifications\DedupCache.cs" Link="Production\Services\Notifications\DedupCache.cs" />
     <Compile Include="..\..\ConnectOnion.WinUIClient\Services\Notifications\INotificationAbstractions.cs" Link="Production\Services\Notifications\INotificationAbstractions.cs" />
+    <Compile Include="..\..\ConnectOnion.WinUIClient\Services\Notifications\NotificationCoordinator.cs" Link="Production\Services\Notifications\NotificationCoordinator.cs" />
     <Compile Include="..\..\ConnectOnion.WinUIClient\Services\Notifications\NotificationPolicy.cs" Link="Production\Services\Notifications\NotificationPolicy.cs" />
     <Compile Include="..\..\ConnectOnion.WinUIClient\Services\Notifications\NotificationText.cs" Link="Production\Services\Notifications\NotificationText.cs" />
     <Compile Include="..\..\ConnectOnion.WinUIClient\Services\ConversationCache.cs" Link="Production\Services\ConversationCache.cs" />

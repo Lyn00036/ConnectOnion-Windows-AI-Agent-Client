@@ -1,11 +1,9 @@
-using System;
-using System.Collections.Generic;
 using ConnectOnion.WinUIClient.Models.Notifications;
 using ConnectOnion.WinUIClient.Services.Notifications;
 
-namespace ConnectOnion.WinUIClient.Tests.Notifications;
+namespace ConnectOnion.WinUIClient.UnitTests.Services.Notifications;
 
-/// <summary>Settable window-state stand-in for policy/coordinator tests.</summary>
+/// <summary>Settable window-state stand-in for coordinator tests.</summary>
 internal sealed class FakeWindowPresence : IWindowPresence
 {
     public bool IsForeground { get; set; }

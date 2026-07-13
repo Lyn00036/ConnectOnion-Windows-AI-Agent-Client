@@ -10,36 +10,43 @@ Prose docs live in `docs/` (see `docs/README.md`): the wire protocol (`SESSION_M
 
 ## Solution Layout
 
-Five sibling `.csproj` projects at the repo root. Only three are wired into the `.sln` — keep this in mind when running `dotnet build`/`dotnet test` against the solution vs. a project directly:
+Production projects sit at the repo root; every test project lives under `tests/`. All but one are wired into the `.sln` — keep this in mind when running `dotnet build`/`dotnet test` against the solution vs. a project directly:
 
-| Project | In `.sln`? | Purpose |
-|---|---|---|
-| `ConnectOnion.WinUIClient/` | yes | The WinUI 3 app (`net10.0-windows10.0.19041.0`) |
-| `ConnectOnion.Protocol/` | yes | Transport-agnostic protocol library (`net10.0`, no WinUI dependency) |
-| `ConnectOnion.Protocol.Conformance/` | yes | Cross-checks C# Ed25519/canonical-JSON signing against a Node.js reference signer (`ref-sign.js`) — this is the CI gate |
-| `ConnectOnion.Protocol.LiveTest/` | no | Console script for a real end-to-end run against a deployed agent; run directly with `dotnet run` |
-| `ConnectOnion.Protocol.Tests/` | no | xunit unit tests for `ConnectOnion.Protocol` (wire schema, encoding, event parsing); run directly with `dotnet test` — not yet added to the `.sln` or to CI |
+| Project | In `.sln`? | In CI? | Purpose |
+|---|---|---|---|
+| `ConnectOnion.WinUIClient/` | yes | build | The WinUI 3 app (`net10.0-windows10.0.19041.0`) |
+| `ConnectOnion.Protocol/` | yes | build | Transport-agnostic protocol library (`net10.0`, no WinUI dependency) |
+| `ConnectOnion.Protocol.Conformance/` | yes | yes | Cross-checks C# Ed25519/canonical-JSON signing against a Node.js reference signer (`ref-sign.js`) — this is the CI gate |
+| `ConnectOnion.Protocol.LiveTest/` | no | no | Console script for a real end-to-end run against a deployed agent; run directly with `dotnet run` |
+| `tests/ConnectOnion.Protocol.Tests/` | yes | yes | xunit unit tests for `ConnectOnion.Protocol` (wire schema, encoding, event parsing) |
+| `tests/ConnectOnion.WinUIClient.UnitTests/` | yes | yes | Headless xunit tests for the WinUI-free surfaces of the app (projection, notifications, caches, view models) |
+| `tests/ConnectOnion.IntegrationTests/` | yes | yes | xunit tests against a real SQLite file (schema/migrations, repositories, identity store) |
 
-The `.sln` lives at `ConnectOnion.WinUIClient/ConnectOnion.WinUIClient.sln` even though it references sibling projects by relative path (`..\ConnectOnion.Protocol\...`).
+The two test projects that cover the WinUI app cannot reference it — it targets `net10.0-windows` and drags in the Windows App SDK, which a headless test host can't load. They instead `<Compile Include>` the specific WinUI-free production files they exercise (see either `.csproj`). **Adding a production file to one of those link lists is how you bring it under test** — if a new file won't link because it pulls in XAML types, that's the signal its logic belongs in a WinUI-free class, not that the test project needs the Windows App SDK.
+
+The `.sln` lives at `ConnectOnion.WinUIClient/ConnectOnion.WinUIClient.sln` even though it references every other project by relative path (`..\ConnectOnion.Protocol\...`, `..\tests\...`).
 
 SDK pin: `global.json` sets `"version": "10.0.100"` with `rollForward: latestFeature` (any newer .NET 10 feature-band SDK works).
 
 ## Commands
 
-Build/test the two projects that aren't in the `.sln` directly by `.csproj` path; everything else goes through the solution.
+Everything except `ConnectOnion.Protocol.LiveTest` is in the solution; the test projects are also runnable one at a time by `.csproj` path.
 
 ```powershell
-# Restore + build the solution (WinUIClient, Protocol, Conformance)
+# Restore + build the solution (app, protocol, conformance, all three test projects)
 dotnet restore ConnectOnion.WinUIClient\ConnectOnion.WinUIClient.sln -p:Platform=x64
 dotnet build ConnectOnion.WinUIClient\ConnectOnion.WinUIClient.sln --configuration Debug --no-restore -p:Platform=x64
 
 # Run the app unpackaged (no MSIX deploy step needed)
 dotnet run --project ConnectOnion.WinUIClient\ConnectOnion.WinUIClient.csproj -p:Platform=x64 -p:RunUnpackaged=true
 
-# Protocol unit tests (xunit) — the actual test-writing target for wire-protocol work
-dotnet test ConnectOnion.Protocol.Tests\ConnectOnion.Protocol.Tests.csproj
-dotnet test ConnectOnion.Protocol.Tests\ConnectOnion.Protocol.Tests.csproj --filter "FullyQualifiedName~InputMessageBuilderTests"
-dotnet test ConnectOnion.Protocol.Tests\ConnectOnion.Protocol.Tests.csproj --filter "FullyQualifiedName~DataUrlCodecTests.TryDecode_MalformedInput_ReturnsFalseWithoutThrowing"
+# Protocol unit tests (xunit) — the test-writing target for wire-protocol work
+dotnet test tests\ConnectOnion.Protocol.Tests\ConnectOnion.Protocol.Tests.csproj
+dotnet test tests\ConnectOnion.Protocol.Tests\ConnectOnion.Protocol.Tests.csproj --filter "FullyQualifiedName~InputMessageBuilderTests"
+
+# Headless WinUI-layer unit tests, and SQLite integration tests
+dotnet test tests\ConnectOnion.WinUIClient.UnitTests\ConnectOnion.WinUIClient.UnitTests.csproj
+dotnet test tests\ConnectOnion.IntegrationTests\ConnectOnion.IntegrationTests.csproj
 
 # Protocol conformance gate (matches CI exactly)
 dotnet run --project ConnectOnion.Protocol.Conformance\ConnectOnion.Protocol.Conformance.csproj --configuration Release
@@ -50,7 +57,7 @@ dotnet run --project ConnectOnion.Protocol.LiveTest\ConnectOnion.Protocol.LiveTe
 
 `Platform` must be `x64`, `x86`, or `ARM64` for the WinUI project — `Any CPU` doesn't work for packaged debugging. Visual Studio F5 (Debug/x64, Deploy checked for `ConnectOnion.WinUIClient` in Configuration Manager) is the most reliable path for XAML debugging; `dotnet run -p:RunUnpackaged=true` is the fast CLI loop.
 
-CI (`.github/workflows/ci.yml`, `windows-latest`) builds the `.sln` in Release/x64 with packaging disabled, then runs the Conformance gate. It does **not** currently run `ConnectOnion.Protocol.Tests` or `ConnectOnion.Protocol.LiveTest`, and does not touch `frontend/`.
+CI (`.github/workflows/ci.yml`, `windows-latest`) builds the `.sln` in Release/x64 with packaging disabled, then runs all three test projects and finally the Conformance gate. It does **not** run `ConnectOnion.Protocol.LiveTest` (that needs a live agent), and does not touch `frontend/`. The test steps deliberately omit `-p:Platform` and rebuild rather than passing `--no-build`: the solution build maps the conformance project to `Any CPU`, so forcing the platform through to a standalone `dotnet test`/`dotnet run` sends it looking for output under `bin\x64\...` that the solution never produced — there is a comment in the workflow env block about exactly this.
 
 There is no lint/format command configured for this repo.
 
@@ -114,5 +121,5 @@ Conventional Commits, enforced by convention rather than tooling: `<type>(<scope
 ## Not implemented yet
 
 - Production installer/release automation (MSIX packaging is configured but not wired into CI)
-- Automated tests for the WinUI layer. `ConnectOnion.Protocol.Tests` exists but is in neither the `.sln` nor CI, so today the Conformance gate is the only test CI runs — see `docs/TEST_PLAN.md` for the plan and backlog.
+- **UI-level** tests for the WinUI layer. The headless surfaces (projection, notifications, caches, view models, repositories) are covered by `tests/`, but anything requiring a XAML runtime — page navigation, template selection, drag-and-drop, the find overlay — is still untested. See `docs/TEST_PLAN.md` for the backlog.
 - No `AutomationId` anywhere in the XAML, so UI automation can't be written against the app yet.
