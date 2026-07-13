@@ -88,19 +88,13 @@ public sealed partial class MainWindow
     private void CloseKeyboardShortcutsOverlay()
         => KeyboardShortcutsDialog.Hide();
 
-    /// <summary>Opens the public docs in the default browser. Surfaces a toast rather than
-    /// failing silently when the shell can't hand the URI off (no browser registered, policy).</summary>
+    /// <summary>Opens the public docs in the default browser. Goes through
+    /// <see cref="AppServices.UriLauncher"/> (rather than the static, unmockable <c>Launcher</c>)
+    /// so this path is testable; surfaces a toast rather than failing silently when the shell can't
+    /// hand the URI off (no browser registered, blocked by policy).</summary>
     private async void ConnectOnionDocs_Click(object sender, RoutedEventArgs e)
     {
-        bool launched;
-        try
-        {
-            launched = await Launcher.LaunchUriAsync(new Uri(DocsUrl));
-        }
-        catch
-        {
-            launched = false;
-        }
+        var launched = await AppServices.UriLauncher.LaunchAsync(new Uri(DocsUrl));
 
         if (!launched)
         {

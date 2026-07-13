@@ -23,6 +23,10 @@ public static class AppServices
     /// <summary>Single shared HttpClient for health probes and endpoint resolution.</summary>
     public static HttpClient Http { get; } = new();
 
+    /// <summary>Opens external links. Settable so a test can substitute a fake — the underlying
+    /// <c>Launcher</c> is a static WinRT type and cannot be mocked directly.</summary>
+    public static IUriLauncher UriLauncher { get; set; } = new SystemUriLauncher();
+
     /// <summary>
     /// App-level owner of agent connections and in-flight turns. Pages/view models submit
     /// sends here and subscribe to run updates rather than holding a connection or a
