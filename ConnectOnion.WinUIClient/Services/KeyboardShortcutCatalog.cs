@@ -16,8 +16,10 @@ namespace ConnectOnion.WinUIClient.Services;
 ///     (Enter submits, Shift+Enter inserts a newline).
 ///   • Find group  → <c>MainWindow.ViewMenu.cs</c> <c>FindTextBox_KeyDown</c> / <c>FindCommand</c>
 ///     and <c>Views/ChatPage.Find.cs</c>.
+///   • General "Keyboard shortcuts" (Ctrl+Shift+/) → <c>MainWindow.HelpMenu.cs</c>
+///     <c>HelpMenuShortcut_KeyDown</c>.
 ///   • General "Close dialog" (Esc) → the Esc handling shared by SettingsOverlay,
-///     KeyboardShortcutsDialog, and the find overlay.
+///     KeyboardShortcutsDialog, AboutOverlay, and the find overlay.
 ///
 /// Do not list a shortcut here that is not actually handled in code.
 /// </summary>
@@ -66,6 +68,7 @@ public static class KeyboardShortcutCatalog
         }),
         new("General", new List<KeyboardShortcutItem>
         {
+            Item("Keyboard shortcuts", Combo("Ctrl", "Shift", "/")),
             Item("Close dialog", Combo("Esc")),
         }),
     };

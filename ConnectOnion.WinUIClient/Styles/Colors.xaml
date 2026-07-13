@@ -89,6 +89,12 @@
             <Color x:Key="SettingsContentColor">#FFF8F7FA</Color>
             <Color x:Key="SettingsModalBorderColor">#FFD8D2DF</Color>
 
+            <!-- Agent avatar: deliberately monochrome, not brand-colored. It inverts per theme
+                 (ink on light, paper on dark) so the initial keeps maximum contrast either way. -->
+            <Color x:Key="AvatarBackgroundColor">#FF1F1D24</Color>
+            <Color x:Key="AvatarForegroundColor">#FFFFFFFF</Color>
+            <Color x:Key="AvatarBorderColor">#FF1F1D24</Color>
+
         </ResourceDictionary>
 
         <ResourceDictionary x:Key="Dark">
@@ -162,6 +168,12 @@
             <Color x:Key="SettingsNavigationColor">#FF211F27</Color>
             <Color x:Key="SettingsContentColor">#FF292631</Color>
             <Color x:Key="SettingsModalBorderColor">#FF4B4554</Color>
+
+            <!-- Agent avatar (see the light dictionary): inverted here — paper on ink — plus a
+                 faint border so a near-white tile still has an edge against light surfaces. -->
+            <Color x:Key="AvatarBackgroundColor">#FFF2F0F5</Color>
+            <Color x:Key="AvatarForegroundColor">#FF1F1D24</Color>
+            <Color x:Key="AvatarBorderColor">#FF57525F</Color>
 
         </ResourceDictionary>
 

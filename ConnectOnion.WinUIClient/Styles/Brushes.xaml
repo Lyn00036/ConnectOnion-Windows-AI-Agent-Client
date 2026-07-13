@@ -101,6 +101,9 @@
             <SolidColorBrush x:Key="SettingsNavigationBrush" Color="{ThemeResource SettingsNavigationColor}" />
             <SolidColorBrush x:Key="SettingsContentBrush" Color="{ThemeResource SettingsContentColor}" />
             <SolidColorBrush x:Key="SettingsModalBorderBrush" Color="{ThemeResource SettingsModalBorderColor}" />
+            <SolidColorBrush x:Key="AvatarBackgroundBrush" Color="{ThemeResource AvatarBackgroundColor}" />
+            <SolidColorBrush x:Key="AvatarForegroundBrush" Color="{ThemeResource AvatarForegroundColor}" />
+            <SolidColorBrush x:Key="AvatarBorderBrush" Color="{ThemeResource AvatarBorderColor}" />
 
             <!-- ============ Legacy keys (kept for source compatibility, now sourced from the tokens above) ============ -->
 
@@ -254,6 +257,9 @@
             <SolidColorBrush x:Key="SettingsNavigationBrush" Color="{ThemeResource SettingsNavigationColor}" />
             <SolidColorBrush x:Key="SettingsContentBrush" Color="{ThemeResource SettingsContentColor}" />
             <SolidColorBrush x:Key="SettingsModalBorderBrush" Color="{ThemeResource SettingsModalBorderColor}" />
+            <SolidColorBrush x:Key="AvatarBackgroundBrush" Color="{ThemeResource AvatarBackgroundColor}" />
+            <SolidColorBrush x:Key="AvatarForegroundBrush" Color="{ThemeResource AvatarForegroundColor}" />
+            <SolidColorBrush x:Key="AvatarBorderBrush" Color="{ThemeResource AvatarBorderColor}" />
 
             <!-- ============ Legacy keys (kept for source compatibility, now sourced from the tokens above) ============ -->
 

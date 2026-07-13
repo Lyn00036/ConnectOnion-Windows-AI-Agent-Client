@@ -39,6 +39,7 @@ public sealed class ChatMessage : ObservableObject
     private string? _eventArgs;
     private string? _eventResult;
     private bool _isContentExpanded = true;
+    private bool? _interactiveExpandOverride;
     private string _findQuery = "";
     private int _activeFindMatchIndex = -1;
     private ToolActivityViewModel? _toolActivity;
@@ -87,6 +88,9 @@ public sealed class ChatMessage : ObservableObject
             OnPropertyChanged(nameof(IsAskUserEvent));
             OnPropertyChanged(nameof(IsApprovalEvent));
             OnPropertyChanged(nameof(IsPlanReviewEvent));
+            OnPropertyChanged(nameof(IsInteractiveEvent));
+            OnPropertyChanged(nameof(IsInteractiveExpanded));
+            OnPropertyChanged(nameof(IsInteractiveCollapsed));
         }
     }
 
@@ -100,6 +104,15 @@ public sealed class ChatMessage : ObservableObject
             OnPropertyChanged(nameof(StatusBadge));
             OnPropertyChanged(nameof(IsAwaitingResponse));
             OnPropertyChanged(nameof(ShowAskUserFreeText));
+
+            // Answering an interactive turn folds the card away again. Dropping any manual
+            // toggle the user made while it was pending is deliberate: the default for a
+            // resolved card is collapsed, and they can always re-open it.
+            _interactiveExpandOverride = null;
+            OnPropertyChanged(nameof(IsInteractiveExpanded));
+            OnPropertyChanged(nameof(IsInteractiveCollapsed));
+            OnPropertyChanged(nameof(InteractiveOutcome));
+            OnPropertyChanged(nameof(InteractiveAccessibilityName));
         }
     }
 
@@ -112,7 +125,13 @@ public sealed class ChatMessage : ObservableObject
     public string? EventMeta
     {
         get => _eventMeta;
-        set { if (SetProperty(ref _eventMeta, value)) OnPropertyChanged(nameof(HasEventMeta)); }
+        set
+        {
+            if (!SetProperty(ref _eventMeta, value)) return;
+            OnPropertyChanged(nameof(HasEventMeta));
+            OnPropertyChanged(nameof(InteractiveOutcome));
+            OnPropertyChanged(nameof(InteractiveAccessibilityName));
+        }
     }
 
     /// <summary>Pretty-printed tool arguments (collapsible).</summary>
@@ -216,6 +235,45 @@ public sealed class ChatMessage : ObservableObject
     /// </summary>
     [JsonIgnore]
     public bool IsAwaitingResponse => Status == EventStatus.Running;
+
+    /// <summary>Any of the three cards that can be answered inline.</summary>
+    [JsonIgnore]
+    public bool IsInteractiveEvent => IsAskUserEvent || IsApprovalEvent || IsPlanReviewEvent;
+
+    /// <summary>
+    /// Collapse state of an interactive card, modelled on the tool-activity card. It is derived,
+    /// not stored: a card is open exactly while it is still waiting on the user, and folds itself
+    /// away once answered — which also means history reloaded from SQLite (every card there is
+    /// resolved) comes back collapsed. <see cref="ToggleInteractiveExpanded"/> sets the override
+    /// so either state can be opened or folded by hand; the override is dropped whenever
+    /// <see cref="Status"/> changes, so answering always re-collapses.
+    /// </summary>
+    [JsonIgnore]
+    public bool IsInteractiveExpanded => _interactiveExpandOverride ?? IsAwaitingResponse;
+
+    [JsonIgnore]
+    public bool IsInteractiveCollapsed => !IsInteractiveExpanded;
+
+    /// <summary>The one-line result shown on a collapsed card: the recorded answer ("Approved
+    /// once", "Rejected", "Changes requested", "Answered: …"), <c>"No selection"</c> for a card
+    /// a run sealed unanswered, or the pending state while it still awaits the user.</summary>
+    [JsonIgnore]
+    public string InteractiveOutcome => IsAwaitingResponse
+        ? "Waiting for you"
+        : string.IsNullOrWhiteSpace(EventMeta) ? "No selection" : EventMeta;
+
+    /// <summary>Spoken name for the collapse toggle, so the state is not conveyed by chevron alone.</summary>
+    [JsonIgnore]
+    public string InteractiveAccessibilityName
+        => $"{EventEyebrow}: {EventTitle}. {InteractiveOutcome}. {(IsInteractiveExpanded ? "Collapse" : "Expand")}";
+
+    public void ToggleInteractiveExpanded()
+    {
+        _interactiveExpandOverride = !IsInteractiveExpanded;
+        OnPropertyChanged(nameof(IsInteractiveExpanded));
+        OnPropertyChanged(nameof(IsInteractiveCollapsed));
+        OnPropertyChanged(nameof(InteractiveAccessibilityName));
+    }
 
     [JsonIgnore]
     public bool HasEventDetail => !string.IsNullOrEmpty(EventDetail);

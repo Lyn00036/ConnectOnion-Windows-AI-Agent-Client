@@ -27,6 +27,15 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
     private int _matchIndex;
     private int _quoteDepth;
 
+    /// <summary>Greater than zero while the current inline scope sits inside an element that
+    /// cannot host an <see cref="InlineUIContainer"/> — today that means a <see cref="Hyperlink"/>,
+    /// which (unlike a Paragraph of the RichTextBlock) accepts only text inlines and throws
+    /// <c>ArgumentException</c> on anything else. It is a depth, not a flag, because everything
+    /// nested further inside — emphasis spans, inline code, search highlights — is blocked too.</summary>
+    private int _uiContainerBlockedDepth;
+
+    private bool CanHostUIContainer => _uiContainerBlockedDepth == 0;
+
     public WinUiMarkdownRenderer(RichTextBlock target, string searchQuery = "", int activeMatchIndex = -1)
     {
         _target = target;
@@ -211,16 +220,37 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
 
     internal void WriteCodeInline(CodeInline inline)
     {
+        // Inside a Hyperlink there is no room for the Border-in-an-InlineUIContainer treatment
+        // below; fall back to a plain monospace span so `code` in a link still renders as code.
+        if (!CanHostUIContainer)
+        {
+            var codeSpan = new Span
+            {
+                FontFamily = new FontFamily("Consolas"),
+                Foreground = ResolveBrush("CodeTextBrush"),
+            };
+            WriteHighlightedText(inline.Content, codeSpan.Inlines, allowInlineUIContainers: false);
+            CurrentInlines.Add(codeSpan);
+            return;
+        }
+
         // RichTextBlock inlines (Run/Span) can't have a Background, so — same
         // technique as HighlightedTextBlock's search-match spans — wrap a Border
         // in an InlineUIContainer to give inline code a subtle fill distinct from
         // both surrounding prose and fenced code blocks (see WriteCodeBlockLines).
-        var codeText = new TextBlock
+        //
+        // The code itself goes in a nested RichTextBlock, not a TextBlock: a search
+        // match inside the code is highlighted with its own InlineUIContainer, which
+        // only a RichTextBlock paragraph may host.
+        var codeText = new RichTextBlock
         {
             FontFamily = new FontFamily("Consolas"),
+            FontSize = _target.FontSize,
             Foreground = ResolveBrush("CodeTextBrush"),
         };
-        WriteHighlightedText(inline.Content, codeText.Inlines);
+        var codeParagraph = new Paragraph();
+        WriteHighlightedText(inline.Content, codeParagraph.Inlines);
+        codeText.Blocks.Add(codeParagraph);
 
         var border = new Border
         {
@@ -229,6 +259,10 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
             Padding = new Thickness(4, 1, 4, 1),
             Child = codeText,
         };
+
+        // Drop the chip back onto the text baseline; without this the code sits a descender
+        // (plus its own bottom padding) above the prose it is inline with.
+        HighlightedTextBlock.ApplyBaselineNudge(border, _target.FontSize, bottomPadding: 1);
         CurrentInlines.Add(new InlineUIContainer { Child = border });
     }
 
@@ -270,13 +304,15 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
             hyperlink.Click += async (_, _) => await Launcher.LaunchUriAsync(navigateUri);
         }
 
+        // A Hyperlink may only contain text inlines, so nothing written inside one — link text,
+        // a search highlight, inline code — may use an InlineUIContainer.
         if (inline.FirstChild is not null)
         {
-            WriteNestedInlines(inline, hyperlink.Inlines);
+            WriteNestedInlines(inline, hyperlink.Inlines, blocksUIContainers: true);
         }
         else
         {
-            WriteHighlightedText(inline.Url ?? string.Empty, hyperlink.Inlines);
+            WriteHighlightedText(inline.Url ?? string.Empty, hyperlink.Inlines, allowInlineUIContainers: false);
         }
 
         CurrentInlines.Add(hyperlink);
@@ -356,13 +392,18 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
         // so — same InlineUIContainer trick as the inline-code Border above and
         // HighlightedTextBlock's search-match spans — this drops a single Border
         // into its own paragraph as one inline UI element.
-        var codeText = new TextBlock
+        // Nested RichTextBlock rather than TextBlock, for the same reason as inline code:
+        // a highlighted search match is an InlineUIContainer, which a TextBlock rejects.
+        var codeText = new RichTextBlock
         {
             FontFamily = new FontFamily("Consolas"),
+            FontSize = _target.FontSize,
             Foreground = ResolveBrush("CodeTextBrush"),
             TextWrapping = TextWrapping.NoWrap,
         };
-        WriteHighlightedText(code.TrimEnd(), codeText.Inlines);
+        var codeParagraph = new Paragraph();
+        WriteHighlightedText(code.TrimEnd(), codeParagraph.Inlines);
+        codeText.Blocks.Add(codeParagraph);
 
         var border = new Border
         {
@@ -378,6 +419,12 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
                 Content = codeText,
             },
         };
+
+        // The block's own (otherwise empty) line still has a baseline, and the container hangs the
+        // border's bottom edge off it — so without this the whole block rides up over its line and
+        // the gap beneath it looks too big. No bottom padding term here: this aligns the box, not
+        // the text inside it.
+        HighlightedTextBlock.ApplyBaselineNudge(border, _target.FontSize);
 
         var paragraph = CreateParagraph();
         paragraph.Margin = new Thickness(0, 6, 0, 6);
@@ -398,17 +445,26 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
     }
 
     private void WriteHighlightedText(string text)
-        => WriteHighlightedText(text, CurrentInlines);
+        => WriteHighlightedText(text, CurrentInlines, CanHostUIContainer);
 
-    private void WriteHighlightedText(string text, InlineCollection inlines)
-        => HighlightedTextBlock.AddHighlightedRuns(inlines, text, _searchQuery, _activeMatchIndex, ref _matchIndex);
+    /// <summary>Set <paramref name="allowInlineUIContainers"/> to false whenever the target is not
+    /// a Paragraph of the RichTextBlock — see <see cref="HighlightedTextBlock.AddHighlightedRuns"/>.</summary>
+    private void WriteHighlightedText(string text, InlineCollection inlines, bool allowInlineUIContainers = true)
+        => HighlightedTextBlock.AddHighlightedRuns(
+            inlines, text, _searchQuery, _activeMatchIndex, ref _matchIndex,
+            allowInlineUIContainers, _target.FontSize);
 
     private void WriteInlineContainer(ContainerInline container, InlineCollection inlines)
         => WriteNestedInlines(container, inlines);
 
-    private void WriteNestedInlines(ContainerInline container, InlineCollection targetInlines)
+    /// <param name="blocksUIContainers">True when <paramref name="targetInlines"/> belongs to an
+    /// element that rejects an <see cref="InlineUIContainer"/> (a Hyperlink), so everything written
+    /// while this scope is on the stack falls back to text-only highlighting.</param>
+    private void WriteNestedInlines(
+        ContainerInline container, InlineCollection targetInlines, bool blocksUIContainers = false)
     {
         _inlineScopes.Push(targetInlines);
+        if (blocksUIContainers) _uiContainerBlockedDepth++;
         try
         {
         for (Markdig.Syntax.Inlines.Inline? child = container.FirstChild; child is not null; child = child.NextSibling)
@@ -418,6 +474,7 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
         }
         finally
         {
+            if (blocksUIContainers) _uiContainerBlockedDepth--;
             _inlineScopes.Pop();
         }
     }

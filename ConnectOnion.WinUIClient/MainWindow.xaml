@@ -198,11 +198,10 @@
                     </MenuBarItem>
                     <MenuBarItem x:Name="HelpMenuBarItem" Title="Help">
                         <MenuFlyoutItem Text="Keyboard shortcuts"
-                                        Click="KeyboardShortcuts_Click">
-                            <MenuFlyoutItem.Icon>
-                                <FontIcon Glyph="&#xE765;" />
-                            </MenuFlyoutItem.Icon>
-                        </MenuFlyoutItem>
+                                        KeyboardAcceleratorTextOverride="Ctrl+Shift+/"
+                                        Click="KeyboardShortcuts_Click" />
+                        <MenuFlyoutItem Text="ConnectOnion Docs"
+                                        Click="ConnectOnionDocs_Click" />
                         <MenuFlyoutSeparator />
                         <MenuFlyoutItem Text="About ConnectOnion"
                                         Click="AboutConnectOnion_Click" />
@@ -253,6 +252,7 @@
               Canvas.ZIndex="100">
             <controls:SettingsOverlay x:Name="SettingsOverlay" Canvas.ZIndex="1000" />
             <controls:KeyboardShortcutsDialog x:Name="KeyboardShortcutsDialog" Canvas.ZIndex="1001" />
+            <controls:AboutOverlay x:Name="AboutOverlay" Canvas.ZIndex="1002" />
             <Border x:Name="FindOverlayPanel"
                     Width="380"
                     MinHeight="36"

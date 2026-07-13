@@ -7,14 +7,17 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <!-- Brand-colored square with the agent's initial. Size/CornerRadius/FontSize
-         are set per-site; the brushes, centering and bold weight are shared. -->
+    <!-- Monochrome square with the agent's initial: ink-on-white in the light theme, inverted in
+         the dark one (see the Avatar* tokens in Colors.xaml). Size/CornerRadius/FontSize are set
+         per-site; the brushes, centering and bold weight are shared. -->
     <Border Width="{x:Bind Size, Mode=OneWay}"
             Height="{x:Bind Size, Mode=OneWay}"
             CornerRadius="{x:Bind CornerRadius, Mode=OneWay}"
-            Background="{ThemeResource BrandPrimaryBrush}">
+            Background="{ThemeResource AvatarBackgroundBrush}"
+            BorderBrush="{ThemeResource AvatarBorderBrush}"
+            BorderThickness="1">
         <TextBlock Text="{x:Bind Initial, Mode=OneWay}"
-                   Foreground="{ThemeResource TextOnBrandBrush}"
+                   Foreground="{ThemeResource AvatarForegroundBrush}"
                    FontSize="{x:Bind FontSize, Mode=OneWay}"
                    FontWeight="Bold"
                    HorizontalAlignment="Center"

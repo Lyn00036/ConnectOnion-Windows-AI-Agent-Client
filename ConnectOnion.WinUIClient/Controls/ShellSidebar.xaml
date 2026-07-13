@@ -448,13 +448,18 @@
                                 Visibility="Collapsed"
                                 AgentAdded="AddAgentForm_AgentAdded" />
 
+            <!-- IconText paints its icon and label from its own Foreground, so each site must
+                 supply one (see IconText.xaml) — without it these two read as washed-out in both
+                 themes. TextPrimary keeps them legible on the sidebar background either way. -->
             <Button Style="{StaticResource ShellNavButtonStyle}" Click="AddAgent_Click">
-                <local:IconText Glyph="Add" IconSize="Size20" Spacing="9" Text="Add Agent" />
+                <local:IconText Glyph="Add" IconSize="Size20" Spacing="9" Text="Add Agent"
+                                Foreground="{ThemeResource TextPrimaryBrush}" />
             </Button>
             <Button Style="{StaticResource ShellNavButtonStyle}"
                     Click="Settings_Click"
                     AutomationProperties.Name="Open settings">
-                <local:IconText Glyph="Settings" IconSize="Size20" Spacing="9" Text="Settings" />
+                <local:IconText Glyph="Settings" IconSize="Size20" Spacing="9" Text="Settings"
+                                Foreground="{ThemeResource TextPrimaryBrush}" />
             </Button>
         </StackPanel>
     </Grid>

@@ -5,7 +5,6 @@ using ConnectOnion.WinUIClient.Views;
 using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
-using Windows.System;
 using Windows.UI;
 
 namespace ConnectOnion.WinUIClient;
@@ -32,6 +31,7 @@ public sealed partial class MainWindow : Window
         ShellSidebar.SettingsRequested += ShowSettingsOverlay;
         SettingsOverlay.CloseRequested += (_, _) => CloseSettingsOverlay();
         KeyboardShortcutsDialog.CloseRequested += (_, _) => CloseKeyboardShortcutsOverlay();
+        AboutOverlay.CloseRequested += (_, _) => CloseAboutOverlay();
         ContentFrame.Navigated += async (_, _) =>
         {
             try
@@ -149,25 +149,12 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private async void AboutConnectOnion_Click(object sender, RoutedEventArgs e)
-        => await Launcher.LaunchUriAsync(new Uri("https://docs.connectonion.com/"));
-
-    private void KeyboardShortcuts_Click(object sender, RoutedEventArgs e)
-        // Return focus to the top-level "Help" menu bar item, not the clicked flyout item —
-        // the flyout is gone by the time the dialog closes, so focusing it would no-op.
-        => ShowKeyboardShortcutsOverlay(HelpMenuBarItem);
-
-    private void ShowKeyboardShortcutsOverlay(FrameworkElement? opener = null)
-        => KeyboardShortcutsDialog.Show(opener);
-
-    private void CloseKeyboardShortcutsOverlay()
-        => KeyboardShortcutsDialog.Hide();
-
-    /// <summary>True while any full-window modal (settings or keyboard shortcuts) is showing. The
-    /// dimmed backdrop already blocks the mouse; the global menu accelerators bubble up through
-    /// RootGrid regardless of hit-testing, so they must additionally bail on this to keep a modal
-    /// from acting on the content behind it.</summary>
-    private bool IsModalOverlayOpen => SettingsOverlay.IsOpen || KeyboardShortcutsDialog.IsOpen;
+    /// <summary>True while any full-window modal (settings, keyboard shortcuts, or About) is
+    /// showing. The dimmed backdrop already blocks the mouse; the global menu accelerators bubble
+    /// up through RootGrid regardless of hit-testing, so they must additionally bail on this to
+    /// keep a modal from acting on the content behind it.</summary>
+    private bool IsModalOverlayOpen
+        => SettingsOverlay.IsOpen || KeyboardShortcutsDialog.IsOpen || AboutOverlay.IsOpen;
 
     private void UpdateNavigationButtons()
     {

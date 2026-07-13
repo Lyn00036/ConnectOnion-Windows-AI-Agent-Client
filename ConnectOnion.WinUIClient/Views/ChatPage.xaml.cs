@@ -427,6 +427,16 @@ public sealed partial class ChatPage : Page, IFindHost
     // etc. and the DataTemplate cards in ChatPage.xaml) rather than ContentDialogs,
     // so the question/decision stays in the conversation history.
 
+    /// <summary>Folds an interactive card open or shut. Purely presentational — it never touches
+    /// the pending response, so collapsing a card that still awaits an answer is safe.</summary>
+    private void InteractiveHeader_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is ChatMessage message)
+        {
+            message.ToggleInteractiveExpanded();
+        }
+    }
+
     private async void AskUserSubmit_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.Tag is ChatMessage message)

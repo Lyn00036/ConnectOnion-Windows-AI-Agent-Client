@@ -17,6 +17,7 @@ public sealed partial class MainWindow
         RegisterFileMenuAccelerators();
         RegisterEditMenuAccelerators();
         RegisterViewMenuAccelerators();
+        RegisterHelpMenuAccelerators();
         RegisterDragDropHint();
     }
 

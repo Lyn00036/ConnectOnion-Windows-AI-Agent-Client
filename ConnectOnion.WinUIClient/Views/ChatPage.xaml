@@ -15,6 +15,46 @@
           Background="{ThemeResource AppBackgroundBrush}"
           SizeChanged="ChatRoot_SizeChanged">
         <Grid.Resources>
+            <!-- Shared chrome for the three interactive cards (ask_user / approval / plan_review).
+                 Their header is the same fold-away control the tool-activity card uses: click the
+                 row to expand or collapse, chevron shows which way it goes, and the collapsed row
+                 carries the outcome ("Approved once", "Rejected", "No selection", …). -->
+            <Style x:Key="InteractiveCardHeaderStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="MinHeight" Value="0" />
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            </Style>
+
+            <Style x:Key="InteractiveEyebrowStyle" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="10" />
+                <Setter Property="FontWeight" Value="Bold" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="Foreground" Value="{ThemeResource TextTertiaryBrush}" />
+            </Style>
+
+            <Style x:Key="InteractiveCollapsedTitleStyle" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                <Setter Property="Foreground" Value="{ThemeResource TextSecondaryBrush}" />
+            </Style>
+
+            <Style x:Key="InteractiveOutcomeStyle" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="11" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            </Style>
+
+            <Style x:Key="InteractiveChevronStyle" TargetType="TextBlock">
+                <Setter Property="FontFamily" Value="Segoe Fluent Icons" />
+                <Setter Property="FontSize" Value="10" />
+                <Setter Property="Foreground" Value="{ThemeResource TextTertiaryBrush}" />
+            </Style>
+
             <!-- Shared attachment rendering for both user and agent bubbles: inline
                  image preview (tap to open in the default viewer) or a file chip
                  (tap to open, button to save a copy). -->
@@ -238,8 +278,8 @@
                                            HorizontalAlignment="Left" />
             </DataTemplate>
 
-            <!-- Ask-user card: question + inline answer controls (dynamic fields,
-                 single/multi-select options, or free text), submit button. -->
+            <!-- Ask-user card: collapsible header + question + inline answer controls (dynamic
+                 fields, single/multi-select options, or free text), submit button. -->
             <DataTemplate x:Key="ChatAskUserTemplate" x:DataType="models:ChatMessage">
                 <Border MaxWidth="520"
                         HorizontalAlignment="Left"
@@ -249,15 +289,46 @@
                         BorderBrush="{ThemeResource BorderDefaultBrush}"
                         BorderThickness="1">
                     <StackPanel Spacing="10">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <ic:FluentIcon Icon="QuestionCircle" IconVariant="Regular" IconSize="Size16"
-                                           Foreground="{ThemeResource TextTertiaryBrush}" />
-                            <TextBlock Text="{x:Bind EventEyebrow}"
-                                       FontSize="10"
-                                       FontWeight="Bold"
-                                       VerticalAlignment="Center"
-                                       Foreground="{ThemeResource TextTertiaryBrush}" />
-                        </StackPanel>
+                        <Button Style="{StaticResource InteractiveCardHeaderStyle}"
+                                Tag="{x:Bind}"
+                                Click="InteractiveHeader_Click"
+                                AutomationProperties.Name="{x:Bind InteractiveAccessibilityName, Mode=OneWay}">
+                            <Grid ColumnSpacing="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ic:FluentIcon Icon="QuestionCircle" IconVariant="Regular" IconSize="Size16"
+                                               VerticalAlignment="Center"
+                                               Foreground="{ThemeResource TextTertiaryBrush}" />
+                                <TextBlock Grid.Column="1"
+                                           Text="{x:Bind EventEyebrow}"
+                                           Style="{StaticResource InteractiveEyebrowStyle}" />
+                                <TextBlock Grid.Column="2"
+                                           Text="{x:Bind EventTitle}"
+                                           Style="{StaticResource InteractiveCollapsedTitleStyle}"
+                                           Visibility="{x:Bind IsInteractiveCollapsed, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                                <TextBlock Grid.Column="3"
+                                           Text="{x:Bind InteractiveOutcome, Mode=OneWay}"
+                                           Style="{StaticResource InteractiveOutcomeStyle}"
+                                           Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource EventStatusToBrush}}"
+                                           Visibility="{x:Bind IsInteractiveCollapsed, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                                <Grid Grid.Column="4" VerticalAlignment="Center">
+                                    <TextBlock Style="{StaticResource InteractiveChevronStyle}"
+                                               Text="&#xE70D;"
+                                               Visibility="{x:Bind IsInteractiveExpanded, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                                    <TextBlock Style="{StaticResource InteractiveChevronStyle}"
+                                               Text="&#xE76C;"
+                                               Visibility="{x:Bind IsInteractiveCollapsed, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                                </Grid>
+                            </Grid>
+                        </Button>
+
+                    <StackPanel Spacing="10"
+                                Visibility="{x:Bind IsInteractiveExpanded, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                         <TextBlock Text="{x:Bind EventTitle}" FontSize="13" TextWrapping="Wrap" />
 
                         <ItemsControl ItemsSource="{x:Bind AskUserFields}"
@@ -304,10 +375,12 @@
                                    Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource EventStatusToBrush}}"
                                    Visibility="{x:Bind IsAwaitingResponse, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
                     </StackPanel>
+                    </StackPanel>
                 </Border>
             </DataTemplate>
 
-            <!-- Approval card: tool + description + collapsible arguments, approve/reject buttons. -->
+            <!-- Approval card: collapsible header + tool + description + collapsible arguments,
+                 approve/reject buttons. -->
             <DataTemplate x:Key="ChatApprovalTemplate" x:DataType="models:ChatMessage">
                 <Border MaxWidth="520"
                         HorizontalAlignment="Left"
@@ -317,15 +390,46 @@
                         BorderBrush="{ThemeResource BorderDefaultBrush}"
                         BorderThickness="1">
                     <StackPanel Spacing="8">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <ic:FluentIcon Icon="ShieldTask" IconVariant="Regular" IconSize="Size16"
-                                           Foreground="{ThemeResource TextTertiaryBrush}" />
-                            <TextBlock Text="{x:Bind EventEyebrow}"
-                                       FontSize="10"
-                                       FontWeight="Bold"
-                                       VerticalAlignment="Center"
-                                       Foreground="{ThemeResource TextTertiaryBrush}" />
-                        </StackPanel>
+                        <Button Style="{StaticResource InteractiveCardHeaderStyle}"
+                                Tag="{x:Bind}"
+                                Click="InteractiveHeader_Click"
+                                AutomationProperties.Name="{x:Bind InteractiveAccessibilityName, Mode=OneWay}">
+                            <Grid ColumnSpacing="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ic:FluentIcon Icon="ShieldTask" IconVariant="Regular" IconSize="Size16"
+                                               VerticalAlignment="Center"
+                                               Foreground="{ThemeResource TextTertiaryBrush}" />
+                                <TextBlock Grid.Column="1"
+                                           Text="{x:Bind EventEyebrow}"
+                                           Style="{StaticResource InteractiveEyebrowStyle}" />
+                                <TextBlock Grid.Column="2"
+                                           Text="{x:Bind EventTitle}"
+                                           Style="{StaticResource InteractiveCollapsedTitleStyle}"
+                                           Visibility="{x:Bind IsInteractiveCollapsed, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                                <TextBlock Grid.Column="3"
+                                           Text="{x:Bind InteractiveOutcome, Mode=OneWay}"
+                                           Style="{StaticResource InteractiveOutcomeStyle}"
+                                           Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource EventStatusToBrush}}"
+                                           Visibility="{x:Bind IsInteractiveCollapsed, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                                <Grid Grid.Column="4" VerticalAlignment="Center">
+                                    <TextBlock Style="{StaticResource InteractiveChevronStyle}"
+                                               Text="&#xE70D;"
+                                               Visibility="{x:Bind IsInteractiveExpanded, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                                    <TextBlock Style="{StaticResource InteractiveChevronStyle}"
+                                               Text="&#xE76C;"
+                                               Visibility="{x:Bind IsInteractiveCollapsed, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                                </Grid>
+                            </Grid>
+                        </Button>
+
+                    <StackPanel Spacing="8"
+                                Visibility="{x:Bind IsInteractiveExpanded, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                         <TextBlock Text="{x:Bind EventTitle}" FontSize="13" FontWeight="SemiBold" />
                         <TextBlock Text="{x:Bind EventDetail}"
                                    FontSize="12"
@@ -357,10 +461,12 @@
                                    Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource EventStatusToBrush}}"
                                    Visibility="{x:Bind IsAwaitingResponse, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
                     </StackPanel>
+                    </StackPanel>
                 </Border>
             </DataTemplate>
 
-            <!-- Plan-review card: rendered plan + optional feedback, approve/request-changes buttons. -->
+            <!-- Plan-review card: collapsible header + rendered plan + optional feedback,
+                 approve/request-changes buttons. -->
             <DataTemplate x:Key="ChatPlanReviewTemplate" x:DataType="models:ChatMessage">
                 <Border MaxWidth="640"
                         HorizontalAlignment="Left"
@@ -370,15 +476,46 @@
                         BorderBrush="{ThemeResource BorderDefaultBrush}"
                         BorderThickness="1">
                     <StackPanel Spacing="8">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <ic:FluentIcon Icon="ClipboardTask" IconVariant="Regular" IconSize="Size16"
-                                           Foreground="{ThemeResource TextTertiaryBrush}" />
-                            <TextBlock Text="{x:Bind EventEyebrow}"
-                                       FontSize="10"
-                                       FontWeight="Bold"
-                                       VerticalAlignment="Center"
-                                       Foreground="{ThemeResource TextTertiaryBrush}" />
-                        </StackPanel>
+                        <Button Style="{StaticResource InteractiveCardHeaderStyle}"
+                                Tag="{x:Bind}"
+                                Click="InteractiveHeader_Click"
+                                AutomationProperties.Name="{x:Bind InteractiveAccessibilityName, Mode=OneWay}">
+                            <Grid ColumnSpacing="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ic:FluentIcon Icon="ClipboardTask" IconVariant="Regular" IconSize="Size16"
+                                               VerticalAlignment="Center"
+                                               Foreground="{ThemeResource TextTertiaryBrush}" />
+                                <TextBlock Grid.Column="1"
+                                           Text="{x:Bind EventEyebrow}"
+                                           Style="{StaticResource InteractiveEyebrowStyle}" />
+                                <TextBlock Grid.Column="2"
+                                           Text="{x:Bind EventTitle}"
+                                           Style="{StaticResource InteractiveCollapsedTitleStyle}"
+                                           Visibility="{x:Bind IsInteractiveCollapsed, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                                <TextBlock Grid.Column="3"
+                                           Text="{x:Bind InteractiveOutcome, Mode=OneWay}"
+                                           Style="{StaticResource InteractiveOutcomeStyle}"
+                                           Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource EventStatusToBrush}}"
+                                           Visibility="{x:Bind IsInteractiveCollapsed, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                                <Grid Grid.Column="4" VerticalAlignment="Center">
+                                    <TextBlock Style="{StaticResource InteractiveChevronStyle}"
+                                               Text="&#xE70D;"
+                                               Visibility="{x:Bind IsInteractiveExpanded, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                                    <TextBlock Style="{StaticResource InteractiveChevronStyle}"
+                                               Text="&#xE76C;"
+                                               Visibility="{x:Bind IsInteractiveCollapsed, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                                </Grid>
+                            </Grid>
+                        </Button>
+
+                    <StackPanel Spacing="8"
+                                Visibility="{x:Bind IsInteractiveExpanded, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                         <controls:MarkdownTextBlock Markdown="{x:Bind EventDetail}"
                                                     Foreground="{ThemeResource TextPrimaryBrush}" />
                         <TextBox PlaceholderText="Optional feedback or requested changes"
@@ -397,6 +534,7 @@
                                    FontWeight="SemiBold"
                                    Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource EventStatusToBrush}}"
                                    Visibility="{x:Bind IsAwaitingResponse, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
+                    </StackPanel>
                     </StackPanel>
                 </Border>
             </DataTemplate>
