@@ -229,6 +229,48 @@ public sealed class ChatTurnProjection
                 Add(NewActivity(null, "Onboarding complete", EventStatus.Done));
                 break;
 
+            case "mode_changed":
+            {
+                // The agent can enter plan mode by itself (triggered_by: "agent"), so this card is
+                // not an echo of the user's own click — it is the only place a mode the *agent*
+                // chose becomes visible.
+                var item = NewActivity(null, $"Mode: {AgentModes.DisplayName(Str("mode"))}", EventStatus.Done);
+                item.EventMeta = Str("triggered_by") switch
+                {
+                    "agent" => "by agent",
+                    "ulw_checkpoint" => "by checkpoint",
+                    _ => null,
+                };
+                Add(item);
+                break;
+            }
+
+            // ---- locally-originated (see ConversationRunRegistry.PublishLocalEvent) ----
+
+            case "stop_requested":
+            {
+                var stopped = Flag("stopped") == true;
+                var item = NewActivity(null, stopped ? "Stopped" : "Stop requested", EventStatus.Done);
+                // Worded to promise exactly what happened. A cooperative stop is a message to the
+                // model, not an interrupt: the turn is still running until the agent chooses to
+                // wind down, and telling the user otherwise would be a lie the spinner contradicts.
+                if (!stopped) item.EventDetail = "Asked the agent to stop. It will finish the step it is on.";
+                Add(item);
+                break;
+            }
+
+            case "stop_forced":
+                Add(new ChatMessage
+                {
+                    Id = NextId(),
+                    Role = ChatRole.Event,
+                    EventKind = "activity",
+                    EventTitle = "Force-stopped",
+                    EventDetail = Str("detail"),
+                    Status = EventStatus.Error,
+                });
+                break;
+
             // ---- interactive turns & onboarding (synthetic events, see AgentTurnExecutor) ----
 
             case "ONBOARD_REQUIRED":
