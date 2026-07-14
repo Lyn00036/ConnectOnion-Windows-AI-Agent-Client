@@ -198,11 +198,17 @@ connectonion-desktop/
 
 ## Requirements
 
-- Windows 10 version 1809, build 17763, or later
-- .NET 10 SDK
-- Windows App SDK runtime matching the project package line
-- Visual Studio 2022 is recommended for WinUI debugging and packaging
-- Node.js 22 is only needed for the protocol conformance test runner
+| Requirement | Version | Needed for |
+| --- | --- | --- |
+| Windows | 10 version 1809 (build 17763) or later | Running the app |
+| .NET SDK | 10.0.100 or a newer .NET 10 feature band | Building everything |
+| Windows App SDK runtime | 2.2 (matches the `Microsoft.WindowsAppSDK` package reference) | Running the WinUI app, especially unpackaged |
+| Visual Studio | **2026** (recommended) | XAML debugging, MSIX packaging, F5 loop |
+| Node.js | 22 | Protocol conformance test runner only |
+
+Visual Studio 2026 is the recommended IDE. Visual Studio 2022 (17.14+) can still
+open and build the solution, but 2026 is what the WinUI 3 / .NET 10 toolchain is
+tested against here, so prefer it for new setups.
 
 The repository pins the SDK family through `global.json`:
 
@@ -218,9 +224,110 @@ The repository pins the SDK family through `global.json`:
 This means any installed .NET 10 feature-band SDK newer than `10.0.100` can be
 used automatically.
 
+## Installing The Requirements
+
+All commands below run in a normal PowerShell prompt. `winget` ships with
+Windows 11 and current Windows 10; if it is missing, install **App Installer**
+from the Microsoft Store first.
+
+### 1. Visual Studio 2026
+
+Install the IDE plus the workload and components WinUI 3 needs:
+
+```powershell
+winget install --id Microsoft.VisualStudio.Community --override `
+  "--passive --wait --add Microsoft.VisualStudio.Workload.ManagedDesktop --includeRecommended --add Microsoft.VisualStudio.ComponentGroup.WindowsAppSDK.Cs"
+```
+
+The unversioned `Microsoft.VisualStudio.Community` id is Visual Studio 2026 —
+the `...2022.Community` id is the previous release. Use
+`Microsoft.VisualStudio.Professional` or `Microsoft.VisualStudio.Enterprise`
+instead if that is your licence. If you already have Visual Studio installed, open the
+**Visual Studio Installer**, click **Modify**, and make sure these are checked:
+
+- Workload: **.NET Desktop Development**
+- Individual component: **Windows App SDK C# Templates**
+- Individual component: **MSIX Packaging Tools** (only needed for packaged
+  builds / MSIX output)
+
+The workload also installs the Windows 11 SDK and the MSBuild toolchain, so no
+separate SDK install is required.
+
+### 2. .NET 10 SDK
+
+Visual Studio 2026 bundles a .NET 10 SDK, but a standalone install is what the
+command-line workflow uses:
+
+```powershell
+winget install --id Microsoft.DotNet.SDK.10
+```
+
+Open a **new** terminal afterwards (so `PATH` is refreshed) and confirm the
+pinned SDK resolves from the repository root:
+
+```powershell
+dotnet --list-sdks   # expect a 10.0.1xx entry
+dotnet --version     # run inside the repo; global.json selects the SDK
+```
+
+If `dotnet --version` errors with a `global.json` message, the installed SDK is
+older than `10.0.100` — install a newer .NET 10 SDK rather than editing
+`global.json`.
+
+### 3. Windows App SDK runtime
+
+Needed to *run* the app, especially in unpackaged mode (`dotnet run`). Install
+the runtime matching your machine architecture:
+
+```powershell
+winget install --id Microsoft.WindowsAppRuntime.2
+```
+
+That package id (no minor version) currently ships **2.2.0**, which is the line
+the app references; winget picks the right architecture for your machine. If the
+id is not available, download the runtime installer directly instead:
+
+```powershell
+# x64
+curl.exe -L -o "$env:TEMP\WindowsAppRuntimeInstall-x64.exe" `
+  https://aka.ms/windowsappsdk/2.2/latest/windowsappruntimeinstall-x64.exe
+& "$env:TEMP\WindowsAppRuntimeInstall-x64.exe"
+```
+
+(Swap `x64` for `arm64` or `x86` as needed.) A missing or architecture-mismatched
+runtime is the usual cause of the app exiting immediately with
+`REGDB_E_CLASSNOTREG`.
+
+### 4. Node.js 22 (conformance test only)
+
+Only required if you run the protocol conformance gate, which cross-checks the
+C# signer against `ref-sign.js`:
+
+```powershell
+winget install --id OpenJS.NodeJS.22
+node --version   # expect v22.x
+```
+
+CI pins Node 22, so `OpenJS.NodeJS.22` keeps local runs matching it.
+`OpenJS.NodeJS.LTS` (currently Node 24) also works for the conformance signer.
+
+### 5. Verify the whole setup
+
+From the repository root:
+
+```powershell
+dotnet restore ConnectOnion.WinUIClient\ConnectOnion.WinUIClient.sln -p:Platform=x64
+dotnet build ConnectOnion.WinUIClient\ConnectOnion.WinUIClient.sln --configuration Debug --no-restore -p:Platform=x64
+dotnet test tests\ConnectOnion.Protocol.Tests\ConnectOnion.Protocol.Tests.csproj
+dotnet run --project ConnectOnion.WinUIClient\ConnectOnion.WinUIClient.csproj -p:Platform=x64 -p:RunUnpackaged=true
+```
+
+If the build succeeds, the tests pass, and the window opens, the environment is
+complete.
+
 ## Visual Studio Workflow
 
-Open:
+Open with Visual Studio 2026:
 
 ```text
 ConnectOnion.WinUIClient\ConnectOnion.WinUIClient.sln
@@ -233,8 +340,8 @@ Recommended settings:
 - Platform: `x64`
 - Configuration Manager: `Build` and `Deploy` enabled for the WinUI project
 
-Use Visual Studio F5 for the normal packaged WinUI debug loop. This is the most
-reliable path for XAML debugging, package deployment, and Windows App SDK
+Use Visual Studio 2026 F5 for the normal packaged WinUI debug loop. This is the
+most reliable path for XAML debugging, package deployment, and Windows App SDK
 activation.
 
 If Visual Studio says the project must be deployed before debugging, check

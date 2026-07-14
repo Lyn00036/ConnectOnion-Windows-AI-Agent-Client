@@ -22,12 +22,16 @@ The client connects to agents via **Direct URL** or **relay-based address resolu
 
 - **Windows 10** version 1809 (build 17763) or later
 - **.NET 10 SDK** (pinned via `global.json` in the repository root)
-- **Windows App SDK** runtime (matching the project package reference)
-- **Visual Studio 2022** (recommended for WinUI debugging and packaging)
+- **Windows App SDK 2.2** runtime (matching the project package reference)
+- **Visual Studio 2026** (recommended for WinUI debugging and packaging), with the
+  **.NET Desktop Development** workload and the **Windows App SDK C# Templates** component
+
+See [Installing The Requirements](../README.md#installing-the-requirements) in the
+root README for the `winget` commands that set all of this up.
 
 ## Quick Start
 
-### Visual Studio (Recommended)
+### Visual Studio 2026 (Recommended)
 
 1. Open `ConnectOnion.WinUIClient.sln`
 2. Set startup project to `ConnectOnion.WinUIClient`
