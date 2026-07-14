@@ -168,6 +168,44 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     private bool _enterToSend = true;
     public bool EnterToSend { get => _enterToSend; private set => SetProperty(ref _enterToSend, value); }
 
+    // ---- Approval mode ----
+
+    private string _currentMode = AgentModes.Safe;
+    /// <summary>The conversation's approval mode. Client-owned state (see <see cref="SessionSummary.Mode"/>):
+    /// re-sent with every turn, and overwritten if the agent reports a different one — it can put
+    /// itself into plan mode without being asked.</summary>
+    public string CurrentMode
+    {
+        get => _currentMode;
+        private set
+        {
+            if (!SetProperty(ref _currentMode, value)) return;
+            OnPropertyChanged(nameof(CurrentModeLabel));
+        }
+    }
+
+    public string CurrentModeLabel => AgentModes.DisplayName(CurrentMode);
+
+    // ---- Stop ----
+
+    private bool _isStopping;
+    /// <summary>A stop was requested but the agent hasn't wound down yet. The turn is still
+    /// running — this only means the ask is in flight, and it is what turns the Stop button into
+    /// Force stop, since a cooperative stop can simply be ignored by the model.</summary>
+    public bool IsStopping
+    {
+        get => _isStopping;
+        private set
+        {
+            if (!SetProperty(ref _isStopping, value)) return;
+            OnPropertyChanged(nameof(StopButtonTooltip));
+        }
+    }
+
+    public string StopButtonTooltip => IsStopping
+        ? "Force stop (abandons the turn locally; the agent may keep running)"
+        : "Stop";
+
     public async Task LoadAsync()
     {
         var prefs = await AppServices.Preferences.LoadAsync();
@@ -201,6 +239,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         }
 
         HeaderText = $"{_agent.Name} - {_session.Title}";
+        CurrentMode = _session.Mode;
         RaiseHeaderProperties();
 
         await RestoreConversationAsync();
@@ -331,13 +370,17 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         TouchSession(text);
 
         IsProcessing = true;
+        IsStopping = false;
         StatusText = "Connecting...";
         try
         {
+            await WarnIfPreviousTurnStillRunningAsync();
+
             // Hand off to the app-level manager. It persists the user message, opens/reuses
             // the connection, and starts the run; the reply arrives back through our
-            // subscription (ApplyRunSnapshot), not by awaiting here.
-            await AppServices.RunManager.SendMessageAsync(_agent, _session.Id, text, attachments);
+            // subscription (ApplyRunSnapshot), not by awaiting here. The mode goes with every
+            // send because the host does not keep ours between turns.
+            await AppServices.RunManager.SendMessageAsync(_agent, _session.Id, text, attachments, CurrentMode);
         }
         catch (InvalidOperationException)
         {
@@ -348,6 +391,82 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
             IsProcessing = false;
             StatusText = $"Send failed: {UserFacingError(ex)}";
         }
+    }
+
+    /// <summary>
+    /// After a force stop, the host may still be executing the abandoned turn. It routes an INPUT
+    /// on a session that already has an agent to that agent's runtime-input mailbox instead of
+    /// starting a new turn — so this message would arrive as a follow-up to work the user thought
+    /// they had cancelled. We cannot prevent that (there is no way to interrupt the agent), so the
+    /// least we can do is not let it happen invisibly.
+    /// </summary>
+    private async Task WarnIfPreviousTurnStillRunningAsync()
+    {
+        if (_session is null || !AppServices.RunManager.MayHaveOrphanedRun(_session.Id)) return;
+
+        var status = await AppServices.RunManager.GetServerSessionStatusAsync(_session.Id);
+        if (status != SessionStatuses.Running) return;
+
+        Messages.Add(new ChatMessage
+        {
+            Id = NextId(),
+            Role = ChatRole.Event,
+            EventKind = "activity",
+            EventTitle = "The agent is still working on the stopped turn",
+            EventDetail = "This message will reach it as a follow-up, not as a new turn.",
+            Status = EventStatus.Error,
+        });
+    }
+
+    /// <summary>
+    /// The Stop button. What it can achieve depends entirely on what the agent is blocked on, so
+    /// the outcome — not the click — decides what the user is told; see <see cref="StopOutcome"/>.
+    /// A second click, once <see cref="IsStopping"/> is set, escalates to a force stop. That
+    /// escalation is deliberately manual: it abandons the turn locally while the agent keeps
+    /// running on the host, which is too consequential to happen on a timer the user didn't ask for.
+    /// </summary>
+    public async Task StopAsync()
+    {
+        if (_session is null || !IsProcessing) return;
+
+        if (IsStopping)
+        {
+            StatusText = "Force-stopping...";
+            await AppServices.RunManager.ForceStopAsync(_session.Id);
+            return;
+        }
+
+        IsStopping = true;
+        StatusText = "Stopping...";
+        var outcome = await AppServices.RunManager.RequestStopAsync(_session.Id);
+
+        switch (outcome)
+        {
+            case StopOutcome.Stopped:
+                // A real halt: the agent's loop is broken and its OUTPUT is on its way. Leave
+                // IsStopping set so the button stays a stop until the terminal snapshot lands.
+                StatusText = "Stopping...";
+                break;
+            case StopOutcome.StopRequested:
+                StatusText = "Asked the agent to stop...";
+                break;
+            case StopOutcome.ForceStopped:
+            case StopOutcome.NotRunning:
+                IsStopping = false;
+                break;
+        }
+    }
+
+    /// <summary>Switches the conversation's approval mode: remembered locally, pushed to a live
+    /// turn if there is one, and re-sent with the next message either way.</summary>
+    public async Task SetModeAsync(string mode)
+    {
+        if (_session is null || !AgentModes.IsValid(mode) || mode == CurrentMode) return;
+
+        CurrentMode = mode;
+        _session.Mode = mode;
+        await AppServices.RunManager.SetModeAsync(_session.Id, mode);
+        await AppServices.Sessions.UpdateSessionAsync(_session);
     }
 
     /// <summary>Applies a run snapshot to this page's message list on the UI thread. Replays
@@ -363,6 +482,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
             StatusText = StatusTextFor(snapshot);
             if (snapshot.IsTerminal)
             {
+                IsStopping = false;
                 CanRetry = snapshot.Status == ConversationRunStatus.Failed;
                 _historyLoadedRunId = null;
                 StoreSessionCache();
@@ -391,10 +511,18 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         }
 
         var events = snapshot.Events;
-        for (var i = _appliedEventCount; i < events.Count; i++) _liveProjection!.Apply(events[i]);
+        for (var i = _appliedEventCount; i < events.Count; i++)
+        {
+            _liveProjection!.Apply(events[i]);
+            FollowAgentModeChange(events[i]);
+        }
         _appliedEventCount = events.Count;
 
         IsProcessing = !snapshot.IsTerminal;
+        // A stop is only ever "in progress" while its turn is: once the run reaches any terminal
+        // state the button goes back to being a send button, whether the stop is what ended it or
+        // the agent simply finished first.
+        if (snapshot.IsTerminal) IsStopping = false;
         StatusText = StatusTextFor(snapshot);
 
         if (!snapshot.IsTerminal) return;
@@ -440,6 +568,32 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         StoreSessionCache();
     }
 
+    /// <summary>
+    /// Keeps the mode pill honest when the agent changes mode on its own — calling
+    /// <c>enter_plan_mode()</c> emits <c>mode_changed</c> with <c>triggered_by: "agent"</c>, and
+    /// from then on the agent really is in plan mode whatever our pill said. So the agent wins,
+    /// and the new mode is persisted as the conversation's, because that is what the next turn
+    /// would otherwise be re-asserting over the top of.
+    /// </summary>
+    private void FollowAgentModeChange(AgentStreamEvent e)
+    {
+        if (e.Type != "mode_changed" || _session is null) return;
+
+        string? mode;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(e.RawJson);
+            mode = doc.RootElement.TryGetProperty("mode", out var v) ? v.GetString() : null;
+        }
+        catch { return; }
+
+        if (!AgentModes.IsValid(mode) || mode == CurrentMode) return;
+
+        CurrentMode = mode!;
+        _session.Mode = mode!;
+        _ = AppServices.Sessions.UpdateSessionAsync(_session);
+    }
+
     private static string StatusTextFor(ConversationRunSnapshot snapshot) => snapshot.Status switch
     {
         ConversationRunStatus.Queued => "Working...",
@@ -463,9 +617,14 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         _historyLoadedRunId = null;
         CanRetry = false;
 
+        IsStopping = false;
+
         _session = SessionSummary.NewConversation(_agent.Id, _sessionsState.Sessions);
+        // A new conversation starts at the default mode rather than inheriting the last one: the
+        // modes that skip approvals are exactly the ones nobody should acquire by accident.
         _sessionsState.Sessions.Add(_session);
         _sessionsState.ActiveSessionId = _session.Id;
+        CurrentMode = _session.Mode;
         await AppServices.Sessions.SaveAsync(_sessionsState);
 
         Messages.Clear();

@@ -61,7 +61,36 @@ public sealed partial class ChatComposer : UserControl
             typeof(ChatComposer),
             new PropertyMetadata(true, OnShowSuggestionsChanged));
 
+    public static readonly DependencyProperty ShowModeSelectorProperty =
+        DependencyProperty.Register(
+            nameof(ShowModeSelector),
+            typeof(bool),
+            typeof(ChatComposer),
+            new PropertyMetadata(false, OnModeChanged));
+
+    public static readonly DependencyProperty ModeProperty =
+        DependencyProperty.Register(
+            nameof(Mode),
+            typeof(string),
+            typeof(ChatComposer),
+            new PropertyMetadata(AgentModes.Safe, OnModeChanged));
+
+    public static readonly DependencyProperty IsStoppingProperty =
+        DependencyProperty.Register(
+            nameof(IsStopping),
+            typeof(bool),
+            typeof(ChatComposer),
+            new PropertyMetadata(false, OnIsBusyChanged));
+
     public event EventHandler<ComposerSubmission>? SubmitRequested;
+
+    /// <summary>The stop button was pressed. The host decides what that can achieve — the composer
+    /// only reports the press, and re-renders from <see cref="IsStopping"/> when told to.</summary>
+    public event EventHandler? StopRequested;
+
+    /// <summary>The user picked an approval mode from the pill. Carries the wire value
+    /// (<see cref="AgentModes"/>), not the menu label.</summary>
+    public event EventHandler<string>? ModeChangeRequested;
 
     /// <summary>Attachments picked but not yet sent. Cleared (for the ones actually sent) on submit.</summary>
     public ObservableCollection<PendingAttachment> PendingAttachments { get; } = new();
@@ -121,6 +150,29 @@ public sealed partial class ChatComposer : UserControl
         set => SetValue(ShowSuggestionsProperty, value);
     }
 
+    /// <summary>Whether the approval-mode pill is shown. Off by default: it belongs to an ongoing
+    /// conversation (ChatPage), not to the agent-detail page's one-shot first message.</summary>
+    public bool ShowModeSelector
+    {
+        get => (bool)GetValue(ShowModeSelectorProperty);
+        set => SetValue(ShowModeSelectorProperty, value);
+    }
+
+    /// <summary>The conversation's current approval mode, one of <see cref="AgentModes"/>.</summary>
+    public string Mode
+    {
+        get => (string)GetValue(ModeProperty);
+        set => SetValue(ModeProperty, value);
+    }
+
+    /// <summary>A stop has been asked for but the turn is still going. Turns the stop button into
+    /// a force-stop, because a cooperative stop is a request the agent is free to finish ignoring.</summary>
+    public bool IsStopping
+    {
+        get => (bool)GetValue(IsStoppingProperty);
+        set => SetValue(IsStoppingProperty, value);
+    }
+
     public void FocusInput()
         => InputBox.Focus(FocusState.Programmatic);
 
@@ -135,6 +187,40 @@ public sealed partial class ChatComposer : UserControl
         var composer = (ChatComposer)d;
         composer.ApplySuggestionVisibility(composer.ActualWidth);
     }
+
+    private static void OnModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        => ((ChatComposer)d).RefreshModeSelector();
+
+    private void RefreshModeSelector()
+    {
+        ModeButton.Visibility = ShowModeSelector ? Visibility.Visible : Visibility.Collapsed;
+        if (!ShowModeSelector) return;
+
+        var mode = Mode;
+        ModeLabel.Text = AgentModes.DisplayName(mode);
+        // Radio state is driven from the property, never from the click: the agent can change mode
+        // on its own (enter_plan_mode), and when it does the pill has to follow it rather than keep
+        // showing whatever the user last picked.
+        ModeSafeItem.IsChecked = mode == AgentModes.Safe;
+        ModeAcceptEditsItem.IsChecked = mode == AgentModes.AcceptEdits;
+        ModePlanItem.IsChecked = mode == AgentModes.Plan;
+    }
+
+    private void Mode_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not string mode || mode == Mode)
+        {
+            RefreshModeSelector();
+            return;
+        }
+        // Not applied locally: the page owns the mode and will set it back on us once it has been
+        // persisted and pushed, so the pill can never claim a mode the agent was never told about.
+        ModeChangeRequested?.Invoke(this, mode);
+        RefreshModeSelector();
+    }
+
+    private void Stop_Click(object sender, RoutedEventArgs e)
+        => StopRequested?.Invoke(this, EventArgs.Empty);
 
     private void ApplySuggestionVisibility(double width)
         => SuggestionPanel.Visibility = ShowSuggestions && width >= 620 ? Visibility.Visible : Visibility.Collapsed;
@@ -402,17 +488,25 @@ public sealed partial class ChatComposer : UserControl
         InputBox.IsEnabled = CanSubmit && !IsBusy;
         AddAttachmentButton.IsEnabled = CanSubmit && !IsBusy;
         SpeechButton.IsEnabled = CanSubmit && !IsBusy && !isActive;
+
+        // Send and Stop share the slot: a turn is running or it isn't.
+        SendButton.Visibility = IsBusy ? Visibility.Collapsed : Visibility.Visible;
         SendButton.IsEnabled = canSend || isActive;
-        SendButton.Background = isActive || canSend || IsBusy
+        SendButton.Background = isActive || canSend
             ? Brush("ComposerPrimaryButtonBackgroundBrush")
             : Brush("ComposerDisabledButtonBackgroundBrush");
-        SendIcon.Visibility = IsBusy ? Visibility.Collapsed : Visibility.Visible;
         SendIcon.Foreground = isActive || canSend
             ? Brush("ComposerPrimaryButtonForegroundBrush")
             : Brush("ComposerDisabledButtonForegroundBrush");
-        BusyRing.IsActive = IsBusy;
-        BusyRing.Visibility = IsBusy ? Visibility.Visible : Visibility.Collapsed;
-        BusyRing.Foreground = Brush("AppBackgroundBrush");
+
+        StopButton.Visibility = IsBusy ? Visibility.Visible : Visibility.Collapsed;
+        StopRing.IsActive = IsBusy;
+        StopRing.Foreground = Brush("AppBackgroundBrush");
+        ToolTipService.SetToolTip(
+            StopButton,
+            IsStopping ? "Force stop — abandons the turn here; the agent may keep running" : "Stop");
+
+        RefreshModeSelector();
 
         SpeechIcon.Visibility = isActive ? Visibility.Collapsed : Visibility.Visible;
         SpeechRing.IsActive = isActive;

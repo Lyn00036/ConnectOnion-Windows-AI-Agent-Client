@@ -169,6 +169,12 @@ public sealed partial class ChatPage : Page, IFindHost
     private async void Composer_SubmitRequested(object? sender, ComposerSubmission submission)
         => await SendAsync(submission.Text, submission.Attachments);
 
+    private async void Composer_StopRequested(object? sender, System.EventArgs e)
+        => await Vm.StopAsync();
+
+    private async void Composer_ModeChangeRequested(object? sender, string mode)
+        => await Vm.SetModeAsync(mode);
+
     private async void OfflineNotice_RecheckRequested(object? sender, System.EventArgs e)
         => await Vm.RecheckPresenceAsync();
 
@@ -465,7 +471,15 @@ public sealed partial class ChatPage : Page, IFindHost
     {
         if ((sender as FrameworkElement)?.Tag is ChatMessage message)
         {
-            await Vm.SubmitApprovalAsync(message, false, "once");
+            await Vm.SubmitApprovalAsync(message, false, "once", ApprovalRejectModes.Hard);
+        }
+    }
+
+    private async void ApprovalSkip_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is ChatMessage message)
+        {
+            await Vm.SubmitApprovalAsync(message, false, "once", ApprovalRejectModes.Soft);
         }
     }
 
