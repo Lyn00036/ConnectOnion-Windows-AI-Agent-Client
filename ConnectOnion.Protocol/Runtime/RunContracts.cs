@@ -19,7 +19,11 @@ public sealed record TurnRequest(
     string Prompt,
     IReadOnlyList<string>? Images = null,
     IReadOnlyList<OutgoingFileAttachment>? Files = null,
-    string? SessionId = null);
+    string? SessionId = null,
+    /// <summary>The approval mode this turn should run under (see <see cref="AgentModes"/>).
+    /// Re-sent with every turn because the host's session merge discards a mode we only put in
+    /// CONNECT, and asserting an unchanged mode is a no-op host-side.</summary>
+    string? Mode = null);
 
 /// <summary>
 /// The channel an <see cref="ITurnExecutor"/> uses to report progress back into the

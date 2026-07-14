@@ -57,9 +57,20 @@ public sealed class AgentConnectionService : IAsyncDisposable
 
     private TaskCompletionSource<WireMessage>? _connectTcs;
     private TaskCompletionSource<string>? _inputTcs;
+    private TaskCompletionSource<string>? _sessionStatusTcs;
     private CancellationTokenSource? _connectTimeoutCts;
 
     public string? SessionId { get; private set; }
+
+    /// <summary>
+    /// The approval mode to put in the CONNECT frame's <c>session</c> object. This only
+    /// lands for a session the host has never run before: on any later CONNECT the host's
+    /// <c>merge_sessions</c> compares iteration counts and replaces the client's session
+    /// wholesale with its own (we report no iteration, so it always wins). For an existing
+    /// session the mode must therefore ride along with an INPUT — see
+    /// <see cref="SendInputAsync"/> — or be pushed mid-turn with <see cref="SetModeAsync"/>.
+    /// </summary>
+    public string? InitialMode { get; set; }
 
     /// <summary>
     /// Last fully-processed stream event ID. Sent as <c>last_msg_id</c> on
@@ -95,6 +106,14 @@ public sealed class AgentConnectionService : IAsyncDisposable
 
     /// <summary>The agent wants its plan reviewed (plan_review).</summary>
     public event Action<PlanReviewRequest>? PlanReviewRequested;
+
+    /// <summary>The agent's approval mode changed — either because we asked
+    /// (<c>triggered_by: "user"</c>) or because the agent switched itself into plan mode.</summary>
+    public event Action<ModeChangedEvent>? ModeChanged;
+
+    /// <summary>The host queued a mid-execution prompt (our INPUT reached a session that already
+    /// had an agent running, so it became a RUNTIME_INPUT rather than a new turn).</summary>
+    public event Action? RuntimeInputAcknowledged;
 
     /// <summary>
     /// Creates a connection. Provide <paramref name="directUrl"/> for the direct
@@ -183,8 +202,12 @@ public sealed class AgentConnectionService : IAsyncDisposable
         string? sessionId,
         IReadOnlyList<string>? images = null,
         IReadOnlyList<OutgoingFileAttachment>? files = null,
+        string? mode = null,
         CancellationToken ct = default)
     {
+        // Carried into the CONNECT below when this is the socket's first turn.
+        if (mode is not null) InitialMode = mode;
+
         await EnsureConnectedAsync(sessionId, ct).ConfigureAwait(false);
 
         var inputTcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -198,9 +221,104 @@ public sealed class AgentConnectionService : IAsyncDisposable
             files: files);
         await SendJsonAsync(inputMsg, ct).ConfigureAwait(false);
 
+        // Mode has to be (re)asserted *after* the INPUT, never before. The host only forwards
+        // a mode_change to the agent while a turn owns the connection (`active_io` in its
+        // ws_router); sent on an idle socket it is dropped on the floor. Sending it here — on
+        // the same socket, immediately behind the INPUT that spawns the agent — means the
+        // host's sequential read loop has an agent to hand it to, and the agent's
+        // `poll_mode_changes` (a before_iteration hook) picks it up at its first iteration
+        // boundary. This is also why a CONNECT-only mode is not enough for a session the host
+        // already knows: its session merge would have thrown ours away.
+        if (mode is not null) await SendModeChangeAsync(mode, null, ct).ConfigureAwait(false);
+
         await using (ct.Register(() => inputTcs.TrySetCanceled()))
         {
             return await inputTcs.Task.ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Switches the agent's approval mode on a live turn. Takes effect at the agent's next
+    /// iteration boundary, not instantly (the host polls for these between LLM calls), and is
+    /// silently dropped by the host if no turn is currently running — so callers must also pass
+    /// the mode to the next <see cref="SendInputAsync"/>, which is what makes it stick.
+    /// </summary>
+    public Task SetModeAsync(string mode, int? turns = null, CancellationToken ct = default)
+        => IsConnected ? SendModeChangeAsync(mode, turns, ct) : Task.CompletedTask;
+
+    private Task SendModeChangeAsync(string mode, int? turns, CancellationToken ct)
+    {
+        var msg = new Dictionary<string, object?>
+        {
+            ["type"] = "mode_change",
+            ["mode"] = mode,
+        };
+        if (turns is { } t) msg["turns"] = t;
+        if (!_isDirect) msg["to"] = _address;
+        return SendJsonAsync(msg, ct);
+    }
+
+    /// <summary>
+    /// Sends a prompt into a turn that is <b>already running</b>. The host routes an INPUT on a
+    /// running session to the agent's runtime-input mailbox instead of spawning a second agent,
+    /// and the agent's <c>runtime_input</c> plugin appends it to the conversation at the next
+    /// iteration boundary, framed as "additional context — do not abandon the original task
+    /// unless the user explicitly says to stop".
+    ///
+    /// That framing is the whole reason this method exists: it is how a Stop request reaches an
+    /// agent that is mid-LLM-call, because the protocol has <b>no</b> STOP frame and nothing
+    /// else can preempt the agent's loop. It is therefore <b>cooperative</b> — the model chooses
+    /// to comply — and must never be reported to the user as a completed stop. The pending
+    /// <see cref="SendInputAsync"/> stays open; the turn still ends with a normal OUTPUT.
+    /// </summary>
+    public Task SendRuntimeInputAsync(string prompt, CancellationToken ct = default)
+    {
+        if (!IsConnected) return Task.CompletedTask;
+        return SendJsonAsync(
+            InputMessageBuilder.BuildInput(
+                prompt, Guid.NewGuid().ToString(), toAddress: _isDirect ? null : _address),
+            ct);
+    }
+
+    /// <summary>
+    /// Asks the host what it thinks of a session: <see cref="SessionStatuses.Running"/>,
+    /// <see cref="SessionStatuses.Connected"/>, or <see cref="SessionStatuses.NotFound"/>.
+    /// Used after a force-stop, where the local run is gone but the agent thread on the host
+    /// may well still be executing — in which case the next INPUT would be swallowed as a
+    /// runtime input rather than starting a fresh turn, and the user deserves to know.
+    /// Answers <see cref="SessionStatuses.NotFound"/> if there is no socket or no reply in time.
+    /// </summary>
+    public async Task<string> QuerySessionStatusAsync(string sessionId, CancellationToken ct = default)
+    {
+        if (!IsConnected) return SessionStatuses.NotFound;
+
+        var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _sessionStatusTcs = tcs;
+
+        var msg = new Dictionary<string, object?>
+        {
+            ["type"] = "SESSION_STATUS",
+            ["session"] = new Dictionary<string, object?> { ["session_id"] = sessionId },
+        };
+        if (!_isDirect) msg["to"] = _address;
+
+        try
+        {
+            await SendJsonAsync(msg, ct).ConfigureAwait(false);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(TimeSpan.FromSeconds(5));
+            await using (timeout.Token.Register(() => tcs.TrySetResult(SessionStatuses.NotFound)))
+            {
+                return await tcs.Task.ConfigureAwait(false);
+            }
+        }
+        catch
+        {
+            return SessionStatuses.NotFound;
+        }
+        finally
+        {
+            _sessionStatusTcs = null;
         }
     }
 
@@ -254,7 +372,12 @@ public sealed class AgentConnectionService : IAsyncDisposable
         if (!string.IsNullOrEmpty(sessionId))
         {
             connectMsg["session_id"] = sessionId;
-            connectMsg["session"] = new Dictionary<string, object?> { ["session_id"] = sessionId };
+            var session = new Dictionary<string, object?> { ["session_id"] = sessionId };
+            // Only decides the mode for a session the host has never run (see InitialMode):
+            // otherwise its merge keeps the server's copy. Harmless either way, and it is the
+            // only way a brand-new conversation starts its very first turn in the right mode.
+            if (InitialMode is not null) session["mode"] = InitialMode;
+            connectMsg["session"] = session;
             if (!string.IsNullOrEmpty(LastProcessedEventId))
                 connectMsg["last_msg_id"] = LastProcessedEventId;
         }
@@ -314,10 +437,20 @@ public sealed class AgentConnectionService : IAsyncDisposable
     }
 
     /// <summary>
-    /// Responds to an approval_needed turn. <paramref name="scope"/> is
-    /// "once" or "session"; a rejection sends mode "reject_soft".
+    /// Responds to an approval_needed turn. <paramref name="scope"/> is "once" or "session".
+    ///
+    /// <paramref name="rejectMode"/> decides what a rejection <i>does</i>, and the default is
+    /// deliberately <see cref="ApprovalRejectModes.Hard"/> — matching the host's own default.
+    /// Hard is the only frame in the entire protocol that halts a running agent: it sets
+    /// <c>stop_signal</c>, which rejects the rest of the tool batch and breaks the iteration
+    /// loop. Soft/Explain merely skip the one tool and let the agent carry on, which is not
+    /// what a user who clicked "Reject" means.
     /// </summary>
-    public Task RespondApprovalAsync(bool approved, string scope = "once")
+    public Task RespondApprovalAsync(
+        bool approved,
+        string scope = "once",
+        string rejectMode = ApprovalRejectModes.Hard,
+        string? feedback = null)
     {
         ResumeWatchdogAfterHumanResponse();
         var msg = new Dictionary<string, object?>
@@ -326,7 +459,11 @@ public sealed class AgentConnectionService : IAsyncDisposable
             ["approved"] = approved,
             ["scope"] = scope,
         };
-        if (!approved) msg["mode"] = "reject_soft";
+        if (!approved)
+        {
+            msg["mode"] = rejectMode;
+            if (!string.IsNullOrEmpty(feedback)) msg["feedback"] = feedback;
+        }
         return SendJsonAsync(msg, CancellationToken.None);
     }
 
@@ -482,6 +619,29 @@ public sealed class AgentConnectionService : IAsyncDisposable
                 PlanReviewRequested?.Invoke(new PlanReviewRequest(msg.GetString("plan_content") ?? ""));
                 return;
 
+            case "mode_changed":
+            {
+                // Forwarded as a stream event *as well as* a typed one: the stream copy is what
+                // the run buffers and the projection turns into a visible "Mode: plan" card, so a
+                // mode the agent chose for itself is never a silent change.
+                var mode = msg.GetString("mode");
+                if (string.IsNullOrEmpty(mode)) return;
+                var eventId = msg.GetString("id");
+                if (!string.IsNullOrEmpty(eventId)) LastProcessedEventId = eventId;
+                StreamEvent?.Invoke(new AgentStreamEvent(
+                    msg.Type, DescribeEvent(msg), eventId, msg.Root.GetRawText()));
+                ModeChanged?.Invoke(new ModeChangedEvent(mode, msg.GetString("triggered_by")));
+                return;
+            }
+
+            case "RUNTIME_INPUT_ACK":
+                RuntimeInputAcknowledged?.Invoke();
+                return;
+
+            case "SESSION_STATUS":
+                _sessionStatusTcs?.TrySetResult(msg.GetString("status") ?? SessionStatuses.NotFound);
+                return;
+
             default:
                 return;
         }
@@ -492,6 +652,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
         "tool_call" => $"Running tool: {msg.GetString("name")}",
         "tool_result" => $"Tool finished: {msg.GetString("name")}",
         "thinking" => "Thinking…",
+        "mode_changed" => $"Mode: {AgentModes.DisplayName(msg.GetString("mode"))}",
         "ask_user" => msg.GetString("text") ?? msg.GetString("question") ?? "Agent asked a question",
         "ONBOARD_REQUIRED" => "Agent requires onboarding",
         _ => msg.Type,
@@ -520,6 +681,10 @@ public sealed class AgentConnectionService : IAsyncDisposable
         _awaitingHumanResponse = false;
         _connectTcs?.TrySetException(ex);
         _inputTcs?.TrySetException(ex);
+        // A status query is a question about the *host*, so a dead socket answers it rather
+        // than faulting it: with no connection we cannot know, and "not_found" is what the
+        // caller already treats as "no information".
+        _sessionStatusTcs?.TrySetResult(SessionStatuses.NotFound);
         _loopCts?.Cancel();
         ConnectionLost?.Invoke(ex);
     }
@@ -556,6 +721,8 @@ public sealed class AgentConnectionService : IAsyncDisposable
         ApprovalRequested = null;
         PlanReviewRequested = null;
         OnboardRequired = null;
+        ModeChanged = null;
+        RuntimeInputAcknowledged = null;
 
         if (_ws is not null)
         {

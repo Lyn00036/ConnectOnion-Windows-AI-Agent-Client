@@ -175,6 +175,132 @@ public sealed class AgentConnectionServiceTests
     }
 
     [Fact]
+    public async Task SendInputAsync_WithMode_SendsModeChangeOnTheFrameAfterInput()
+    {
+        string? connectJson = null;
+        string? inputJson = null;
+        string? modeJson = null;
+        await using var server = new FakeAgentServer(async (socket, ct) =>
+        {
+            connectJson = await FakeAgentServer.ReceiveTextAsync(socket, ct);
+            await FakeAgentServer.SendTextAsync(socket, "{\"type\":\"CONNECTED\",\"session_id\":\"s1\"}", ct);
+            inputJson = await FakeAgentServer.ReceiveTextAsync(socket, ct);
+            modeJson = await FakeAgentServer.ReceiveTextAsync(socket, ct);
+            await FakeAgentServer.SendTextAsync(socket, "{\"type\":\"OUTPUT\",\"result\":\"ok\"}", ct);
+        });
+        await using var service = Service(server);
+
+        await service.SendInputAsync("hello", "s1", mode: AgentModes.Plan);
+
+        // Order is the whole point: the host only hands a mode_change to a *running* agent, so it
+        // has to arrive behind the INPUT that spawns one. Sent first, it would be dropped.
+        Assert.Equal("INPUT", WireMessage.Parse(inputJson!).Type);
+        var mode = WireMessage.Parse(modeJson!);
+        Assert.Equal("mode_change", mode.Type);
+        Assert.Equal("plan", mode.GetString("mode"));
+
+        // And it rides on the CONNECT too, which is the only thing that can set the mode of a
+        // session the host has never run before (its session merge discards ours after that).
+        var connect = WireMessage.Parse(connectJson!);
+        Assert.True(connect.TryGet("session", out var session));
+        Assert.Equal("plan", session.GetProperty("mode").GetString());
+        await server.Completion;
+    }
+
+    [Fact]
+    public async Task RespondApprovalAsync_Rejected_DefaultsToRejectHardSoTheAgentActuallyStops()
+    {
+        string? responseJson = null;
+        await using var server = new FakeAgentServer(async (socket, ct) =>
+        {
+            await FakeAgentServer.ReceiveTextAsync(socket, ct);
+            await FakeAgentServer.SendTextAsync(socket, "{\"type\":\"CONNECTED\"}", ct);
+            await FakeAgentServer.ReceiveTextAsync(socket, ct);
+            await FakeAgentServer.SendTextAsync(
+                socket, "{\"type\":\"approval_needed\",\"tool\":\"bash\",\"arguments\":{}}", ct);
+            responseJson = await FakeAgentServer.ReceiveTextAsync(socket, ct);
+            await FakeAgentServer.SendTextAsync(socket, "{\"type\":\"OUTPUT\",\"result\":\"stopped\"}", ct);
+        });
+        await using var service = Service(server);
+        service.ApprovalRequested += request => _ = service.RespondApprovalAsync(approved: false, feedback: "no");
+
+        Assert.Equal("stopped", await service.SendInputAsync("start", null));
+
+        // reject_soft only skips the one tool and lets the loop continue; reject_hard is what sets
+        // the host's stop_signal and ends the turn. A user who clicked Reject meant the latter.
+        var response = WireMessage.Parse(responseJson!);
+        Assert.Equal("APPROVAL_RESPONSE", response.Type);
+        Assert.False(response.GetBool("approved"));
+        Assert.Equal(ApprovalRejectModes.Hard, response.GetString("mode"));
+        Assert.Equal("no", response.GetString("feedback"));
+        await server.Completion;
+    }
+
+    [Fact]
+    public async Task ModeChanged_AgentEntersPlanModeItself_RaisesEventAndStreamsIt()
+    {
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var server = new FakeAgentServer(async (socket, ct) =>
+        {
+            await FakeAgentServer.ReceiveTextAsync(socket, ct);
+            await FakeAgentServer.SendTextAsync(socket, "{\"type\":\"CONNECTED\"}", ct);
+            await FakeAgentServer.ReceiveTextAsync(socket, ct);
+            await FakeAgentServer.SendTextAsync(
+                socket,
+                "{\"type\":\"mode_changed\",\"id\":\"e1\",\"mode\":\"plan\",\"triggered_by\":\"agent\"}",
+                ct);
+            await FakeAgentServer.SendTextAsync(socket, "{\"type\":\"OUTPUT\",\"result\":\"done\"}", ct);
+            await release.Task.WaitAsync(ct);
+        });
+        await using var service = Service(server);
+        ModeChangedEvent? observed = null;
+        var streamed = new List<string>();
+        service.ModeChanged += e => observed = e;
+        service.StreamEvent += e => streamed.Add(e.Type);
+
+        await service.SendInputAsync("hello", null);
+
+        // The agent can switch itself into plan mode; the client has to follow it rather than keep
+        // asserting whatever the user last picked — hence the typed event *and* the stream copy the
+        // projection turns into a visible card.
+        Assert.Equal("plan", observed?.Mode);
+        Assert.Equal("agent", observed?.TriggeredBy);
+        Assert.Contains("mode_changed", streamed);
+        release.TrySetResult();
+        await server.Completion;
+    }
+
+    [Fact]
+    public async Task QuerySessionStatusAsync_HostReportsRunning_ReturnsRunning()
+    {
+        await using var server = new FakeAgentServer(async (socket, ct) =>
+        {
+            await FakeAgentServer.ReceiveTextAsync(socket, ct);
+            await FakeAgentServer.SendTextAsync(socket, "{\"type\":\"CONNECTED\"}", ct);
+            await FakeAgentServer.ReceiveTextAsync(socket, ct);
+            await FakeAgentServer.SendTextAsync(socket, "{\"type\":\"OUTPUT\",\"result\":\"done\"}", ct);
+            var query = WireMessage.Parse(await FakeAgentServer.ReceiveTextAsync(socket, ct));
+            Assert.Equal("SESSION_STATUS", query.Type);
+            await FakeAgentServer.SendTextAsync(
+                socket, "{\"type\":\"SESSION_STATUS\",\"session_id\":\"s1\",\"status\":\"running\"}", ct);
+        });
+        await using var service = Service(server);
+        await service.SendInputAsync("hello", "s1");
+
+        Assert.Equal(SessionStatuses.Running, await service.QuerySessionStatusAsync("s1"));
+        await server.Completion;
+    }
+
+    [Fact]
+    public async Task QuerySessionStatusAsync_NoConnection_ReportsNotFoundRatherThanThrowing()
+    {
+        await using var service = new AgentConnectionService(
+            "0x1", "http://127.0.0.1:1", AgentIdentity.Generate());
+
+        Assert.Equal(SessionStatuses.NotFound, await service.QuerySessionStatusAsync("s1"));
+    }
+
+    [Fact]
     public async Task DisposeAsync_ConnectedService_DoesNotRaiseConnectionLost()
     {
         await using var server = new FakeAgentServer(async (socket, ct) =>

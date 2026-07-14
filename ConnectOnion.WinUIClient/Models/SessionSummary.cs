@@ -21,6 +21,7 @@ public sealed class SessionSummary : ObservableObject
     private string _createdAt = "";
     private string _updatedAt = "";
     private bool _isPinned;
+    private string _mode = Protocol.AgentModes.Safe;
 
     [JsonPropertyName("id")]
     public string Id { get => _id; set => SetProperty(ref _id, value); }
@@ -45,6 +46,19 @@ public sealed class SessionSummary : ObservableObject
 
     [JsonPropertyName("isPinned")]
     public bool IsPinned { get => _isPinned; set => SetProperty(ref _isPinned, value); }
+
+    /// <summary>
+    /// The approval mode this conversation's turns run under — one of <see cref="Protocol.AgentModes"/>.
+    /// Client-owned: the host will not remember our choice between turns, so it is re-asserted with
+    /// every INPUT. An unknown value (a mode a future host introduced, or a hand-edited row) falls
+    /// back to Safe rather than being sent on the wire, where the host would ignore it anyway.
+    /// </summary>
+    [JsonPropertyName("mode")]
+    public string Mode
+    {
+        get => _mode;
+        set => SetProperty(ref _mode, Protocol.AgentModes.IsValid(value) ? value : Protocol.AgentModes.Safe);
+    }
 
     /// <summary>
     /// Builds a fresh "Conversation N" session for an agent, numbering it after

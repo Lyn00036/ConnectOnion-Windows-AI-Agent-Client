@@ -455,8 +455,15 @@
                             <Button Content="Approve once" Tag="{x:Bind}" Click="ApprovalOnce_Click"
                                     AutomationProperties.AutomationId="ApproveOnceButton" />
                             <Button Content="Approve for session" Tag="{x:Bind}" Click="ApprovalSession_Click" />
+                            <!-- Reject halts the agent (reject_hard: it breaks the iteration loop and
+                                 hands the turn back). Skip declines only this tool and lets the agent
+                                 keep going — two different intentions, so two buttons. -->
                             <Button Content="Reject" Tag="{x:Bind}" Click="ApprovalReject_Click"
-                                    AutomationProperties.AutomationId="RejectButton" />
+                                    AutomationProperties.AutomationId="RejectButton"
+                                    ToolTipService.ToolTip="Reject and stop the agent" />
+                            <Button Content="Skip step" Tag="{x:Bind}" Click="ApprovalSkip_Click"
+                                    AutomationProperties.AutomationId="SkipStepButton"
+                                    ToolTipService.ToolTip="Skip this tool; the agent keeps working" />
                         </StackPanel>
                         <TextBlock Text="{x:Bind EventMeta, Mode=OneWay}"
                                    FontSize="12"
@@ -704,8 +711,13 @@
                                CanSubmit="{x:Bind Vm.CanSend, Mode=OneWay}"
                                EnterToSubmit="{x:Bind Vm.EnterToSend, Mode=OneWay}"
                                IsBusy="{x:Bind Vm.IsProcessing, Mode=OneWay}"
+                               IsStopping="{x:Bind Vm.IsStopping, Mode=OneWay}"
+                               Mode="{x:Bind Vm.CurrentMode, Mode=OneWay}"
+                               ShowModeSelector="True"
                                AcceptedInputs="{x:Bind Vm.AcceptedInputs, Mode=OneWay}"
                                ShowSuggestions="False"
+                               StopRequested="Composer_StopRequested"
+                               ModeChangeRequested="Composer_ModeChangeRequested"
                                SubmitRequested="Composer_SubmitRequested" />
 
         <!-- Loading overlay hides the empty-state flash before conversation data arrives -->
