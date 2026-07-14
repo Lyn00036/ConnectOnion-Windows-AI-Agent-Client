@@ -30,6 +30,8 @@ public sealed partial class AutomationContractTests
         "ShortcutsSearchBox",
         "ApproveOnceButton",
         "RejectButton",
+        "SkipStepButton",
+        "ApprovalModeButton",
     };
 
     [Fact]

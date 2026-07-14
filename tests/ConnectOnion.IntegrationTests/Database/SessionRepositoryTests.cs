@@ -39,6 +39,25 @@ public sealed class SessionRepositoryTests
     }
 
     [Fact]
+    public async Task Mode_SurvivesSaveAndUpdate_AndDefaultsToSafe()
+    {
+        var session = Summary("session-mode", "Modes", "2026-01-01T00:00:00Z");
+        await _sessions.SaveAsync(new SessionsState { Sessions = new List<SessionSummary> { session } });
+
+        // The mode is client-owned: the host forgets ours between turns, so a conversation that
+        // reloads at the wrong mode would silently start auto-approving (or refusing) tools.
+        Assert.Equal("safe", Assert.Single((await _sessions.LoadAsync()).Sessions).Mode);
+
+        session.Mode = "plan";
+        await _sessions.UpdateSessionAsync(session);
+        Assert.Equal("plan", Assert.Single((await _sessions.LoadAsync()).Sessions).Mode);
+
+        // A mode the host wouldn't honour is not a mode: it falls back rather than being sent.
+        session.Mode = "yolo";
+        Assert.Equal("safe", session.Mode);
+    }
+
+    [Fact]
     public async Task LoadAsync_SameSortOrder_OrdersByUpdatedAtDescending()
     {
         await InsertSessionAsync("order-old", "Old", "2026-01-01T00:00:00Z", sortOrder: 50);

@@ -21,8 +21,9 @@ public sealed class AppDatabaseSchemaTests(TempDatabaseFixture fixture)
     {
         await using var connection = await AppDatabase.OpenAsync();
 
-        Assert.Equal(2, await ScalarLongAsync(connection, "PRAGMA user_version;"));
+        Assert.Equal(3, await ScalarLongAsync(connection, "PRAGMA user_version;"));
         Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'usage_events';"));
+        Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'mode';"));
     }
 
     [Fact]
@@ -41,10 +42,17 @@ public sealed class AppDatabaseSchemaTests(TempDatabaseFixture fixture)
         await using var connection = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:");
         await connection.OpenAsync();
 
+        // A version-0 database is a *pre-versioning* one: it has the full baseline schema, it just
+        // never recorded a version. Migrating a bare empty database is not a case that exists (the
+        // app always ensures the baseline first), and pretending it is would let a migration that
+        // alters an existing table pass a test with no table to alter.
+        await AppDatabase.CreateSchemaAsync(connection);
+
         await SchemaMigrator.ApplyAsync(connection);
 
-        Assert.Equal(2, await ScalarLongAsync(connection, "PRAGMA user_version;"));
+        Assert.Equal(3, await ScalarLongAsync(connection, "PRAGMA user_version;"));
         Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'usage_events';"));
+        Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'mode';"));
     }
 
     [Fact]
