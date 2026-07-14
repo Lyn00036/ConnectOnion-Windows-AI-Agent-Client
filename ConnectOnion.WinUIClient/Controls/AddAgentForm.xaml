@@ -46,7 +46,7 @@
 
             <TextBox x:Name="AddressBox"
                      AutomationProperties.AutomationId="AgentAddressInput"
-                     PlaceholderText="0x address (optional)"
+                     PlaceholderText="0x + 64 hex characters (optional)"
                      TextChanged="AddAgentField_TextChanged"
                      MinHeight="38" />
             <TextBox x:Name="DirectUrlBox"

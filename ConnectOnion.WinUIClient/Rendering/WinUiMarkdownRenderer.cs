@@ -12,6 +12,7 @@ using Microsoft.UI.Xaml.Media;
 using Windows.System;
 using Windows.UI.Text;
 using ConnectOnion.WinUIClient.Controls;
+using ConnectOnion.WinUIClient.Services;
 
 namespace ConnectOnion.WinUIClient.Rendering;
 
@@ -500,7 +501,24 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
         return Uri.TryCreate(value, UriKind.Absolute, out var uri) ? uri : null;
     }
 
-    private static SolidColorBrush ResolveBrush(string key)
-        => (SolidColorBrush)Application.Current.Resources[key];
+    private SolidColorBrush ResolveBrush(string key)
+    {
+        var colorKey = key switch
+        {
+            "TextFillColorSecondaryBrush" => "TextSecondaryColor",
+            "TextFillColorTertiaryBrush" => "TextTertiaryColor",
+            "TextLinkBrush" => "TextLinkColor",
+            "BrandPrimaryBrush" => "BrandPrimaryColor",
+            "CodeTextBrush" => "CodeTextColor",
+            "InlineCodeBackgroundBrush" => "InlineCodeBackgroundColor",
+            "CodeBackgroundBrush" => "CodeBackgroundColor",
+            "BorderSubtleBrush" => "BorderSubtleColor",
+            _ => throw new System.Collections.Generic.KeyNotFoundException(
+                $"Markdown theme brush '{key}' has no color-token mapping."),
+        };
+
+        var isDark = _target.ActualTheme == ElementTheme.Dark;
+        return new SolidColorBrush(ThemeService.GetColor(colorKey, isDark));
+    }
 
 }

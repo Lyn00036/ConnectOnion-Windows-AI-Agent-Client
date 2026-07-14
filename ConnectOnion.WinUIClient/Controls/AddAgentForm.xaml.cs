@@ -100,6 +100,8 @@ public sealed partial class AddAgentForm : UserControl
             return;
         }
 
+        if (!ValidateAddress(address)) return;
+
         if (!_connectionTested)
         {
             ShowStatus("Test connection successfully before adding this agent.", isError: true);
@@ -133,6 +135,8 @@ public sealed partial class AddAgentForm : UserControl
             ShowStatus("Enter a 0x address or Direct URL first.", isError: true);
             return false;
         }
+
+        if (!ValidateAddress(address)) return false;
 
         SetBusy(true);
         try
@@ -169,6 +173,18 @@ public sealed partial class AddAgentForm : UserControl
         StatusText.Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[
             isError ? "DangerBrush" : "SuccessBrush"];
         StatusText.Visibility = Visibility.Visible;
+    }
+
+    private bool ValidateAddress(string address)
+    {
+        if (string.IsNullOrEmpty(address) || AgentAddressValidator.IsValid(address))
+        {
+            return true;
+        }
+
+        ShowStatus(AgentAddressValidator.ValidationMessage, isError: true);
+        AddressBox.Focus(FocusState.Programmatic);
+        return false;
     }
 
     private static string CreateFallbackName(string address, string directUrl)

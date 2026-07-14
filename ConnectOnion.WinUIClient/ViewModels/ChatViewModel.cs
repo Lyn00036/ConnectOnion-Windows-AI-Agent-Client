@@ -109,7 +109,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
 
     // Sending is gated on the agent being confirmed online — matching the "green dot means
     // you can chat" model — not on holding a live socket (the transport connects lazily).
-    public bool CanSend => HasAgent && IsOnline && !IsProcessing && !IsConnecting;
+    public bool CanSend => HasAgent && _session is not null && IsOnline && !IsProcessing && !IsConnecting;
     public bool CanReconnect => HasAgent && !IsProcessing && !IsConnecting && Presence != AgentPresence.Checking;
 
     private bool _canRetry;
@@ -192,6 +192,14 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         }
 
         _session = await ResolveSessionAsync(_agent.Id);
+        OnPropertyChanged(nameof(CanSend));
+        if (_session is null)
+        {
+            HeaderText = $"{_agent.Name} - No conversation selected";
+            RaiseHeaderProperties();
+            return;
+        }
+
         HeaderText = $"{_agent.Name} - {_session.Title}";
         RaiseHeaderProperties();
 
@@ -227,19 +235,20 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     }
 
     /// <summary>
-    /// Reuses the active session if it belongs to this agent, else the agent's most recent
-    /// conversation, else creates a fresh one. Port of the store's <c>ensureSession</c>.
+    /// Reuses the active session if it belongs to this agent, otherwise the agent's most recent
+    /// conversation. Session creation is reserved for explicit user actions such as New chat;
+    /// loading a page must never recreate a conversation that the user just deleted.
     /// </summary>
-    private async Task<SessionSummary> ResolveSessionAsync(string agentId)
+    private async Task<SessionSummary?> ResolveSessionAsync(string agentId)
     {
         _sessionsState = await AppServices.Sessions.LoadAsync();
+        var session = SessionSelection.FindExisting(
+            _sessionsState.Sessions, _sessionsState.ActiveSessionId, agentId);
+        if (session is null || session.Id == _sessionsState.ActiveSessionId)
+        {
+            return session;
+        }
 
-        var active = _sessionsState.Sessions
-            .FirstOrDefault(s => s.Id == _sessionsState.ActiveSessionId && s.AgentId == agentId);
-        if (active is not null) return active;
-
-        var session = SessionSummary.NewConversation(agentId, _sessionsState.Sessions);
-        _sessionsState.Sessions.Add(session);
         _sessionsState.ActiveSessionId = session.Id;
         await AppServices.Sessions.SaveAsync(_sessionsState);
         return session;
