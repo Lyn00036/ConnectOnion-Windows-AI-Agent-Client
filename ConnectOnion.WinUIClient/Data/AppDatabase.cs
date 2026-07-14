@@ -69,7 +69,13 @@ public static class AppDatabase
         return builder.ToString();
     }
 
-    private static async Task CreateSchemaAsync(SqliteConnection connection)
+    /// <summary>
+    /// The version-1 baseline: every table as a pre-versioning build left it. Internal rather than
+    /// private so tests can build a genuine version-0 database to migrate — <see cref="SchemaMigrator"/>
+    /// only ever runs against a database that already has this shape (see <see cref="EnsureInitializedAsync"/>),
+    /// and a migration that alters an existing table has nothing to alter without it.
+    /// </summary>
+    internal static async Task CreateSchemaAsync(SqliteConnection connection)
     {
         await ExecuteAsync(connection, """
             CREATE TABLE IF NOT EXISTS app_meta (

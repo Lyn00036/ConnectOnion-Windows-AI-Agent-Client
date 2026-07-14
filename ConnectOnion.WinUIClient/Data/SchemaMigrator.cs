@@ -32,7 +32,7 @@ internal static class SchemaMigrator
     private const int BaselineVersion = 1;
 
     /// <summary>The schema version this build expects. Bump when you append to <see cref="Migrations"/>.</summary>
-    internal const int LatestVersion = 2;
+    internal const int LatestVersion = 3;
 
     /// <summary>
     /// Ordered forward migrations. Each runs exactly once, in its own transaction, on databases
@@ -68,6 +68,17 @@ internal static class SchemaMigrator
 
             CREATE INDEX IF NOT EXISTS ix_usage_created ON usage_events(created_at DESC);
             CREATE INDEX IF NOT EXISTS ix_usage_model_created ON usage_events(model, created_at DESC);
+            """),
+
+        // v3 — per-conversation approval mode (safe / accept_edits / plan).
+        //
+        // The mode has to live here rather than be read back from the agent: the host keeps its
+        // own copy in the session it stores, but a client cannot reliably set that copy (its
+        // session merge prefers whichever side has run more iterations, and we never report any),
+        // and it tells us the mode only via a mode_changed event on a live socket. So the
+        // conversation's mode is ours to remember and re-assert on every turn.
+        new(3, """
+            ALTER TABLE sessions ADD COLUMN mode TEXT NOT NULL DEFAULT 'safe';
             """),
     };
 
