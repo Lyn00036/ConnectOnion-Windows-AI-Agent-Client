@@ -35,6 +35,9 @@ public sealed partial class ChatViewModel
     {
         if (_session is null || string.IsNullOrEmpty(message.EventMeta)) return;
         AppServices.RunManager.RecordInteractiveAnswer(_session.Id, message.EventMeta, message.Status);
+        // The agent is no longer parked on this turn, so Stop must stop treating it as an open
+        // gate it could halt through — from here on the agent is back to being un-interruptible.
+        AppServices.RunManager.ClearPendingInteractive(_session.Id);
     }
 
     public async Task SubmitOnboardInviteCodeAsync(ChatMessage message)
@@ -96,18 +99,26 @@ public sealed partial class ChatViewModel
         await (CurrentConnection?.RespondAskUserAsync(answer) ?? Task.CompletedTask);
     }
 
-    /// <summary><paramref name="scope"/> is "once" or "session".</summary>
-    public async Task SubmitApprovalAsync(ChatMessage message, bool approved, string scope)
+    /// <summary>
+    /// <paramref name="scope"/> is "once" or "session". <paramref name="rejectMode"/> decides what
+    /// a rejection means to the agent and the two are genuinely different actions, not a wording
+    /// choice: <see cref="ApprovalRejectModes.Hard"/> (Reject) halts the agent's loop and hands
+    /// the conversation back to the user, while <see cref="ApprovalRejectModes.Soft"/> (Skip step)
+    /// declines this one tool and lets it carry on looking for another way.
+    /// </summary>
+    public async Task SubmitApprovalAsync(
+        ChatMessage message, bool approved, string scope,
+        string rejectMode = ApprovalRejectModes.Hard)
     {
         if (message.Status != EventStatus.Running) return;
 
         message.EventMeta = approved
             ? (scope == "session" ? "Approved for session" : "Approved once")
-            : "Rejected";
+            : rejectMode == ApprovalRejectModes.Soft ? "Skipped" : "Rejected";
         message.Status = approved ? EventStatus.Done : EventStatus.Error;
         RecordInteractiveAnswer(message);
         StatusText = "";
-        await (CurrentConnection?.RespondApprovalAsync(approved, scope) ?? Task.CompletedTask);
+        await (CurrentConnection?.RespondApprovalAsync(approved, scope, rejectMode) ?? Task.CompletedTask);
     }
 
     /// <summary>Approving with no feedback sends the SDK's default "proceed" message;

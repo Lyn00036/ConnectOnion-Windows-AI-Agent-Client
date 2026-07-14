@@ -46,6 +46,22 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
     // stream) has no way to record the chosen result — a reloaded card would show dead controls.
     private readonly ConcurrentDictionary<string, ConcurrentQueue<InteractiveAnswer>> _interactiveAnswers = new();
 
+    // The interactive turn (if any) the agent is currently blocked on, per conversation. Stop
+    // reads this to pick its tier: only an "approval" can be turned into a real halt.
+    private readonly ConcurrentDictionary<string, string> _pendingInteractive = new();
+
+    // Conversations whose local run was force-stopped while the host's agent was (as far as we
+    // know) still executing. Cleared once the host confirms the session went idle.
+    private readonly ConcurrentDictionary<string, byte> _orphanedRuns = new();
+
+    /// <summary>What a cooperative stop actually says to the agent. Phrased as an instruction the
+    /// model can act on, because that is all it is: the host frames a runtime input with "do NOT
+    /// abandon the original task unless they explicitly say to stop", so this has to be that
+    /// explicit say-so, in those words.</summary>
+    private const string StopPrompt =
+        "Stop what you are doing and end this turn now. Do not start any new tool calls. "
+        + "Briefly summarize what you completed and what is left unfinished.";
+
     /// <summary>Shown for an interactive turn that history reload finds was never answered
     /// (the WebSocket wait it replied to is gone, so it can never be resolved now).</summary>
     private const string NoSelectionMeta = "No selection";
@@ -83,12 +99,14 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
 
     public async Task<SendMessageResult> SendMessageAsync(
         AgentConfig agent, string conversationId, string prompt,
-        IReadOnlyList<PendingAttachment>? attachments = null)
+        IReadOnlyList<PendingAttachment>? attachments = null,
+        string? mode = null)
     {
         _agentsById[agent.Id] = agent;
         // A fresh run starts clean: drop any interactive answers left over from an abandoned
         // prior turn so they can't leak onto this run's cards at persist time.
         _interactiveAnswers.TryRemove(conversationId, out _);
+        _pendingInteractive.TryRemove(conversationId, out _);
 
         List<string>? images = null;
         List<OutgoingFileAttachment>? files = null;
@@ -145,15 +163,23 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
             Prompt: prompt,
             Images: images,
             Files: files,
-            SessionId: conversationId);
+            SessionId: conversationId,
+            Mode: mode);
 
         await _conversations.InsertExecutionAsync(runId, conversationId, null, prompt, "running").ConfigureAwait(false);
 
         var connection = _connections.GetOrCreate(conversationId, agent);
-        _runs.StartRun(request, new AgentTurnExecutor(connection, r => NotifyApproval(agent, conversationId, r)));
+        _runs.StartRun(request, NewExecutor(agent, conversationId, connection));
 
         return new SendMessageResult(runId, request.UserMessageId, request.AssistantMessageId);
     }
+
+    private AgentTurnExecutor NewExecutor(
+        AgentConfig agent, string conversationId, AgentConnectionService connection)
+        => new(
+            connection,
+            r => NotifyApproval(agent, conversationId, r),
+            kind => _pendingInteractive[conversationId] = kind);
 
     public ConversationRunSnapshot? GetActiveRun(string conversationId) => _runs.GetActiveRun(conversationId);
 
@@ -170,8 +196,130 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
     {
         _agentsById[agent.Id] = agent;
         _interactiveAnswers.TryRemove(conversationId, out _);
+        _pendingInteractive.TryRemove(conversationId, out _);
         var connection = _connections.GetOrCreate(conversationId, agent);
-        return _runs.RetryRun(conversationId, new AgentTurnExecutor(connection, r => NotifyApproval(agent, conversationId, r)));
+        return _runs.RetryRun(conversationId, NewExecutor(agent, conversationId, connection));
+    }
+
+    // ---- Stop, in the three tiers the protocol actually permits ----
+
+    public void ClearPendingInteractive(string conversationId)
+        => _pendingInteractive.TryRemove(conversationId, out _);
+
+    public async Task<StopOutcome> RequestStopAsync(string conversationId)
+    {
+        var run = _runs.GetActiveRun(conversationId);
+        if (run is null || run.IsTerminal) return StopOutcome.NotRunning;
+
+        var connection = _connections.Get(conversationId);
+        if (connection is not { IsConnected: true })
+        {
+            // No live socket to negotiate over: nothing cooperative is possible, and leaving the
+            // user staring at a spinner they cannot dismiss is worse than abandoning the run.
+            await ForceStopAsync(conversationId).ConfigureAwait(false);
+            return StopOutcome.ForceStopped;
+        }
+
+        _pendingInteractive.TryRemove(conversationId, out var pending);
+
+        // Tier 1 — the agent is parked at an approval gate. Rejecting hard is the one and only
+        // thing in this protocol that halts the loop: it sets stop_signal, the rest of the tool
+        // batch is dropped, and the turn ends properly with an OUTPUT.
+        if (pending == "approval")
+        {
+            await connection.RespondApprovalAsync(
+                approved: false,
+                scope: "once",
+                rejectMode: ApprovalRejectModes.Hard,
+                feedback: "Stopped by the user.").ConfigureAwait(false);
+            RecordInteractiveAnswer(conversationId, "Stopped by user", EventStatus.Error);
+            PublishStopEvent(conversationId, stopped: true);
+            return StopOutcome.Stopped;
+        }
+
+        // Tier 2 — the agent is blocked on a question or a plan review. We cannot halt it, but we
+        // can unblock it with an answer that says to stop; anything else (a runtime input) would
+        // sit in a queue the agent isn't reading while it waits on io.receive().
+        if (pending == "ask_user")
+        {
+            await connection.RespondAskUserAsync(StopPrompt).ConfigureAwait(false);
+            RecordInteractiveAnswer(conversationId, "Stop requested", EventStatus.Error);
+            PublishStopEvent(conversationId, stopped: false);
+            return StopOutcome.StopRequested;
+        }
+        if (pending == "plan_review")
+        {
+            await connection.RespondPlanReviewAsync(StopPrompt).ConfigureAwait(false);
+            RecordInteractiveAnswer(conversationId, "Stop requested", EventStatus.Error);
+            PublishStopEvent(conversationId, stopped: false);
+            return StopOutcome.StopRequested;
+        }
+
+        // Tier 3 — the agent is mid-LLM-call or mid-tool. Nothing can preempt it, so all that is
+        // left is to ask, as a runtime input it will read at its next iteration boundary.
+        await connection.SendRuntimeInputAsync(StopPrompt).ConfigureAwait(false);
+        PublishStopEvent(conversationId, stopped: false);
+        return StopOutcome.StopRequested;
+    }
+
+    public async Task ForceStopAsync(string conversationId)
+    {
+        var run = _runs.GetActiveRun(conversationId);
+        if (run is null || run.IsTerminal) return;
+
+        // Buffered before the cancel, because a terminal run stops accepting events — and this
+        // notice is the whole point: the turn is gone from *this* app, not from the host.
+        _runs.PublishLocalEvent(conversationId, new AgentStreamEvent(
+            "stop_forced",
+            "Force-stopped",
+            null,
+            """
+            {"type":"stop_forced","detail":"Stopped locally. The agent may still be running on the host — the protocol has no way to interrupt it. Your next message could be delivered to that turn as a follow-up."}
+            """));
+
+        // The socket is deliberately left open: it is how we can still ask the host whether the
+        // agent finished (GetServerSessionStatusAsync), and how a follow-up would reach it.
+        _orphanedRuns[conversationId] = 0;
+        _pendingInteractive.TryRemove(conversationId, out _);
+        await _runs.CancelRunAsync(conversationId, run.RunId).ConfigureAwait(false);
+    }
+
+    public bool MayHaveOrphanedRun(string conversationId) => _orphanedRuns.ContainsKey(conversationId);
+
+    public async Task<string> GetServerSessionStatusAsync(string conversationId)
+    {
+        var connection = _connections.Get(conversationId);
+        if (connection is not { IsConnected: true }) return SessionStatuses.NotFound;
+
+        var status = await connection.QuerySessionStatusAsync(conversationId).ConfigureAwait(false);
+        if (status != SessionStatuses.Running) _orphanedRuns.TryRemove(conversationId, out _);
+        return status;
+    }
+
+    /// <summary>Records the stop in the turn itself, so it survives into history and shows up in
+    /// every window — not just the one whose button was clicked.</summary>
+    private void PublishStopEvent(string conversationId, bool stopped)
+        => _runs.PublishLocalEvent(conversationId, stopped
+            ? new AgentStreamEvent("stop_requested", "Stopped", null,
+                """{"type":"stop_requested","stopped":true}""")
+            : new AgentStreamEvent("stop_requested", "Stop requested", null,
+                """{"type":"stop_requested","stopped":false}"""));
+
+    // ---- Mode ----
+
+    public Task SetModeAsync(string conversationId, string mode)
+    {
+        var connection = _connections.Get(conversationId);
+        if (connection is null) return Task.CompletedTask;
+
+        // Remembered for the next CONNECT this socket makes (only a brand-new session keeps it —
+        // the host's merge discards ours otherwise), and pushed now if a turn is live to receive
+        // it. With no turn running the host would drop a mode_change on the floor, so we don't
+        // send one: SendMessageAsync carries the mode with the INPUT instead.
+        connection.InitialMode = mode;
+
+        var run = _runs.GetActiveRun(conversationId);
+        return run is { IsTerminal: false } ? connection.SetModeAsync(mode) : Task.CompletedTask;
     }
 
     private static void NotifyApproval(AgentConfig agent, string conversationId, ApprovalRequest r)
@@ -191,6 +339,8 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
             catch { /* best-effort: the socket is torn down next regardless */ }
         }
         _interactiveAnswers.TryRemove(conversationId, out _);
+        _pendingInteractive.TryRemove(conversationId, out _);
+        _orphanedRuns.TryRemove(conversationId, out _);
         await _connections.RemoveAsync(conversationId).ConfigureAwait(false);
     }
 
@@ -221,6 +371,11 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
     public async Task PersistCompletedAsync(ConversationRunSnapshot snapshot, string finalReply)
     {
         var agentName = _agentsById.TryGetValue(snapshot.AgentId, out var a) ? a.Name : null;
+
+        // The turn reached OUTPUT, so the host's session is idle again — whatever we feared was
+        // orphaned by an earlier force-stop has demonstrably finished.
+        _pendingInteractive.TryRemove(snapshot.ConversationId, out _);
+        _orphanedRuns.TryRemove(snapshot.ConversationId, out _);
 
         var (window, nextId) = await LoadTurnWindowAsync(snapshot.ConversationId).ConfigureAwait(false);
         var target = new ListProjectionTarget(window, agentName, _http, nextId);
@@ -266,6 +421,7 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
     public async Task PersistFailedAsync(ConversationRunSnapshot snapshot)
     {
         var agentName = _agentsById.TryGetValue(snapshot.AgentId, out var a) ? a.Name : null;
+        _pendingInteractive.TryRemove(snapshot.ConversationId, out _);
 
         var (window, nextId) = await LoadTurnWindowAsync(snapshot.ConversationId).ConfigureAwait(false);
         var target = new ListProjectionTarget(window, agentName, _http, nextId);

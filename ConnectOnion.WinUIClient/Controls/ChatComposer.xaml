@@ -204,6 +204,7 @@
                       ColumnSpacing="8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
@@ -227,8 +228,54 @@
                                        Foreground="{ThemeResource ComposerMutedControlBrush}" />
                     </Button>
 
+                    <!-- Approval mode. Stays enabled mid-turn: the host applies a mode_change at
+                         the agent's next iteration boundary, so switching to Safe while it works
+                         is a real (if not instant) way to get approval prompts back. -->
+                    <DropDownButton x:Name="ModeButton"
+                                    AutomationProperties.AutomationId="ApprovalModeButton"
+                                    Grid.Column="1"
+                                    Height="36"
+                                    Padding="12,0"
+                                    CornerRadius="18"
+                                    Background="Transparent"
+                                    BorderBrush="{ThemeResource ComposerControlBorderBrush}"
+                                    BorderThickness="1"
+                                    Visibility="Collapsed">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <ic:FluentIcon x:Name="ModeIcon"
+                                           Icon="ShieldTask"
+                                           IconVariant="Regular"
+                                           IconSize="Size16"
+                                           Foreground="{ThemeResource ComposerMutedControlBrush}" />
+                            <TextBlock x:Name="ModeLabel"
+                                       Text="Safe"
+                                       FontSize="12"
+                                       VerticalAlignment="Center"
+                                       Foreground="{ThemeResource ComposerMutedControlBrush}" />
+                        </StackPanel>
+                        <DropDownButton.Flyout>
+                            <MenuFlyout Placement="Top">
+                                <RadioMenuFlyoutItem x:Name="ModeSafeItem"
+                                                     Text="Safe — approve dangerous tools"
+                                                     GroupName="ComposerApprovalMode"
+                                                     Tag="safe"
+                                                     Click="Mode_Click" />
+                                <RadioMenuFlyoutItem x:Name="ModeAcceptEditsItem"
+                                                     Text="Accept edits — file writes run unprompted"
+                                                     GroupName="ComposerApprovalMode"
+                                                     Tag="accept_edits"
+                                                     Click="Mode_Click" />
+                                <RadioMenuFlyoutItem x:Name="ModePlanItem"
+                                                     Text="Plan — research first, then review a plan"
+                                                     GroupName="ComposerApprovalMode"
+                                                     Tag="plan"
+                                                     Click="Mode_Click" />
+                            </MenuFlyout>
+                        </DropDownButton.Flyout>
+                    </DropDownButton>
+
                     <Grid x:Name="RecordingWaveformHost"
-                          Grid.Column="1"
+                          Grid.Column="2"
                           Height="36"
                           MinWidth="120"
                           Visibility="Collapsed">
@@ -256,7 +303,7 @@
                     </Grid>
 
                     <Button x:Name="SpeechButton"
-                            Grid.Column="3"
+                            Grid.Column="4"
                             Width="36"
                             Height="36"
                             Padding="0"
@@ -283,8 +330,8 @@
                     </Button>
 
                     <Button x:Name="StopSpeechButton"
-                            AutomationProperties.AutomationId="StopResponseButton"
-                            Grid.Column="3"
+                            AutomationProperties.AutomationId="StopVoiceInputButton"
+                            Grid.Column="4"
                             Width="36"
                             Height="36"
                             Padding="0"
@@ -305,7 +352,7 @@
 
                     <Button x:Name="SendButton"
                             AutomationProperties.AutomationId="SendMessageButton"
-                            Grid.Column="4"
+                            Grid.Column="5"
                             Width="36"
                             Height="36"
                             Padding="0"
@@ -323,11 +370,39 @@
                                            IconVariant="Regular"
                                            IconSize="Size20"
                                            Foreground="{ThemeResource ComposerPrimaryButtonForegroundBrush}" />
-                            <ProgressRing x:Name="BusyRing"
-                                          Width="18"
-                                          Height="18"
-                                          IsActive="False"
-                                          Visibility="Collapsed" />
+                        </Grid>
+                    </Button>
+
+                    <!-- Takes the send button's place for the whole turn. The ring around the
+                         square is the busy indicator the send button used to show inline: a turn
+                         in flight is exactly when stopping is possible, so the same slot can carry
+                         both without either being hidden behind a mode switch. -->
+                    <Button x:Name="StopButton"
+                            AutomationProperties.AutomationId="StopResponseButton"
+                            Grid.Column="5"
+                            Width="36"
+                            Height="36"
+                            Padding="0"
+                            CornerRadius="18"
+                            BorderThickness="0"
+                            Background="{ThemeResource ComposerPrimaryButtonBackgroundBrush}"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center"
+                            Visibility="Collapsed"
+                            Click="Stop_Click">
+                        <Grid Width="20" Height="20">
+                            <ProgressRing x:Name="StopRing"
+                                          Width="20"
+                                          Height="20"
+                                          IsActive="False" />
+                            <Rectangle x:Name="StopGlyph"
+                                       Width="9"
+                                       Height="9"
+                                       RadiusX="1"
+                                       RadiusY="1"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       Fill="{ThemeResource ComposerPrimaryButtonForegroundBrush}" />
                         </Grid>
                     </Button>
                 </Grid>
