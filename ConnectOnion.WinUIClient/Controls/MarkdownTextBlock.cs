@@ -71,6 +71,7 @@ public sealed class MarkdownTextBlock : UserControl
         });
 
         Content = _richTextBlock;
+        ActualThemeChanged += (_, _) => RenderMarkdown(Markdown);
     }
 
     public string Markdown

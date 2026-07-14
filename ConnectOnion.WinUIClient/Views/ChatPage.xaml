@@ -155,7 +155,8 @@
                             Visibility="{x:Bind Content, Converter={StaticResource StringToVis}}">
                         <controls:HighlightedTextBlock Text="{x:Bind Content, Mode=OneWay}"
                                                        SearchQuery="{x:Bind FindQuery, Mode=OneWay}"
-                                                       ActiveMatchIndex="{x:Bind ActiveFindMatchIndex, Mode=OneWay}" />
+                                                       ActiveMatchIndex="{x:Bind ActiveFindMatchIndex, Mode=OneWay}"
+                                                       Foreground="{ThemeResource TextPrimaryBrush}" />
                     </Border>
                     <Button HorizontalAlignment="Right"
                             Padding="0"

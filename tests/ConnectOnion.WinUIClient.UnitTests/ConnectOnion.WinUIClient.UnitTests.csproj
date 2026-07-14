@@ -48,6 +48,8 @@
     <Compile Include="..\..\ConnectOnion.WinUIClient\Services\Notifications\NotificationPolicy.cs" Link="Production\Services\Notifications\NotificationPolicy.cs" />
     <Compile Include="..\..\ConnectOnion.WinUIClient\Services\Notifications\NotificationText.cs" Link="Production\Services\Notifications\NotificationText.cs" />
     <Compile Include="..\..\ConnectOnion.WinUIClient\Services\ConversationCache.cs" Link="Production\Services\ConversationCache.cs" />
+    <Compile Include="..\..\ConnectOnion.WinUIClient\Services\AgentAddressValidator.cs" Link="Production\Services\AgentAddressValidator.cs" />
+    <Compile Include="..\..\ConnectOnion.WinUIClient\Services\SessionSelection.cs" Link="Production\Services\SessionSelection.cs" />
     <Compile Include="..\..\ConnectOnion.WinUIClient\Services\Attachments\AttachmentEncoder.cs" Link="Production\Services\Attachments\AttachmentEncoder.cs" />
     <Compile Include="..\..\ConnectOnion.WinUIClient\Services\Attachments\AttachmentValidationService.cs" Link="Production\Services\Attachments\AttachmentValidationService.cs" />
     <Compile Include="..\..\ConnectOnion.WinUIClient\Services\KeyboardShortcutCatalog.cs" Link="Production\Services\KeyboardShortcutCatalog.cs" />
