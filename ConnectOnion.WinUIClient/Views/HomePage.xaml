@@ -10,13 +10,18 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <Grid Background="{ThemeResource AppBackgroundBrush}">
-        <StackPanel Width="704"
-                    MaxWidth="704"
-                    HorizontalAlignment="Center"
-                    VerticalAlignment="Center"
-                    Margin="32,0,32,96"
-                    Spacing="28">
+    <Grid x:Name="PageRoot"
+          Background="{ThemeResource AppBackgroundBrush}">
+        <ScrollViewer HorizontalScrollMode="Disabled"
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollMode="Enabled"
+                      VerticalScrollBarVisibility="Auto">
+            <Grid MinHeight="{Binding ActualHeight, ElementName=PageRoot}">
+                <StackPanel MaxWidth="560"
+                            HorizontalAlignment="Stretch"
+                            VerticalAlignment="Center"
+                            Margin="32,0,32,96"
+                            Spacing="28">
             <StackPanel HorizontalAlignment="Center" Spacing="14">
                 <Border Width="88"
                         Height="88"
@@ -45,14 +50,18 @@
             <ListView x:Name="AgentList"
                       ItemsSource="{x:Bind Agents, Mode=OneWay}"
                       SelectionMode="None"
+                      ScrollViewer.HorizontalScrollMode="Disabled"
+                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                      ScrollViewer.VerticalScrollMode="Disabled"
+                      ScrollViewer.VerticalScrollBarVisibility="Disabled"
                       Background="Transparent"
                       BorderThickness="0"
                       Padding="0"
-                      MinHeight="112">
+                      MinHeight="84">
                 <ListView.ItemContainerStyle>
                     <Style TargetType="ListViewItem">
                         <Setter Property="Padding" Value="0" />
-                        <Setter Property="Margin" Value="0,0,0,12" />
+                        <Setter Property="Margin" Value="0,0,0,8" />
                         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                         <Setter Property="Background" Value="Transparent" />
                     </Style>
@@ -66,38 +75,38 @@
                                 BorderThickness="0"
                                 Tag="{x:Bind Id}"
                                 Click="AgentCard_Click">
-                            <Border MinHeight="112"
-                                    Padding="22"
+                            <Border MinHeight="84"
+                                    Padding="14"
                                     Style="{StaticResource CardBorderStyle}">
-                                <Grid ColumnSpacing="20">
+                                <Grid ColumnSpacing="14">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
 
-                                    <controls:AgentAvatar Size="66"
-                                                          CornerRadius="9"
-                                                          FontSize="22"
+                                    <controls:AgentAvatar Size="48"
+                                                          CornerRadius="8"
+                                                          FontSize="17"
                                                           Initial="{x:Bind Initial}" />
 
                                     <StackPanel Grid.Column="1"
-                                                Spacing="8"
+                                                Spacing="4"
                                                 VerticalAlignment="Center">
-                                        <StackPanel Orientation="Horizontal" Spacing="10">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
                                             <TextBlock Text="{x:Bind Name}"
-                                                       FontSize="20"
+                                                       FontSize="16"
                                                        FontWeight="SemiBold"
                                                        TextTrimming="CharacterEllipsis"
                                                        VerticalAlignment="Center" />
                                             <ic:FluentIcon Icon="Live"
                                                            IconVariant="Regular"
-                                                           IconSize="Size16"
+                                                           IconSize="Size12"
                                                            Foreground="{ThemeResource SuccessBrush}"
                                                            VerticalAlignment="Center"
                                                            Visibility="{x:Bind IsOnline, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                                         </StackPanel>
                                         <TextBlock Text="{x:Bind ShortAddress}"
-                                                   FontSize="14"
+                                                   FontSize="12"
                                                    FontWeight="SemiBold"
                                                    Foreground="{ThemeResource TextTertiaryBrush}"
                                                    TextTrimming="CharacterEllipsis" />
@@ -128,6 +137,8 @@
                                    HorizontalAlignment="Center"
                                    Visibility="Collapsed"
                                    AgentAdded="AddAgentForm_AgentAdded" />
-        </StackPanel>
+                </StackPanel>
+            </Grid>
+        </ScrollViewer>
     </Grid>
 </Page>

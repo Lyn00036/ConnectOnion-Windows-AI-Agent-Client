@@ -152,20 +152,21 @@ public sealed class AgentConnectionServiceTests
             await FakeAgentServer.SendTextAsync(socket, "{\"type\":\"ask_user\",\"id\":\"question-1\",\"text\":\"Continue?\"}", ct);
             var response = WireMessage.Parse(await FakeAgentServer.ReceiveTextAsync(socket, ct));
             Assert.Equal("ASK_USER_RESPONSE", response.Type);
+            await Task.Delay(TimeSpan.FromMilliseconds(75), ct);
             await FakeAgentServer.SendTextAsync(socket, "{\"type\":\"OUTPUT\",\"result\":\"continued\"}", ct);
         });
         await using var service = Service(
             server,
             connectTimeout: TimeSpan.FromSeconds(1),
-            silenceTimeout: TimeSpan.FromMilliseconds(60),
-            watchdogInterval: TimeSpan.FromMilliseconds(15));
+            silenceTimeout: TimeSpan.FromMilliseconds(250),
+            watchdogInterval: TimeSpan.FromMilliseconds(25));
         Exception? connectionLoss = null;
         service.ConnectionLost += error => connectionLoss = error;
         service.AskUserRequested += _ => questionRaised.TrySetResult();
         var send = service.SendInputAsync("start", null);
 
         await questionRaised.Task.WaitAsync(TimeSpan.FromSeconds(1));
-        await Task.Delay(180);
+        await Task.Delay(750);
         Assert.True(service.IsConnected);
         Assert.Null(connectionLoss);
         await service.RespondAskUserAsync("Yes");

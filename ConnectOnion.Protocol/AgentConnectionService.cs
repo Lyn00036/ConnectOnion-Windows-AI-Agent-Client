@@ -305,7 +305,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
     /// <summary>Answers an ask_user turn. Port of the ASK_USER_RESPONSE message.</summary>
     public Task RespondAskUserAsync(string answer)
     {
-        _awaitingHumanResponse = false;
+        ResumeWatchdogAfterHumanResponse();
         return SendJsonAsync(new Dictionary<string, object?>
         {
             ["type"] = "ASK_USER_RESPONSE",
@@ -319,7 +319,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
     /// </summary>
     public Task RespondApprovalAsync(bool approved, string scope = "once")
     {
-        _awaitingHumanResponse = false;
+        ResumeWatchdogAfterHumanResponse();
         var msg = new Dictionary<string, object?>
         {
             ["type"] = "APPROVAL_RESPONSE",
@@ -333,12 +333,21 @@ public sealed class AgentConnectionService : IAsyncDisposable
     /// <summary>Responds to a plan_review turn. Port of PLAN_REVIEW_RESPONSE.</summary>
     public Task RespondPlanReviewAsync(string message)
     {
-        _awaitingHumanResponse = false;
+        ResumeWatchdogAfterHumanResponse();
         return SendJsonAsync(new Dictionary<string, object?>
         {
             ["type"] = "PLAN_REVIEW_RESPONSE",
             ["message"] = message,
         }, CancellationToken.None);
+    }
+
+    private void ResumeWatchdogAfterHumanResponse()
+    {
+        // A human can legitimately leave the turn idle past the silence timeout.
+        // Once they respond, give the agent a fresh timeout window instead of
+        // counting the time spent waiting for the human as server silence.
+        _lastActivityUtc = DateTime.UtcNow;
+        _awaitingHumanResponse = false;
     }
 
     private static AskUserRequest ParseAskUser(WireMessage msg) => AgentInteractiveParsers.ParseAskUser(msg);
