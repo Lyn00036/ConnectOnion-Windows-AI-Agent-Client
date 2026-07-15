@@ -26,7 +26,7 @@ using Windows.System;
 
 namespace ConnectOnion.WinUIClient.Views;
 
-public sealed partial class ChatPage : Page, IFindHost
+public sealed partial class ChatPage : Page, IFindHost, IReloadablePage
 {
     /// <summary>Persisted scroll positions keyed by session id, survives page recreation.</summary>
     private static readonly ConcurrentDictionary<string, double> ScrollPositions = new();
@@ -56,12 +56,7 @@ public sealed partial class ChatPage : Page, IFindHost
         ReportViewing(active: false);
 
         // Persist scroll position so returning to this conversation restores it.
-        try
-        {
-            if (Vm.SessionId is { } sid && _messageScrollViewer is not null)
-                ScrollPositions[sid] = _messageScrollViewer.VerticalOffset;
-        }
-        catch { /* Best-effort scroll persistence. */ }
+        SaveScrollPosition();
 
         Vm.PropertyChanged -= Vm_PropertyChanged;
         _findDebounceTimer.Stop();
@@ -128,6 +123,36 @@ public sealed partial class ChatPage : Page, IFindHost
             _messageScrollViewer.ViewChanged += MessageScrollViewer_ViewChanged;
         }
 
+        await LoadConversationAsync();
+    }
+
+    /// <summary>
+    /// Re-points this page at whichever conversation is now active, without rebuilding the page
+    /// (see <see cref="IFindHost"/>'s neighbour, <see cref="IReloadablePage"/>, for why).
+    /// </summary>
+    public async System.Threading.Tasks.Task ReloadAsync()
+    {
+        SaveScrollPosition();
+        _pendingInitialSubmission = null;
+        _stickToBottom = true;
+        LoadingOverlay.Visibility = Visibility.Visible;
+        await LoadConversationAsync();
+    }
+
+    /// <summary>Remembers where the *outgoing* conversation was scrolled to, so coming back to
+    /// it lands in the same place. Keyed by session id, consumed (and removed) on restore.</summary>
+    private void SaveScrollPosition()
+    {
+        try
+        {
+            if (Vm.SessionId is { } sid && _messageScrollViewer is not null)
+                ScrollPositions[sid] = _messageScrollViewer.VerticalOffset;
+        }
+        catch { /* Best-effort scroll persistence. */ }
+    }
+
+    private async System.Threading.Tasks.Task LoadConversationAsync()
+    {
         _isLoadingConversation = true;
         try
         {

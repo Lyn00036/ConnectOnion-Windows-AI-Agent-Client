@@ -301,7 +301,7 @@ public sealed class ConversationRunRegistry
         lock (run.Gate)
         {
             if (run.Finalized) return;
-            run.Events.Add(streamEvent);
+            run.AddEventLocked(streamEvent);
             run.Sequence++;
             snapshot = run.SnapshotLocked();
         }
@@ -326,7 +326,15 @@ public sealed class ConversationRunRegistry
     private void StoreAndPublish(
         ConversationRunSnapshot snapshot, string phase, DateTimeOffset createdAt, TimeSpan? elapsed = null)
     {
-        _lastSnapshots[snapshot.ConversationId] = snapshot;
+        // Subscribers get the full snapshot (a live page still has this run's tail to project),
+        // but what we *retain* for a finished run drops the events. They have already been
+        // projected into bubbles and written to trace_events; keeping them here pinned the whole
+        // turn's raw JSON — every LLM call's message history, every base64 image — in memory for
+        // the rest of the process's life, once per conversation. Nothing reads the events off a
+        // terminal snapshot: GetActiveRun's callers only look at RunId/Status/ErrorMessage.
+        _lastSnapshots[snapshot.ConversationId] = snapshot.IsTerminal
+            ? snapshot with { Events = Array.Empty<AgentStreamEvent>() }
+            : snapshot;
 
         try { _logger.Log(snapshot, phase, elapsed ?? (DateTimeOffset.UtcNow - createdAt)); }
         catch (Exception ex) { _onError?.Invoke(ex); }

@@ -489,6 +489,9 @@ public sealed class AgentConnectionService : IAsyncDisposable
 
     private static AskUserRequest ParseAskUser(WireMessage msg) => AgentInteractiveParsers.ParseAskUser(msg);
 
+    /// <summary>Frame-reassembly buffer above this size is dropped rather than reused (see below).</summary>
+    private const int MaxRetainedFrameCapacity = 64 * 1024;
+
     private async Task ReceiveLoopAsync(CancellationToken ct)
     {
         var ws = _ws!;
@@ -509,7 +512,12 @@ public sealed class AgentConnectionService : IAsyncDisposable
                 if (!result.EndOfMessage) continue;
 
                 var json = frame.ToString();
-                frame.Clear();
+                // Clear() keeps the capacity, so one multi-megabyte frame (a base64 image, an
+                // LLM call carrying the whole message history) would otherwise leave that buffer
+                // resident on the connection for as long as it lives. Reassemble small frames in
+                // the existing builder; start fresh after an outsized one.
+                if (frame.Capacity > MaxRetainedFrameCapacity) frame = new StringBuilder();
+                else frame.Clear();
                 _lastActivityUtc = DateTime.UtcNow;
                 await HandleMessageAsync(json, ct).ConfigureAwait(false);
             }

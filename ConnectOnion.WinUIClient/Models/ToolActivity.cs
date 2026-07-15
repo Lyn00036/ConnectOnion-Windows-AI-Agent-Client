@@ -57,7 +57,6 @@ public sealed class ToolActivityViewModel : ObservableObject
         set
         {
             if (!SetProperty(ref _displayMode, value)) return;
-            foreach (var step in Steps) step.IsDeveloperDetails = value == ToolDisplayMode.Detailed;
             if (value == ToolDisplayMode.Detailed) IsExpanded = true;
             OnPresentationChanged();
         }
@@ -126,12 +125,10 @@ public sealed class ToolStepViewModel : ObservableObject
     private DateTimeOffset _startedAt = DateTimeOffset.UtcNow;
     private DateTimeOffset? _completedAt;
     private double? _durationMs;
-    private bool _isDeveloperDetails;
 
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public int Sequence { get; set; }
     public string ToolName { get; set; } = "tool";
-    public string? RawEvent { get; set; }
     public bool IsHighRisk { get; set; }
 
     public ToolStepStatus Status
@@ -153,7 +150,6 @@ public sealed class ToolStepViewModel : ObservableObject
     public DateTimeOffset? CompletedAt { get => _completedAt; set => SetProperty(ref _completedAt, value); }
     public double? DurationMs { get => _durationMs; set { if (SetProperty(ref _durationMs, value)) OnPropertyChanged(nameof(DurationLabel)); } }
     public bool IsExpanded { get => _isExpanded; set => SetProperty(ref _isExpanded, value); }
-    public bool IsDeveloperDetails { get => _isDeveloperDetails; set => SetProperty(ref _isDeveloperDetails, value); }
 
     [JsonIgnore] public string StatusGlyph => Status switch { ToolStepStatus.Success => "✓", ToolStepStatus.Warning => "⚠", ToolStepStatus.Failed => "✕", ToolStepStatus.Cancelled => "⊘", ToolStepStatus.Pending => "·", _ => "◌" };
     [JsonIgnore] public bool HasDisplayTarget => !string.IsNullOrWhiteSpace(DisplayTarget);
