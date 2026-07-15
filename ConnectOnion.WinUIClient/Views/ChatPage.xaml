@@ -608,6 +608,31 @@
                         Orientation="Horizontal"
                         Spacing="8"
                         VerticalAlignment="Center">
+                <!-- Run status ("Connecting...", the latest stream event, a send failure). Lives in
+                     the header rather than floating above the composer so it never covers the last
+                     message and stays in one place while a turn streams. -->
+                <Border MinHeight="30"
+                        MaxWidth="300"
+                        CornerRadius="15"
+                        Padding="12,0"
+                        BorderBrush="{ThemeResource BorderDefaultBrush}"
+                        BorderThickness="1"
+                        Background="{ThemeResource SurfaceElevatedBrush}"
+                        Visibility="{x:Bind Vm.StatusText, Mode=OneWay, Converter={StaticResource StringToVis}}">
+                    <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                        <ProgressRing Width="12"
+                                      Height="12"
+                                      IsActive="{x:Bind Vm.IsProcessing, Mode=OneWay}"
+                                      Visibility="{x:Bind Vm.IsProcessing, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                        <TextBlock Text="{x:Bind Vm.StatusText, Mode=OneWay}"
+                                   AutomationProperties.AutomationId="ConnectionStatus"
+                                   FontSize="11"
+                                   VerticalAlignment="Center"
+                                   Foreground="{ThemeResource TextSecondaryBrush}"
+                                   TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                </Border>
+
                 <Border MinHeight="30"
                         CornerRadius="15"
                         Padding="12,0"
@@ -648,25 +673,6 @@
                 </Style>
             </ListView.ItemContainerStyle>
         </ListView>
-
-        <Border Grid.Row="1"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Bottom"
-                Margin="0,0,0,16"
-                MaxWidth="520"
-                CornerRadius="14"
-                Padding="12,7"
-                Background="{ThemeResource SurfaceElevatedBrush}"
-                BorderBrush="{ThemeResource BorderDefaultBrush}"
-                BorderThickness="1"
-                IsHitTestVisible="False"
-                Visibility="{x:Bind Vm.StatusText, Mode=OneWay, Converter={StaticResource StringToVis}}">
-            <TextBlock Text="{x:Bind Vm.StatusText, Mode=OneWay}"
-                       AutomationProperties.AutomationId="ConnectionStatus"
-                       FontSize="11"
-                       Foreground="{ThemeResource TextSecondaryBrush}"
-                       TextTrimming="CharacterEllipsis" />
-        </Border>
 
         <!-- Failure bar: appears when the last run failed and is still retryable. Mutually
              exclusive with the offline bar (see Vm.ShowRetryBar) so the two never stack. -->

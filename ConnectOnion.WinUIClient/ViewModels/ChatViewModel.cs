@@ -35,6 +35,11 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     private SessionsState _sessionsState = new();
     private long _createdAt;
 
+    // Bumped by every LoadAsync. One view model now serves every conversation the page shows
+    // (switching reuses the page), so two loads can be in flight at once; only the newest one is
+    // allowed to touch the message list or subscribe. See LoadAsync.
+    private long _loadGeneration;
+
     // ---- Live run subscription (this page's view of the app-level run) ----
     private IDisposable? _runSubscription;
     private ChatTurnProjection? _liveProjection;
@@ -206,8 +211,35 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         ? "Force stop (abandons the turn locally; the agent may keep running)"
         : "Stop";
 
+    /// <summary>
+    /// Loads (or re-loads) whichever conversation is currently active. Re-entrant: switching
+    /// conversations drives this on the same view model rather than building a new page, so it
+    /// first lets go of the previous conversation's run subscription and per-run state. The
+    /// presence hook is deliberately *not* touched — this view model outlives the switch, and
+    /// only <see cref="Cleanup"/> (page unload) detaches it.
+    /// </summary>
     public async Task LoadAsync()
     {
+        // Clicking through the sidebar fires one of these per click, on one shared view model, and
+        // each awaits the database. Without a generation the loser of that race would still append
+        // its history and subscribe its run — two subscriptions projecting into one list. A load
+        // that has been superseded drops out at the next checkpoint instead.
+        var generation = ++_loadGeneration;
+
+        _runSubscription?.Dispose();
+        _runSubscription = null;
+        _liveProjection = null;
+        _liveRunId = null;
+        _appliedEventCount = 0;
+        _historyLoadedRunId = null;
+        CanRetry = false;
+        IsProcessing = false;
+        IsStopping = false;
+        StatusText = "";
+        // Cleared here rather than only in RestoreConversationAsync, so the early returns below
+        // (no agent, no session) can't leave the previous conversation's bubbles on screen.
+        Messages.Clear();
+
         var prefs = await AppServices.Preferences.LoadAsync();
         EnterToSend = prefs.EnterToSend;
         MessageFontSize = prefs.MessageFontSize switch
@@ -218,6 +250,8 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         };
 
         var agents = await AppServices.Agents.LoadAsync();
+        if (generation != _loadGeneration) return;
+
         _agent = agents.Agents.FirstOrDefault(a => a.Id == agents.SelectedAgentId);
         HasAgent = _agent is not null;
         OnPropertyChanged(nameof(CanSend));
@@ -230,6 +264,8 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         }
 
         _session = await ResolveSessionAsync(_agent.Id);
+        if (generation != _loadGeneration) return;
+
         OnPropertyChanged(nameof(CanSend));
         if (_session is null)
         {
@@ -242,7 +278,8 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         CurrentMode = _session.Mode;
         RaiseHeaderProperties();
 
-        await RestoreConversationAsync();
+        await RestoreConversationAsync(generation);
+        if (generation != _loadGeneration) return;
 
         // Attach to the app-level run for this conversation. The manager fires the current
         // snapshot immediately, so an in-flight turn is resumed (streaming continues) the
@@ -293,7 +330,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         return session;
     }
 
-    private async Task RestoreConversationAsync()
+    private async Task RestoreConversationAsync(long generation)
     {
         if (_agent is null || _session is null) return;
 
@@ -312,9 +349,12 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
             return;
         }
 
-        Messages.Clear();
         var messages = ToolActivityMigration.UpgradeLegacyToolMessages(
             await AppServices.Conversations.LoadMessagesAsync(_session.Id));
+        // A newer switch already owns the list — dropping this history is the whole point.
+        if (generation != _loadGeneration) return;
+
+        Messages.Clear();
         _createdAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
         if (messages.Count > 0)
@@ -607,6 +647,10 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     public async Task NewConversationAsync()
     {
         if (_agent is null || IsProcessing) return;
+
+        // Supersede any load still in flight, so a slow one can't land its history on top of the
+        // conversation we are about to create.
+        _loadGeneration++;
 
         // Re-point the subscription at the new conversation.
         _runSubscription?.Dispose();

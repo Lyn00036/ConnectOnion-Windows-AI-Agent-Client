@@ -209,8 +209,24 @@ public sealed partial class MainWindow : Window
         ThemeService.Apply(prefs.Theme);
     }
 
-    private void NavigateTo(Type page, bool forceReload = false)
+    private async void NavigateTo(Type page, bool forceReload = false)
     {
+        // Chat → chat (or agent → agent) is a change of selection, not a change of page. Navigating
+        // would discard the live page and build another — XAML tree, composer + Win2D canvas, view
+        // model, bindings — on every click. Hand the switch to the page already on screen (see
+        // Views.IReloadablePage) and do by hand the two things the Navigated handler would have.
+        if (forceReload
+            && ContentFrame.CurrentSourcePageType == page
+            && ContentFrame.Content is Views.IReloadablePage reloadable)
+        {
+            CloseFindOverlay();
+            try { await reloadable.ReloadAsync(); }
+            catch { /* a failed reload leaves the page on its previous selection */ }
+            try { await ShellSidebar.RefreshAsync(); }
+            catch { /* best-effort sidebar refresh */ }
+            return;
+        }
+
         if (forceReload || ContentFrame.CurrentSourcePageType != page)
         {
             ContentFrame.Navigate(page);
