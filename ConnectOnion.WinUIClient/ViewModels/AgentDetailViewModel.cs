@@ -22,6 +22,10 @@ public sealed class AgentDetailViewModel : PresenceAwareViewModel
     private readonly DispatcherQueue _dispatcher = DispatcherQueue.GetForCurrentThread();
     private AgentConfig? _agent;
     private bool _isLoading;
+
+    // Bumped by every LoadAsync. The page is reused across agents (see Views.IReloadablePage),
+    // so loads can overlap; only the newest may write to it.
+    private long _loadGeneration;
     private string _infoJson = "";
     private string _statusText = "";
     private bool _hasError;
@@ -151,10 +155,19 @@ public sealed class AgentDetailViewModel : PresenceAwareViewModel
     /// <summary>Loads agent info from cache or fetches fresh data.</summary>
     public async Task LoadAsync()
     {
+        // Switching agents reuses this page rather than rebuilding it, so two loads can be in
+        // flight at once — and an /info fetch is slow enough to outlive the agent that asked for
+        // it. Only the newest load may write to the page; a superseded one drops out here, and
+        // its fetch drops out where it would otherwise publish (FetchInfoWithCacheAsync).
+        var generation = ++_loadGeneration;
+
         var prefs = await AppServices.Preferences.LoadAsync();
+        if (generation != _loadGeneration) return;
         EnterToSend = prefs.EnterToSend;
 
         var agents = await AppServices.Agents.LoadAsync();
+        if (generation != _loadGeneration) return;
+
         var selected = agents.Agents.FirstOrDefault(a => a.Id == agents.SelectedAgentId);
 
         Agent = selected;
@@ -174,10 +187,10 @@ public sealed class AgentDetailViewModel : PresenceAwareViewModel
         }
 
         IsLoading = true;
-        await FetchInfoWithCacheAsync();
+        await FetchInfoWithCacheAsync(generation);
     }
 
-    private async Task FetchInfoWithCacheAsync()
+    private async Task FetchInfoWithCacheAsync(long generation)
     {
         var agent = Agent;
         if (agent is null)
@@ -191,6 +204,10 @@ public sealed class AgentDetailViewModel : PresenceAwareViewModel
 
         _dispatcher.TryEnqueue(() =>
         {
+            // The page has moved on to another agent; publishing now would show one agent's info
+            // under another's name. IsLoading belongs to the newer load, so don't clear it either.
+            if (generation != _loadGeneration) return;
+
             if (!string.IsNullOrWhiteSpace(freshJson))
             {
                 HasError = false;
