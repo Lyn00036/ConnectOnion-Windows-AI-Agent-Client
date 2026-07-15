@@ -31,18 +31,20 @@ test(agent): add connection validation coverage
 
 ## Recommended Scopes
 
-- `electron`: Electron main process, windows, preload, IPC
-- `chat`: chat UI and ConnectOnion SDK interaction
+- `chat`: chat UI, streaming events, and message rendering
 - `agent`: agent configuration and connection management
 - `sessions`: local conversation/session history
 - `storage`: SQLite schema, repositories, migrations
+- `protocol`: `ConnectOnion.Protocol` wire format, signing, WebSocket state machine
+- `runtime`: app-level run/turn runtime (`AgentSessionManager`, projection, connection registry)
 - `settings`: desktop preferences
-- `credentials`: secure credential handling
+- `usage`: token-usage ledger and the Usage panel
 - `files`: drag-and-drop files and attachments
-- `ui`: shared UI components and layout
+- `notifications`: Windows/in-app toasts and activation routing
+- `ui`: shared UI components, styles, and layout
 - `docs`: project documentation
 - `ci`: GitHub Actions and validation workflows
-- `build`: Windows packaging and release output
+- `build`: Windows/MSIX packaging and release output
 
 ## Good Examples
 
@@ -51,18 +53,20 @@ feat(agent): save agent configuration in SQLite
 feat(sessions): add local conversation list
 feat(files): add attachment drop zone
 fix(chat): show failed connection error
-refactor(electron): split storage IPC handlers
-test(storage): cover migration status query
-ci(github-actions): run frontend lint and build
+refactor(runtime): split turn projection out of the session manager
+perf(protocol): prevent large JSON frame buffers from leaking across turns
+test(storage): cover schema migration path
+ci(github-actions): run headless unit tests and the conformance gate
 ```
 
 ## Branch Names
 
 ```text
-feature/CON-12-agent-config
-feature/CON-46-session-history
-bugfix/CON-33-connection-error
+feature/agent-config
+feature/session-history
+bugfix/connection-error
 refactor/sqlite-repositories
+perf/navigation-reuse-and-buffer-leaks
 ```
 
 ## Pull Requests
@@ -76,7 +80,7 @@ feat(chat): display agent execution status
 PR descriptions should include:
 
 - Summary
-- Related ticket
+- Related issue
 - Main changes
 - Testing evidence
 - Known limitations
@@ -84,6 +88,6 @@ PR descriptions should include:
 ## Rules
 
 - Keep commits small and focused.
-- Reference Jira tickets when available.
+- Reference the related GitHub issue when available.
 - Do not mix unrelated modules in one commit.
 - Run relevant validation before opening a PR.

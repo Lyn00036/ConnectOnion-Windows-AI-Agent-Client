@@ -13,7 +13,7 @@ legacy reference code. New desktop work should happen in the WinUI projects.
 User
   -> WinUI 3 window (MainWindow with Mica backdrop and custom title bar)
   -> ShellSidebar: agent list + session list navigation
-  -> XAML pages: Home, Chat, AgentDetail, Sessions, Identity, Settings
+  -> XAML pages: Home, Chat, AgentDetail, Sessions, Settings (identity + usage live inside Settings)
   -> ViewModels: MVVM state and commands
   -> Services:
       -> SQLite repositories (Data/) for local app state
@@ -36,9 +36,12 @@ Local app data is stored in SQLite at:
 %AppData%\ConnectOnion\connectonion.db
 ```
 
-The database is created automatically during development startup. There is no
-legacy JSON migration path at the moment because the app is still in active
-development and local data does not need to be preserved.
+The database is created automatically on first launch and then upgraded in
+place: the schema is versioned via `PRAGMA user_version` and stepped forward by
+`Data/SchemaMigrator.cs`, so an existing database is migrated rather than
+discarded. There is no legacy JSON → SQLite import path (the Electron client's
+local data is not carried over). Deleting the `.db` file to reset dev state is a
+convenience, not the upgrade path.
 
 Current SQLite tables:
 
@@ -46,13 +49,14 @@ Current SQLite tables:
 | --- | --- |
 | `app_meta` | key, value |
 | `agents` | id, name, address, direct_url, invite_code, info_json, info_updated_at, sort_order |
-| `sessions` | id, agent_id, title, remote_session_id, last_processed_event_id, created_at, updated_at, sort_order |
+| `sessions` | id, agent_id, title, remote_session_id, last_processed_event_id, created_at, updated_at, sort_order, mode |
 | `preferences` | theme, sidebar_visible, message_font_size, shortcut_overrides_json, microphone_device_id |
-| `messages` | conversation_id, id, role, content, agent_name, event_kind/title/detail/meta/args/result/status, is_onboarding, created_at |
+| `messages` | conversation_id, id, role, content, agent_name, event_kind/key/eyebrow/title/detail/meta/args/result/status, is_onboarding, created_at |
 | `message_attachments` | conversation_id, message_id, id, kind, file_name, mime_type, size_bytes, local_cache_path, remote_uri, status |
 | `executions` | id, conversation_id, remote_session_id, prompt, result, status, duration_ms, created_at |
 | `trace_events` | id, conversation_id, execution_id, session_id, type, payload_json, ts |
 | `identity_keys` | address, private_seed (DPAPI-protected, base64-encoded) |
+| `usage_events` | id, conversation_id, agent_id, agent_name, model, input_tokens, output_tokens, cached_tokens, cache_write_tokens, duration_ms, created_at |
 
 `messages` is one row per rendered chat bubble (not a serialized conversation
 envelope), keyed `(conversation_id, id)`. Saves are incremental:
@@ -77,6 +81,7 @@ connectonion-desktop/
     MainWindow.FileMenu.cs           File menu handlers and keyboard shortcuts
     MainWindow.EditMenu.cs           Undo/redo/cut/copy/paste/select-all + accelerators
     MainWindow.ViewMenu.cs           Sidebar toggle, zoom, full screen, find overlay
+    MainWindow.HelpMenu.cs           Keyboard shortcuts, ConnectOnion docs, About overlay
     MainWindow.DragDrop.cs           Window-level drag-and-drop attachment handling
     MainWindow.Notifications.cs      In-app toast host, notification activation routing
     Views/
@@ -122,12 +127,14 @@ connectonion-desktop/
       ShellSessionItem.cs             Sidebar session list item
       Notifications/                  Notification request/decision/settings models
     Data/
-      AppDatabase.cs                  SQLite initialization and schema
+      AppDatabase.cs                  SQLite initialization and baseline schema
+      SchemaMigrator.cs               Versioned forward migrations (PRAGMA user_version)
       AppStorage.cs                   Local filesystem directory setup
       AgentRepository.cs              Agent CRUD (SQLite)
       SessionRepository.cs            Session CRUD (SQLite)
       ConversationRepository.cs       Message/attachment persistence, incremental upsert (SQLite)
       PreferencesRepository.cs        Preference persistence (SQLite)
+      UsageRepository.cs              Token-usage ledger persistence (no FK, never cascaded)
       IdentityStore.cs                Local Ed25519 identity persistence, DPAPI-encrypted seed
     Services/
       AppServices.cs                  Process-wide singleton service locator
@@ -509,6 +516,7 @@ Known deployed development agents:
 - Turn completion / approval-required notifications (Windows toasts plus in-app toasts, deduped,
   suppressed when the relevant chat is already on screen)
 - Per-turn tool execution timeline (collapsible, persisted across restart)
+- Token-usage ledger and Usage panel (Settings), independent of conversation/agent deletion
 - Local Ed25519 identity display (Settings), seed encrypted at rest via DPAPI
 - SQLite-backed local storage with WAL journal mode and foreign keys
 - Direct URL and relay connection paths
@@ -534,6 +542,7 @@ Known deployed development agents:
 - Close button (X) dialog with Minimize to tray / Exit / Cancel options
 - File menu with keyboard shortcuts (Ctrl+N new chat, Ctrl+Shift+N new window, Ctrl+W close)
 - Edit menu (undo/redo/cut/copy/paste/select all) and View menu (sidebar, zoom, full screen, find)
+- Help menu (keyboard shortcuts dialog, ConnectOnion docs, About overlay)
 - Protocol conformance test gate
 - Windows/.NET CI workflow
 

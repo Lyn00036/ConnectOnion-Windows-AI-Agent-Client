@@ -9,7 +9,7 @@ The client connects to agents via **Direct URL** or **relay-based address resolu
 | Layer | Technology |
 | --- | --- |
 | UI Framework | WinUI 3 (Windows App SDK) |
-| Language | C# 13, .NET 10 |
+| Language | C# 14, .NET 10 |
 | UI Pattern | MVVM (no framework — lightweight `ObservableObject` + `RelayCommand` base classes) |
 | Local Storage | SQLite (`Microsoft.Data.Sqlite`) |
 | HTTP | `HttpClient` |
@@ -138,7 +138,7 @@ ConnectOnion.WinUIClient/
 ```
 User
   └─ WinUI 3 Window (MainWindow)
-       ├─ Custom title bar (Mica backdrop, nav buttons, File/Edit/View menus)
+       ├─ Custom title bar (Mica backdrop, nav buttons, File/Edit/View/Help menus)
        ├─ System tray icon (minimize to tray, restore, exit)
        ├─ ShellSidebar (agent list → session list → content)
        ├─ Find overlay (Ctrl+F, driven against whatever page implements IFindHost)
@@ -181,12 +181,13 @@ Schema tables:
 | Table | Purpose |
 | --- | --- |
 | `agents` | Saved agent connections (name, address, Direct URL, invite code) |
-| `sessions` | Per-agent conversation sessions (id, title, timestamps) |
+| `sessions` | Per-agent conversation sessions (id, title, timestamps, approval `mode`) |
 | `messages` | One row per rendered chat bubble, keyed `(conversation_id, id)` |
 | `message_attachments` | Attachment metadata only (kind, name, mime, size, cache path) — never base64 |
 | `executions` | One row per turn (prompt, result, status, duration) |
 | `trace_events` | Raw stream events of a turn, for diagnostics |
 | `preferences` | Theme, sidebar, font size, shortcut overrides |
+| `usage_events` | Token-usage ledger (per `llm_result`); no FK, never cascaded on delete |
 | `identity_keys` | Local Ed25519 key pair (private seed DPAPI-encrypted at rest) |
 | `app_meta` | Key-value application metadata |
 
@@ -223,6 +224,7 @@ Agent hosts must expose:
 - **Multimodal attachments** — outgoing image/file pick and drag-and-drop with capability
   preflight; incoming `agent_image` decoded and cached to disk
 - **Notifications** — turn-completed / approval-required toasts (Windows + in-app), deduped
+- **Token-usage ledger** — per-model usage panel in Settings, independent of chat/agent deletion
 - **Find in chat** — Ctrl+F overlay with match highlighting
 - **Light/dark theme** — persisted preference with shell-aware title bar colors
 - **Custom title bar** — Mica backdrop, back/forward navigation, sidebar toggle
