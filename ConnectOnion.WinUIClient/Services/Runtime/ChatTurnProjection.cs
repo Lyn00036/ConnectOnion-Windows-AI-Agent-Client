@@ -25,6 +25,10 @@ public sealed class ChatTurnProjection
 {
     private readonly IChatProjectionTarget _target;
 
+    /// <summary>Stand-in root for a frame whose JSON didn't parse. Deliberately never disposed —
+    /// it is two bytes, shared for the process's lifetime.</summary>
+    private static readonly JsonDocument EmptyObject = JsonDocument.Parse("{}");
+
     // Accumulated across every llm_call/llm_result iteration of the current turn.
     private string? _turnModel;
     private long _turnTokensIn;
@@ -51,16 +55,28 @@ public sealed class ChatTurnProjection
     /// </summary>
     public void Apply(AgentStreamEvent e)
     {
-        JsonElement root;
+        // The document is kept alive for the whole of Apply and disposed at the end, rather than
+        // cloning its root out of a using-block: Clone() deep-copies the entire payload, which for
+        // an llm_call frame is the conversation's whole message history and for an agent_image is
+        // the base64 image — paid once per event, on both the live and the persist pass.
+        JsonDocument? doc = null;
+        try { doc = JsonDocument.Parse(e.RawJson); } catch { /* leave root undefined below */ }
+
         try
         {
-            using var doc = JsonDocument.Parse(e.RawJson);
-            root = doc.RootElement.Clone();
+            ApplyParsed(e, doc?.RootElement ?? default);
         }
-        catch
+        finally
         {
-            root = default;
+            doc?.Dispose();
         }
+    }
+
+    private void ApplyParsed(AgentStreamEvent e, JsonElement root)
+    {
+        // An unparseable frame still projects its bubble (with empty fields), exactly as before —
+        // the readers below tolerate a missing property but not an *undefined* element.
+        if (root.ValueKind != JsonValueKind.Object) root = EmptyObject.RootElement;
 
         string? Str(string name) => root.ValueKind == JsonValueKind.Object
             && root.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String
@@ -170,7 +186,7 @@ public sealed class ChatTurnProjection
 
             case "agent_image":
             {
-                if (!AttachmentWireEvents.TryGetAgentImageDataUrl(WireMessage.Parse(e.RawJson), out var dataUrl))
+                if (!AttachmentWireEvents.TryGetAgentImageDataUrl(WireMessage.Wrap(root), out var dataUrl))
                     break;
 
                 var lastAgent = Messages.LastOrDefault(m => m.Role == ChatRole.Agent);
@@ -199,7 +215,7 @@ public sealed class ChatTurnProjection
             case "files_received":
             {
                 var names = new List<string>();
-                if (AttachmentWireEvents.TryGetFilesReceived(WireMessage.Parse(e.RawJson), out var files))
+                if (AttachmentWireEvents.TryGetFilesReceived(WireMessage.Wrap(root), out var files))
                 {
                     foreach (var file in files) names.Add(file.Name);
                 }
@@ -289,7 +305,7 @@ public sealed class ChatTurnProjection
 
             case "ask_user":
             {
-                var request = AgentInteractiveParsers.ParseAskUser(WireMessage.Parse(e.RawJson));
+                var request = AgentInteractiveParsers.ParseAskUser(WireMessage.Wrap(root));
                 var message = new ChatMessage
                 {
                     Id = NextId(),

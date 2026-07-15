@@ -54,11 +54,9 @@ public sealed class ToolActivityProjector
             DisplayName = DisplayName(toolName),
             DisplayTarget = DisplayTarget(toolName, args),
             Arguments = SanitizeJson(args),
-            RawEvent = SanitizeJson(e.RawJson),
             StartedAt = Timestamp(root) ?? DateTimeOffset.UtcNow,
             Status = ToolStepStatus.Running,
             IsHighRisk = IsHighRisk(toolName),
-            IsDeveloperDetails = Activity.DisplayMode == ToolDisplayMode.Detailed,
         };
         Activity.Steps.Add(step);
         Activity.Status = ToolActivityStatus.Running;
@@ -76,7 +74,12 @@ public sealed class ToolActivityProjector
         var step = Activity.Steps.FirstOrDefault(item => item.Id == id);
         if (step is null) return null;
 
-        var result = String(root, "result") ?? String(root, "message") ?? String(root, "error") ?? "";
+        // Capped before anything else touches it. A tool result is unbounded — a page scrape or a
+        // file read is routinely hundreds of KB — and this string is retained for the life of the
+        // conversation (in the message list, in ConversationCache, and serialized into the
+        // message's event_args row). The card renders it in a 180px scroller, so nobody is reading
+        // past this; the untruncated payload is already in trace_events if it's ever needed.
+        var result = Cap(String(root, "result") ?? String(root, "message") ?? String(root, "error") ?? "");
         var transportStatus = String(root, "status");
         var classification = Classify(transportStatus, result);
         step.Status = classification.Status;
@@ -107,7 +110,6 @@ public sealed class ToolActivityProjector
             Summary = FriendlyProblem(String(root, "message") ?? String(root, "reason") ?? "Tool action blocked"),
             Error = SanitizeText(String(root, "message") ?? String(root, "reason") ?? "Tool action blocked"),
             Result = SanitizeText(String(root, "command") ?? ""),
-            RawEvent = SanitizeJson(e.RawJson),
             IsHighRisk = IsHighRisk(toolName),
             StartedAt = Timestamp(root) ?? DateTimeOffset.UtcNow,
             CompletedAt = Timestamp(root) ?? DateTimeOffset.UtcNow,
@@ -179,6 +181,15 @@ public sealed class ToolActivityProjector
         }
         catch { return SanitizeText(raw); }
     }
+
+    /// <summary>How much of a tool result the card keeps in memory. Generous next to what the
+    /// scroller shows, small next to what a scrape returns.</summary>
+    private const int MaxRetainedResultChars = 8 * 1024;
+
+    private static string Cap(string value)
+        => value.Length <= MaxRetainedResultChars
+            ? value
+            : value[..MaxRetainedResultChars] + "\n… (truncated)";
 
     public static string SanitizeText(string value)
         => Regex.Replace(value ?? "", "(?i)(authorization|cookie|token|api[_-]?key|password|secret)\\s*[:=]\\s*([^\\s,;]+)", "$1=[hidden]");

@@ -113,11 +113,6 @@
                                                     <TextBlock Text="{x:Bind Result, Mode=OneWay}" FontFamily="Consolas" FontSize="11" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
                                                 </ScrollViewer>
                                             </Expander>
-                                            <Expander Header="Raw event (developer)" Visibility="{x:Bind IsDeveloperDetails, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                                                <ScrollViewer MaxHeight="180" HorizontalScrollBarVisibility="Auto">
-                                                    <TextBlock Text="{x:Bind RawEvent, Mode=OneWay}" FontFamily="Consolas" FontSize="11" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
-                                                </ScrollViewer>
-                                            </Expander>
                                         </StackPanel>
                                     </StackPanel>
                                 </DataTemplate>
