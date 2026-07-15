@@ -6,7 +6,7 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace ConnectOnion.WinUIClient.Views;
 
-public sealed partial class AgentDetailPage : Page
+public sealed partial class AgentDetailPage : Page, IReloadablePage
 {
     public AgentDetailViewModel Vm { get; } = new();
 
@@ -18,6 +18,14 @@ public sealed partial class AgentDetailPage : Page
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
+        => await LoadPageAsync();
+
+    /// <summary>Re-points this page at whichever agent is now selected, without rebuilding it —
+    /// this page carries a <see cref="ChatComposer"/> (Win2D canvas and all), so clicking through
+    /// the sidebar's agents was constructing and discarding one per click.</summary>
+    public System.Threading.Tasks.Task ReloadAsync() => LoadPageAsync();
+
+    private async System.Threading.Tasks.Task LoadPageAsync()
     {
         await Vm.LoadAsync();
         Composer.CanSubmit = Vm.CanStartConversation;

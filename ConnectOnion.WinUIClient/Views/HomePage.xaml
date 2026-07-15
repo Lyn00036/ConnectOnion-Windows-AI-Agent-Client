@@ -68,51 +68,44 @@
                 </ListView.ItemContainerStyle>
                 <ListView.ItemTemplate>
                     <DataTemplate x:DataType="views:HomeAgentItem">
-                        <Button HorizontalAlignment="Stretch"
-                                HorizontalContentAlignment="Stretch"
-                                Padding="0"
-                                Background="Transparent"
-                                BorderThickness="0"
+                        <Button MinHeight="84"
+                                Style="{StaticResource CardButtonStyle}"
                                 Tag="{x:Bind Id}"
                                 Click="AgentCard_Click">
-                            <Border MinHeight="84"
-                                    Padding="14"
-                                    Style="{StaticResource CardBorderStyle}">
-                                <Grid ColumnSpacing="14">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
+                            <Grid ColumnSpacing="14">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
 
-                                    <controls:AgentAvatar Size="48"
-                                                          CornerRadius="8"
-                                                          FontSize="17"
-                                                          Initial="{x:Bind Initial}" />
+                                <controls:AgentAvatar Size="48"
+                                                      CornerRadius="8"
+                                                      FontSize="17"
+                                                      Initial="{x:Bind Initial}" />
 
-                                    <StackPanel Grid.Column="1"
-                                                Spacing="4"
-                                                VerticalAlignment="Center">
-                                        <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <TextBlock Text="{x:Bind Name}"
-                                                       FontSize="16"
-                                                       FontWeight="SemiBold"
-                                                       TextTrimming="CharacterEllipsis"
-                                                       VerticalAlignment="Center" />
-                                            <ic:FluentIcon Icon="Live"
-                                                           IconVariant="Regular"
-                                                           IconSize="Size12"
-                                                           Foreground="{ThemeResource SuccessBrush}"
-                                                           VerticalAlignment="Center"
-                                                           Visibility="{x:Bind IsOnline, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-                                        </StackPanel>
-                                        <TextBlock Text="{x:Bind ShortAddress}"
-                                                   FontSize="12"
+                                <StackPanel Grid.Column="1"
+                                            Spacing="4"
+                                            VerticalAlignment="Center">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBlock Text="{x:Bind Name}"
+                                                   FontSize="16"
                                                    FontWeight="SemiBold"
-                                                   Foreground="{ThemeResource TextTertiaryBrush}"
-                                                   TextTrimming="CharacterEllipsis" />
+                                                   TextTrimming="CharacterEllipsis"
+                                                   VerticalAlignment="Center" />
+                                        <ic:FluentIcon Icon="Live"
+                                                       IconVariant="Regular"
+                                                       IconSize="Size12"
+                                                       Foreground="{ThemeResource SuccessBrush}"
+                                                       VerticalAlignment="Center"
+                                                       Visibility="{x:Bind IsOnline, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                                     </StackPanel>
-                                </Grid>
-                            </Border>
+                                    <TextBlock Text="{x:Bind ShortAddress}"
+                                               FontSize="12"
+                                               FontWeight="SemiBold"
+                                               Foreground="{ThemeResource TextTertiaryBrush}"
+                                               TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                            </Grid>
                         </Button>
                     </DataTemplate>
                 </ListView.ItemTemplate>
