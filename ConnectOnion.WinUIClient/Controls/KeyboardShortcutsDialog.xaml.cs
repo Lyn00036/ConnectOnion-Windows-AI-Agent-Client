@@ -20,7 +20,7 @@ public sealed partial class KeyboardShortcutsDialog : UserControl
 
     public event EventHandler? CloseRequested;
 
-    public KeyboardShortcutsViewModel Vm { get; } = new();
+    public KeyboardShortcutsViewModel Vm { get; } = App.GetService<KeyboardShortcutsViewModel>();
 
     public KeyboardShortcutsDialog()
     {

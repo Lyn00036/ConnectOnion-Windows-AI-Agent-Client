@@ -8,13 +8,21 @@ namespace ConnectOnion.WinUIClient.Views;
 
 public sealed partial class AgentDetailPage : Page, IReloadablePage
 {
-    public AgentDetailViewModel Vm { get; } = new();
+    public AgentDetailViewModel Vm { get; } = App.GetService<AgentDetailViewModel>();
 
     public AgentDetailPage()
     {
         InitializeComponent();
+
+        // Reuse this one instance across navigations rather than rebuilding it — this page also
+        // hosts a ChatComposer (Win2D canvas) — every time the user crosses page types (e.g.
+        // ChatPage → AgentDetailPage). MainWindow.NavigateTo's same-type reuse only covers
+        // agent→agent, so a chat→agent switch was constructing and discarding a fresh tree per
+        // click. The presence hook stays attached for this single reused instance (see OnLoaded);
+        // there is no per-view state to tear down, so there is no Unloaded teardown.
+        NavigationCacheMode = Microsoft.UI.Xaml.Navigation.NavigationCacheMode.Required;
+
         Loaded += OnLoaded;
-        Unloaded += OnUnloaded;
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -28,12 +36,16 @@ public sealed partial class AgentDetailPage : Page, IReloadablePage
     private async System.Threading.Tasks.Task LoadPageAsync()
     {
         await Vm.LoadAsync();
+
+        // Rapid switching can navigate away — and unload this cached page — during the await
+        // above. Touching the composer's dependency properties while it is detached from the
+        // visual tree throws E_UNEXPECTED (0x8000FFFF). Bail if we are no longer loaded; the next
+        // OnLoaded applies the current selection.
+        if (!IsLoaded) return;
+
         Composer.CanSubmit = Vm.CanStartConversation;
         Composer.FocusInput();
     }
-
-    private void OnUnloaded(object sender, RoutedEventArgs e)
-        => Vm.Cleanup();
 
     // This composer starts a fresh conversation before navigating to ChatPage.
     // The whole submission (text + attachments) is carried across the

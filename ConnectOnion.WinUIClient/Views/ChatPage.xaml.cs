@@ -31,7 +31,7 @@ public sealed partial class ChatPage : Page, IFindHost, IReloadablePage
     /// <summary>Persisted scroll positions keyed by session id, survives page recreation.</summary>
     private static readonly ConcurrentDictionary<string, double> ScrollPositions = new();
 
-    public ChatViewModel Vm { get; } = new();
+    public ChatViewModel Vm { get; } = App.GetService<ChatViewModel>();
     private ScrollViewer? _messageScrollViewer;
     private bool _isLoadingConversation;
     private bool _isAutoScrollQueued;
@@ -42,6 +42,15 @@ public sealed partial class ChatPage : Page, IFindHost, IReloadablePage
     public ChatPage()
     {
         InitializeComponent();
+
+        // Reuse this one instance across navigations instead of rebuilding the whole page —
+        // XAML tree, ChatComposer's Win2D canvas, view model, bindings — every time the user
+        // crosses page types (e.g. AgentDetailPage → ChatPage). Without this the same-type
+        // reuse in MainWindow.NavigateTo only covers chat→chat, so an agent→chat switch built a
+        // fresh tree each click and the discarded ones piled up. The Load/Unload wiring below
+        // is symmetric so a reused instance behaves like a fresh one.
+        NavigationCacheMode = NavigationCacheMode.Required;
+
         Vm.Messages.CollectionChanged += Messages_CollectionChanged;
         Vm.PropertyChanged += Vm_PropertyChanged;
         _findDebounceTimer.Tick += FindDebounceTimer_Tick;
@@ -58,9 +67,16 @@ public sealed partial class ChatPage : Page, IFindHost, IReloadablePage
         // Persist scroll position so returning to this conversation restores it.
         SaveScrollPosition();
 
-        Vm.PropertyChanged -= Vm_PropertyChanged;
         _findDebounceTimer.Stop();
-        try { Vm.Cleanup(); }
+
+        // The page is cached and reused (NavigationCacheMode.Required above), so only the
+        // per-view work is torn down here: drop the live run subscription so a backgrounded page
+        // stops projecting into a list nobody is looking at — LoadAsync re-subscribes on return.
+        // The presence hook and Vm.PropertyChanged handler are left attached on purpose: this is
+        // the single, reused instance (the constructor never runs again), so one permanent hook
+        // is correct, not a leak. Detaching them here would leave them dead after the first
+        // round-trip.
+        try { Vm.DetachRun(); }
         catch { /* Best-effort cleanup. */ }
     }
 
@@ -168,6 +184,12 @@ public sealed partial class ChatPage : Page, IFindHost, IReloadablePage
         {
             _isLoadingConversation = false;
         }
+
+        // Rapid switching can navigate away — and unload this cached page — during the DB load
+        // above. Touching the composer/overlay dependency properties or the message list while
+        // this page is detached from the visual tree throws E_UNEXPECTED (0x8000FFFF). Bail if we
+        // are no longer loaded; the next OnLoaded re-runs against the current selection.
+        if (!IsLoaded) return;
 
         // Tell the notification layer this window is now showing this conversation,
         // so a reply that lands here is suppressed (the user already sees it).
@@ -358,38 +380,21 @@ public sealed partial class ChatPage : Page, IFindHost, IReloadablePage
             return;
         }
 
-        // How many distinct items we need before the viewport is considered
-        // populated (typical viewport holds 8–15 items).
-        var threshold = Math.Min(Vm.Messages.Count, 12);
-        var realized = new HashSet<int>();
-        var tcs = new TaskCompletionSource<bool>();
+        // A short chat realizes in a fraction of a second; a long, multi-round one
+        // needs longer — both to materialize its containers and, after the scroll
+        // restore below, to re-virtualize the fresh (and heavy: markdown, tool
+        // timelines, images) bubbles the restore exposes near the bottom. Use one
+        // budget that scales with history for both waits instead of a flat timeout.
+        var budget = OverlayReadyBudget();
 
-        TypedEventHandler<ListViewBase, ContainerContentChangingEventArgs>? handler = null;
-        handler = (_, args) =>
-        {
-            if (args.ItemIndex >= 0)
-                realized.Add(args.ItemIndex);
+        // First wait: enough top-of-list containers to consider the viewport painted
+        // (typical viewport holds 8–15 items), bounded by the budget so the overlay
+        // never sticks if items are zero-height/collapsed.
+        await WaitForContainersRealizedAsync(Math.Min(Vm.Messages.Count, 12), budget);
 
-            if (realized.Count < threshold) return;
-
-            MessageList.ContainerContentChanging -= handler;
-            tcs.TrySetResult(true);
-        };
-
-        MessageList.ContainerContentChanging += handler;
-
-        // Safety timeout: if the ListView never materializes enough items
-        // (e.g. items are zero-height or collapsed), dismiss after 600 ms.
-        var timeout = Task.Delay(600);
-        await Task.WhenAny(tcs.Task, timeout);
-        MessageList.ContainerContentChanging -= handler;
-
-        // Wait one extra dispatcher frame so the RichTextBlock/Markdown
-        // content inside each container can finish its internal layout pass
-        // before the overlay is removed.
-        var frameTcs = new TaskCompletionSource();
-        DispatcherQueue.TryEnqueue(() => frameTcs.SetResult());
-        await frameTcs.Task;
+        // One frame so the RichTextBlock/Markdown content inside each realized
+        // container can finish its first internal layout pass.
+        await NextFrameAsync();
 
         try
         {
@@ -406,10 +411,12 @@ public sealed partial class ChatPage : Page, IFindHost, IReloadablePage
                 QueueScrollToEnd(force: true);
             }
 
-            // Allow one more frame for the scroll-restored items to be virtualized.
-            var scrollTcs = new TaskCompletionSource();
-            DispatcherQueue.TryEnqueue(() => scrollTcs.SetResult());
-            await scrollTcs.Task;
+            // Second wait: the restore re-virtualizes a new set of bubbles at the
+            // landing point. Hold the overlay until that churn goes quiet (a whole
+            // frame with nothing new realized) rather than a single fixed frame,
+            // which was enough for a short chat but not a long one restored near its
+            // end. Still bounded by the budget so it can never hang.
+            await WaitForContainerChurnToSettleAsync(budget);
 
             LoadingOverlay.Visibility = Visibility.Collapsed;
         }
@@ -417,6 +424,73 @@ public sealed partial class ChatPage : Page, IFindHost, IReloadablePage
         {
             LoadingOverlay.Visibility = Visibility.Collapsed;
         }
+    }
+
+    /// <summary>
+    /// How long the loading overlay may stay up before it is force-dismissed, scaled with
+    /// conversation length. Longer histories carry more (and heavier) bubbles to lay out and
+    /// a scroll-restore that re-virtualizes the bottom of the list, so they need more time
+    /// before the overlay can lift without revealing a half-populated viewport. Clamped so a
+    /// short chat stays snappy and a pathological one can never freeze the page.
+    /// </summary>
+    private TimeSpan OverlayReadyBudget()
+        => TimeSpan.FromMilliseconds(Math.Clamp(400 + Vm.Messages.Count * 15, 500, 2500));
+
+    /// <summary>Completes once <paramref name="threshold"/> distinct item containers have been
+    /// realized, or the timeout elapses — whichever comes first.</summary>
+    private async System.Threading.Tasks.Task WaitForContainersRealizedAsync(int threshold, TimeSpan timeout)
+    {
+        var realized = new HashSet<int>();
+        var tcs = new TaskCompletionSource<bool>();
+
+        TypedEventHandler<ListViewBase, ContainerContentChangingEventArgs>? handler = null;
+        handler = (_, args) =>
+        {
+            if (args.ItemIndex >= 0)
+                realized.Add(args.ItemIndex);
+
+            if (realized.Count < threshold) return;
+
+            MessageList.ContainerContentChanging -= handler;
+            tcs.TrySetResult(true);
+        };
+
+        MessageList.ContainerContentChanging += handler;
+        try { await Task.WhenAny(tcs.Task, Task.Delay(timeout)); }
+        finally { MessageList.ContainerContentChanging -= handler; }
+    }
+
+    /// <summary>Waits until container realization has been idle for one full dispatcher frame
+    /// (the viewport has stopped churning), bounded by <paramref name="timeout"/>.</summary>
+    private async System.Threading.Tasks.Task WaitForContainerChurnToSettleAsync(TimeSpan timeout)
+    {
+        var churned = true; // assume churn until a quiet frame proves otherwise
+        TypedEventHandler<ListViewBase, ContainerContentChangingEventArgs> handler = (_, _) => churned = true;
+        MessageList.ContainerContentChanging += handler;
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            while (churned && sw.Elapsed < timeout)
+            {
+                churned = false;
+                await NextFrameAsync();
+            }
+        }
+        finally { MessageList.ContainerContentChanging -= handler; }
+    }
+
+    /// <summary>Yields until the next low-priority dispatcher tick, i.e. after the current
+    /// layout/render pass — one "frame".</summary>
+    private System.Threading.Tasks.Task NextFrameAsync()
+    {
+        var tcs = new TaskCompletionSource();
+        if (!DispatcherQueue.TryEnqueue(
+                Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => tcs.TrySetResult()))
+        {
+            tcs.TrySetResult();
+        }
+        return tcs.Task;
     }
     private void ScrollToEnd()
     {

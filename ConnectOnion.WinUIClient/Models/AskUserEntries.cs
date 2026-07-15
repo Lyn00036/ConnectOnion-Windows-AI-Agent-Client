@@ -1,4 +1,4 @@
-using ConnectOnion.WinUIClient.Common;
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace ConnectOnion.WinUIClient.Models;
 
@@ -9,21 +9,23 @@ namespace ConnectOnion.WinUIClient.Models;
 /// properties for any type reachable from a DataTemplate (see the identical note
 /// on PendingAttachment/ChatAttachment).
 /// </summary>
-public sealed class AskUserFieldEntry : ObservableObject
+public sealed partial class AskUserFieldEntry : Common.ObservableObject
 {
+    public AskUserFieldEntry() => Value = "";
+
     public string Name { get; set; } = "";
     public string Label { get; set; } = "";
     public string? Placeholder { get; set; }
 
-    private string _value = "";
-    public string Value { get => _value; set => SetProperty(ref _value, value); }
+    [ObservableProperty]
+    public partial string Value { get; set; }
 }
 
 /// <summary>One selectable option in an ask_user multi-select list, bound to an inline CheckBox.</summary>
-public sealed class AskUserOptionEntry : ObservableObject
+public sealed partial class AskUserOptionEntry : Common.ObservableObject
 {
     public string Text { get; set; } = "";
 
-    private bool _isChecked;
-    public bool IsChecked { get => _isChecked; set => SetProperty(ref _isChecked, value); }
+    [ObservableProperty]
+    public partial bool IsChecked { get; set; }
 }

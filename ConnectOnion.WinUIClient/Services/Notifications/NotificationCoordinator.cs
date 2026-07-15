@@ -65,6 +65,7 @@ public sealed class NotificationCoordinator
             }
 
             var decision = _policy.Decide(request, _presence, _settings.Current);
+            NotificationLog.Info($"Decision: channel={decision.Channel} foreground={_presence.IsForeground} type={request.Type} conv={request.ConversationId}");
             if (decision.Channel == NotificationChannel.None) return;
 
             var shaped = request with { Body = decision.Body ?? request.Body };

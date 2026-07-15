@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Services;
 
@@ -7,11 +8,8 @@ namespace ConnectOnion.WinUIClient.Models;
 /// <summary>
 /// Lightweight projection for the desktop shell's agent -> session navigation.
 /// </summary>
-public sealed class ShellAgentItem : RowStateItem
+public sealed partial class ShellAgentItem : RowStateItem
 {
-    private bool _isExpanded;
-    private AgentPresence _presence;
-
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
     public string Initial => NameInitial.From(Name);
@@ -29,24 +27,13 @@ public sealed class ShellAgentItem : RowStateItem
         _ => "Unknown",
     };
 
-    public bool IsExpanded
-    {
-        get => _isExpanded;
-        set
-        {
-            if (!SetProperty(ref _isExpanded, value)) return;
-            OnPropertyChanged(nameof(ChevronAngle));
-        }
-    }
-    public AgentPresence Presence
-    {
-        get => _presence;
-        set
-        {
-            if (!SetProperty(ref _presence, value)) return;
-            OnPropertyChanged(nameof(IsOnline));
-            OnPropertyChanged(nameof(IsOfflineIconVisible));
-            OnPropertyChanged(nameof(PresenceLabel));
-        }
-    }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ChevronAngle))]
+    public partial bool IsExpanded { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsOnline))]
+    [NotifyPropertyChangedFor(nameof(IsOfflineIconVisible))]
+    [NotifyPropertyChangedFor(nameof(PresenceLabel))]
+    public partial AgentPresence Presence { get; set; }
 }

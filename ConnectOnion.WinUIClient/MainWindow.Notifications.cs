@@ -69,9 +69,12 @@ public sealed partial class MainWindow : IChatWindow
         var session = sessions.Sessions.FirstOrDefault(s => s.Id == conversationId && s.AgentId == agentId);
         if (session is null)
         {
+            NotificationLog.Info($"ShowConversationAsync: no session matched agentId={agentId} conversationId={conversationId} — navigating Home");
             NavigateTo(typeof(HomePage), forceReload: true);
             return;
         }
+
+        NotificationLog.Info($"ShowConversationAsync: matched session — opening chat for agentId={agentId} conversationId={conversationId}");
 
         var agents = await AppServices.Agents.LoadAsync();
         agents.SelectedAgentId = agentId;

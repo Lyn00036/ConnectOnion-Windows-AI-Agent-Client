@@ -9,7 +9,7 @@ namespace ConnectOnion.WinUIClient.Views;
 
 public sealed partial class SettingsPage : Page
 {
-    private readonly SettingsViewModel _vm = new();
+    private readonly SettingsViewModel _vm = App.GetService<SettingsViewModel>();
     private bool _initializing;
     private string _currentCategory = "General";
 

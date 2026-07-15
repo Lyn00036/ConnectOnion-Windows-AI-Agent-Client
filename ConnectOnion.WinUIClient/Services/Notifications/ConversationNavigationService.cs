@@ -17,14 +17,20 @@ public sealed class ConversationNavigationService
         // No conversation target — just surface a window.
         if (string.IsNullOrEmpty(conversationId) || string.IsNullOrEmpty(agentId))
         {
+            NotificationLog.Info($"OpenConversation: no target (agentId={agentId} conversationId={conversationId}) — surfacing window only");
             var any = _windows.ForegroundWindow();
             any?.DispatcherQueue.TryEnqueue(any.RestoreAndActivate);
             return;
         }
 
         var target = _windows.FindViewing(conversationId) ?? _windows.ForegroundWindow();
-        if (target is null) return; // no windows registered (app fully closed) — nothing to do
+        if (target is null)
+        {
+            NotificationLog.Info("OpenConversation: no window registered — nothing to do");
+            return; // no windows registered (app fully closed) — nothing to do
+        }
 
+        NotificationLog.Info($"OpenConversation: dispatching navigation to agentId={agentId} conversationId={conversationId}");
         target.DispatcherQueue.TryEnqueue(async () =>
         {
             try

@@ -1,3 +1,4 @@
+using CommunityToolkit.Mvvm.ComponentModel;
 using ConnectOnion.WinUIClient.Common;
 
 namespace ConnectOnion.WinUIClient.Models;
@@ -8,29 +9,18 @@ namespace ConnectOnion.WinUIClient.Models;
 /// per row reads <see cref="ShowRowBackground"/>; hover and keyboard focus both
 /// drive <see cref="SetInteractive"/>.
 /// </summary>
-public abstract class RowStateItem : ObservableObject
+public abstract partial class RowStateItem : Common.ObservableObject
 {
-    private bool _isSelected;
-    private bool _isHovered;
-    private bool _areActionsVisible;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowRowBackground))]
+    public partial bool IsSelected { get; set; }
 
-    public bool IsSelected
-    {
-        get => _isSelected;
-        set { if (SetProperty(ref _isSelected, value)) OnPropertyChanged(nameof(ShowRowBackground)); }
-    }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowRowBackground))]
+    public partial bool IsHovered { get; set; }
 
-    public bool IsHovered
-    {
-        get => _isHovered;
-        set { if (SetProperty(ref _isHovered, value)) OnPropertyChanged(nameof(ShowRowBackground)); }
-    }
-
-    public bool AreActionsVisible
-    {
-        get => _areActionsVisible;
-        set => SetProperty(ref _areActionsVisible, value);
-    }
+    [ObservableProperty]
+    public partial bool AreActionsVisible { get; set; }
 
     /// <summary>True when the row should paint its unified background layer (selected and/or hovered) — see <c>RowStateToBackgroundConverter</c>.</summary>
     public bool ShowRowBackground => IsSelected || IsHovered;

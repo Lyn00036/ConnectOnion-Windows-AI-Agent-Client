@@ -20,7 +20,14 @@ public sealed class SessionsViewModel : ObservableObject
     private static readonly Regex GenericTitle = new(@"^Conversation \d+$", RegexOptions.Compiled);
     private static readonly Regex Whitespace = new(@"\s+", RegexOptions.Compiled);
 
-    private readonly SessionRepository _repo = AppServices.Sessions;
+    private readonly SessionRepository _repo;
+    private readonly ConversationRepository _conversations;
+
+    public SessionsViewModel(SessionRepository sessions, ConversationRepository conversations)
+    {
+        _repo = sessions;
+        _conversations = conversations;
+    }
 
     public ObservableCollection<SessionSummary> Sessions { get; } = new();
 
@@ -88,8 +95,8 @@ public sealed class SessionsViewModel : ObservableObject
     {
         Sessions.Remove(session);
         ConversationCache.Invalidate(session.Id);
-        await AppServices.Conversations.DeleteMessagesAsync(session.Id);
-        await AppServices.Conversations.DeleteExecutionsAndTracesAsync(session.Id);
+        await _conversations.DeleteMessagesAsync(session.Id);
+        await _conversations.DeleteExecutionsAndTracesAsync(session.Id);
         if (ReferenceEquals(_selected, session))
         {
             _selected = null;
@@ -107,8 +114,8 @@ public sealed class SessionsViewModel : ObservableObject
         {
             Sessions.Remove(session);
             ConversationCache.Invalidate(session.Id);
-            await AppServices.Conversations.DeleteMessagesAsync(session.Id);
-            await AppServices.Conversations.DeleteExecutionsAndTracesAsync(session.Id);
+            await _conversations.DeleteMessagesAsync(session.Id);
+            await _conversations.DeleteExecutionsAndTracesAsync(session.Id);
         }
 
         if (_selected is not null && removed.Contains(_selected))

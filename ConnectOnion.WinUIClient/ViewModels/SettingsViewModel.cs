@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.ComponentModel;
 using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Models;
@@ -11,9 +12,9 @@ using System.Runtime.InteropServices.WindowsRuntime;
 
 namespace ConnectOnion.WinUIClient.ViewModels;
 
-public sealed class SettingsViewModel : ObservableObject
+public sealed partial class SettingsViewModel : Common.ObservableObject
 {
-    private readonly PreferencesRepository _repo = AppServices.Preferences;
+    private readonly PreferencesRepository _repo;
     private PreferencesSnapshot _prefs = new();
     private bool _loaded;
 
@@ -23,22 +24,30 @@ public sealed class SettingsViewModel : ObservableObject
     public string MicrophoneDeviceId => _prefs.MicrophoneDeviceId;
 
     public IReadOnlyList<MicrophoneItem> Microphones { get; private set; } = [];
-    private int _selectedMicIndex = -1;
-    public int SelectedMicIndex
+
+    // -1 default seeded in the ctor (partial-property declarations can't carry an initializer);
+    // it fires the hook while _loaded is still false, so it no-ops.
+    public SettingsViewModel(PreferencesRepository preferences)
     {
-        get => _selectedMicIndex;
-        set
-        {
-            if (!SetProperty(ref _selectedMicIndex, value)) return;
-            if (_loaded && value >= 0 && value < Microphones.Count)
-                _ = SetMicrophoneAsync(Microphones[value].DeviceId);
-        }
+        _repo = preferences;
+        SelectedMicIndex = -1;
+    }
+
+    [ObservableProperty]
+    public partial int SelectedMicIndex { get; set; }
+
+    // Only a user-driven change persists a new device; the initial selection in LoadAsync is set
+    // while _loaded is still false, so this hook no-ops for it (the load happens before _loaded is
+    // flipped, precisely so restoring the saved index doesn't re-save it).
+    partial void OnSelectedMicIndexChanged(int value)
+    {
+        if (_loaded && value >= 0 && value < Microphones.Count)
+            _ = SetMicrophoneAsync(Microphones[value].DeviceId);
     }
 
     public async Task LoadAsync()
     {
         _prefs = await _repo.LoadAsync();
-        _loaded = true;
 
         Microphones = await EnumerateMicrophonesAsync();
 
@@ -48,13 +57,15 @@ public sealed class SettingsViewModel : ObservableObject
         if (idx < 0)
             idx = Microphones.Select((m, i) => (m, i))
                 .FirstOrDefault(x => x.m.IsDefault).i;
-        _selectedMicIndex = idx >= 0 ? idx : 0;
+        SelectedMicIndex = idx >= 0 ? idx : 0;
 
         OnPropertyChanged(nameof(Theme));
         OnPropertyChanged(nameof(MessageFontSize));
         OnPropertyChanged(nameof(EnterToSend));
         OnPropertyChanged(nameof(Microphones));
-        OnPropertyChanged(nameof(SelectedMicIndex));
+
+        // Flipped last: only now do user-driven SelectedMicIndex changes persist (see the hook).
+        _loaded = true;
     }
 
     public async Task SetThemeAsync(ThemeMode theme)

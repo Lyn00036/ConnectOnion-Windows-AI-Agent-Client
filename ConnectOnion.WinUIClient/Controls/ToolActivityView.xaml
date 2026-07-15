@@ -98,21 +98,11 @@
                                         </Button>
                                         <StackPanel Margin="24,0,0,5" Spacing="4"
                                                     Visibility="{x:Bind IsExpanded, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                                            <TextBlock Text="{x:Bind ToolName, Mode=OneWay}" FontFamily="Consolas" FontSize="10"
-                                                       Foreground="{ThemeResource TextTertiaryBrush}" />
                                             <TextBlock Text="{x:Bind Error, Mode=OneWay}" FontSize="11" TextWrapping="Wrap"
                                                        Foreground="{ThemeResource DangerBrush}"
                                                        Visibility="{x:Bind HasError, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-                                            <Expander Header="Arguments" Visibility="{x:Bind HasArguments, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                                                <ScrollViewer MaxHeight="160" HorizontalScrollBarVisibility="Auto">
-                                                    <TextBlock Text="{x:Bind Arguments, Mode=OneWay}" FontFamily="Consolas" FontSize="11" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
-                                                </ScrollViewer>
-                                            </Expander>
-                                            <Expander Header="Result" Visibility="{x:Bind HasResult, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                                                <ScrollViewer MaxHeight="180" HorizontalScrollBarVisibility="Auto">
-                                                    <TextBlock Text="{x:Bind Result, Mode=OneWay}" FontFamily="Consolas" FontSize="11" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
-                                                </ScrollViewer>
-                                            </Expander>
+                                            <TextBlock Text="{x:Bind Result, Mode=OneWay}" FontFamily="Consolas" FontSize="11" TextWrapping="Wrap" IsTextSelectionEnabled="True"
+                                                       Visibility="{x:Bind ShowResult, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                                         </StackPanel>
                                     </StackPanel>
                                 </DataTemplate>

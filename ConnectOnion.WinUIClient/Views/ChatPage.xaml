@@ -6,6 +6,7 @@
     xmlns:common="using:ConnectOnion.WinUIClient.Common"
     xmlns:controls="using:ConnectOnion.WinUIClient.Controls"
     xmlns:models="using:ConnectOnion.WinUIClient.Models"
+    xmlns:animations="using:CommunityToolkit.WinUI.Animations"
     xmlns:ic="using:FluentIcons.WinUI"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -710,7 +711,13 @@
                                    IsChecking="{x:Bind Vm.IsCheckingPresence, Mode=OneWay}"
                                    StatusMessage="{x:Bind Vm.RecheckFailedMessage, Mode=OneWay}"
                                    RecheckRequested="OfflineNotice_RecheckRequested"
-                                   Visibility="{x:Bind Vm.ShowOfflineNotice, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                                   Visibility="{x:Bind Vm.ShowOfflineNotice, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+            <!-- Slide + fade up when the offline card appears, instead of popping in. -->
+            <animations:Implicit.ShowAnimations>
+                <animations:OpacityAnimation From="0" To="1" Duration="0:0:0.2" />
+                <animations:TranslationAnimation From="0,14,0" To="0,0,0" Duration="0:0:0.2" />
+            </animations:Implicit.ShowAnimations>
+        </controls:OfflineNoticeBar>
 
         <controls:ChatComposer x:Name="Composer"
                                Grid.Row="2"

@@ -1,5 +1,5 @@
 using System;
-using ConnectOnion.WinUIClient.Common;
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace ConnectOnion.WinUIClient.Models;
 
@@ -10,11 +10,8 @@ namespace ConnectOnion.WinUIClient.Models;
 /// <see cref="ChatMessage"/> directly. On successful send it is converted into a
 /// <see cref="ChatAttachment"/> on the new user message and discarded.
 /// </summary>
-public sealed class PendingAttachment : ObservableObject
+public sealed partial class PendingAttachment : Common.ObservableObject
 {
-    private AttachmentStatus _status = AttachmentStatus.Pending;
-    private string? _error;
-
     public string Id { get; } = Guid.NewGuid().ToString("N");
 
     // Plain `set` rather than `required`/`init`: the XAML compiler's generated
@@ -36,23 +33,16 @@ public sealed class PendingAttachment : ObservableObject
     /// <summary>Raw file size in bytes, read once from file metadata (no content read) so oversized files are rejected before any I/O.</summary>
     public long SizeBytes { get; set; }
 
-    public AttachmentStatus Status
-    {
-        get => _status;
-        set
-        {
-            if (!SetProperty(ref _status, value)) return;
-            OnPropertyChanged(nameof(IsFailed));
-            OnPropertyChanged(nameof(IsBusy));
-            OnPropertyChanged(nameof(IsReady));
-        }
-    }
+    // Default status is Pending (the enum's zero value), so no ctor initializer is needed.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsFailed))]
+    [NotifyPropertyChangedFor(nameof(IsBusy))]
+    [NotifyPropertyChangedFor(nameof(IsReady))]
+    public partial AttachmentStatus Status { get; set; }
 
-    public string? Error
-    {
-        get => _error;
-        set { if (SetProperty(ref _error, value)) OnPropertyChanged(nameof(HasError)); }
-    }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasError))]
+    public partial string? Error { get; set; }
 
     /// <summary>
     /// Populated by <c>AttachmentEncoder</c> once validation passes; a full

@@ -14,7 +14,7 @@ namespace ConnectOnion.WinUIClient.Controls;
 /// </summary>
 public sealed partial class UsageSettingsContent : UserControl
 {
-    public UsageViewModel Vm { get; } = new();
+    public UsageViewModel Vm { get; } = App.GetService<UsageViewModel>();
 
     public UsageSettingsContent()
     {

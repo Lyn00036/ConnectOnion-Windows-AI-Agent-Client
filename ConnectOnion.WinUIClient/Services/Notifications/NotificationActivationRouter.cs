@@ -28,6 +28,7 @@ public sealed class NotificationActivationRouter
             var manager = AppNotificationManager.Default;
             manager.NotificationInvoked += OnNotificationInvoked;
             manager.Register();
+            NotificationLog.Info("RegisterAndListen: registered for notification activation");
         }
         catch (Exception ex)
         {
@@ -43,6 +44,7 @@ public sealed class NotificationActivationRouter
 
     private void OnNotificationInvoked(AppNotificationManager sender, AppNotificationActivatedEventArgs args)
     {
+        NotificationLog.Info("NotificationInvoked (running-process COM activation)");
         try { HandleArguments(args.Arguments); }
         catch (Exception ex) { NotificationLog.Warn("activation handling failed", ex); }
     }
@@ -56,11 +58,28 @@ public sealed class NotificationActivationRouter
 
     private void HandleArguments(IDictionary<string, string> arguments)
     {
-        if (arguments is null || !arguments.TryGetValue("action", out var action)) return;
-        if (action is not ("openConversation" or "openApproval")) return;
+        if (arguments is null)
+        {
+            NotificationLog.Info("HandleArguments: null arguments");
+            return;
+        }
+
+        NotificationLog.Info($"HandleArguments: [{string.Join(", ", arguments.Keys)}]");
+
+        if (!arguments.TryGetValue("action", out var action))
+        {
+            NotificationLog.Info("HandleArguments: no 'action' key — ignoring");
+            return;
+        }
+        if (action is not ("openConversation" or "openApproval"))
+        {
+            NotificationLog.Info($"HandleArguments: unhandled action '{action}'");
+            return;
+        }
 
         arguments.TryGetValue("agentId", out var agentId);
         arguments.TryGetValue("conversationId", out var conversationId);
+        NotificationLog.Info($"HandleArguments: action={action} agentId={agentId} conversationId={conversationId}");
         Route(agentId, conversationId);
     }
 
@@ -71,11 +90,13 @@ public sealed class NotificationActivationRouter
             if (!_ready)
             {
                 // UI/navigation not ready yet — remember the latest click and replay later.
+                NotificationLog.Info("Route: UI not ready — buffering for replay");
                 _pending = (agentId, conversationId);
                 return;
             }
         }
 
+        NotificationLog.Info("Route: navigating now");
         _navigation.OpenConversation(agentId, conversationId);
     }
 

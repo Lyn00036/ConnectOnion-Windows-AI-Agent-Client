@@ -1,6 +1,6 @@
 using System;
 using System.Text.Json.Serialization;
-using ConnectOnion.WinUIClient.Common;
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace ConnectOnion.WinUIClient.Models;
 
@@ -35,11 +35,9 @@ public enum AttachmentStatus
 /// cache path is kept (see <c>AttachmentImageCacheService</c>) — this is what keeps
 /// large base64 payloads out of the in-memory message list and out of SQLite.
 /// </summary>
-public sealed class ChatAttachment : ObservableObject
+public sealed partial class ChatAttachment : Common.ObservableObject
 {
-    private AttachmentStatus _status = AttachmentStatus.Ready;
-    private string? _error;
-    private string? _localCachePath;
+    public ChatAttachment() => Status = AttachmentStatus.Ready;
 
     // Plain `set` (not `init`) throughout — see the identical note on
     // PendingAttachment: the XAML compiler's generated x:Bind reflection
@@ -68,12 +66,9 @@ public sealed class ChatAttachment : ObservableObject
     /// <c>AttachmentImageCacheService</c> finishes decoding/downloading it — the
     /// bound <c>Image</c> control picks up the change via <c>Mode=OneWay</c>.
     /// </summary>
+    [ObservableProperty]
     [JsonPropertyName("localCachePath")]
-    public string? LocalCachePath
-    {
-        get => _localCachePath;
-        set => SetProperty(ref _localCachePath, value);
-    }
+    public partial string? LocalCachePath { get; set; }
 
     /// <summary>Original remote reference (an http(s) URL), when the source was a URL rather than a data URL. Never a data: URL — those are decoded to <see cref="LocalCachePath"/> immediately and discarded.</summary>
     [JsonPropertyName("remoteUri")]
@@ -84,19 +79,15 @@ public sealed class ChatAttachment : ObservableObject
         ? new Uri(LocalCachePath).AbsoluteUri
         : null;
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsFailed))]
     [JsonPropertyName("status")]
-    public AttachmentStatus Status
-    {
-        get => _status;
-        set { if (SetProperty(ref _status, value)) OnPropertyChanged(nameof(IsFailed)); }
-    }
+    public partial AttachmentStatus Status { get; set; }
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasError))]
     [JsonPropertyName("error")]
-    public string? Error
-    {
-        get => _error;
-        set { if (SetProperty(ref _error, value)) OnPropertyChanged(nameof(HasError)); }
-    }
+    public partial string? Error { get; set; }
 
     [JsonIgnore]
     public bool IsImage => Kind == AttachmentKind.Image;

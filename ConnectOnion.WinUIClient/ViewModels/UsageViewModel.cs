@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.ComponentModel;
 using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Models;
@@ -18,17 +19,16 @@ namespace ConnectOnion.WinUIClient.ViewModels;
 /// model, and rates change — a hard-coded price table would be a confidently-stated lie. If cost
 /// ever ships it has to be a rate table the user maintains, labelled as their own estimate.
 /// </summary>
-public sealed class UsageViewModel : ObservableObject
+public sealed partial class UsageViewModel : Common.ObservableObject
 {
     private readonly UsageRepository _usage;
 
-    private UsageRange _range = UsageRange.Last7Days;
-    private bool _isLoading;
-    private string _firstRecordedText = "";
-
-    public UsageViewModel() : this(AppServices.Usage) { }
-
-    public UsageViewModel(UsageRepository usage) => _usage = usage;
+    public UsageViewModel(UsageRepository usage)
+    {
+        _usage = usage;
+        Range = UsageRange.Last7Days;
+        FirstRecordedText = "";
+    }
 
     /// <summary>One row per model, biggest spender first.</summary>
     public ObservableCollection<UsageRowViewModel> Rows { get; } = new();
@@ -38,38 +38,21 @@ public sealed class UsageViewModel : ObservableObject
         UsageRange.Today, UsageRange.Last7Days, UsageRange.Last30Days, UsageRange.AllTime,
     };
 
-    public UsageRange Range
-    {
-        get => _range;
-        set
-        {
-            if (!SetProperty(ref _range, value)) return;
-            _ = LoadAsync();
-        }
-    }
+    [ObservableProperty]
+    public partial UsageRange Range { get; set; }
 
-    public bool IsLoading
-    {
-        get => _isLoading;
-        private set
-        {
-            if (!SetProperty(ref _isLoading, value)) return;
-            OnPropertyChanged(nameof(ShowEmptyState));
-            OnPropertyChanged(nameof(ShowContent));
-        }
-    }
+    partial void OnRangeChanged(UsageRange value) => _ = LoadAsync();
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowEmptyState))]
+    [NotifyPropertyChangedFor(nameof(ShowContent))]
+    public partial bool IsLoading { get; private set; }
 
     /// <summary>"Recording since 3 Jul 2026", or empty when nothing has been recorded. Makes it
     /// explicit that history begins when the feature shipped rather than at first launch.</summary>
-    public string FirstRecordedText
-    {
-        get => _firstRecordedText;
-        private set
-        {
-            if (!SetProperty(ref _firstRecordedText, value)) return;
-            OnPropertyChanged(nameof(HasFirstRecorded));
-        }
-    }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasFirstRecorded))]
+    public partial string FirstRecordedText { get; private set; }
 
     public bool HasFirstRecorded => !string.IsNullOrEmpty(FirstRecordedText);
 

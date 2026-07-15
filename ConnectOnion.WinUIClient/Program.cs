@@ -31,8 +31,9 @@ public static class Program
         }
 
         // The main instance receives every subsequent (redirected) launch here. The
-        // handler wakes the existing window; it never creates one.
-        instance.Activated += (_, _) => App.ActivateMainWindow();
+        // handler wakes the existing window and, when the launch came from a clicked
+        // toast, navigates to its target conversation; it never creates a window.
+        instance.Activated += (_, e) => App.OnActivationRedirected(e);
 
         Application.Start(p =>
         {
@@ -48,7 +49,12 @@ public static class Program
     {
         try
         {
-            var activated = main.GetActivatedEventArgs();
+            // Capture THIS process's activation (the toast click carries its arguments
+            // here), then hand it to the running instance. Must be GetCurrent(), not
+            // main.GetActivatedEventArgs(): the latter reads the primary instance's
+            // activation, so the notification's agentId/conversationId never travel and
+            // the woken window can't navigate to the message's conversation.
+            var activated = AppInstance.GetCurrent().GetActivatedEventArgs();
             main.RedirectActivationToAsync(activated).AsTask().GetAwaiter().GetResult();
         }
         catch

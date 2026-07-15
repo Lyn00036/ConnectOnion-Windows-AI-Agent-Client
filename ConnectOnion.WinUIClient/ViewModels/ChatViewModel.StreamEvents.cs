@@ -25,7 +25,7 @@ namespace ConnectOnion.WinUIClient.ViewModels;
 public sealed partial class ChatViewModel
 {
     private AgentConnectionService? CurrentConnection
-        => _session is null ? null : AppServices.RunManager.Connections.Get(_session.Id);
+        => _session is null ? null : _runManager.Connections.Get(_session.Id);
 
     /// <summary>Hands the just-resolved interactive card's result to the app-level manager so it
     /// survives into persisted history. The live stream never echoes the user's reply, so the
@@ -34,10 +34,10 @@ public sealed partial class ChatViewModel
     private void RecordInteractiveAnswer(ChatMessage message)
     {
         if (_session is null || string.IsNullOrEmpty(message.EventMeta)) return;
-        AppServices.RunManager.RecordInteractiveAnswer(_session.Id, message.EventMeta, message.Status);
+        _runManager.RecordInteractiveAnswer(_session.Id, message.EventMeta, message.Status);
         // The agent is no longer parked on this turn, so Stop must stop treating it as an open
         // gate it could halt through — from here on the agent is back to being un-interruptible.
-        AppServices.RunManager.ClearPendingInteractive(_session.Id);
+        _runManager.ClearPendingInteractive(_session.Id);
     }
 
     public async Task SubmitOnboardInviteCodeAsync(ChatMessage message)
@@ -156,7 +156,7 @@ public sealed partial class ChatViewModel
     private async Task ResolveAgentImageAsync(string dataUrl, ChatAttachment attachment)
     {
         var resolved = await AttachmentImageCacheService
-            .ResolveAndCacheAsync(dataUrl, AppServices.Http)
+            .ResolveAndCacheAsync(dataUrl, _http)
             .ConfigureAwait(false);
 
         _dispatcher.TryEnqueue(() =>

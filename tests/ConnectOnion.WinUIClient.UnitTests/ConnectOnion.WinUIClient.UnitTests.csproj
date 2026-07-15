@@ -7,6 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
@@ -45,6 +46,7 @@
     <Compile Include="..\..\ConnectOnion.WinUIClient\Services\Notifications\DedupCache.cs" Link="Production\Services\Notifications\DedupCache.cs" />
     <Compile Include="..\..\ConnectOnion.WinUIClient\Services\Notifications\INotificationAbstractions.cs" Link="Production\Services\Notifications\INotificationAbstractions.cs" />
     <Compile Include="..\..\ConnectOnion.WinUIClient\Services\Notifications\NotificationCoordinator.cs" Link="Production\Services\Notifications\NotificationCoordinator.cs" />
+    <Compile Include="..\..\ConnectOnion.WinUIClient\Services\Notifications\NotificationLog.cs" Link="Production\Services\Notifications\NotificationLog.cs" />
     <Compile Include="..\..\ConnectOnion.WinUIClient\Services\Notifications\NotificationPolicy.cs" Link="Production\Services\Notifications\NotificationPolicy.cs" />
     <Compile Include="..\..\ConnectOnion.WinUIClient\Services\Notifications\NotificationText.cs" Link="Production\Services\Notifications\NotificationText.cs" />
     <Compile Include="..\..\ConnectOnion.WinUIClient\Services\ConversationCache.cs" Link="Production\Services\ConversationCache.cs" />

@@ -2,7 +2,7 @@ using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text.Json.Serialization;
-using ConnectOnion.WinUIClient.Common;
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace ConnectOnion.WinUIClient.Models;
 
@@ -28,53 +28,49 @@ public enum ToolStepStatus { Pending, Running, Success, Warning, Failed, Cancell
 /// message repository serializes it with the chat message, so re-entering a session shows
 /// exactly the same compact timeline.
 /// </summary>
-public sealed class ToolActivityViewModel : ObservableObject
+public sealed partial class ToolActivityViewModel : Common.ObservableObject
 {
-    private ToolActivityStatus _status = ToolActivityStatus.Running;
-    private ToolDisplayMode _displayMode = ToolDisplayMode.Compact;
-    private bool _isExpanded = true;
-    private string _summary = "Running tools…";
-    private DateTimeOffset _startedAt = DateTimeOffset.UtcNow;
-    private DateTimeOffset? _completedAt;
-    private string? _errorSummary;
+    public ToolActivityViewModel()
+    {
+        Status = ToolActivityStatus.Running;
+        DisplayMode = ToolDisplayMode.Compact;
+        IsExpanded = true;
+        Summary = "Running tools…";
+        StartedAt = DateTimeOffset.UtcNow;
+    }
 
     public string TurnId { get; set; } = Guid.NewGuid().ToString("N");
     public ObservableCollection<ToolStepViewModel> Steps { get; set; } = new();
 
-    public ToolActivityStatus Status
+    [ObservableProperty]
+    public partial ToolActivityStatus Status { get; set; }
+
+    partial void OnStatusChanged(ToolActivityStatus value) => OnPresentationChanged();
+
+    [ObservableProperty]
+    public partial ToolDisplayMode DisplayMode { get; set; }
+
+    partial void OnDisplayModeChanged(ToolDisplayMode value)
     {
-        get => _status;
-        set
-        {
-            if (!SetProperty(ref _status, value)) return;
-            OnPresentationChanged();
-        }
+        if (value == ToolDisplayMode.Detailed) IsExpanded = true;
+        OnPresentationChanged();
     }
 
-    public ToolDisplayMode DisplayMode
-    {
-        get => _displayMode;
-        set
-        {
-            if (!SetProperty(ref _displayMode, value)) return;
-            if (value == ToolDisplayMode.Detailed) IsExpanded = true;
-            OnPresentationChanged();
-        }
-    }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsTimelineVisible))]
+    public partial bool IsExpanded { get; set; }
 
-    public bool IsExpanded
-    {
-        get => _isExpanded;
-        set
-        {
-            if (SetProperty(ref _isExpanded, value)) OnPropertyChanged(nameof(IsTimelineVisible));
-        }
-    }
+    [ObservableProperty]
+    public partial string Summary { get; set; }
 
-    public string Summary { get => _summary; set => SetProperty(ref _summary, value); }
-    public DateTimeOffset StartedAt { get => _startedAt; set => SetProperty(ref _startedAt, value); }
-    public DateTimeOffset? CompletedAt { get => _completedAt; set => SetProperty(ref _completedAt, value); }
-    public string? ErrorSummary { get => _errorSummary; set => SetProperty(ref _errorSummary, value); }
+    [ObservableProperty]
+    public partial DateTimeOffset StartedAt { get; set; }
+
+    [ObservableProperty]
+    public partial DateTimeOffset? CompletedAt { get; set; }
+
+    [ObservableProperty]
+    public partial string? ErrorSummary { get; set; }
 
     [JsonIgnore] public bool IsTerminal => Status is ToolActivityStatus.Success or ToolActivityStatus.PartialSuccess or ToolActivityStatus.Failed or ToolActivityStatus.Cancelled;
     [JsonIgnore] public bool IsVisible => DisplayMode != ToolDisplayMode.Hidden || !IsTerminal || Status is ToolActivityStatus.Failed or ToolActivityStatus.PartialSuccess or ToolActivityStatus.WaitingForConfirmation or ToolActivityStatus.WaitingForPermission || Steps.Any(step => step.IsHighRisk);
@@ -112,44 +108,63 @@ public sealed class ToolActivityViewModel : ObservableObject
     }
 }
 
-public sealed class ToolStepViewModel : ObservableObject
+public sealed partial class ToolStepViewModel : Common.ObservableObject
 {
-    private ToolStepStatus _status = ToolStepStatus.Running;
-    private bool _isExpanded;
-    private string _displayName = "Tool";
-    private string? _displayTarget;
-    private string? _summary;
-    private string? _arguments;
-    private string? _result;
-    private string? _error;
-    private DateTimeOffset _startedAt = DateTimeOffset.UtcNow;
-    private DateTimeOffset? _completedAt;
-    private double? _durationMs;
+    public ToolStepViewModel()
+    {
+        Status = ToolStepStatus.Running;
+        DisplayName = "Tool";
+        StartedAt = DateTimeOffset.UtcNow;
+    }
 
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public int Sequence { get; set; }
     public string ToolName { get; set; } = "tool";
     public bool IsHighRisk { get; set; }
 
-    public ToolStepStatus Status
-    {
-        get => _status;
-        set
-        {
-            if (!SetProperty(ref _status, value)) return;
-            OnPresentationChanged();
-        }
-    }
-    public string DisplayName { get => _displayName; set => SetProperty(ref _displayName, value); }
-    public string? DisplayTarget { get => _displayTarget; set { if (SetProperty(ref _displayTarget, value)) OnPropertyChanged(nameof(TimelineText)); } }
-    public string? Summary { get => _summary; set { if (SetProperty(ref _summary, value)) { OnPropertyChanged(nameof(HasSummary)); OnPropertyChanged(nameof(TimelineText)); OnPropertyChanged(nameof(HasTimelineText)); } } }
-    public string? Arguments { get => _arguments; set => SetProperty(ref _arguments, value); }
-    public string? Result { get => _result; set => SetProperty(ref _result, value); }
-    public string? Error { get => _error; set => SetProperty(ref _error, value); }
-    public DateTimeOffset StartedAt { get => _startedAt; set => SetProperty(ref _startedAt, value); }
-    public DateTimeOffset? CompletedAt { get => _completedAt; set => SetProperty(ref _completedAt, value); }
-    public double? DurationMs { get => _durationMs; set { if (SetProperty(ref _durationMs, value)) OnPropertyChanged(nameof(DurationLabel)); } }
-    public bool IsExpanded { get => _isExpanded; set => SetProperty(ref _isExpanded, value); }
+    [ObservableProperty]
+    public partial ToolStepStatus Status { get; set; }
+
+    partial void OnStatusChanged(ToolStepStatus value) => OnPresentationChanged();
+
+    [ObservableProperty]
+    public partial string DisplayName { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TimelineText))]
+    public partial string? DisplayTarget { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSummary))]
+    [NotifyPropertyChangedFor(nameof(TimelineText))]
+    [NotifyPropertyChangedFor(nameof(HasTimelineText))]
+    public partial string? Summary { get; set; }
+
+    [ObservableProperty]
+    public partial string? Arguments { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasResult))]
+    [NotifyPropertyChangedFor(nameof(ShowResult))]
+    public partial string? Result { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasError))]
+    [NotifyPropertyChangedFor(nameof(ShowResult))]
+    public partial string? Error { get; set; }
+
+    [ObservableProperty]
+    public partial DateTimeOffset StartedAt { get; set; }
+
+    [ObservableProperty]
+    public partial DateTimeOffset? CompletedAt { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DurationLabel))]
+    public partial double? DurationMs { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsExpanded { get; set; }
 
     [JsonIgnore] public string StatusGlyph => Status switch { ToolStepStatus.Success => "✓", ToolStepStatus.Warning => "⚠", ToolStepStatus.Failed => "✕", ToolStepStatus.Cancelled => "⊘", ToolStepStatus.Pending => "·", _ => "◌" };
     [JsonIgnore] public bool HasDisplayTarget => !string.IsNullOrWhiteSpace(DisplayTarget);
@@ -158,6 +173,10 @@ public sealed class ToolStepViewModel : ObservableObject
     [JsonIgnore] public bool HasTimelineText => !string.IsNullOrWhiteSpace(TimelineText);
     [JsonIgnore] public bool HasArguments => !string.IsNullOrWhiteSpace(Arguments);
     [JsonIgnore] public bool HasResult => !string.IsNullOrWhiteSpace(Result);
+    // When a step failed, the error text already carries the failure detail and the Result often
+    // mirrors it — showing both duplicates the same message. Suppress the Result body once an
+    // error is present so the expanded step shows the failure exactly once.
+    [JsonIgnore] public bool ShowResult => HasResult && !HasError;
     [JsonIgnore] public bool HasError => !string.IsNullOrWhiteSpace(Error);
     [JsonIgnore] public string DurationLabel => DurationMs is null ? "" : DurationMs < 1000 ? $"{DurationMs:0} ms" : $"{DurationMs / 1000:0.0} s";
     [JsonIgnore] public string AccessibilityName => $"{StatusGlyph} {DisplayName}{(HasSummary ? ", " + Summary : "")}";

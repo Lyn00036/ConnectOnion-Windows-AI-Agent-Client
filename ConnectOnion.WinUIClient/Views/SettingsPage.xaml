@@ -3,7 +3,7 @@
     x:Class="ConnectOnion.WinUIClient.Views.SettingsPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:controls="using:ConnectOnion.WinUIClient.Controls"
+    xmlns:ctk="using:CommunityToolkit.WinUI.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
@@ -15,131 +15,121 @@
                   HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled"
                   VerticalScrollMode="Enabled" VerticalScrollBarVisibility="Auto">
         <StackPanel x:Name="ContentStack" MinWidth="0" Margin="28,6,28,28"
-                    HorizontalAlignment="Stretch" Spacing="12">
+                    HorizontalAlignment="Stretch" Spacing="20">
             <TextBlock Text="Desktop preferences for this app."
                        Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextSecondaryBrush}" />
 
             <!-- Appearance is strictly how the app looks. Anything about how chat behaves or reads
-                 lives in the Chat card below — both are shown for the "General" category. -->
-            <Border x:Name="GeneralSection" Style="{StaticResource SettingsSectionStyle}">
-                <StackPanel Spacing="20">
-                    <TextBlock Text="Appearance" Style="{StaticResource SubtitleTextBlockStyle}" />
+                 lives in the Chat group below — both are shown for the "General" category. -->
+            <StackPanel x:Name="GeneralSection" Spacing="4">
+                <TextBlock Text="Appearance" Style="{StaticResource SubtitleTextBlockStyle}" Margin="2,0,0,4" />
 
-                    <controls:SettingRow Title="Theme"
-                                         Description="Use the system theme or choose light or dark mode.">
-                        <RadioButtons x:Name="ThemeChoice" MaxColumns="3"
-                                      AutomationProperties.Name="Theme"
-                                      SelectionChanged="ThemeChoice_SelectionChanged">
-                            <x:String>System</x:String>
-                            <x:String>Light</x:String>
-                            <x:String>Dark</x:String>
-                        </RadioButtons>
-                    </controls:SettingRow>
+                <ctk:SettingsCard Header="Theme"
+                                  Description="Use the system theme or choose light or dark mode.">
+                    <RadioButtons x:Name="ThemeChoice" MaxColumns="3"
+                                  AutomationProperties.Name="Theme"
+                                  SelectionChanged="ThemeChoice_SelectionChanged">
+                        <x:String>System</x:String>
+                        <x:String>Light</x:String>
+                        <x:String>Dark</x:String>
+                    </RadioButtons>
+                </ctk:SettingsCard>
+            </StackPanel>
 
-                </StackPanel>
-            </Border>
+            <StackPanel x:Name="ChatSection" Spacing="4">
+                <TextBlock Text="Chat" Style="{StaticResource SubtitleTextBlockStyle}" Margin="2,0,0,4" />
 
-            <Border x:Name="ChatSection" Style="{StaticResource SettingsSectionStyle}">
-                <StackPanel Spacing="20">
-                    <TextBlock Text="Chat" Style="{StaticResource SubtitleTextBlockStyle}" />
+                <ctk:SettingsCard Header="Message text size"
+                                  Description="Adjust how large chat messages appear.">
+                    <RadioButtons x:Name="FontChoice" MaxColumns="3"
+                                  AutomationProperties.Name="Message text size"
+                                  SelectionChanged="FontChoice_SelectionChanged">
+                        <x:String>Small</x:String>
+                        <x:String>Medium</x:String>
+                        <x:String>Large</x:String>
+                    </RadioButtons>
+                </ctk:SettingsCard>
 
-                    <controls:SettingRow Title="Message text size"
-                                         Description="Adjust how large chat messages appear.">
-                        <RadioButtons x:Name="FontChoice" MaxColumns="3"
-                                      AutomationProperties.Name="Message text size"
-                                      SelectionChanged="FontChoice_SelectionChanged">
-                            <x:String>Small</x:String>
-                            <x:String>Medium</x:String>
-                            <x:String>Large</x:String>
-                        </RadioButtons>
-                    </controls:SettingRow>
+                <ctk:SettingsCard Header="Enter to send"
+                                  Description="When enabled, Enter sends and Shift+Enter inserts a new line.">
+                    <ToggleSwitch x:Name="EnterToSendSwitch"
+                                  AutomationProperties.Name="Enter to send"
+                                  Toggled="EnterToSendSwitch_Toggled" />
+                </ctk:SettingsCard>
+            </StackPanel>
 
-                    <controls:SettingRow Title="Enter to send"
-                                         Description="When enabled, Enter sends and Shift+Enter inserts a new line.">
-                        <ToggleSwitch x:Name="EnterToSendSwitch"
-                                      AutomationProperties.Name="Enter to send"
-                                      Toggled="EnterToSendSwitch_Toggled" />
-                    </controls:SettingRow>
+            <StackPanel x:Name="NotificationsSection" Spacing="4" Visibility="Collapsed">
+                <TextBlock Text="Notifications" Style="{StaticResource SubtitleTextBlockStyle}" Margin="2,0,0,4" />
 
-                </StackPanel>
-            </Border>
+                <ctk:SettingsCard Header="Enable notifications"
+                                  Description="Master switch for all in-app and Windows notifications.">
+                    <ToggleSwitch x:Name="EnableNotificationsSwitch"
+                                  AutomationProperties.Name="Enable notifications"
+                                  Toggled="EnableNotificationsSwitch_Toggled" />
+                </ctk:SettingsCard>
 
-            <Border x:Name="NotificationsSection" Style="{StaticResource SettingsSectionStyle}" Visibility="Collapsed">
-                <StackPanel Spacing="20">
-                    <TextBlock Text="Notifications" Style="{StaticResource SubtitleTextBlockStyle}" />
-
-                    <controls:SettingRow Title="Enable notifications"
-                                         Description="Master switch for all in-app and Windows notifications.">
-                        <ToggleSwitch x:Name="EnableNotificationsSwitch"
-                                      AutomationProperties.Name="Enable notifications"
-                                      Toggled="EnableNotificationsSwitch_Toggled" />
-                    </controls:SettingRow>
-
-                    <ContentControl x:Name="NotificationDetailPanel"
-                                    HorizontalAlignment="Stretch"
-                                    HorizontalContentAlignment="Stretch">
-                    <StackPanel Spacing="20">
-                        <controls:SettingRow Title="Agent replies"
-                                             Description="Notify when an agent finishes replying in a conversation you're not viewing.">
+                <ContentControl x:Name="NotificationDetailPanel"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Stretch">
+                    <StackPanel Spacing="4">
+                        <ctk:SettingsCard Header="Agent replies"
+                                          Description="Notify when an agent finishes replying in a conversation you're not viewing.">
                             <ToggleSwitch x:Name="NotifyAgentRepliesSwitch"
                                           AutomationProperties.Name="Notify for agent replies"
                                           Toggled="NotificationDetail_Toggled" />
-                        </controls:SettingRow>
+                        </ctk:SettingsCard>
 
-                        <controls:SettingRow Title="Task completion"
-                                             Description="Notify when a longer, multi-step task finishes.">
+                        <ctk:SettingsCard Header="Task completion"
+                                          Description="Notify when a longer, multi-step task finishes.">
                             <ToggleSwitch x:Name="NotifyTaskCompletionSwitch"
                                           AutomationProperties.Name="Notify for task completion"
                                           Toggled="NotificationDetail_Toggled" />
-                        </controls:SettingRow>
+                        </ctk:SettingsCard>
 
-                        <controls:SettingRow Title="Approval requests"
-                                             Description="Notify when an agent needs your approval to continue.">
+                        <ctk:SettingsCard Header="Approval requests"
+                                          Description="Notify when an agent needs your approval to continue.">
                             <ToggleSwitch x:Name="NotifyApprovalRequestsSwitch"
                                           AutomationProperties.Name="Notify for approval requests"
                                           Toggled="NotificationDetail_Toggled" />
-                        </controls:SettingRow>
+                        </ctk:SettingsCard>
 
-                        <controls:SettingRow Title="Connection problems"
-                                             Description="Notify when an agent stays disconnected for a while.">
+                        <ctk:SettingsCard Header="Connection problems"
+                                          Description="Notify when an agent stays disconnected for a while.">
                             <ToggleSwitch x:Name="NotifyConnectionProblemsSwitch"
                                           AutomationProperties.Name="Notify for connection problems"
                                           Toggled="NotificationDetail_Toggled" />
-                        </controls:SettingRow>
+                        </ctk:SettingsCard>
 
-                        <controls:SettingRow Title="Play sound"
-                                             Description="Play a sound with Windows notifications.">
+                        <ctk:SettingsCard Header="Play sound"
+                                          Description="Play a sound with Windows notifications.">
                             <ToggleSwitch x:Name="PlayNotificationSoundSwitch"
                                           AutomationProperties.Name="Play notification sound"
                                           Toggled="NotificationDetail_Toggled" />
-                        </controls:SettingRow>
+                        </ctk:SettingsCard>
 
-                        <controls:SettingRow Title="Show message preview"
-                                             Description="Include a snippet of the reply. When off, notifications only say you have a new response.">
+                        <ctk:SettingsCard Header="Show message preview"
+                                          Description="Include a snippet of the reply. When off, notifications only say you have a new response.">
                             <ToggleSwitch x:Name="ShowMessagePreviewSwitch"
                                           AutomationProperties.Name="Show message preview"
                                           Toggled="NotificationDetail_Toggled" />
-                        </controls:SettingRow>
+                        </ctk:SettingsCard>
                     </StackPanel>
-                    </ContentControl>
-                </StackPanel>
-            </Border>
+                </ContentControl>
+            </StackPanel>
 
-            <Border x:Name="AudioSection" Style="{StaticResource SettingsSectionStyle}" Visibility="Collapsed">
-                <StackPanel Spacing="20">
-                    <TextBlock Text="Audio" Style="{StaticResource SubtitleTextBlockStyle}" />
+            <StackPanel x:Name="AudioSection" Spacing="4" Visibility="Collapsed">
+                <TextBlock Text="Audio" Style="{StaticResource SubtitleTextBlockStyle}" Margin="2,0,0,4" />
 
-                    <controls:SettingRow Title="Microphone"
-                                         Description="Choose the microphone for voice input.">
-                        <ComboBox x:Name="MicChoice"
-                                  MinWidth="0" MaxWidth="260"
-                                  HorizontalAlignment="Stretch"
-                                  AutomationProperties.Name="Microphone"
-                                  DisplayMemberPath="Name"
-                                  SelectionChanged="MicChoice_SelectionChanged" />
-                    </controls:SettingRow>
-                </StackPanel>
-            </Border>
+                <ctk:SettingsCard Header="Microphone"
+                                  Description="Choose the microphone for voice input.">
+                    <ComboBox x:Name="MicChoice"
+                              MinWidth="0" MaxWidth="260"
+                              HorizontalAlignment="Stretch"
+                              AutomationProperties.Name="Microphone"
+                              DisplayMemberPath="Name"
+                              SelectionChanged="MicChoice_SelectionChanged" />
+                </ctk:SettingsCard>
+            </StackPanel>
         </StackPanel>
     </ScrollViewer>
 </Page>

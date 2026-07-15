@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using CommunityToolkit.Mvvm.ComponentModel;
 using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
@@ -13,34 +14,27 @@ namespace ConnectOnion.WinUIClient.ViewModels;
 /// filtered view of it. The UI only reads <see cref="Groups"/> / <see cref="IsEmpty"/> and
 /// writes <see cref="SearchText"/> — all filtering lives here, not in code-behind.
 /// </summary>
-public sealed class KeyboardShortcutsViewModel : ObservableObject
+public sealed partial class KeyboardShortcutsViewModel : Common.ObservableObject
 {
     private readonly IReadOnlyList<KeyboardShortcutGroup> _allGroups = KeyboardShortcutCatalog.GetGroups();
 
     /// <summary>The groups (with their matching items) to render for the current search.</summary>
     public ObservableCollection<KeyboardShortcutGroup> Groups { get; } = new();
 
-    private string _searchText = "";
-    public string SearchText
-    {
-        get => _searchText;
-        set { if (SetProperty(ref _searchText, value)) ApplyFilter(); }
-    }
+    [ObservableProperty]
+    public partial string SearchText { get; set; }
 
-    private bool _hasResults = true;
-    public bool HasResults
-    {
-        get => _hasResults;
-        private set
-        {
-            if (SetProperty(ref _hasResults, value)) OnPropertyChanged(nameof(IsEmpty));
-        }
-    }
+    partial void OnSearchTextChanged(string value) => ApplyFilter();
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsEmpty))]
+    public partial bool HasResults { get; private set; }
 
     /// <summary>True when the current search matched nothing — drives the empty state.</summary>
     public bool IsEmpty => !HasResults;
 
-    public KeyboardShortcutsViewModel() => ApplyFilter();
+    // Setting SearchText fires OnSearchTextChanged → ApplyFilter, which seeds Groups and HasResults.
+    public KeyboardShortcutsViewModel() => SearchText = "";
 
     /// <summary>Clears the search back to the full list. Called each time the dialog opens so a
     /// prior session's query never leaks into a fresh view.</summary>
@@ -48,7 +42,7 @@ public sealed class KeyboardShortcutsViewModel : ObservableObject
 
     private void ApplyFilter()
     {
-        var query = _searchText.Trim();
+        var query = SearchText.Trim();
 
         Groups.Clear();
         foreach (var group in _allGroups)

@@ -1,22 +1,14 @@
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Runtime.CompilerServices;
-
 namespace ConnectOnion.WinUIClient.Common;
 
-/// <summary>Minimal INotifyPropertyChanged base for view models.</summary>
-public abstract class ObservableObject : INotifyPropertyChanged
+/// <summary>
+/// Project-local base for view models and observable models. It now derives from
+/// CommunityToolkit.Mvvm's <see cref="CommunityToolkit.Mvvm.ComponentModel.ObservableObject"/>,
+/// which supplies the same <c>SetProperty</c>/<c>OnPropertyChanged</c> surface the hand-rolled
+/// version used to expose — so existing manual property setters keep compiling unchanged — and,
+/// crucially, satisfies the requirement that lets the <c>[ObservableProperty]</c> /
+/// <c>[RelayCommand]</c> source generators run on subclasses. Kept as a named base so the many
+/// <c>: ObservableObject</c> declarations across the app need no churn.
+/// </summary>
+public abstract class ObservableObject : CommunityToolkit.Mvvm.ComponentModel.ObservableObject
 {
-    public event PropertyChangedEventHandler? PropertyChanged;
-
-    protected bool SetProperty<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
-    {
-        if (EqualityComparer<T>.Default.Equals(field, value)) return false;
-        field = value;
-        OnPropertyChanged(propertyName);
-        return true;
-    }
-
-    protected void OnPropertyChanged([CallerMemberName] string? propertyName = null)
-        => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 }

@@ -5,8 +5,10 @@ using System.Globalization;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.ComponentModel;
 using ConnectOnion.Protocol;
 using ConnectOnion.WinUIClient.Common;
+using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
 using Microsoft.UI.Dispatching;
@@ -17,19 +19,35 @@ namespace ConnectOnion.WinUIClient.ViewModels;
 /// Backs the Agent Detail page: loads the selected agent's /info payload and
 /// exposes key fields plus the raw JSON for the UI.
 /// </summary>
-public sealed class AgentDetailViewModel : PresenceAwareViewModel
+public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
 {
     private readonly DispatcherQueue _dispatcher = DispatcherQueue.GetForCurrentThread();
     private AgentConfig? _agent;
-    private bool _isLoading;
 
     // Bumped by every LoadAsync. The page is reused across agents (see Views.IReloadablePage),
     // so loads can overlap; only the newest may write to it.
     private long _loadGeneration;
-    private string _infoJson = "";
-    private string _statusText = "";
-    private bool _hasError;
-    private bool _enterToSend = true;
+
+    private readonly AgentRepository _agents;
+    private readonly SessionRepository _sessions;
+    private readonly PreferencesRepository _preferences;
+
+    public AgentDetailViewModel(
+        AgentPresenceService presence,
+        AgentRepository agents,
+        SessionRepository sessions,
+        PreferencesRepository preferences)
+        : base(presence)
+    {
+        _agents = agents;
+        _sessions = sessions;
+        _preferences = preferences;
+
+        // Non-default seeds for the partial [ObservableProperty] declarations below.
+        InfoJson = "";
+        StatusText = "";
+        EnterToSend = true;
+    }
 
     /// <summary>The agent this page tracks for presence (base class reads this).</summary>
     protected override AgentConfig? PresenceAgent => _agent;
@@ -65,19 +83,20 @@ public sealed class AgentDetailViewModel : PresenceAwareViewModel
     protected override void OnPresenceRaised()
         => OnPropertyChanged(nameof(CanStartConversation));
 
-    public bool IsLoading
-    {
-        get => _isLoading;
-        private set => SetProperty(ref _isLoading, value);
-    }
+    [ObservableProperty]
+    public partial bool IsLoading { get; private set; }
 
-    public string InfoJson { get => _infoJson; private set { if (SetProperty(ref _infoJson, value)) OnPropertyChanged(nameof(HasInfoJson)); } }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasInfoJson))]
+    public partial string InfoJson { get; private set; }
 
     public bool HasInfoJson => !string.IsNullOrWhiteSpace(InfoJson);
 
-    public string StatusText { get => _statusText; private set => SetProperty(ref _statusText, value); }
+    [ObservableProperty]
+    public partial string StatusText { get; private set; }
 
-    public bool HasError { get => _hasError; private set => SetProperty(ref _hasError, value); }
+    [ObservableProperty]
+    public partial bool HasError { get; private set; }
 
     public ObservableCollection<InfoField> InfoFields { get; } = new();
 
@@ -118,15 +137,12 @@ public sealed class AgentDetailViewModel : PresenceAwareViewModel
         ? $"Last updated {ts}"
         : null;
 
-    public bool EnterToSend { get => _enterToSend; private set => SetProperty(ref _enterToSend, value); }
+    [ObservableProperty]
+    public partial bool EnterToSend { get; private set; }
 
-    private AgentAcceptedInputs? _acceptedInputs;
     /// <summary>Same purpose as <c>ChatViewModel.AcceptedInputs</c>: gates the composer's attachment UI against the agent's real <c>/info</c> capability.</summary>
-    public AgentAcceptedInputs? AcceptedInputs
-    {
-        get => _acceptedInputs;
-        private set => SetProperty(ref _acceptedInputs, value);
-    }
+    [ObservableProperty]
+    public partial AgentAcceptedInputs? AcceptedInputs { get; private set; }
 
     /// <summary>
     /// Starts a new conversation. <paramref name="hasAttachments"/> must be true
@@ -140,15 +156,15 @@ public sealed class AgentDetailViewModel : PresenceAwareViewModel
     {
         if (Agent is null || !IsOnline || (string.IsNullOrWhiteSpace(prompt) && !hasAttachments)) return false;
 
-        var agentsState = await AppServices.Agents.LoadAsync();
+        var agentsState = await _agents.LoadAsync();
         agentsState.SelectedAgentId = Agent.Id;
-        await AppServices.Agents.SaveAsync(agentsState);
+        await _agents.SaveAsync(agentsState);
 
-        var sessionsState = await AppServices.Sessions.LoadAsync();
+        var sessionsState = await _sessions.LoadAsync();
         var session = SessionSummary.NewConversation(Agent.Id, sessionsState.Sessions);
         sessionsState.Sessions.Add(session);
         sessionsState.ActiveSessionId = session.Id;
-        await AppServices.Sessions.SaveAsync(sessionsState);
+        await _sessions.SaveAsync(sessionsState);
         return true;
     }
 
@@ -161,11 +177,11 @@ public sealed class AgentDetailViewModel : PresenceAwareViewModel
         // its fetch drops out where it would otherwise publish (FetchInfoWithCacheAsync).
         var generation = ++_loadGeneration;
 
-        var prefs = await AppServices.Preferences.LoadAsync();
+        var prefs = await _preferences.LoadAsync();
         if (generation != _loadGeneration) return;
         EnterToSend = prefs.EnterToSend;
 
-        var agents = await AppServices.Agents.LoadAsync();
+        var agents = await _agents.LoadAsync();
         if (generation != _loadGeneration) return;
 
         var selected = agents.Agents.FirstOrDefault(a => a.Id == agents.SelectedAgentId);

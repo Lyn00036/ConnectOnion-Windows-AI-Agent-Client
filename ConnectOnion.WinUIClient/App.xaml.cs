@@ -18,6 +18,8 @@ using Windows.Foundation.Collections;
 using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Services;
 using ConnectOnion.WinUIClient.Services.Notifications;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 // To learn more about WinUI, the WinUI project structure,
 // and more about our project templates, see: http://aka.ms/winui-project-info.
@@ -30,6 +32,21 @@ namespace ConnectOnion.WinUIClient
     public partial class App : Application
     {
         private Window? _window;
+
+        private readonly IHost _host;
+
+        /// <summary>
+        /// The application's DI container, built by the Generic Host. This is the composition root
+        /// the whole app resolves from — view models are constructed by it (see
+        /// <see cref="ServiceRegistration"/>), and framework-created code-behind reaches shared
+        /// singletons through <see cref="AppServices"/>, which is a typed accessor over this.
+        /// </summary>
+        public static IServiceProvider Services { get; private set; } = null!;
+
+        /// <summary>Resolves a service from the container. Framework-created views (pages, dialogs,
+        /// user controls) call this to obtain their view model, because WinUI constructs the views
+        /// themselves through parameterless constructors rather than through the container.</summary>
+        public static T GetService<T>() where T : notnull => Services.GetRequiredService<T>();
 
         /// <summary>
         /// The single top-level window. Created exactly once in <see cref="OnLaunched"/>;
@@ -82,6 +99,14 @@ namespace ConnectOnion.WinUIClient
         public App()
         {
             InitializeComponent();
+
+            // Build the composition root before any window/page is created (OnLaunched, and every
+            // view that resolves a view model, runs after this). Registrations live in
+            // ServiceRegistration; hosted services start in OnLaunched.
+            var builder = Host.CreateApplicationBuilder();
+            builder.Services.AddAppServices();
+            _host = builder.Build();
+            Services = _host.Services;
         }
 
         /// <summary>
@@ -91,7 +116,9 @@ namespace ConnectOnion.WinUIClient
         protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
             AppStorage.EnsureDirectories();
-            AppServices.InitializeNotifications();
+            // Start hosted services (notification startup wiring) now that the storage
+            // directories the settings load reads from exist.
+            _host.Start();
             _window = new MainWindow();
             MainWindow = _window;
             _window.Activate();
@@ -107,20 +134,45 @@ namespace ConnectOnion.WinUIClient
         /// runs before the UI exists.
         /// </summary>
         private static void HandleColdStartActivation()
+            => RouteNotificationActivation(Microsoft.Windows.AppLifecycle.AppInstance
+                .GetCurrent().GetActivatedEventArgs());
+
+        /// <summary>
+        /// A second launch — most commonly clicking a toast while the app is already
+        /// running — is redirected here by <see cref="Program"/> (the process that
+        /// received the activation exits before constructing a window). The running
+        /// instance never re-runs <see cref="OnLaunched"/>, so this is the only place a
+        /// warm-start toast click is honored: wake the window and, when the launch
+        /// carried notification arguments, navigate to its target conversation.
+        /// Fires on a non-UI thread; both calls below marshal their own UI work.
+        /// </summary>
+        internal static void OnActivationRedirected(Microsoft.Windows.AppLifecycle.AppActivationArguments args)
+        {
+            NotificationLog.Info($"OnActivationRedirected: kind={args?.Kind.ToString() ?? "null"}");
+            ActivateMainWindow();
+            RouteNotificationActivation(args);
+        }
+
+        /// <summary>Routes a notification activation (cold or warm start) to the activation
+        /// router. Non-notification activations are ignored. Never throws.</summary>
+        private static void RouteNotificationActivation(Microsoft.Windows.AppLifecycle.AppActivationArguments? activation)
         {
             try
             {
-                var activation = Microsoft.Windows.AppLifecycle.AppInstance
-                    .GetCurrent().GetActivatedEventArgs();
                 if (activation?.Kind == Microsoft.Windows.AppLifecycle.ExtendedActivationKind.AppNotification
                     && activation.Data is Microsoft.Windows.AppNotifications.AppNotificationActivatedEventArgs invoked)
                 {
+                    NotificationLog.Info("RouteNotificationActivation: AppNotification kind — handing to router");
                     AppServices.NotificationActivation.HandleColdStart(invoked.Arguments);
+                }
+                else
+                {
+                    NotificationLog.Info($"RouteNotificationActivation: not a notification (kind={activation?.Kind.ToString() ?? "null"}) — no navigation");
                 }
             }
             catch (System.Exception ex)
             {
-                NotificationLog.Warn("cold-start activation check failed", ex);
+                NotificationLog.Warn("notification activation routing failed", ex);
             }
         }
     }

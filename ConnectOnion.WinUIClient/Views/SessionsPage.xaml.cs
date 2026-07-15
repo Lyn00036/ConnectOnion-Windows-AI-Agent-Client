@@ -9,7 +9,7 @@ namespace ConnectOnion.WinUIClient.Views;
 
 public sealed partial class SessionsPage : Page
 {
-    public SessionsViewModel Vm { get; } = new();
+    public SessionsViewModel Vm { get; } = App.GetService<SessionsViewModel>();
 
     // The agent new sessions are created under (the persisted selected agent).
     private AgentConfig? _currentAgent;

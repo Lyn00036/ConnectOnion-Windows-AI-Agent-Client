@@ -1,86 +1,70 @@
+using System;
 using System.Net.Http;
 using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Services.Notifications;
 using ConnectOnion.WinUIClient.Services.Runtime;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace ConnectOnion.WinUIClient.Services;
 
 /// <summary>
-/// Process-wide singletons. WinUI has no built-in DI container in the blank
-/// template, so this simple locator hands the repositories and shared HttpClient
-/// to pages and view models. Initialized once at app startup.
+/// Typed accessor over the application's DI container (built by the Generic Host in <c>App</c>;
+/// registrations live in <see cref="ServiceRegistration"/>). It exists because WinUI instantiates
+/// windows, pages and user controls itself — through their parameterless constructors, never the
+/// container — so framework-created code-behind that needs a shared service resolves it here rather
+/// than through constructor injection (view models, which the container *does* create, take their
+/// dependencies as ctor parameters instead). Every member below returns the same singleton the
+/// container holds.
 /// </summary>
 public static class AppServices
 {
-    public static AgentRepository Agents { get; } = new();
-    public static SessionRepository Sessions { get; } = new();
-    public static PreferencesRepository Preferences { get; } = new();
-    public static ConversationRepository Conversations { get; } = new();
+    private static IServiceProvider Provider => App.Services;
+
+    public static AgentRepository Agents => Provider.GetRequiredService<AgentRepository>();
+    public static SessionRepository Sessions => Provider.GetRequiredService<SessionRepository>();
+    public static PreferencesRepository Preferences => Provider.GetRequiredService<PreferencesRepository>();
+    public static ConversationRepository Conversations => Provider.GetRequiredService<ConversationRepository>();
 
     /// <summary>Token-usage ledger. Deliberately independent of conversation/agent lifetime —
     /// deleting a chat never erases the record that its tokens were spent.</summary>
-    public static UsageRepository Usage { get; } = new();
+    public static UsageRepository Usage => Provider.GetRequiredService<UsageRepository>();
 
     /// <summary>Session-lived cache of each agent's online status.</summary>
-    public static AgentPresenceService Presence { get; } = new();
+    public static AgentPresenceService Presence => Provider.GetRequiredService<AgentPresenceService>();
 
     /// <summary>Single shared HttpClient for health probes and endpoint resolution.</summary>
-    public static HttpClient Http { get; } = new();
+    public static HttpClient Http => Provider.GetRequiredService<HttpClient>();
 
-    /// <summary>Opens external links. Settable so a test can substitute a fake — the underlying
-    /// <c>Launcher</c> is a static WinRT type and cannot be mocked directly.</summary>
-    public static IUriLauncher UriLauncher { get; set; } = new SystemUriLauncher();
+    // Opens external links. A test can substitute a fake by assigning this override — the
+    // underlying Launcher is a static WinRT type that cannot be mocked directly; when unset the
+    // container's registered IUriLauncher is used.
+    private static IUriLauncher? _uriLauncherOverride;
+    public static IUriLauncher UriLauncher
+    {
+        get => _uriLauncherOverride ?? Provider.GetRequiredService<IUriLauncher>();
+        set => _uriLauncherOverride = value;
+    }
 
     /// <summary>
     /// App-level owner of agent connections and in-flight turns. Pages/view models submit
     /// sends here and subscribe to run updates rather than holding a connection or a
     /// background task, so a reply keeps streaming (and persists) across page switches,
-    /// tray minimize, and re-opening the conversation. Depends on <see cref="Http"/> and
-    /// <see cref="Conversations"/>, so it is declared after them.
+    /// tray minimize, and re-opening the conversation.
     /// </summary>
-    public static AgentSessionManager RunManager { get; } = new(Http, Conversations, Usage);
-
-    // ---- Notification subsystem (composition root) ----
-    // Declaration order matters: the coordinator's dependencies must exist first.
+    public static AgentSessionManager RunManager => Provider.GetRequiredService<AgentSessionManager>();
 
     /// <summary>Per-window focus/visibility + which conversation each window shows.</summary>
-    public static WindowPresenceService WindowPresence { get; } = new();
+    public static WindowPresenceService WindowPresence => Provider.GetRequiredService<WindowPresenceService>();
 
     /// <summary>Persisted notification preferences (also the policy's settings source).</summary>
-    public static NotificationSettingsStore NotificationSettings { get; } = new();
-
-    private static readonly InAppNotificationService InAppChannel = new(WindowPresence);
-    private static readonly WindowsNotificationService SystemChannel = new();
+    public static NotificationSettingsStore NotificationSettings => Provider.GetRequiredService<NotificationSettingsStore>();
 
     /// <summary>The one place that decides whether/how to notify.</summary>
-    public static NotificationCoordinator Notifications { get; } = new(
-        SystemChannel, InAppChannel, WindowPresence, NotificationSettings,
-        new ThreadingScheduler(), onError: NotificationLog.Warn);
+    public static NotificationCoordinator Notifications => Provider.GetRequiredService<NotificationCoordinator>();
 
     /// <summary>Routes a clicked notification to the right window/conversation.</summary>
-    public static ConversationNavigationService Navigation { get; } = new(WindowPresence);
+    public static ConversationNavigationService Navigation => Provider.GetRequiredService<ConversationNavigationService>();
 
     /// <summary>Registers for and dispatches App Notification activations.</summary>
-    public static NotificationActivationRouter NotificationActivation { get; } = new(Navigation);
-
-    private static bool _notificationsInitialized;
-
-    /// <summary>One-time startup wiring for notifications: load settings, register for
-    /// OS activation, and cancel pending connection-lost notices when an agent recovers.</summary>
-    public static void InitializeNotifications()
-    {
-        if (_notificationsInitialized) return;
-        _notificationsInitialized = true;
-
-        _ = NotificationSettings.LoadAsync();
-        Presence.PresenceChanged += OnPresenceChangedForNotifications;
-        NotificationActivation.RegisterAndListen();
-    }
-
-    private static void OnPresenceChangedForNotifications(string agentId)
-    {
-        // Recovery cancels a pending "connection lost" (grace period) or re-arms after one.
-        if (Presence.GetPresence(agentId) == AgentPresence.Online)
-            Notifications.NotifyConnectionRestored(agentId);
-    }
+    public static NotificationActivationRouter NotificationActivation => Provider.GetRequiredService<NotificationActivationRouter>();
 }

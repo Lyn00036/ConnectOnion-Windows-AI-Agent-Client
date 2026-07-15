@@ -1,5 +1,5 @@
 using System.Text.Json.Serialization;
-using ConnectOnion.WinUIClient.Common;
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace ConnectOnion.WinUIClient.Models;
 
@@ -7,31 +7,39 @@ namespace ConnectOnion.WinUIClient.Models;
 /// A saved agent connection. Mirrors the TypeScript <c>AgentConfig</c> type.
 /// Observable so the editor form and the agent list stay in sync via two-way
 /// binding; System.Text.Json serializes the public properties and ignores the
-/// change notifications.
+/// change notifications. Uses <c>[ObservableProperty]</c> on partial properties
+/// (the WinUI-recommended form); non-null string defaults are set in the ctor
+/// because a partial-property declaration can't carry an initializer.
 /// </summary>
-public sealed class AgentConfig : ObservableObject
+public sealed partial class AgentConfig : Common.ObservableObject
 {
-    private string _id = "";
-    private string _name = "";
-    private string _address = "";
-    private string? _directUrl;
-    private string? _inviteCode;
+    public AgentConfig()
+    {
+        Id = "";
+        Name = "";
+        Address = "";
+    }
 
+    [ObservableProperty]
     [JsonPropertyName("id")]
-    public string Id { get => _id; set => SetProperty(ref _id, value); }
+    public partial string Id { get; set; }
 
+    [ObservableProperty]
     [JsonPropertyName("name")]
-    public string Name { get => _name; set => SetProperty(ref _name, value); }
+    public partial string Name { get; set; }
 
+    [ObservableProperty]
     [JsonPropertyName("address")]
-    public string Address { get => _address; set => SetProperty(ref _address, value); }
+    public partial string Address { get; set; }
 
+    [ObservableProperty]
     [JsonPropertyName("directUrl")]
-    public string? DirectUrl { get => _directUrl; set => SetProperty(ref _directUrl, value); }
+    public partial string? DirectUrl { get; set; }
 
     /// <summary>Invite code submitted automatically if the agent's trust gate asks for onboarding.</summary>
+    [ObservableProperty]
     [JsonPropertyName("inviteCode")]
-    public string? InviteCode { get => _inviteCode; set => SetProperty(ref _inviteCode, value); }
+    public partial string? InviteCode { get; set; }
 
     /// <summary>Cached /info response JSON, persisted across restarts.</summary>
     [JsonPropertyName("infoJson")]

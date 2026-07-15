@@ -1,6 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Text.Json.Serialization;
-using ConnectOnion.WinUIClient.Common;
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace ConnectOnion.WinUIClient.Models;
 
@@ -21,28 +21,32 @@ public enum EventStatus
 
 /// <summary>
 /// A single rendered chat bubble. Mirrors the TypeScript <c>ChatMessage</c> type.
+/// Observable properties use <c>[ObservableProperty]</c> partial properties; dependent
+/// computed properties are refreshed via <c>[NotifyPropertyChangedFor]</c>, and setter
+/// side-effects run in the generated <c>partial void On*Changed</c> hooks. Non-null
+/// defaults are seeded in the ctor because partial-property declarations can't carry one.
 /// </summary>
-public sealed class ChatMessage : ObservableObject
+public sealed partial class ChatMessage : Common.ObservableObject
 {
     private const int CollapseThreshold = 600;
     private const int CollapsedMaxLines = 12;
 
-    private string _onboardInviteCode = "";
-    private string _content = "";
-    private string _eventTitle = "";
-    private string? _eventDetail;
-    private bool _isOnboardingSubmitted;
-    private string _eventKind = "";
-    private EventStatus _status;
-    private string _eventEyebrow = "";
-    private string? _eventMeta;
-    private string? _eventArgs;
-    private string? _eventResult;
-    private bool _isContentExpanded = true;
     private bool? _interactiveExpandOverride;
-    private string _findQuery = "";
-    private int _activeFindMatchIndex = -1;
-    private ToolActivityViewModel? _toolActivity;
+
+    public ChatMessage()
+    {
+        Content = "";
+        EventTitle = "";
+        EventKind = "";
+        EventEyebrow = "";
+        OnboardInviteCode = "";
+        IsContentExpanded = true;
+        FindQuery = "";
+        ActiveFindMatchIndex = -1;
+        AskUserFreeText = "";
+        PlanFeedback = "";
+        Attachments.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasAttachments));
+    }
 
     [JsonPropertyName("id")]
     public long Id { get; set; }
@@ -50,121 +54,88 @@ public sealed class ChatMessage : ObservableObject
     [JsonPropertyName("role")]
     public ChatRole Role { get; set; }
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsCollapsible))]
+    [NotifyPropertyChangedFor(nameof(IsContentCollapsed))]
+    [NotifyPropertyChangedFor(nameof(CollapseButtonText))]
+    [NotifyPropertyChangedFor(nameof(RenderedMaxLines))]
     [JsonPropertyName("content")]
-    public string Content
-    {
-        get => _content;
-        set
-        {
-            if (!SetProperty(ref _content, value)) return;
-            OnPropertyChanged(nameof(IsCollapsible));
-            OnPropertyChanged(nameof(IsContentCollapsed));
-            OnPropertyChanged(nameof(CollapseButtonText));
-            OnPropertyChanged(nameof(RenderedMaxLines));
-        }
-    }
+    public partial string Content { get; set; }
 
+    [ObservableProperty]
     [JsonPropertyName("eventTitle")]
-    public string EventTitle { get => _eventTitle; set => SetProperty(ref _eventTitle, value); }
+    public partial string EventTitle { get; set; }
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasEventDetail))]
     [JsonPropertyName("eventDetail")]
-    public string? EventDetail
-    {
-        get => _eventDetail;
-        set { if (SetProperty(ref _eventDetail, value)) OnPropertyChanged(nameof(HasEventDetail)); }
-    }
+    public partial string? EventDetail { get; set; }
 
     /// <summary>Which event template renders this bubble: "activity", "tool", "ask_user", "approval", "plan_review" (empty = not an event).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsActivityEvent))]
+    [NotifyPropertyChangedFor(nameof(IsToolEvent))]
+    [NotifyPropertyChangedFor(nameof(IsToolActivityEvent))]
+    [NotifyPropertyChangedFor(nameof(IsAskUserEvent))]
+    [NotifyPropertyChangedFor(nameof(IsApprovalEvent))]
+    [NotifyPropertyChangedFor(nameof(IsPlanReviewEvent))]
+    [NotifyPropertyChangedFor(nameof(IsInteractiveEvent))]
+    [NotifyPropertyChangedFor(nameof(IsInteractiveExpanded))]
+    [NotifyPropertyChangedFor(nameof(IsInteractiveCollapsed))]
     [JsonPropertyName("eventKind")]
-    public string EventKind
-    {
-        get => _eventKind;
-        set
-        {
-            if (!SetProperty(ref _eventKind, value)) return;
-            OnPropertyChanged(nameof(IsActivityEvent));
-            OnPropertyChanged(nameof(IsToolEvent));
-            OnPropertyChanged(nameof(IsToolActivityEvent));
-            OnPropertyChanged(nameof(IsAskUserEvent));
-            OnPropertyChanged(nameof(IsApprovalEvent));
-            OnPropertyChanged(nameof(IsPlanReviewEvent));
-            OnPropertyChanged(nameof(IsInteractiveEvent));
-            OnPropertyChanged(nameof(IsInteractiveExpanded));
-            OnPropertyChanged(nameof(IsInteractiveCollapsed));
-        }
-    }
+    public partial string EventKind { get; set; }
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StatusBadge))]
+    [NotifyPropertyChangedFor(nameof(IsAwaitingResponse))]
+    [NotifyPropertyChangedFor(nameof(ShowAskUserFreeText))]
+    [NotifyPropertyChangedFor(nameof(IsInteractiveExpanded))]
+    [NotifyPropertyChangedFor(nameof(IsInteractiveCollapsed))]
+    [NotifyPropertyChangedFor(nameof(InteractiveOutcome))]
+    [NotifyPropertyChangedFor(nameof(InteractiveAccessibilityName))]
     [JsonPropertyName("eventStatus")]
-    public EventStatus Status
-    {
-        get => _status;
-        set
-        {
-            if (!SetProperty(ref _status, value)) return;
-            OnPropertyChanged(nameof(StatusBadge));
-            OnPropertyChanged(nameof(IsAwaitingResponse));
-            OnPropertyChanged(nameof(ShowAskUserFreeText));
+    public partial EventStatus Status { get; set; }
 
-            // Answering an interactive turn folds the card away again. Dropping any manual
-            // toggle the user made while it was pending is deliberate: the default for a
-            // resolved card is collapsed, and they can always re-open it.
-            _interactiveExpandOverride = null;
-            OnPropertyChanged(nameof(IsInteractiveExpanded));
-            OnPropertyChanged(nameof(IsInteractiveCollapsed));
-            OnPropertyChanged(nameof(InteractiveOutcome));
-            OnPropertyChanged(nameof(InteractiveAccessibilityName));
-        }
-    }
+    // Answering an interactive turn folds the card away again. Dropping any manual toggle the user
+    // made while it was pending is deliberate: the default for a resolved card is collapsed, and
+    // they can always re-open it. Runs before the [NotifyPropertyChangedFor] notifications above,
+    // so IsInteractiveExpanded re-reads the cleared override.
+    partial void OnStatusChanged(EventStatus value) => _interactiveExpandOverride = null;
 
     /// <summary>Small uppercase label shown before the title on tool cards.</summary>
+    [ObservableProperty]
     [JsonPropertyName("eventEyebrow")]
-    public string EventEyebrow { get => _eventEyebrow; set => SetProperty(ref _eventEyebrow, value); }
+    public partial string EventEyebrow { get; set; }
 
     /// <summary>Right-aligned meta (timing, duration, context sizes).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasEventMeta))]
+    [NotifyPropertyChangedFor(nameof(InteractiveOutcome))]
+    [NotifyPropertyChangedFor(nameof(InteractiveAccessibilityName))]
     [JsonPropertyName("eventMeta")]
-    public string? EventMeta
-    {
-        get => _eventMeta;
-        set
-        {
-            if (!SetProperty(ref _eventMeta, value)) return;
-            OnPropertyChanged(nameof(HasEventMeta));
-            OnPropertyChanged(nameof(InteractiveOutcome));
-            OnPropertyChanged(nameof(InteractiveAccessibilityName));
-        }
-    }
+    public partial string? EventMeta { get; set; }
 
     /// <summary>Pretty-printed tool arguments (collapsible).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasEventArgs))]
     [JsonPropertyName("eventArgs")]
-    public string? EventArgs
-    {
-        get => _eventArgs;
-        set { if (SetProperty(ref _eventArgs, value)) OnPropertyChanged(nameof(HasEventArgs)); }
-    }
+    public partial string? EventArgs { get; set; }
 
     /// <summary>Tool result / blocked command (collapsible).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasEventResult))]
     [JsonPropertyName("eventResult")]
-    public string? EventResult
-    {
-        get => _eventResult;
-        set { if (SetProperty(ref _eventResult, value)) OnPropertyChanged(nameof(HasEventResult)); }
-    }
+    public partial string? EventResult { get; set; }
 
     /// <summary>Server-side correlation id, used to merge running/finished events. Transient.</summary>
     [JsonIgnore]
     public string? EventKey { get; set; }
 
     /// <summary>One compact, durable timeline for every tool call in an assistant turn.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsToolActivityEvent))]
     [JsonIgnore]
-    public ToolActivityViewModel? ToolActivity
-    {
-        get => _toolActivity;
-        set
-        {
-            if (!SetProperty(ref _toolActivity, value)) return;
-            OnPropertyChanged(nameof(IsToolActivityEvent));
-        }
-    }
+    public partial ToolActivityViewModel? ToolActivity { get; set; }
 
     [JsonPropertyName("agentName")]
     public string? AgentName { get; set; }
@@ -172,12 +143,9 @@ public sealed class ChatMessage : ObservableObject
     [JsonPropertyName("isOnboarding")]
     public bool IsOnboarding { get; set; }
 
+    [ObservableProperty]
     [JsonIgnore]
-    public string OnboardInviteCode
-    {
-        get => _onboardInviteCode;
-        set => SetProperty(ref _onboardInviteCode, value);
-    }
+    public partial string OnboardInviteCode { get; set; }
 
     [JsonIgnore]
     public bool IsOnboardingInputEnabled => IsOnboarding && !IsOnboardingSubmitted;
@@ -195,7 +163,7 @@ public sealed class ChatMessage : ObservableObject
     public bool IsCollapsible => IsAgent && !string.IsNullOrWhiteSpace(Content) && Content.Length > CollapseThreshold;
 
     [JsonIgnore]
-    public bool IsContentCollapsed => IsCollapsible && !_isContentExpanded;
+    public bool IsContentCollapsed => IsCollapsible && !IsContentExpanded;
 
     [JsonIgnore]
     public string CollapseButtonText => IsContentCollapsed ? "Expand" : "Collapse";
@@ -296,43 +264,25 @@ public sealed class ChatMessage : ObservableObject
         _ => "done",
     };
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsOnboardingInputEnabled))]
     [JsonIgnore]
-    public bool IsOnboardingSubmitted
-    {
-        get => _isOnboardingSubmitted;
-        set
-        {
-            if (!SetProperty(ref _isOnboardingSubmitted, value)) return;
-            OnPropertyChanged(nameof(IsOnboardingInputEnabled));
-        }
-    }
+    public partial bool IsOnboardingSubmitted { get; set; }
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsContentCollapsed))]
+    [NotifyPropertyChangedFor(nameof(CollapseButtonText))]
+    [NotifyPropertyChangedFor(nameof(RenderedMaxLines))]
     [JsonIgnore]
-    public bool IsContentExpanded
-    {
-        get => _isContentExpanded;
-        set
-        {
-            if (!SetProperty(ref _isContentExpanded, value)) return;
-            OnPropertyChanged(nameof(IsContentCollapsed));
-            OnPropertyChanged(nameof(CollapseButtonText));
-            OnPropertyChanged(nameof(RenderedMaxLines));
-        }
-    }
+    public partial bool IsContentExpanded { get; set; }
 
+    [ObservableProperty]
     [JsonIgnore]
-    public string FindQuery
-    {
-        get => _findQuery;
-        set => SetProperty(ref _findQuery, value);
-    }
+    public partial string FindQuery { get; set; }
 
+    [ObservableProperty]
     [JsonIgnore]
-    public int ActiveFindMatchIndex
-    {
-        get => _activeFindMatchIndex;
-        set => SetProperty(ref _activeFindMatchIndex, value);
-    }
+    public partial int ActiveFindMatchIndex { get; set; }
 
     /// <summary>
     /// Attachments sent by the user on this message, or images the agent produced
@@ -368,18 +318,18 @@ public sealed class ChatMessage : ObservableObject
     [JsonIgnore]
     public bool AskUserMultiSelect { get; set; }
 
-    private string? _selectedAskUserOption;
+    [ObservableProperty]
     [JsonIgnore]
-    public string? SelectedAskUserOption { get => _selectedAskUserOption; set => SetProperty(ref _selectedAskUserOption, value); }
+    public partial string? SelectedAskUserOption { get; set; }
 
-    private string _askUserFreeText = "";
+    [ObservableProperty]
     [JsonIgnore]
-    public string AskUserFreeText { get => _askUserFreeText; set => SetProperty(ref _askUserFreeText, value); }
+    public partial string AskUserFreeText { get; set; }
 
-    private string _planFeedback = "";
     /// <summary>Optional feedback typed into a plan_review turn before approving or requesting changes.</summary>
+    [ObservableProperty]
     [JsonIgnore]
-    public string PlanFeedback { get => _planFeedback; set => SetProperty(ref _planFeedback, value); }
+    public partial string PlanFeedback { get; set; }
 
     [JsonIgnore]
     public bool HasAskUserFields => AskUserFields.Count > 0;
@@ -396,9 +346,4 @@ public sealed class ChatMessage : ObservableObject
     /// options/fields aren't persisted, so <see cref="HasAskUserFields"/> reads false).</summary>
     [JsonIgnore]
     public bool ShowAskUserFreeText => IsAwaitingResponse && !HasAskUserFields;
-
-    public ChatMessage()
-    {
-        Attachments.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasAttachments));
-    }
 }

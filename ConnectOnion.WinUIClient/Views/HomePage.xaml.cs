@@ -1,6 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
+using CommunityToolkit.Mvvm.ComponentModel;
 using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
@@ -9,19 +10,15 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace ConnectOnion.WinUIClient.Views;
 
-public sealed class HomeAgentItem : ObservableObject
+public sealed partial class HomeAgentItem : Common.ObservableObject
 {
-    private bool _isOnline;
-
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
     public string Initial { get; set; } = "?";
     public string ShortAddress { get; set; } = "";
-    public bool IsOnline
-    {
-        get => _isOnline;
-        set => SetProperty(ref _isOnline, value);
-    }
+
+    [ObservableProperty]
+    public partial bool IsOnline { get; set; }
 }
 
 public sealed partial class HomePage : Page

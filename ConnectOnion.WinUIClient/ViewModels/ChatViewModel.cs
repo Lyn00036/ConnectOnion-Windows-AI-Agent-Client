@@ -2,15 +2,20 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Net.Http;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using ConnectOnion.Protocol;
 using ConnectOnion.Protocol.Runtime;
 using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
+using ConnectOnion.WinUIClient.Services.Notifications;
 using ConnectOnion.WinUIClient.Services.Runtime;
 using ConnectOnion.WinUIClient.Data;
+using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
 
 namespace ConnectOnion.WinUIClient.ViewModels;
@@ -53,21 +58,53 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
 
     public ObservableCollection<ChatMessage> Messages { get; } = new();
 
-    public ChatViewModel()
-    {
-        RetryCommand = new RelayCommand(Retry, () => CanRetry);
-    }
+    private readonly PreferencesRepository _preferences;
+    private readonly AgentRepository _agents;
+    private readonly SessionRepository _sessions;
+    private readonly ConversationRepository _conversations;
+    private readonly AgentSessionManager _runManager;
+    private readonly NotificationCoordinator _notifications;
+    private readonly HttpClient _http;
+    private readonly ILogger<ChatViewModel> _logger;
 
-    /// <summary>Re-runs the last failed turn. Bound to the failure bar's Retry button.</summary>
-    public RelayCommand RetryCommand { get; }
+    public ChatViewModel(
+        AgentPresenceService presence,
+        PreferencesRepository preferences,
+        AgentRepository agents,
+        SessionRepository sessions,
+        ConversationRepository conversations,
+        AgentSessionManager runManager,
+        NotificationCoordinator notifications,
+        HttpClient http,
+        ILogger<ChatViewModel> logger)
+        : base(presence)
+    {
+        _preferences = preferences;
+        _agents = agents;
+        _sessions = sessions;
+        _conversations = conversations;
+        _runManager = runManager;
+        _notifications = notifications;
+        _http = http;
+        _logger = logger;
+
+        // Partial-property [ObservableProperty] declarations can't carry initializers, so the
+        // non-default seeds live here.
+        HeaderText = "Chat";
+        StatusText = "";
+        MessageFontSize = 14;
+        EnterToSend = true;
+        CurrentMode = AgentModes.Safe;
+    }
 
     protected override AgentConfig? PresenceAgent => _agent;
 
-    /// <summary>Detaches this page's run subscription and presence hook. Never cancels the
-    /// run or closes the shared connection — the turn keeps going and persists on its own.</summary>
-    public void Cleanup()
+    /// <summary>Drops this page's live run subscription and per-run projection state, leaving the
+    /// presence hook attached. Called when the cached, reused page is navigated away from: the
+    /// turn keeps running and persists on its own, and the page re-subscribes via
+    /// <see cref="LoadAsync"/> on return. Never cancels the run or closes the shared connection.</summary>
+    public void DetachRun()
     {
-        DetachPresence();
         _runSubscription?.Dispose();
         _runSubscription = null;
         _liveProjection = null;
@@ -76,61 +113,41 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         _historyLoadedRunId = null;
     }
 
-    private bool _hasAgent;
-    public bool HasAgent
+    /// <summary>Full teardown: the run subscription plus the shared presence hook. For genuine
+    /// disposal of the view model (the page instance is actually being discarded, not cached).</summary>
+    public void Cleanup()
     {
-        get => _hasAgent;
-        private set
-        {
-            if (!SetProperty(ref _hasAgent, value)) return;
-            OnPropertyChanged(nameof(CanSend));
-            OnPropertyChanged(nameof(CanReconnect));
-        }
+        DetachPresence();
+        DetachRun();
     }
 
-    private bool _isProcessing;
-    public bool IsProcessing
-    {
-        get => _isProcessing;
-        private set
-        {
-            if (!SetProperty(ref _isProcessing, value)) return;
-            OnPropertyChanged(nameof(CanSend));
-            OnPropertyChanged(nameof(CanReconnect));
-        }
-    }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanSend))]
+    [NotifyPropertyChangedFor(nameof(CanReconnect))]
+    public partial bool HasAgent { get; private set; }
 
-    private bool _isConnecting;
-    public bool IsConnecting
-    {
-        get => _isConnecting;
-        private set
-        {
-            if (!SetProperty(ref _isConnecting, value)) return;
-            OnPropertyChanged(nameof(CanSend));
-            OnPropertyChanged(nameof(CanReconnect));
-        }
-    }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanSend))]
+    [NotifyPropertyChangedFor(nameof(CanReconnect))]
+    public partial bool IsProcessing { get; private set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanSend))]
+    [NotifyPropertyChangedFor(nameof(CanReconnect))]
+    public partial bool IsConnecting { get; private set; }
 
     // Sending is gated on the agent being confirmed online — matching the "green dot means
     // you can chat" model — not on holding a live socket (the transport connects lazily).
     public bool CanSend => HasAgent && _session is not null && IsOnline && !IsProcessing && !IsConnecting;
     public bool CanReconnect => HasAgent && !IsProcessing && !IsConnecting && Presence != AgentPresence.Checking;
 
-    private bool _canRetry;
     /// <summary>True when the conversation's last run failed and is still retryable (only within
     /// the same app session — a restart clears the registry's retryable state). Drives the
     /// failure bar and <see cref="RetryCommand"/>.</summary>
-    public bool CanRetry
-    {
-        get => _canRetry;
-        private set
-        {
-            if (!SetProperty(ref _canRetry, value)) return;
-            RetryCommand.RaiseCanExecuteChanged();
-            OnPropertyChanged(nameof(ShowRetryBar));
-        }
-    }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowRetryBar))]
+    [NotifyCanExecuteChangedFor(nameof(RetryCommand))]
+    public partial bool CanRetry { get; private set; }
 
     /// <summary>The failure/Retry bar is kept mutually exclusive with the offline bar so the two
     /// never stack in the same bottom-center slot; when the agent is offline, Recheck is the
@@ -144,68 +161,43 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     public string? SessionId => _session?.Id;
     public string? AgentId => _agent?.Id;
 
-    private AgentAcceptedInputs? _acceptedInputs;
-    public AgentAcceptedInputs? AcceptedInputs
-    {
-        get => _acceptedInputs;
-        private set => SetProperty(ref _acceptedInputs, value);
-    }
+    [ObservableProperty]
+    public partial AgentAcceptedInputs? AcceptedInputs { get; private set; }
 
-    private string _headerText = "Chat";
-    public string HeaderText { get => _headerText; private set => SetProperty(ref _headerText, value); }
+    [ObservableProperty]
+    public partial string HeaderText { get; private set; }
 
-    private string _statusText = "";
-    public string StatusText
-    {
-        get => _statusText;
-        private set
-        {
-            if (!SetProperty(ref _statusText, value)) return;
-            OnPropertyChanged(nameof(HasStatusText));
-        }
-    }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasStatusText))]
+    public partial string StatusText { get; private set; }
 
     public bool HasStatusText => !string.IsNullOrWhiteSpace(StatusText);
 
-    private double _messageFontSize = 14;
-    public double MessageFontSize { get => _messageFontSize; private set => SetProperty(ref _messageFontSize, value); }
+    [ObservableProperty]
+    public partial double MessageFontSize { get; private set; }
 
-    private bool _enterToSend = true;
-    public bool EnterToSend { get => _enterToSend; private set => SetProperty(ref _enterToSend, value); }
+    [ObservableProperty]
+    public partial bool EnterToSend { get; private set; }
 
     // ---- Approval mode ----
 
-    private string _currentMode = AgentModes.Safe;
     /// <summary>The conversation's approval mode. Client-owned state (see <see cref="SessionSummary.Mode"/>):
     /// re-sent with every turn, and overwritten if the agent reports a different one — it can put
     /// itself into plan mode without being asked.</summary>
-    public string CurrentMode
-    {
-        get => _currentMode;
-        private set
-        {
-            if (!SetProperty(ref _currentMode, value)) return;
-            OnPropertyChanged(nameof(CurrentModeLabel));
-        }
-    }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CurrentModeLabel))]
+    public partial string CurrentMode { get; private set; }
 
     public string CurrentModeLabel => AgentModes.DisplayName(CurrentMode);
 
     // ---- Stop ----
 
-    private bool _isStopping;
     /// <summary>A stop was requested but the agent hasn't wound down yet. The turn is still
     /// running — this only means the ask is in flight, and it is what turns the Stop button into
     /// Force stop, since a cooperative stop can simply be ignored by the model.</summary>
-    public bool IsStopping
-    {
-        get => _isStopping;
-        private set
-        {
-            if (!SetProperty(ref _isStopping, value)) return;
-            OnPropertyChanged(nameof(StopButtonTooltip));
-        }
-    }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StopButtonTooltip))]
+    public partial bool IsStopping { get; private set; }
 
     public string StopButtonTooltip => IsStopping
         ? "Force stop (abandons the turn locally; the agent may keep running)"
@@ -240,7 +232,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         // (no agent, no session) can't leave the previous conversation's bubbles on screen.
         Messages.Clear();
 
-        var prefs = await AppServices.Preferences.LoadAsync();
+        var prefs = await _preferences.LoadAsync();
         EnterToSend = prefs.EnterToSend;
         MessageFontSize = prefs.MessageFontSize switch
         {
@@ -249,7 +241,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
             _ => 14,
         };
 
-        var agents = await AppServices.Agents.LoadAsync();
+        var agents = await _agents.LoadAsync();
         if (generation != _loadGeneration) return;
 
         _agent = agents.Agents.FirstOrDefault(a => a.Id == agents.SelectedAgentId);
@@ -284,7 +276,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         // Attach to the app-level run for this conversation. The manager fires the current
         // snapshot immediately, so an in-flight turn is resumed (streaming continues) the
         // moment the page opens — the core "switch away and come back" fix.
-        _runSubscription = AppServices.RunManager.Subscribe(
+        _runSubscription = _runManager.Subscribe(
             _session.Id, snapshot => _dispatcher.TryEnqueue(() => ApplyRunSnapshot(snapshot)));
 
         _ = ProbePresenceOnOpenAsync();
@@ -317,7 +309,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     /// </summary>
     private async Task<SessionSummary?> ResolveSessionAsync(string agentId)
     {
-        _sessionsState = await AppServices.Sessions.LoadAsync();
+        _sessionsState = await _sessions.LoadAsync();
         var session = SessionSelection.FindExisting(
             _sessionsState.Sessions, _sessionsState.ActiveSessionId, agentId);
         if (session is null || session.Id == _sessionsState.ActiveSessionId)
@@ -326,7 +318,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         }
 
         _sessionsState.ActiveSessionId = session.Id;
-        await AppServices.Sessions.SaveAsync(_sessionsState);
+        await _sessions.SaveAsync(_sessionsState);
         return session;
     }
 
@@ -337,7 +329,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         // A conversation with an active/just-finished run must load from the DB (the manager
         // persists the user message and, before Completed, the whole reply) so the replayed
         // run events land on top of the authoritative history — never a stale cache.
-        var run = AppServices.RunManager.GetActiveRun(_session.Id);
+        var run = _runManager.GetActiveRun(_session.Id);
         var hasRun = run is not null;
 
         if (!hasRun && ConversationCache.Get(_session.Id, _agent.Id) is { } cached)
@@ -350,7 +342,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         }
 
         var messages = ToolActivityMigration.UpgradeLegacyToolMessages(
-            await AppServices.Conversations.LoadMessagesAsync(_session.Id));
+            await _conversations.LoadMessagesAsync(_session.Id));
         // A newer switch already owns the list — dropping this history is the whole point.
         if (generation != _loadGeneration) return;
 
@@ -369,9 +361,9 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         // while the snapshot still says Running. Remember that fact and skip its replay below.
         // Re-read the snapshot because persistence may have completed while LoadMessagesAsync
         // was in flight.
-        run = AppServices.RunManager.GetActiveRun(_session.Id);
+        run = _runManager.GetActiveRun(_session.Id);
         _historyLoadedRunId = run is { IsTerminal: false }
-            && AppServices.RunManager.IsRunHistoryPersisted(run.RunId)
+            && _runManager.IsRunHistoryPersisted(run.RunId)
                 ? run.RunId
                 : null;
 
@@ -420,7 +412,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
             // the connection, and starts the run; the reply arrives back through our
             // subscription (ApplyRunSnapshot), not by awaiting here. The mode goes with every
             // send because the host does not keep ours between turns.
-            await AppServices.RunManager.SendMessageAsync(_agent, _session.Id, text, attachments, CurrentMode);
+            await _runManager.SendMessageAsync(_agent, _session.Id, text, attachments, CurrentMode);
         }
         catch (InvalidOperationException)
         {
@@ -428,6 +420,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Send failed for session {SessionId}", _session?.Id);
             IsProcessing = false;
             StatusText = $"Send failed: {UserFacingError(ex)}";
         }
@@ -442,9 +435,9 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     /// </summary>
     private async Task WarnIfPreviousTurnStillRunningAsync()
     {
-        if (_session is null || !AppServices.RunManager.MayHaveOrphanedRun(_session.Id)) return;
+        if (_session is null || !_runManager.MayHaveOrphanedRun(_session.Id)) return;
 
-        var status = await AppServices.RunManager.GetServerSessionStatusAsync(_session.Id);
+        var status = await _runManager.GetServerSessionStatusAsync(_session.Id);
         if (status != SessionStatuses.Running) return;
 
         Messages.Add(new ChatMessage
@@ -472,13 +465,13 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         if (IsStopping)
         {
             StatusText = "Force-stopping...";
-            await AppServices.RunManager.ForceStopAsync(_session.Id);
+            await _runManager.ForceStopAsync(_session.Id);
             return;
         }
 
         IsStopping = true;
         StatusText = "Stopping...";
-        var outcome = await AppServices.RunManager.RequestStopAsync(_session.Id);
+        var outcome = await _runManager.RequestStopAsync(_session.Id);
 
         switch (outcome)
         {
@@ -505,8 +498,8 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
 
         CurrentMode = mode;
         _session.Mode = mode;
-        await AppServices.RunManager.SetModeAsync(_session.Id, mode);
-        await AppServices.Sessions.UpdateSessionAsync(_session);
+        await _runManager.SetModeAsync(_session.Id, mode);
+        await _sessions.UpdateSessionAsync(_session);
     }
 
     /// <summary>Applies a run snapshot to this page's message list on the UI thread. Replays
@@ -592,7 +585,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
             if (_agent is not null)
             {
                 _ = PresenceService.RefreshAsync(_agent);
-                AppServices.Notifications.NotifyConnectionLost(_agent.Id, _agent.Name);
+                _notifications.NotifyConnectionLost(_agent.Id, _agent.Name);
             }
         }
         else if (snapshot.Status == ConversationRunStatus.Cancelled)
@@ -631,7 +624,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
 
         CurrentMode = mode!;
         _session.Mode = mode!;
-        _ = AppServices.Sessions.UpdateSessionAsync(_session);
+        _ = _sessions.UpdateSessionAsync(_session);
     }
 
     private static string StatusTextFor(ConversationRunSnapshot snapshot) => snapshot.Status switch
@@ -669,7 +662,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         _sessionsState.Sessions.Add(_session);
         _sessionsState.ActiveSessionId = _session.Id;
         CurrentMode = _session.Mode;
-        await AppServices.Sessions.SaveAsync(_sessionsState);
+        await _sessions.SaveAsync(_sessionsState);
 
         Messages.Clear();
         ResetIdCounter();
@@ -677,7 +670,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         HeaderText = $"{_agent.Name} - {_session.Title}";
         RaiseHeaderProperties();
 
-        _runSubscription = AppServices.RunManager.Subscribe(
+        _runSubscription = _runManager.Subscribe(
             _session.Id, snapshot => _dispatcher.TryEnqueue(() => ApplyRunSnapshot(snapshot)));
     }
 
@@ -686,7 +679,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     {
         if (_agent is null || _session is null) return;
 
-        var connection = AppServices.RunManager.Connections.GetOrCreate(_session.Id, _agent);
+        var connection = _runManager.Connections.GetOrCreate(_session.Id, _agent);
 
         IsConnecting = true;
         StatusText = "Reconnecting...";
@@ -708,14 +701,15 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     /// <summary>Re-runs the last failed turn: the app-level manager reuses the original user
     /// message but mints a fresh run id. The page's existing run subscription streams the new
     /// run's events back through <see cref="ApplyRunSnapshot"/>, so no extra wiring is needed
-    /// here. Bound to <see cref="RetryCommand"/>.</summary>
+    /// here. Bound to the generated <see cref="RetryCommand"/>.</summary>
+    [RelayCommand(CanExecute = nameof(CanRetry))]
     public void Retry()
     {
         if (_agent is null || _session is null || IsProcessing || !CanRetry) return;
 
         // Ask the manager first: if the run is no longer retryable (the registry cleared it, or
         // a restart lost it), keep the error bubble as history rather than dropping it silently.
-        if (AppServices.RunManager.RetryRun(_agent, _session.Id) is null)
+        if (_runManager.RetryRun(_agent, _session.Id) is null)
         {
             CanRetry = false;
             return;
@@ -776,7 +770,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         HeaderText = $"{_agent!.Name} - {_session.Title}";
         RaiseHeaderProperties();
         // Only this one row changed — no need to reconcile the whole session index on every send.
-        _ = AppServices.Sessions.UpdateSessionAsync(_session);
+        _ = _sessions.UpdateSessionAsync(_session);
     }
 
     private void RaiseHeaderProperties()
@@ -809,13 +803,13 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     private async Task PersistSessionMetadataAsync()
     {
         if (_agent is null || _session is null) return;
-        var connection = AppServices.RunManager.Connections.Get(_session.Id);
+        var connection = _runManager.Connections.Get(_session.Id);
         if (connection is null) return;
 
         _session.RemoteSessionId = connection.SessionId;
         _session.LastProcessedEventId = connection.LastProcessedEventId;
         _session.UpdatedAt = DateTime.UtcNow.ToString("o");
-        await AppServices.Sessions.UpdateSessionAsync(_session);
+        await _sessions.UpdateSessionAsync(_session);
     }
 
     // ---- IChatProjectionTarget (live rendering into this page's list) ----

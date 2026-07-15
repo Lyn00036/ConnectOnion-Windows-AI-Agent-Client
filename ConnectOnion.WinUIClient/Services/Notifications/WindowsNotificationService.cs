@@ -29,6 +29,7 @@ public sealed class WindowsNotificationService : INotificationChannel
 
             if (!playSound) builder.MuteAudio();
 
+            NotificationLog.Info($"Show system toast: action={ActionFor(request.Type)} agentId={request.AgentId} conversationId={request.ConversationId}");
             AppNotificationManager.Default.Show(builder.BuildNotification());
         }
         catch (Exception ex)

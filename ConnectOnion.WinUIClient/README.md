@@ -10,7 +10,7 @@ The client connects to agents via **Direct URL** or **relay-based address resolu
 | --- | --- |
 | UI Framework | WinUI 3 (Windows App SDK) |
 | Language | C# 14, .NET 10 |
-| UI Pattern | MVVM (no framework — lightweight `ObservableObject` + `RelayCommand` base classes) |
+| UI Pattern | MVVM via CommunityToolkit.Mvvm source generators (`[ObservableProperty]`/`[RelayCommand]`); `Common/ObservableObject` bridges the toolkit base |
 | Local Storage | SQLite (`Microsoft.Data.Sqlite`) |
 | HTTP | `HttpClient` |
 | WebSocket | `ClientWebSocket` (via `ConnectOnion.Protocol`) |
@@ -84,8 +84,6 @@ ConnectOnion.WinUIClient/
 │   ├── ToolActivity                     Per-turn tool execution timeline aggregate
 │   ├── SessionSummary                   Indexed conversation metadata
 │   ├── PreferencesSnapshot              Theme, font size, sidebar, shortcuts
-│   ├── AgentHealthResponse              /health endpoint shape
-│   ├── OnboardSubmission                Onboarding invite code payload
 │   ├── ShellAgentItem / ShellSessionItem Sidebar list items
 │   └── Notifications/                   Notification request / decision / settings models
 │
@@ -122,8 +120,7 @@ ConnectOnion.WinUIClient/
 │   └── AddAgentForm                     Inline agent creation form
 │
 ├── Common/                             Shared utilities
-│   ├── ObservableObject                 INotifyPropertyChanged base
-│   ├── RelayCommand                     ICommand implementation
+│   ├── ObservableObject                 Bridge over CommunityToolkit.Mvvm's ObservableObject
 │   ├── ChatMessageTemplateSelector      One DataTemplate per bubble kind
 │   ├── LocalPathToImageSourceConverter  Cached path → size-capped BitmapImage
 │   ├── BoolToVisibilityConverter        XAML value converters

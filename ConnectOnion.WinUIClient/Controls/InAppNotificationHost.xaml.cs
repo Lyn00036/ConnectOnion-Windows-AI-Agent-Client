@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using CommunityToolkit.WinUI.Animations;
 using ConnectOnion.WinUIClient.Models.Notifications;
 using ConnectOnion.WinUIClient.Services;
 using FluentIcons.Common;
@@ -22,10 +24,15 @@ public sealed partial class InAppNotificationHost : UserControl
     private static readonly TimeSpan ApprovalLifetime = TimeSpan.FromSeconds(12);
     private const int MaxVisible = 4;
 
+    // Cards mid-exit-animation, so a second dismiss (timer + click) doesn't double-animate/remove.
+    private readonly HashSet<Border> _dismissing = new();
+
     public InAppNotificationHost() => InitializeComponent();
 
     public void ShowToast(InAppToastModel toast)
     {
+        Services.Notifications.NotificationLog.Info($"InAppNotificationHost.ShowToast: rendering '{toast.Title}'");
+
         // Cap the stack so a burst can't fill the window.
         while (ToastStack.Children.Count >= MaxVisible)
             ToastStack.Children.RemoveAt(0);
@@ -43,6 +50,14 @@ public sealed partial class InAppNotificationHost : UserControl
             BorderBrush = Brush("BorderDefaultBrush"),
             BorderThickness = new Thickness(1),
         };
+
+        // Entrance: fade + slide down from above as the card enters the stack. Implicit show
+        // animations play automatically when the element is added to the visual tree.
+        Implicit.SetShowAnimations(card, new ImplicitAnimationSet
+        {
+            new OpacityAnimation { From = 0, To = 1, Duration = TimeSpan.FromMilliseconds(220) },
+            new TranslationAnimation { From = "0,-16,0", To = "0,0,0", Duration = TimeSpan.FromMilliseconds(220) },
+        });
 
         var grid = new Grid { ColumnSpacing = 10 };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -127,10 +142,20 @@ public sealed partial class InAppNotificationHost : UserControl
         return card;
     }
 
-    private void Remove(Border card)
+    // Exit: fade + slide right, then drop the card once the animation completes. The _dismissing
+    // guard makes a second trigger (auto-dismiss timer racing the close button/tap) a no-op.
+    private async void Remove(Border card)
     {
-        if (ToastStack.Children.Contains(card))
-            ToastStack.Children.Remove(card);
+        if (!ToastStack.Children.Contains(card) || !_dismissing.Add(card)) return;
+
+        card.IsHitTestVisible = false;
+        await AnimationBuilder.Create()
+            .Opacity(to: 0, duration: TimeSpan.FromMilliseconds(160))
+            .Translation(Axis.X, to: 16, duration: TimeSpan.FromMilliseconds(160))
+            .StartAsync(card);
+
+        ToastStack.Children.Remove(card);
+        _dismissing.Remove(card);
     }
 
     private static Icon IconFor(NotificationType type) => type switch

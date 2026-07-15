@@ -1,4 +1,5 @@
 using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.ComponentModel;
 using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
@@ -15,10 +16,10 @@ namespace ConnectOnion.WinUIClient.ViewModels;
 /// <see cref="OnPresenceRaised"/>. They must call <see cref="DetachPresence"/>
 /// from their own cleanup so the shared presence event isn't leaked.
 /// </summary>
-public abstract class PresenceAwareViewModel : ObservableObject
+public abstract partial class PresenceAwareViewModel : Common.ObservableObject
 {
     protected readonly DispatcherQueue Dispatcher = DispatcherQueue.GetForCurrentThread();
-    protected readonly AgentPresenceService PresenceService = AppServices.Presence;
+    protected readonly AgentPresenceService PresenceService;
 
     // True only while a user-initiated recheck is running, so the offline bar
     // stays visible (spinning) across the Offline→Checking→result transition
@@ -26,15 +27,16 @@ public abstract class PresenceAwareViewModel : ObservableObject
     // set by background probes, so an online agent never flashes the "offline"
     // bar while its first check runs.
     private bool _isManualRecheck;
-    private string _recheckFailedMessage = "";
 
     // True from construction until the page's own open-time probe resolves, so
     // opening a page never flashes the offline/reconnect bar off a stale cached
     // "offline" before a fresh probe has actually confirmed the current state.
     private bool _initialProbePending = true;
 
-    protected PresenceAwareViewModel()
+    protected PresenceAwareViewModel(AgentPresenceService presence)
     {
+        PresenceService = presence;
+        RecheckFailedMessage = "";
         PresenceService.PresenceChanged += OnPresenceChanged;
     }
 
@@ -69,11 +71,8 @@ public abstract class PresenceAwareViewModel : ObservableObject
     };
 
     /// <summary>Attention line shown in the offline bar after a manual recheck that resolved to still-offline.</summary>
-    public string RecheckFailedMessage
-    {
-        get => _recheckFailedMessage;
-        private set => SetProperty(ref _recheckFailedMessage, value);
-    }
+    [ObservableProperty]
+    public partial string RecheckFailedMessage { get; private set; }
 
     /// <summary>Re-probes the agent's online status (bound to the offline bar's
     /// Recheck button). Awaits the probe so the bar can spin while it runs and
