@@ -18,11 +18,25 @@ public sealed class WireMessage
 
     private WireMessage(JsonElement root) => _root = root;
 
+    /// <summary>
+    /// Parses a frame. The source <see cref="JsonDocument"/> is disposed before returning — it
+    /// rents its backing buffers from <c>ArrayPool</c>, and a document that is never disposed
+    /// never gives them back, so the pool re-allocates for the next frame. Frames carrying an
+    /// LLM call's whole message history (or a base64 image) are big enough to land on the large
+    /// object heap, which made that a visible, ratcheting cost over a long session. The clone is
+    /// what survives: it owns its own bytes, independent of the pooled document.
+    /// </summary>
     public static WireMessage Parse(string json)
     {
-        var doc = JsonDocument.Parse(json, JsonOptions);
+        using var doc = JsonDocument.Parse(json, JsonOptions);
         return new WireMessage(doc.RootElement.Clone());
     }
+
+    /// <summary>Wraps an element the caller has already parsed, so a reader that holds a live
+    /// <see cref="JsonDocument"/> can reuse the typed accessors without paying for a second parse
+    /// (and a second copy) of the same payload. The element must stay valid for the wrapper's
+    /// lifetime — i.e. the caller's document must outlive it.</summary>
+    public static WireMessage Wrap(JsonElement root) => new(root);
 
     public string Type => GetString("type") ?? "";
 

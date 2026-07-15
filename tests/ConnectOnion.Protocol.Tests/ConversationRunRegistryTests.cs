@@ -387,6 +387,71 @@ public sealed class ConversationRunRegistryTests
         Assert.Empty(registry.GetActiveRuns());
     }
 
+    // ---- Memory: what a finished turn is allowed to leave behind ----
+
+    [Fact]
+    public async Task TerminalRun_IsPublishedWithItsEvents_ButRetainsNoneOfThem()
+    {
+        var persistence = new FakePersistence();
+        var registry = new ConversationRunRegistry(persistence);
+
+        var received = new List<ConversationRunSnapshot>();
+        using var _ = registry.Subscribe("conv", s => received.Add(s));
+
+        registry.StartRun(NewRequest(), new FakeExecutor((_, sink) =>
+        {
+            sink.SetRunning();
+            sink.Publish(Event("llm_call"));
+            sink.Publish(Event("tool_call"));
+            return Task.FromResult("done");
+        }));
+
+        await WaitUntilAsync(() => received.Any(s => s.IsTerminal));
+
+        // The live page still gets the whole tail to project on the terminal snapshot...
+        var terminal = received.Last(s => s.IsTerminal);
+        Assert.Equal(2, terminal.Events.Count);
+
+        // ...but the run's raw stream (every LLM call's message history, every base64 image) is
+        // not what the registry keeps around afterwards. It has been projected and persisted;
+        // holding it would pin a turn's worth of JSON per conversation for the process's life.
+        var retained = registry.GetActiveRun("conv");
+        Assert.NotNull(retained);
+        Assert.Equal(ConversationRunStatus.Completed, retained!.Status);
+        Assert.Empty(retained.Events);
+    }
+
+    [Fact]
+    public async Task AppendingEvents_DoesNotMutateSnapshotsAlreadyHandedOut()
+    {
+        var persistence = new FakePersistence();
+        var registry = new ConversationRunRegistry(persistence);
+        var release = new TaskCompletionSource();
+
+        // The second batch takes the append-only buffer past its capacity and grows it, which is
+        // exactly where a snapshot that shares the backing array would go wrong.
+        registry.StartRun(NewRequest(), new FakeExecutor(async (_, sink) =>
+        {
+            sink.SetRunning();
+            for (var i = 0; i < 8; i++) sink.Publish(Event($"early{i}"));
+            await release.Task;
+            for (var i = 0; i < 24; i++) sink.Publish(Event($"late{i}"));
+            return "done";
+        }));
+
+        await WaitUntilAsync(() => registry.GetActiveRun("conv")?.Events.Count == 8);
+        var early = registry.GetActiveRun("conv")!;
+        var earlyCount = early.Events.Count;
+        var earlyLast = early.Events[^1].Type;
+
+        release.SetResult();
+        await WaitUntilAsync(() => registry.GetActiveRun("conv")!.IsTerminal);
+
+        // A snapshot is a view of the buffer as it stood, not a window onto its future.
+        Assert.Equal(earlyCount, early.Events.Count);
+        Assert.Equal(earlyLast, early.Events[^1].Type);
+    }
+
     // ---- fakes ----
 
     private sealed class FakeExecutor : ITurnExecutor
