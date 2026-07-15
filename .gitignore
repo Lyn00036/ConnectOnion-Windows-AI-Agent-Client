@@ -42,8 +42,8 @@ backend/app/__pycache__/
 
 # ConnectOnion agent local state and secrets
 .co/
-.agents/skills/winui-app/
-.claude/skills/winui-app/
+.agents/
+.claude/
 agent/**/.co/
 agent/**/.browser_agent_profile/
 agent/**/screenshots/

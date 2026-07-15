@@ -306,7 +306,7 @@ Note the test steps pass no `-p:Platform`. The solution build maps the conforman
 
 | ID | Title | Layer | Pri | Preconditions / Data | Steps | Expected | Auto | Framework | Code location |
 |---|---|---|---|---|---|---|---|---|---|
-| **LC-START-001** | First launch creates DB + directories | D | **P0** | Delete `%AppData%\ConnectOnion` | Launch | Directories and `connectonion.db` created; all 9 tables present; WAL on; `foreign_keys=ON` | ✅ | xunit | `AppStorage.EnsureDirectories`, `AppDatabase.CreateSchemaAsync` |
+| **LC-START-001** | First launch creates DB + directories | D | **P0** | Delete `%AppData%\ConnectOnion` | Launch | Directories and `connectonion.db` created; all 10 tables present (9 baseline + `usage_events` from migration v2); WAL on; `foreign_keys=ON` | ✅ | xunit | `AppStorage.EnsureDirectories`, `AppDatabase.CreateSchemaAsync` |
 | **LC-START-002** | Launch with existing data loses nothing | D | **P0** | Seed DB with 2 agents / 3 sessions | Launch | Schema creation is idempotent; all data readable | ✅ | xunit | `AppDatabase.EnsureInitializedAsync` |
 | **LC-START-003** | DB init failure does not crash the app | C | **P0** | Make `.db` read-only / directory unwritable | Launch | A comprehensible error is surfaced; no silent crash | ✅ | xunit | `AppDatabase.OpenAsync` — **Risk: there is no try/catch today; this will likely crash. The expected result documents what *should* happen.** |
 | **LC-INST-001** | Second instance redirects and exits | E | **P0** | App already running | Launch the exe again | Second process exits; no second window; existing window comes forward | ✅ | FlaUI + process assertions | `Program.Main`, `AppInstance.FindOrRegisterForKey` |
