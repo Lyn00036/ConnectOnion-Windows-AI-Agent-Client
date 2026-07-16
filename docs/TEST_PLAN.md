@@ -32,6 +32,10 @@
 
 ---
 
+> Optimization implementation refresh: 2026-07-16. The Core project,
+> ArchUnitNET boundaries, Kestrel fake server, and opt-in FlaUI smoke test are
+> implemented. See [OPTIMIZATION.md](./OPTIMIZATION.md) for the current state.
+
 ## 1. Document Goals
 
 - Establish a **layered test architecture** for ConnectOnion Desktop — solving *testability* at the architectural level, not just piling up test cases.

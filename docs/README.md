@@ -7,6 +7,7 @@
 | [SESSION_MESSAGE_STRUCTURE.md](./SESSION_MESSAGE_STRUCTURE.md) | The ConnectOnion wire protocol: `CONNECT` / `INPUT` / `OUTPUT`, streaming events, `session_id`, reconnect, `last_msg_id` | Authoritative for §1–31; §32–39 are superseded design notes (see its header) |
 | [WINUI3_NATIVE_MIGRATION.md](./WINUI3_NATIVE_MIGRATION.md) | How the Electron/React client was replaced by the native WinUI 3 app | **Historical** — the migration is complete; read `CLAUDE.md` for the current architecture |
 | [GIT_COMMIT_CONVENTION.md](./GIT_COMMIT_CONVENTION.md) | Conventional Commits types and scopes used in this repo | Living |
+| [OPTIMIZATION.md](./OPTIMIZATION.md) | Implemented architecture, performance, reliability, CI, localization, and diagnostics improvements | Living |
 
 ## What is *not* here
 

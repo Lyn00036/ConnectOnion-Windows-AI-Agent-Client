@@ -30,11 +30,21 @@ User
           -> relay resolution or Direct URL connection
 ```
 
+WinUI-free application logic and persistence live in
+`ConnectOnion.WinUIClient.Core`; architecture tests enforce that it stays free
+of `Microsoft.UI` dependencies. Package versions are centrally managed by
+`Directory.Packages.props`. See [engineering optimization notes](docs/OPTIMIZATION.md)
+for diagnostics, performance, localization, and verification details.
+
 Local app data is stored in SQLite at:
 
 ```text
 %AppData%\ConnectOnion\connectonion.db
 ```
+
+Structured rolling logs are stored under `%AppData%\ConnectOnion\logs`.
+Speech/audio resources and page-load database work are cancellation-aware and
+are released when their owning WinUI surface unloads.
 
 The database is created automatically on first launch and then upgraded in
 place: the schema is versioned via `PRAGMA user_version` and stepped forward by
@@ -72,6 +82,9 @@ enforces foreign keys.
 
 ```text
 connectonion-desktop/
+  Directory.Packages.props            Central NuGet package versions and audit policy
+  Directory.Build.props               Shared analyzer and deterministic-build settings
+  ConnectOnion.WinUIClient.Core/       WinUI-free data, models, policies, and projections
   ConnectOnion.WinUIClient/
     ConnectOnion.WinUIClient.sln      Visual Studio solution
     ConnectOnion.WinUIClient.csproj   WinUI 3 desktop app, net10.0-windows
@@ -196,6 +209,7 @@ connectonion-desktop/
     ConnectOnion.Protocol.Tests/      xunit tests for ConnectOnion.Protocol
     ConnectOnion.WinUIClient.UnitTests/  Headless tests for the WinUI-free app surfaces
     ConnectOnion.IntegrationTests/    SQLite schema/repository tests against a real database file
+    ConnectOnion.WinUIClient.UITests/ Opt-in FlaUI real-window shell smoke tests
 
   agent/                              Python agent implementations (email, browser, memory, simple)
   frontend/                           Legacy Electron + React client

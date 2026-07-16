@@ -11,12 +11,16 @@ The client connects to agents via **Direct URL** or **relay-based address resolu
 | UI Framework | WinUI 3 (Windows App SDK) |
 | Language | C# 14, .NET 10 |
 | UI Pattern | MVVM via CommunityToolkit.Mvvm source generators (`[ObservableProperty]`/`[RelayCommand]`); `Common/ObservableObject` bridges the toolkit base |
+| Application Core | `ConnectOnion.WinUIClient.Core` (WinUI-free models, persistence, policies, projections) |
 | Local Storage | SQLite (`Microsoft.Data.Sqlite`) |
 | HTTP | `HttpClient` |
 | WebSocket | `ClientWebSocket` (via `ConnectOnion.Protocol`) |
 | Serialization | `System.Text.Json` (source-generated) |
 | Icons | `FluentIcons.WinUI` |
 | Target Platforms | x64, x86, ARM64 |
+
+NuGet versions are managed centrally in `../Directory.Packages.props`. Runtime
+diagnostics use structured rolling logs in `%AppData%\ConnectOnion\logs`.
 
 ## Prerequisites
 
