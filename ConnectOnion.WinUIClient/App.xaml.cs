@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices.WindowsRuntime;
+using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
@@ -20,6 +21,9 @@ using ConnectOnion.WinUIClient.Services;
 using ConnectOnion.WinUIClient.Services.Notifications;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Serilog;
+using Serilog.Events;
 
 // To learn more about WinUI, the WinUI project structure,
 // and more about our project templates, see: http://aka.ms/winui-project-info.
@@ -34,6 +38,7 @@ namespace ConnectOnion.WinUIClient
         private Window? _window;
 
         private readonly IHost _host;
+        private int _shutdownStarted;
 
         /// <summary>
         /// The application's DI container, built by the Generic Host. This is the composition root
@@ -100,31 +105,93 @@ namespace ConnectOnion.WinUIClient
         {
             InitializeComponent();
 
+            AppStorage.EnsureDirectories();
+            Log.Logger = new LoggerConfiguration()
+                .MinimumLevel.Information()
+                .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+                .Enrich.FromLogContext()
+                .WriteTo.File(
+                    System.IO.Path.Combine(AppStorage.LogsDir, "connectonion-.log"),
+                    formatProvider: System.Globalization.CultureInfo.InvariantCulture,
+                    rollingInterval: RollingInterval.Day,
+                    rollOnFileSizeLimit: true,
+                    fileSizeLimitBytes: 10 * 1024 * 1024,
+                    retainedFileCountLimit: 14,
+                    shared: true)
+                .CreateLogger();
+
             // Build the composition root before any window/page is created (OnLaunched, and every
             // view that resolves a view model, runs after this). Registrations live in
             // ServiceRegistration; hosted services start in OnLaunched.
             var builder = Host.CreateApplicationBuilder();
             builder.Services.AddAppServices();
+            builder.Services.AddSerilog(Log.Logger, dispose: false);
             _host = builder.Build();
             Services = _host.Services;
+            NotificationLog.Configure(_host.Services.GetRequiredService<ILoggerFactory>());
         }
 
         /// <summary>
         /// Invoked when the application is launched.
         /// </summary>
         /// <param name="args">Details about the launch request and process.</param>
-        protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
+        protected override async void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
-            AppStorage.EnsureDirectories();
-            // Start hosted services (notification startup wiring) now that the storage
-            // directories the settings load reads from exist.
-            _host.Start();
-            _window = new MainWindow();
-            MainWindow = _window;
-            _window.Activate();
-            HandleColdStartActivation();
-            // Honor any second launch that redirected to us before the window existed.
-            FlushPendingActivation();
+            try
+            {
+                await _host.StartAsync();
+                _window = new MainWindow();
+                MainWindow = _window;
+                _window.Closed += (_, _) => _ = ShutdownAsync();
+                _window.Activate();
+                HandleColdStartActivation();
+                FlushPendingActivation();
+            }
+            catch (Exception ex)
+            {
+                Log.Fatal(ex, "Application startup failed");
+                await ShutdownAsync();
+                Exit();
+            }
+        }
+
+        /// <summary>Stops active runs, hosted services, logging, and the service provider once.</summary>
+        internal async Task ShutdownAsync()
+        {
+            if (System.Threading.Interlocked.Exchange(ref _shutdownStarted, 1) != 0) return;
+
+            var total = System.Diagnostics.Stopwatch.StartNew();
+            var phase = System.Diagnostics.Stopwatch.StartNew();
+            Log.Information("Application shutdown started");
+
+            try
+            {
+                await AppServices.RunManager.ShutdownAsync()
+                    .WaitAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "Run manager did not shut down cleanly");
+            }
+
+            Log.Information("Run manager shutdown completed in {ElapsedMs} ms", phase.ElapsedMilliseconds);
+            phase.Restart();
+
+            try
+            {
+                await _host.StopAsync(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "Generic Host did not stop cleanly");
+            }
+            finally
+            {
+                Log.Information("Generic Host shutdown completed in {ElapsedMs} ms", phase.ElapsedMilliseconds);
+                _host.Dispose();
+                Log.Information("Application shutdown completed in {ElapsedMs} ms", total.ElapsedMilliseconds);
+                await Log.CloseAndFlushAsync().ConfigureAwait(false);
+            }
         }
 
         /// <summary>
