@@ -10,6 +10,11 @@ on:
       - main
       - master
   workflow_dispatch:
+    inputs:
+      run_ui_smoke:
+        description: Run the interactive WinUI shell smoke test
+        type: boolean
+        default: false
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -50,7 +55,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'Directory.Packages.props', 'global.json') }}
           restore-keys: |
             nuget-${{ runner.os }}-
 
@@ -63,6 +68,10 @@ jobs:
       - name: Restore
         shell: pwsh
         run: dotnet restore $env:SOLUTION_PATH -p:Platform=$env:BUILD_PLATFORM
+
+      - name: Audit NuGet dependencies
+        shell: pwsh
+        run: dotnet list $env:SOLUTION_PATH package --vulnerable --include-transitive
 
       - name: Build WinUI solution
         shell: pwsh
@@ -78,15 +87,47 @@ jobs:
 
       - name: Run protocol unit tests
         shell: pwsh
-        run: dotnet test tests/ConnectOnion.Protocol.Tests/ConnectOnion.Protocol.Tests.csproj --configuration $env:CONFIGURATION
+        run: dotnet test tests/ConnectOnion.Protocol.Tests/ConnectOnion.Protocol.Tests.csproj --configuration $env:CONFIGURATION --collect:"XPlat Code Coverage" --results-directory TestResults/protocol
 
       - name: Run WinUI client headless unit tests
         shell: pwsh
-        run: dotnet test tests/ConnectOnion.WinUIClient.UnitTests/ConnectOnion.WinUIClient.UnitTests.csproj --configuration $env:CONFIGURATION
+        run: dotnet test tests/ConnectOnion.WinUIClient.UnitTests/ConnectOnion.WinUIClient.UnitTests.csproj --configuration $env:CONFIGURATION --collect:"XPlat Code Coverage" --results-directory TestResults/client
 
       - name: Run database integration tests
         shell: pwsh
-        run: dotnet test tests/ConnectOnion.IntegrationTests/ConnectOnion.IntegrationTests.csproj --configuration $env:CONFIGURATION
+        run: dotnet test tests/ConnectOnion.IntegrationTests/ConnectOnion.IntegrationTests.csproj --configuration $env:CONFIGURATION --collect:"XPlat Code Coverage" --results-directory TestResults/integration
+
+      - name: Compile UI smoke tests
+        shell: pwsh
+        run: dotnet test tests/ConnectOnion.WinUIClient.UITests/ConnectOnion.WinUIClient.UITests.csproj --configuration $env:CONFIGURATION
+
+      - name: Publish trimmed unpackaged build
+        shell: pwsh
+        run: >
+          dotnet publish ConnectOnion.WinUIClient/ConnectOnion.WinUIClient.csproj
+          --configuration $env:CONFIGURATION
+          --runtime win-x64
+          --no-restore
+          -p:Platform=$env:BUILD_PLATFORM
+          -p:RunUnpackaged=true
+          -p:PublishTrimmed=true
+          -p:PublishReadyToRun=true
+          -p:AppxPackageSigningEnabled=false
+
+      - name: Run interactive UI smoke test
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_ui_smoke }}
+        shell: pwsh
+        env:
+          CONNECTONION_UI_TEST_EXE: ${{ github.workspace }}\ConnectOnion.WinUIClient\bin\Release\net10.0-windows10.0.19041.0\win-x64\publish\ConnectOnion.WinUIClient.exe
+        run: dotnet test tests/ConnectOnion.WinUIClient.UITests/ConnectOnion.WinUIClient.UITests.csproj --configuration $env:CONFIGURATION --no-build
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: TestResults/**/coverage.cobertura.xml
+          if-no-files-found: warn
 
       - name: Run protocol conformance gate
         shell: pwsh
