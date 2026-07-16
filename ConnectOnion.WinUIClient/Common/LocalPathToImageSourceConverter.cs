@@ -6,7 +6,7 @@ using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.Graphics.Imaging;
 
-namespace ConnectOnion.WinUIClient.Common;
+namespace ConnectOnion.WinUIClient.Presentation;
 
 /// <summary>
 /// Binds an absolute local file path (attachment thumbnail source, either a

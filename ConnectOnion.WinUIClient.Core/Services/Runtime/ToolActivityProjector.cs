@@ -31,6 +31,13 @@ public sealed class ToolActivityProjector
     {
         "timeout", "connection refused", "failed", " error", "exception", "network error",
     };
+    private static readonly string[] HighRiskTokens =
+    {
+        "send", "delete", "write", "remove", "command", "execute", "upload", "download",
+        "payment", "purchase", "submit", "permission", "account", "database",
+    };
+    private static readonly string[] UrlPropertyNames = { "url", "uri", "href" };
+    private static readonly string[] PathPropertyNames = { "path", "file", "file_path", "filename" };
 
     public ToolActivityViewModel Activity { get; }
 
@@ -168,8 +175,7 @@ public sealed class ToolActivityProjector
     public static bool IsHighRisk(string toolName)
     {
         var normalized = toolName.ToLowerInvariant();
-        return new[] { "send", "delete", "write", "remove", "command", "execute", "upload", "download", "payment", "purchase", "submit", "permission", "account", "database" }
-            .Any(token => normalized.Contains(token, StringComparison.Ordinal));
+        return HighRiskTokens.Any(token => normalized.Contains(token, StringComparison.Ordinal));
     }
 
     public static string SanitizeJson(string raw)
@@ -227,12 +233,12 @@ public sealed class ToolActivityProjector
         {
             using var doc = JsonDocument.Parse(args);
             var root = doc.RootElement;
-            foreach (var name in new[] { "url", "uri", "href" })
+            foreach (var name in UrlPropertyNames)
             {
                 if (String(root, name) is { Length: > 0 } url && Uri.TryCreate(url, UriKind.Absolute, out var uri)) return uri.Host;
             }
             if (String(root, "query") is { Length: > 0 } query) return $"Search: {Truncate(query, 48)}";
-            foreach (var name in new[] { "path", "file", "file_path", "filename" })
+            foreach (var name in PathPropertyNames)
             {
                 if (String(root, name) is { Length: > 0 } path) return path.Replace('\\', '/').Split('/').Last();
             }

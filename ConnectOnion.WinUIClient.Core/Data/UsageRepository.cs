@@ -4,6 +4,8 @@ using System.Diagnostics;
 using System.Threading.Tasks;
 using ConnectOnion.WinUIClient.Models;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ConnectOnion.WinUIClient.Data;
 
@@ -24,6 +26,14 @@ namespace ConnectOnion.WinUIClient.Data;
 /// </summary>
 public sealed class UsageRepository
 {
+    private static readonly Action<ILogger, string, Exception?> LogDatabaseFailure =
+        LoggerMessage.Define<string>(LogLevel.Error, new EventId(1, "UsageDatabaseFailure"),
+            "Usage database operation {Operation} failed");
+    private readonly ILogger<UsageRepository> _logger;
+
+    public UsageRepository(ILogger<UsageRepository>? logger = null)
+        => _logger = logger ?? NullLogger<UsageRepository>.Instance;
+
     /// <summary>
     /// Appends a turn's usage. Idempotent: the primary key is the server's event id, so re-persisting
     /// the same run (a retry, a replay) updates rather than double-counts.
@@ -151,7 +161,8 @@ public sealed class UsageRepository
             var value = await cmd.ExecuteScalarAsync().ConfigureAwait(false);
             if (value is null || value is DBNull) return null;
 
-            return DateTimeOffset.FromUnixTimeMilliseconds(Convert.ToInt64(value)).ToLocalTime();
+            return DateTimeOffset.FromUnixTimeMilliseconds(
+                Convert.ToInt64(value, System.Globalization.CultureInfo.InvariantCulture)).ToLocalTime();
         }
         catch (Exception ex)
         {
@@ -180,6 +191,9 @@ public sealed class UsageRepository
         }
     }
 
-    private static void LogFailure(string operation, Exception ex)
-        => Debug.WriteLine($"[UsageRepository] {operation} failed: {ex}");
+    private void LogFailure(string operation, Exception ex)
+    {
+        Debug.WriteLine($"[UsageRepository] {operation} failed: {ex}");
+        LogDatabaseFailure(_logger, operation, ex);
+    }
 }

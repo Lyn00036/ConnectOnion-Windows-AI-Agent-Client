@@ -96,12 +96,17 @@ public sealed class AgentConnectionRegistry
     /// <summary>App exit: release every socket. Best-effort and bounded — never throws.</summary>
     public async Task DisposeAllAsync()
     {
-        foreach (var lazy in _connections.Values)
-        {
-            if (!lazy.IsValueCreated) continue;
-            try { await lazy.Value.DisposeAsync().ConfigureAwait(false); } catch { /* best-effort */ }
-        }
+        var connections = _connections.Values
+            .Where(lazy => lazy.IsValueCreated)
+            .Select(lazy => lazy.Value)
+            .ToArray();
         _connections.Clear();
         _lastUsed.Clear();
+
+        await Task.WhenAll(connections.Select(async connection =>
+        {
+            try { await connection.DisposeAsync().ConfigureAwait(false); }
+            catch { /* best-effort */ }
+        })).ConfigureAwait(false);
     }
 }

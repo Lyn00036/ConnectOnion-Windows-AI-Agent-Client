@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Serialization;
+using System.Threading;
 using System.Threading.Tasks;
 using ConnectOnion.WinUIClient.Models;
 using Microsoft.Data.Sqlite;
@@ -31,9 +32,9 @@ public sealed class AgentRepository
     /// stale selected pointer left after a deletion is cleared — mirroring the
     /// web app's defensive read.
     /// </summary>
-    public async Task<AgentsState> LoadAsync()
+    public async Task<AgentsState> LoadAsync(CancellationToken cancellationToken = default)
     {
-        await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
+        await using var connection = await AppDatabase.OpenAsync(cancellationToken).ConfigureAwait(false);
         var state = new AgentsState
         {
             SelectedAgentId = await AppDatabase.GetMetaAsync(connection, "selected_agent_id").ConfigureAwait(false),
@@ -46,8 +47,8 @@ public sealed class AgentRepository
                 FROM agents
                 ORDER BY sort_order, name COLLATE NOCASE, id;
                 """;
-            await using var reader = await command.ExecuteReaderAsync().ConfigureAwait(false);
-            while (await reader.ReadAsync().ConfigureAwait(false))
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
                 state.Agents.Add(new AgentConfig
                 {
@@ -77,16 +78,16 @@ public sealed class AgentRepository
         return state;
     }
 
-    public async Task SaveAsync(AgentsState state)
+    public async Task SaveAsync(AgentsState state, CancellationToken cancellationToken = default)
     {
-        await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
-        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync().ConfigureAwait(false);
+        await using var connection = await AppDatabase.OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
         await using (var delete = connection.CreateCommand())
         {
             delete.Transaction = transaction;
             delete.CommandText = "DELETE FROM agents;";
-            await delete.ExecuteNonQueryAsync().ConfigureAwait(false);
+            await delete.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
         for (var index = 0; index < state.Agents.Count; index++)
@@ -114,7 +115,7 @@ public sealed class AgentRepository
             AppDatabase.Add(insert, "$info_json", agent.InfoJson);
             AppDatabase.Add(insert, "$info_updated_at", agent.InfoUpdatedAt);
             AppDatabase.Add(insert, "$sort_order", index);
-            await insert.ExecuteNonQueryAsync().ConfigureAwait(false);
+            await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
         if (string.IsNullOrWhiteSpace(state.SelectedAgentId))
@@ -128,7 +129,7 @@ public sealed class AgentRepository
                 .ConfigureAwait(false);
         }
 
-        await transaction.CommitAsync().ConfigureAwait(false);
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private static string? ReadNullableString(SqliteDataReader reader, int ordinal)

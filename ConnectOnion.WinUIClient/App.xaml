@@ -4,7 +4,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:ConnectOnion.WinUIClient"
-    xmlns:common="using:ConnectOnion.WinUIClient.Common">
+    xmlns:presentation="using:ConnectOnion.WinUIClient.Presentation">
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
@@ -13,15 +13,15 @@
                 <ResourceDictionary Source="ms-appx:///Styles/Brushes.xaml" />
                 <ResourceDictionary Source="ms-appx:///Styles/ControlStyles.xaml" />
             </ResourceDictionary.MergedDictionaries>
-            <common:BoolToVisibilityConverter x:Key="BoolToVis" />
-            <common:RoleToAlignmentConverter x:Key="RoleToAlignment" />
-            <common:RoleToBrushConverter x:Key="RoleToBrush" />
-            <common:StringToVisibilityConverter x:Key="StringToVis" />
-            <common:PresenceToBrushConverter x:Key="PresenceToBrush" />
-            <common:EventStatusToBrushConverter x:Key="EventStatusToBrush" />
-            <common:ToolStatusToBrushConverter x:Key="ToolStatusToBrush" />
-            <common:LocalPathToImageSourceConverter x:Key="PathToImage" />
-            <common:RowStateToBackgroundConverter x:Key="RowStateToBackground" />
+            <presentation:BoolToVisibilityConverter x:Key="BoolToVis" />
+            <presentation:RoleToAlignmentConverter x:Key="RoleToAlignment" />
+            <presentation:RoleToBrushConverter x:Key="RoleToBrush" />
+            <presentation:StringToVisibilityConverter x:Key="StringToVis" />
+            <presentation:PresenceToBrushConverter x:Key="PresenceToBrush" />
+            <presentation:EventStatusToBrushConverter x:Key="EventStatusToBrush" />
+            <presentation:ToolStatusToBrushConverter x:Key="ToolStatusToBrush" />
+            <presentation:LocalPathToImageSourceConverter x:Key="PathToImage" />
+            <presentation:RowStateToBackgroundConverter x:Key="RowStateToBackground" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.Collections.Specialized;
 using System.Text.Json;
 using System.Threading.Tasks;
+using System.Threading;
 using ConnectOnion.Protocol;
 using ConnectOnion.WinUIClient;
 using ConnectOnion.WinUIClient.Controls;
@@ -38,6 +39,7 @@ public sealed partial class ChatPage : Page, IFindHost, IReloadablePage
     private bool _stickToBottom = true;
     private ComposerSubmission? _pendingInitialSubmission;
     private MainWindow? _hostWindow;
+    private CancellationTokenSource? _loadCts;
 
     public ChatPage()
     {
@@ -61,6 +63,7 @@ public sealed partial class ChatPage : Page, IFindHost, IReloadablePage
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        _loadCts?.Cancel();
         // No longer viewing this conversation — clear it so notifications resume.
         ReportViewing(active: false);
 
@@ -169,10 +172,17 @@ public sealed partial class ChatPage : Page, IFindHost, IReloadablePage
 
     private async System.Threading.Tasks.Task LoadConversationAsync()
     {
+        _loadCts?.Cancel();
+        var loadCts = new CancellationTokenSource();
+        _loadCts = loadCts;
         _isLoadingConversation = true;
         try
         {
-            await Vm.LoadAsync();
+            await Vm.LoadAsync(loadCts.Token);
+        }
+        catch (OperationCanceledException) when (loadCts.IsCancellationRequested)
+        {
+            return;
         }
         catch
         {
@@ -183,6 +193,8 @@ public sealed partial class ChatPage : Page, IFindHost, IReloadablePage
         finally
         {
             _isLoadingConversation = false;
+            if (ReferenceEquals(_loadCts, loadCts)) _loadCts = null;
+            loadCts.Dispose();
         }
 
         // Rapid switching can navigate away — and unload this cached page — during the DB load

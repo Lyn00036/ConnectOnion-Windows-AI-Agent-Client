@@ -1,4 +1,6 @@
 using System;
+using System.IO;
+using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
 using ConnectOnion.WinUIClient.Views;
@@ -16,11 +18,14 @@ public sealed partial class MainWindow : Window
 {
     private readonly AppWindow _appWindow;
     private readonly IntPtr _hwnd;
+    private readonly SessionRepository _sessionRepository;
+    private int _windowServicesDetached;
     private bool _isSidebarVisible = true;
 
     public MainWindow()
     {
         InitializeComponent();
+        _sessionRepository = AppServices.Sessions;
         TrackWindowLifetime();
         InitializeNotificationPresence();
         _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
@@ -48,12 +53,11 @@ public sealed partial class MainWindow : Window
             }
         };
         ThemeService.ThemeApplied += ApplyTitleBarTheme;
-        AppServices.Sessions.SessionsChanged += OnSessionsChanged;
+        _sessionRepository.SessionsChanged += OnSessionsChanged;
         Closed += (_, _) =>
         {
             DisposeTrayBehavior();
-            ThemeService.ThemeApplied -= ApplyTitleBarTheme;
-            AppServices.Sessions.SessionsChanged -= OnSessionsChanged;
+            DetachWindowServices();
         };
         ThemeService.RegisterRoot(RootGrid);
         _ = ApplyStartupThemeAsync();
@@ -80,6 +84,16 @@ public sealed partial class MainWindow : Window
         };
     }
 
+    /// <summary>Stops window callbacks from touching DI-owned services during final teardown.</summary>
+    private void DetachWindowServices()
+    {
+        if (System.Threading.Interlocked.Exchange(ref _windowServicesDetached, 1) != 0) return;
+
+        ThemeService.ThemeApplied -= ApplyTitleBarTheme;
+        _sessionRepository.SessionsChanged -= OnSessionsChanged;
+        DetachNotificationPresence();
+    }
+
     private static AppWindow GetAppWindow(IntPtr hwnd)
     {
         var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
@@ -91,7 +105,11 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(TitleBarDragRegion);
         _appWindow.Title = "ConnectOnion";
-        _appWindow.SetIcon("Assets\\app-icon.ico");
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "app-icon.ico");
+        if (File.Exists(iconPath))
+        {
+            _appWindow.SetIcon(iconPath);
+        }
         ApplyTitleBarTheme(ElementTheme.Light);
     }
 

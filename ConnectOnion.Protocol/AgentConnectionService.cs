@@ -29,6 +29,7 @@ namespace ConnectOnion.Protocol;
 /// </summary>
 public sealed class AgentConnectionService : IAsyncDisposable
 {
+    private static readonly TimeSpan SocketCloseTimeout = TimeSpan.FromSeconds(1.5);
     private const int ConnectTimeoutMs = 30_000;
     private const int SilenceTimeoutMs = 60_000;
     private const int WatchdogIntervalMs = 10_000;
@@ -345,8 +346,8 @@ public sealed class AgentConnectionService : IAsyncDisposable
         await _ws.ConnectAsync(new Uri(_wsUrl!), connectToken).ConfigureAwait(false);
 
         _lastActivityUtc = DateTime.UtcNow;
-        _receiveLoop = Task.Run(() => ReceiveLoopAsync(_loopCts.Token));
-        _ = Task.Run(() => WatchdogAsync(_loopCts.Token));
+        _receiveLoop = Task.Run(() => ReceiveLoopAsync(_loopCts.Token), CancellationToken.None);
+        _ = Task.Run(() => WatchdogAsync(_loopCts.Token), CancellationToken.None);
 
         var connectTcs = new TaskCompletionSource<WireMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
         _connectTcs = connectTcs;
@@ -711,13 +712,19 @@ public sealed class AgentConnectionService : IAsyncDisposable
         _authenticated = false;
         _awaitingHumanResponse = false;
 
+        using var closeCts = new CancellationTokenSource(SocketCloseTimeout);
+
         // Drain the receive loop so it cannot race with the socket close
         // below and spuriously call HandleConnectionLoss (which would
         // fault the pending TCS instances and re-cancel the loop CTS).
         if (_receiveLoop is not null)
         {
-            try { await _receiveLoop.ConfigureAwait(false); }
-            catch { /* expected: loop exits via cancellation or close */ }
+            try { await _receiveLoop.WaitAsync(closeCts.Token).ConfigureAwait(false); }
+            catch
+            {
+                // A provider that does not promptly interrupt ReceiveAsync must not hold app exit.
+                _ws?.Abort();
+            }
             _receiveLoop = null;
         }
 
@@ -738,11 +745,14 @@ public sealed class AgentConnectionService : IAsyncDisposable
             {
                 if (_ws.State == WebSocketState.Open)
                 {
-                    await _ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "bye", CancellationToken.None)
+                    await _ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "bye", closeCts.Token)
                         .ConfigureAwait(false);
                 }
             }
-            catch { /* best-effort close */ }
+            catch
+            {
+                _ws.Abort();
+            }
             _ws.Dispose();
             _ws = null;
         }

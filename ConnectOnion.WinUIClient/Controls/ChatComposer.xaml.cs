@@ -1,5 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -23,7 +24,7 @@ namespace ConnectOnion.WinUIClient.Controls;
 /// <summary>Text plus whatever attachments were ready to send at submit time.</summary>
 public sealed record ComposerSubmission(string Text, IReadOnlyList<PendingAttachment> Attachments);
 
-public sealed partial class ChatComposer : UserControl
+public sealed partial class ChatComposer : UserControl, IDisposable
 {
 
     public static readonly DependencyProperty CanSubmitProperty =
@@ -96,6 +97,7 @@ public sealed partial class ChatComposer : UserControl
     public ObservableCollection<PendingAttachment> PendingAttachments { get; } = new();
 
     private readonly CancellationTokenSource _lifetimeCts = new();
+    private int _disposed;
 
     public ChatComposer()
     {
@@ -103,13 +105,18 @@ public sealed partial class ChatComposer : UserControl
         ApplyWaveformTheme();
         WaveformCanvas.Draw += WaveformCanvas_Draw;
         _recordingElapsedTimer.Tick += RecordingElapsedTimer_Tick;
-        ActualThemeChanged += (_, _) => ApplyWaveformTheme();
+        ActualThemeChanged += Composer_ActualThemeChanged;
         Unloaded += Composer_Unloaded;
-        PendingAttachments.CollectionChanged += (_, _) =>
-        {
-            AttachmentsScrollViewer.Visibility = PendingAttachments.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-            RefreshSendButtonState();
-        };
+        PendingAttachments.CollectionChanged += PendingAttachments_CollectionChanged;
+        RefreshSendButtonState();
+    }
+
+    private void Composer_ActualThemeChanged(FrameworkElement sender, object args)
+        => ApplyWaveformTheme();
+
+    private void PendingAttachments_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        AttachmentsScrollViewer.Visibility = PendingAttachments.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         RefreshSendButtonState();
     }
 
@@ -237,9 +244,32 @@ public sealed partial class ChatComposer : UserControl
         _lifetimeCts.Cancel();
         WaveformCanvas.RemoveFromVisualTree();
         await StopSpeechRecognitionAsync();
+        Dispose();
+    }
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+
+        Unloaded -= Composer_Unloaded;
+        ActualThemeChanged -= Composer_ActualThemeChanged;
+        PendingAttachments.CollectionChanged -= PendingAttachments_CollectionChanged;
+        WaveformCanvas.Draw -= WaveformCanvas_Draw;
+        _recordingElapsedTimer.Tick -= RecordingElapsedTimer_Tick;
+        _recordingElapsedTimer.Stop();
+
+        _lifetimeCts.Cancel();
+        _lifetimeCts.Dispose();
+        _recordingCts?.Cancel();
+        _recordingCts?.Dispose();
+        _recordingCts = null;
+
+        DetachSpeechRecognizerEvents();
         _speechRecognizer?.Dispose();
         _speechRecognizer = null;
         StopAudioMeter();
+        _dashStyle?.Dispose();
+        _dashStyle = null;
     }
 
     // ---- Attachments ----

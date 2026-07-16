@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 using System.Threading.Tasks;
 using ConnectOnion.WinUIClient.Models;
 using Microsoft.Data.Sqlite;
@@ -35,9 +36,9 @@ public sealed class SessionRepository
     /// Loads sessions, dropping partial/corrupt rows (id, agentId and title all
     /// required) and clearing a stale active pointer.
     /// </summary>
-    public async Task<SessionsState> LoadAsync()
+    public async Task<SessionsState> LoadAsync(CancellationToken cancellationToken = default)
     {
-        await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
+        await using var connection = await AppDatabase.OpenAsync(cancellationToken).ConfigureAwait(false);
         var state = new SessionsState
         {
             ActiveSessionId = await AppDatabase.GetMetaAsync(connection, ActiveSessionMetaKey).ConfigureAwait(false),
@@ -51,8 +52,8 @@ public sealed class SessionRepository
                 FROM sessions
                 ORDER BY sort_order, updated_at DESC, id;
                 """;
-            await using var reader = await command.ExecuteReaderAsync().ConfigureAwait(false);
-            while (await reader.ReadAsync().ConfigureAwait(false))
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
                 state.Sessions.Add(new SessionSummary
                 {

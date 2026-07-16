@@ -78,6 +78,7 @@ public sealed partial class ChatComposer
         if (IsRecordingActive || !CanSubmit || IsBusy) return;
 
         _recordingCts?.Cancel();
+        _recordingCts?.Dispose();
         _recordingCts = new CancellationTokenSource();
         var ct = _recordingCts.Token;
 
@@ -86,7 +87,7 @@ public sealed partial class ChatComposer
             // --- Starting: show spinner, start audio meter, buffer delay ---
             _recordingState = RecordingState.Starting;
             RefreshSendButtonState();
-            _ = StartAudioMeterAsync();
+            _ = StartAudioMeterAsync(ct);
 
             await Task.Delay(StartBufferMs, ct);
 
@@ -142,6 +143,7 @@ public sealed partial class ChatComposer
         RefreshSendButtonState();
 
         _recordingCts?.Cancel();
+        _recordingCts?.Dispose();
         _recordingCts = new CancellationTokenSource();
         var ct = _recordingCts.Token;
 
@@ -323,7 +325,7 @@ public sealed partial class ChatComposer
 
     // ---- Audio meter ----
 
-    private async System.Threading.Tasks.Task StartAudioMeterAsync()
+    private async System.Threading.Tasks.Task StartAudioMeterAsync(CancellationToken cancellationToken)
     {
         try
         {
@@ -341,8 +343,8 @@ public sealed partial class ChatComposer
 
             var graphResult = await AudioGraph.CreateAsync(settings);
             if (graphResult.Status != AudioGraphCreationStatus.Success) return;
-
             _audioGraph = graphResult.Graph;
+            cancellationToken.ThrowIfCancellationRequested();
 
             // Try the user's preferred microphone first, then fall back to
             // the system default.  Use the multimedia-role endpoint so we
@@ -350,10 +352,11 @@ public sealed partial class ChatComposer
             DeviceInformation? captureDevice = null;
             try
             {
-                var prefs = await AppServices.Preferences.LoadAsync();
+                var prefs = await AppServices.Preferences.LoadAsync(cancellationToken);
                 if (!string.IsNullOrEmpty(prefs.MicrophoneDeviceId))
                     captureDevice = await DeviceInformation.CreateFromIdAsync(prefs.MicrophoneDeviceId);
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch { }
 
             if (captureDevice is null)
@@ -378,12 +381,17 @@ public sealed partial class ChatComposer
             }
 
             _audioInputNode = inputResult.DeviceInputNode;
+            cancellationToken.ThrowIfCancellationRequested();
             _audioFrameOutputNode = _audioGraph.CreateFrameOutputNode();
             _audioInputNode.AddOutgoingConnection(_audioFrameOutputNode);
             _audioGraph.QuantumStarted += AudioGraph_QuantumStarted;
             _audioFrameOutputNode.Start();
             _audioInputNode.Start();
             _audioGraph.Start();
+        }
+        catch (OperationCanceledException)
+        {
+            StopAudioMeter();
         }
         catch
         {

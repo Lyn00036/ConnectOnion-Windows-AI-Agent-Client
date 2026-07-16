@@ -362,7 +362,7 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
     /// then release the sockets. Never blocks forever.</summary>
     public async Task ShutdownAsync()
     {
-        await _runs.ShutdownAsync(TimeSpan.FromSeconds(8)).ConfigureAwait(false);
+        await _runs.ShutdownAsync(TimeSpan.FromSeconds(1.5)).ConfigureAwait(false);
         await _connections.DisposeAllAsync().ConfigureAwait(false);
     }
 

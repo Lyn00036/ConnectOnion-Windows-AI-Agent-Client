@@ -35,6 +35,9 @@ public static class AppStorage
     /// </summary>
     public static readonly string ImageCacheDir = Path.Combine(RootDir, "cache", "images");
 
+    /// <summary>Rolling structured application logs.</summary>
+    public static readonly string LogsDir = Path.Combine(RootDir, "logs");
+
     /// <summary>
     /// camelCase enum + property naming keeps the JSON byte-compatible with the
     /// web app's string values ("light"/"dark", "sm"/"md"/"lg", "user"/"agent").
@@ -53,6 +56,7 @@ public static class AppStorage
         Directory.CreateDirectory(RootDir);
         Directory.CreateDirectory(ConversationsDir);
         Directory.CreateDirectory(ImageCacheDir);
+        Directory.CreateDirectory(LogsDir);
     }
 
     public static string PathFor(string fileName) => Path.Combine(RootDir, fileName);

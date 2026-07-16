@@ -18,8 +18,8 @@ namespace ConnectOnion.WinUIClient.ViewModels;
 /// </summary>
 public abstract partial class PresenceAwareViewModel : Common.ObservableObject
 {
-    protected readonly DispatcherQueue Dispatcher = DispatcherQueue.GetForCurrentThread();
-    protected readonly AgentPresenceService PresenceService;
+    protected DispatcherQueue Dispatcher { get; } = DispatcherQueue.GetForCurrentThread();
+    protected AgentPresenceService PresenceService { get; }
 
     // True only while a user-initiated recheck is running, so the offline bar
     // stays visible (spinning) across the Offline→Checking→result transition

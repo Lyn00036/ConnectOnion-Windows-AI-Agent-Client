@@ -8,14 +8,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
-    <PackageReference Include="coverlet.collector" Version="6.0.4" />
-    <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="10.0.9" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
-    <PackageReference Include="SQLitePCLRaw.provider.winsqlite3" Version="3.0.3" />
-    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.9" />
-    <PackageReference Include="xunit" Version="2.9.3" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
   </ItemGroup>
 
   <ItemGroup>
@@ -24,32 +20,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\ConnectOnion.Protocol\ConnectOnion.Protocol.csproj" />
-  </ItemGroup>
-
-  <!-- Database persistence is WinUI-free. Compile the production files directly so
-       the test host does not need to initialize XAML or launch the application. -->
-  <ItemGroup>
-    <Compile Include="..\..\ConnectOnion.WinUIClient\Common\ObservableObject.cs" Link="Production\Common\ObservableObject.cs" />
-    <Compile Include="..\..\ConnectOnion.WinUIClient\Data\AppDatabase.cs" Link="Production\Data\AppDatabase.cs" />
-    <Compile Include="..\..\ConnectOnion.WinUIClient\Data\AgentRepository.cs" Link="Production\Data\AgentRepository.cs" />
-    <Compile Include="..\..\ConnectOnion.WinUIClient\Data\AppStorage.cs" Link="Production\Data\AppStorage.cs" />
-    <Compile Include="..\..\ConnectOnion.WinUIClient\Data\ConversationRepository.cs" Link="Production\Data\ConversationRepository.cs" />
-    <Compile Include="..\..\ConnectOnion.WinUIClient\Data\IdentityStore.cs" Link="Production\Data\IdentityStore.cs" />
-    <Compile Include="..\..\ConnectOnion.WinUIClient\Data\PreferencesRepository.cs" Link="Production\Data\PreferencesRepository.cs" />
-    <Compile Include="..\..\ConnectOnion.WinUIClient\Data\SchemaMigrator.cs" Link="Production\Data\SchemaMigrator.cs" />
-    <Compile Include="..\..\ConnectOnion.WinUIClient\Data\AppJsonContext.cs" Link="Production\Data\AppJsonContext.cs" />
-    <Compile Include="..\..\ConnectOnion.WinUIClient\Data\SessionRepository.cs" Link="Production\Data\SessionRepository.cs" />
-    <Compile Include="..\..\ConnectOnion.WinUIClient\Data\UsageRepository.cs" Link="Production\Data\UsageRepository.cs" />
-    <Compile Include="..\..\ConnectOnion.WinUIClient\Services\AppVersionService.cs" Link="Production\Services\AppVersionService.cs" />
-    <Compile Include="..\..\ConnectOnion.WinUIClient\Services\Runtime\AgentConnectionRegistry.cs" Link="Production\Services\Runtime\AgentConnectionRegistry.cs" />
-    <Compile Include="..\..\ConnectOnion.WinUIClient\Models\AskUserEntries.cs" Link="Production\Models\AskUserEntries.cs" />
-    <Compile Include="..\..\ConnectOnion.WinUIClient\Models\AgentConfig.cs" Link="Production\Models\AgentConfig.cs" />
-    <Compile Include="..\..\ConnectOnion.WinUIClient\Models\ChatAttachment.cs" Link="Production\Models\ChatAttachment.cs" />
-    <Compile Include="..\..\ConnectOnion.WinUIClient\Models\ChatMessage.cs" Link="Production\Models\ChatMessage.cs" />
-    <Compile Include="..\..\ConnectOnion.WinUIClient\Models\Notifications\NotificationSettings.cs" Link="Production\Models\Notifications\NotificationSettings.cs" />
-    <Compile Include="..\..\ConnectOnion.WinUIClient\Models\PreferencesSnapshot.cs" Link="Production\Models\PreferencesSnapshot.cs" />
-    <Compile Include="..\..\ConnectOnion.WinUIClient\Models\SessionSummary.cs" Link="Production\Models\SessionSummary.cs" />
-    <Compile Include="..\..\ConnectOnion.WinUIClient\Models\ToolActivity.cs" Link="Production\Models\ToolActivity.cs" />
-    <Compile Include="..\..\ConnectOnion.WinUIClient\Models\UsageModels.cs" Link="Production\Models\UsageModels.cs" />
+    <ProjectReference Include="..\..\ConnectOnion.WinUIClient.Core\ConnectOnion.WinUIClient.Core.csproj" />
   </ItemGroup>
 </Project>

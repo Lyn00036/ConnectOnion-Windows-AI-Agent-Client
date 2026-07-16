@@ -174,9 +174,9 @@ public sealed partial class MainWindow
             {
                 var sizeType = unchecked((int)wParam.ToUInt64()) & 0xffff;
                 if (sizeType == SizeMinimized)
-                    Services.AppServices.WindowPresence.SetVisible(this, false);
+                    _windowPresence?.SetVisible(this, false);
                 else if (sizeType is SizeRestored or SizeMaximized)
-                    Services.AppServices.WindowPresence.SetVisible(this, true);
+                    _windowPresence?.SetVisible(this, true);
                 return DefSubclassProc(hwnd, message, wParam, lParam);
             }
 
@@ -245,7 +245,7 @@ public sealed partial class MainWindow
 
         EnsureTrayIconVisible();
         ShowWindow(_hwnd, SwHide);
-        Services.AppServices.WindowPresence.SetVisible(this, false);
+        _windowPresence?.SetVisible(this, false);
     }
 
     private void RestoreFromTray()
@@ -255,7 +255,7 @@ public sealed partial class MainWindow
         ShowWindow(_hwnd, SwShow);
         SetForegroundWindow(_hwnd);
         Activate();
-        Services.AppServices.WindowPresence.SetVisible(this, true);
+        _windowPresence?.SetVisible(this, true);
     }
 
     /// <summary>Restores the window from a minimized or hidden (tray) state and brings it
@@ -274,7 +274,7 @@ public sealed partial class MainWindow
         SetForegroundWindow(_hwnd);
         try { Activate(); }
         catch { /* Activate can throw during teardown; best-effort. */ }
-        if (!_isTrayDisposed) Services.AppServices.WindowPresence.SetVisible(this, true);
+        if (!_isTrayDisposed) _windowPresence?.SetVisible(this, true);
     }
 
     private async void ExitApplication()
@@ -282,16 +282,14 @@ public sealed partial class MainWindow
         _isExiting = true;
         // Single window: this instance owns the only tray behavior to dispose.
         DisposeTrayBehavior();
+        // Application.Exit closes the HWND after the host has stopped. Remove callbacks first so
+        // late Activated/Closed events never resolve services from a disposed IServiceProvider.
+        DetachWindowServices();
 
         // Real exit (as opposed to minimize-to-tray): cancel in-flight turns, let them
         // persist recoverable state, and release the sockets — all bounded so exit never
         // hangs. ShutdownAsync self-limits; the extra cap is a hard backstop.
-        try
-        {
-            await Services.AppServices.RunManager.ShutdownAsync()
-                .WaitAsync(System.TimeSpan.FromSeconds(10));
-        }
-        catch { /* bounded best-effort shutdown; exit regardless */ }
+        await ((App)Application.Current).ShutdownAsync();
 
         Application.Current.Exit();
     }

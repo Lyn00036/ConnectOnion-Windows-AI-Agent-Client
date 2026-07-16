@@ -30,17 +30,17 @@ public sealed class NotificationStartupService : IHostedService
         _coordinator = coordinator;
     }
 
-    public Task StartAsync(CancellationToken cancellationToken)
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
-        _ = _settings.LoadAsync();
+        await _settings.LoadAsync().WaitAsync(cancellationToken).ConfigureAwait(false);
         _presence.PresenceChanged += OnPresenceChanged;
         _activation.RegisterAndListen();
-        return Task.CompletedTask;
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
     {
         _presence.PresenceChanged -= OnPresenceChanged;
+        _activation.Unregister();
         return Task.CompletedTask;
     }
 

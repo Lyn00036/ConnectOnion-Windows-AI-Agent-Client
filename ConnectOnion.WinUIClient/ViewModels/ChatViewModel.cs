@@ -5,6 +5,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using System.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ConnectOnion.Protocol;
@@ -30,6 +31,9 @@ namespace ConnectOnion.WinUIClient.ViewModels;
 /// </summary>
 public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProjectionTarget
 {
+    private static readonly Action<ILogger, string?, Exception?> LogSendFailure =
+        LoggerMessage.Define<string?>(LogLevel.Error, new EventId(1, "ChatSendFailure"),
+            "Send failed for session {SessionId}");
     private static readonly Regex GenericTitle = new(@"^Conversation \d+$", RegexOptions.Compiled);
     private static readonly Regex Whitespace = new(@"\s+", RegexOptions.Compiled);
 
@@ -210,7 +214,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     /// presence hook is deliberately *not* touched — this view model outlives the switch, and
     /// only <see cref="Cleanup"/> (page unload) detaches it.
     /// </summary>
-    public async Task LoadAsync()
+    public async Task LoadAsync(CancellationToken cancellationToken = default)
     {
         // Clicking through the sidebar fires one of these per click, on one shared view model, and
         // each awaits the database. Without a generation the loser of that race would still append
@@ -232,7 +236,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         // (no agent, no session) can't leave the previous conversation's bubbles on screen.
         Messages.Clear();
 
-        var prefs = await _preferences.LoadAsync();
+        var prefs = await _preferences.LoadAsync(cancellationToken);
         EnterToSend = prefs.EnterToSend;
         MessageFontSize = prefs.MessageFontSize switch
         {
@@ -241,7 +245,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
             _ => 14,
         };
 
-        var agents = await _agents.LoadAsync();
+        var agents = await _agents.LoadAsync(cancellationToken);
         if (generation != _loadGeneration) return;
 
         _agent = agents.Agents.FirstOrDefault(a => a.Id == agents.SelectedAgentId);
@@ -255,7 +259,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
             return;
         }
 
-        _session = await ResolveSessionAsync(_agent.Id);
+        _session = await ResolveSessionAsync(_agent.Id, cancellationToken);
         if (generation != _loadGeneration) return;
 
         OnPropertyChanged(nameof(CanSend));
@@ -270,7 +274,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         CurrentMode = _session.Mode;
         RaiseHeaderProperties();
 
-        await RestoreConversationAsync(generation);
+        await RestoreConversationAsync(generation, cancellationToken);
         if (generation != _loadGeneration) return;
 
         // Attach to the app-level run for this conversation. The manager fires the current
@@ -307,9 +311,11 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     /// conversation. Session creation is reserved for explicit user actions such as New chat;
     /// loading a page must never recreate a conversation that the user just deleted.
     /// </summary>
-    private async Task<SessionSummary?> ResolveSessionAsync(string agentId)
+    private async Task<SessionSummary?> ResolveSessionAsync(
+        string agentId,
+        CancellationToken cancellationToken)
     {
-        _sessionsState = await _sessions.LoadAsync();
+        _sessionsState = await _sessions.LoadAsync(cancellationToken);
         var session = SessionSelection.FindExisting(
             _sessionsState.Sessions, _sessionsState.ActiveSessionId, agentId);
         if (session is null || session.Id == _sessionsState.ActiveSessionId)
@@ -322,7 +328,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         return session;
     }
 
-    private async Task RestoreConversationAsync(long generation)
+    private async Task RestoreConversationAsync(long generation, CancellationToken cancellationToken)
     {
         if (_agent is null || _session is null) return;
 
@@ -342,7 +348,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         }
 
         var messages = ToolActivityMigration.UpgradeLegacyToolMessages(
-            await _conversations.LoadMessagesAsync(_session.Id));
+            await _conversations.LoadMessagesAsync(_session.Id, cancellationToken));
         // A newer switch already owns the list — dropping this history is the whole point.
         if (generation != _loadGeneration) return;
 
@@ -420,7 +426,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Send failed for session {SessionId}", _session?.Id);
+            LogSendFailure(_logger, _session?.Id, ex);
             IsProcessing = false;
             StatusText = $"Send failed: {UserFacingError(ex)}";
         }

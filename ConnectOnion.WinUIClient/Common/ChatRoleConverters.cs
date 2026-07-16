@@ -5,7 +5,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Media;
 
-namespace ConnectOnion.WinUIClient.Common;
+namespace ConnectOnion.WinUIClient.Presentation;
 
 /// <summary>Right-aligns the user's bubbles, left-aligns the agent's.</summary>
 public sealed class RoleToAlignmentConverter : IValueConverter

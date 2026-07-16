@@ -70,7 +70,7 @@ public sealed partial class UsageViewModel : Common.ObservableObject
     public string TotalTokensText => UsageFormat.Tokens(TotalTokens);
     public string TotalInputTokensText => UsageFormat.Tokens(TotalInputTokens);
     public string TotalOutputTokensText => UsageFormat.Tokens(TotalOutputTokens);
-    public string TotalCallsText => TotalCalls.ToString("N0");
+    public string TotalCallsText => TotalCalls.ToString("N0", System.Globalization.CultureInfo.CurrentCulture);
 
     public async Task LoadAsync()
     {
@@ -149,7 +149,7 @@ public sealed class UsageRowViewModel
     /// <summary>Width of the share bar, 0–100, relative to the window's biggest model.</summary>
     public double SharePercent { get; }
 
-    public string CallsText => Calls.ToString("N0");
+    public string CallsText => Calls.ToString("N0", System.Globalization.CultureInfo.CurrentCulture);
     public string InputTokensText => UsageFormat.Tokens(InputTokens);
     public string OutputTokensText => UsageFormat.Tokens(OutputTokens);
     public string TotalTokensText => UsageFormat.Tokens(TotalTokens);
@@ -173,6 +173,6 @@ internal static class UsageFormat
     {
         >= 1_000_000 => $"{tokens / 1_000_000.0:0.#}M",
         >= 1_000 => $"{tokens / 1000.0:0.#}K",
-        _ => tokens.ToString(),
+        _ => tokens.ToString(System.Globalization.CultureInfo.CurrentCulture),
     };
 }

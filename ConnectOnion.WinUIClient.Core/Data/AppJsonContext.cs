@@ -12,4 +12,4 @@ namespace ConnectOnion.WinUIClient.Data;
 [JsonSerializable(typeof(Dictionary<string, string>))]
 [JsonSerializable(typeof(List<string>))]
 [JsonSerializable(typeof(NotificationSettings))]
-internal sealed partial class AppJsonContext : JsonSerializerContext;
+public sealed partial class AppJsonContext : JsonSerializerContext;

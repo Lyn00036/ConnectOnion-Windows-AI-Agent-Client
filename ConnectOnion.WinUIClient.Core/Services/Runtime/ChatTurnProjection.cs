@@ -500,7 +500,7 @@ public sealed class ChatTurnProjection
         {
             >= 1_000_000 => $"{tokens / 1_000_000.0:0.#}M",
             >= 1_000 => $"{tokens / 1000.0:0.#}K",
-            _ => tokens.ToString(),
+            _ => tokens.ToString(System.Globalization.CultureInfo.InvariantCulture),
         };
 }
 

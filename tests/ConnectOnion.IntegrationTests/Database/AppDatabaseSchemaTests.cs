@@ -77,13 +77,15 @@ public sealed class AppDatabaseSchemaTests(TempDatabaseFixture fixture)
     {
         await using var command = connection.CreateCommand();
         command.CommandText = sql;
-        return Convert.ToInt64(await command.ExecuteScalarAsync());
+        return Convert.ToInt64(
+            await command.ExecuteScalarAsync(), System.Globalization.CultureInfo.InvariantCulture);
     }
 
     private static async Task<string> ScalarStringAsync(Microsoft.Data.Sqlite.SqliteConnection connection, string sql)
     {
         await using var command = connection.CreateCommand();
         command.CommandText = sql;
-        return Convert.ToString(await command.ExecuteScalarAsync())!;
+        return Convert.ToString(
+            await command.ExecuteScalarAsync(), System.Globalization.CultureInfo.InvariantCulture)!;
     }
 }

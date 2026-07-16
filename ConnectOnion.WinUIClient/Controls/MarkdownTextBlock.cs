@@ -1,5 +1,6 @@
 using ConnectOnion.WinUIClient.Rendering;
 using Markdig;
+using Markdig.Syntax;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Data;
@@ -17,6 +18,8 @@ public sealed class MarkdownTextBlock : UserControl
         .Build();
 
     private readonly RichTextBlock _richTextBlock;
+    private MarkdownDocument? _parsedDocument;
+    private string _parsedMarkdown = string.Empty;
 
     public static readonly DependencyProperty MarkdownProperty =
         DependencyProperty.Register(
@@ -116,10 +119,15 @@ public sealed class MarkdownTextBlock : UserControl
             return;
         }
 
-        var document = Markdig.Markdown.Parse(markdown, Pipeline);
+        if (_parsedDocument is null || !string.Equals(_parsedMarkdown, markdown, System.StringComparison.Ordinal))
+        {
+            _parsedDocument = Markdig.Markdown.Parse(markdown, Pipeline);
+            _parsedMarkdown = markdown;
+        }
+
         var renderer = new WinUiMarkdownRenderer(_richTextBlock, SearchQuery, ActiveMatchIndex);
         Pipeline.Setup(renderer);
-        renderer.Render(document);
+        renderer.Render(_parsedDocument);
 
         if (_richTextBlock.Blocks.Count == 0)
         {

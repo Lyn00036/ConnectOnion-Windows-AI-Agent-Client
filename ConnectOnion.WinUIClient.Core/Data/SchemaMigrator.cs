@@ -145,7 +145,7 @@ internal static class SchemaMigrator
         await using var command = connection.CreateCommand();
         command.CommandText = "PRAGMA user_version;";
         var value = await command.ExecuteScalarAsync().ConfigureAwait(false);
-        return value is null ? 0 : Convert.ToInt32(value);
+        return value is null ? 0 : Convert.ToInt32(value, System.Globalization.CultureInfo.InvariantCulture);
     }
 
     private static async Task WriteVersionAsync(SqliteConnection connection, int version)

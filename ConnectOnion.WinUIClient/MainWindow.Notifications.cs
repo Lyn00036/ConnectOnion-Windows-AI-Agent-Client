@@ -17,18 +17,26 @@ namespace ConnectOnion.WinUIClient;
 /// </summary>
 public sealed partial class MainWindow : IChatWindow
 {
+    private WindowPresenceService? _windowPresence;
+    private int _notificationPresenceDetached;
+
     /// <summary>Called from the constructor: register for per-window presence tracking.</summary>
     private void InitializeNotificationPresence()
     {
-        AppServices.WindowPresence.Register(this);
+        _windowPresence = AppServices.WindowPresence;
+        _windowPresence.Register(this);
         Activated += OnActivatedForPresence;
         IdentityStore.IdentityReset += OnIdentityReset;
-        Closed += (_, _) =>
-        {
-            Activated -= OnActivatedForPresence;
-            IdentityStore.IdentityReset -= OnIdentityReset;
-            AppServices.WindowPresence.Unregister(this);
-        };
+    }
+
+    private void DetachNotificationPresence()
+    {
+        if (System.Threading.Interlocked.Exchange(ref _notificationPresenceDetached, 1) != 0) return;
+
+        Activated -= OnActivatedForPresence;
+        IdentityStore.IdentityReset -= OnIdentityReset;
+        _windowPresence?.Unregister(this);
+        _windowPresence = null;
     }
 
     /// <summary>
@@ -54,7 +62,7 @@ public sealed partial class MainWindow : IChatWindow
             ActionId: null)));
 
     private void OnActivatedForPresence(object sender, WindowActivatedEventArgs e)
-        => AppServices.WindowPresence.SetActive(
+        => _windowPresence?.SetActive(
             this, e.WindowActivationState != WindowActivationState.Deactivated);
 
     // ---- IChatWindow ----------------------------------------------------

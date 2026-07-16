@@ -3,9 +3,12 @@ using System.Collections.Generic;
 using System.Data;
 using System.Diagnostics;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using ConnectOnion.WinUIClient.Models;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ConnectOnion.WinUIClient.Data;
 
@@ -17,12 +20,22 @@ namespace ConnectOnion.WinUIClient.Data;
 /// </summary>
 public sealed class ConversationRepository
 {
-    public async Task<IReadOnlyList<ChatMessage>> LoadMessagesAsync(string conversationId)
+    private static readonly Action<ILogger, string, string, Exception?> LogDatabaseFailure =
+        LoggerMessage.Define<string, string>(LogLevel.Error, new EventId(1, "ConversationDatabaseFailure"),
+            "Database operation {Operation} failed for conversation {ConversationId}");
+    private readonly ILogger<ConversationRepository> _logger;
+
+    public ConversationRepository(ILogger<ConversationRepository>? logger = null)
+        => _logger = logger ?? NullLogger<ConversationRepository>.Instance;
+
+    public async Task<IReadOnlyList<ChatMessage>> LoadMessagesAsync(
+        string conversationId,
+        CancellationToken cancellationToken = default)
     {
         var messages = new List<ChatMessage>();
         try
         {
-            await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
+            await using var connection = await AppDatabase.OpenAsync(cancellationToken).ConfigureAwait(false);
             await using var command = connection.CreateCommand();
             command.CommandText = """
                 SELECT id, role, content, agent_name,
@@ -34,13 +47,18 @@ public sealed class ConversationRepository
                 ORDER BY id;
                 """;
             AppDatabase.Add(command, "$conversation_id", conversationId);
-            await using var reader = await command.ExecuteReaderAsync().ConfigureAwait(false);
-            while (await reader.ReadAsync().ConfigureAwait(false))
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
                 messages.Add(RowToMessage(reader));
             }
 
-            await LoadAttachmentsIntoAsync(connection, conversationId, messages).ConfigureAwait(false);
+            await LoadAttachmentsIntoAsync(connection, conversationId, messages, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -52,7 +70,7 @@ public sealed class ConversationRepository
 
     private static async Task LoadAttachmentsIntoAsync(
         SqliteConnection connection, string conversationId, IReadOnlyList<ChatMessage> messages,
-        long? onlyMessageId = null)
+        long? onlyMessageId = null, CancellationToken cancellationToken = default)
     {
         if (messages.Count == 0) return;
 
@@ -77,8 +95,8 @@ public sealed class ConversationRepository
                 """;
         AppDatabase.Add(command, "$conversation_id", conversationId);
         if (onlyMessageId is { } scopedMessageId) AppDatabase.Add(command, "$message_id", scopedMessageId);
-        await using var reader = await command.ExecuteReaderAsync().ConfigureAwait(false);
-        while (await reader.ReadAsync().ConfigureAwait(false))
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
             var messageId = reader.GetInt64(0);
             if (!byId.TryGetValue(messageId, out var message)) continue;
@@ -244,8 +262,11 @@ public sealed class ConversationRepository
     /// output is the only sink this app has today; if a real logger ever lands, this is the one
     /// place to route it through.
     /// </summary>
-    private static void LogFailure(string operation, string conversationId, Exception ex)
-        => Debug.WriteLine($"[db] {operation} failed for conversation {conversationId}: {ex}");
+    private void LogFailure(string operation, string conversationId, Exception ex)
+    {
+        Debug.WriteLine($"[db] {operation} failed for conversation {conversationId}: {ex}");
+        LogDatabaseFailure(_logger, operation, conversationId, ex);
+    }
 
     private static ChatMessage RowToMessage(SqliteDataReader reader)
     {

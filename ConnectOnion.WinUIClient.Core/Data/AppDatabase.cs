@@ -17,21 +17,21 @@ public static class AppDatabase
 
     public static string DatabasePath => Path.Combine(AppStorage.RootDir, "connectonion.db");
 
-    public static async Task<SqliteConnection> OpenAsync()
+    public static async Task<SqliteConnection> OpenAsync(CancellationToken cancellationToken = default)
     {
-        await EnsureInitializedAsync().ConfigureAwait(false);
+        await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
 
         var connection = new SqliteConnection(ConnectionString());
-        await connection.OpenAsync().ConfigureAwait(false);
-        await ExecuteAsync(connection, "PRAGMA foreign_keys = ON;").ConfigureAwait(false);
+        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+        await ExecuteAsync(connection, "PRAGMA foreign_keys = ON;", cancellationToken).ConfigureAwait(false);
         return connection;
     }
 
-    private static async Task EnsureInitializedAsync()
+    private static async Task EnsureInitializedAsync(CancellationToken cancellationToken)
     {
         if (_initialized) return;
 
-        await InitGate.WaitAsync().ConfigureAwait(false);
+        await InitGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             if (_initialized) return;
@@ -39,10 +39,10 @@ public static class AppDatabase
             SQLitePCL.raw.SetProvider(new SQLitePCL.SQLite3Provider_winsqlite3());
             AppStorage.EnsureDirectories();
             await using var connection = new SqliteConnection(ConnectionString());
-            await connection.OpenAsync().ConfigureAwait(false);
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-            await ExecuteAsync(connection, "PRAGMA journal_mode = WAL;").ConfigureAwait(false);
-            await ExecuteAsync(connection, "PRAGMA foreign_keys = ON;").ConfigureAwait(false);
+            await ExecuteAsync(connection, "PRAGMA journal_mode = WAL;", cancellationToken).ConfigureAwait(false);
+            await ExecuteAsync(connection, "PRAGMA foreign_keys = ON;", cancellationToken).ConfigureAwait(false);
 
             // Baseline first (creates anything missing), then step any older database forward.
             // CreateSchemaAsync alone cannot evolve a table that already exists — that is what
@@ -240,10 +240,13 @@ public static class AppDatabase
     public static void Add(SqliteCommand command, string name, object? value)
         => command.Parameters.AddWithValue(name, value ?? DBNull.Value);
 
-    private static async Task ExecuteAsync(SqliteConnection connection, string sql)
+    private static async Task ExecuteAsync(
+        SqliteConnection connection,
+        string sql,
+        CancellationToken cancellationToken = default)
     {
         await using var command = connection.CreateCommand();
         command.CommandText = sql;
-        await command.ExecuteNonQueryAsync().ConfigureAwait(false);
+        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 }

@@ -225,6 +225,7 @@ public sealed class ConversationRepositoryTests
         command.CommandText = "SELECT created_at FROM messages WHERE conversation_id = $conversation AND id = $id;";
         command.Parameters.AddWithValue("$conversation", conversationId);
         command.Parameters.AddWithValue("$id", messageId);
-        return Convert.ToInt64(await command.ExecuteScalarAsync());
+        return Convert.ToInt64(
+            await command.ExecuteScalarAsync(), System.Globalization.CultureInfo.InvariantCulture);
     }
 }

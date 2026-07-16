@@ -2,7 +2,7 @@ using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Data;
 
-namespace ConnectOnion.WinUIClient.Common;
+namespace ConnectOnion.WinUIClient.Presentation;
 
 /// <summary>
 /// Maps <c>true</c> to <see cref="Visibility.Visible"/> and <c>false</c> to

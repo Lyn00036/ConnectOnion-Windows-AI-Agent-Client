@@ -2,7 +2,7 @@ using ConnectOnion.WinUIClient.Models;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
-namespace ConnectOnion.WinUIClient.Common;
+namespace ConnectOnion.WinUIClient.Presentation;
 
 /// <summary>
 /// Picks the one template a <see cref="ChatMessage"/> actually needs, instead of building every

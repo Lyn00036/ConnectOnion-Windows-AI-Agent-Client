@@ -182,5 +182,5 @@ public sealed class NotificationCoordinator
     }
 
     private static string Hash(string? s)
-        => string.IsNullOrEmpty(s) ? "0" : ((uint)s.GetHashCode()).ToString();
+        => string.IsNullOrEmpty(s) ? "0" : ((uint)s.GetHashCode()).ToString(System.Globalization.CultureInfo.InvariantCulture);
 }

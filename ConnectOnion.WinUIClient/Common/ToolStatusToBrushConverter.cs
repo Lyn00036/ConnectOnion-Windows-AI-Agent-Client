@@ -4,7 +4,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Media;
 
-namespace ConnectOnion.WinUIClient.Common;
+namespace ConnectOnion.WinUIClient.Presentation;
 
 public sealed class ToolStatusToBrushConverter : IValueConverter
 {
