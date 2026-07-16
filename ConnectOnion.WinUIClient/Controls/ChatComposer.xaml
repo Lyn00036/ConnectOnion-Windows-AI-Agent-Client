@@ -119,7 +119,7 @@
                     Orientation="Horizontal"
                     HorizontalAlignment="Center"
                     Spacing="8">
-            <Button Content="What can you do?"
+            <Button x:Uid="ComposerSuggestionCapabilities" Content="What can you do?"
                     Tag="What can you do?"
                     Padding="14,6"
                     CornerRadius="16"
@@ -127,7 +127,7 @@
                     BorderBrush="{ThemeResource BorderDefaultBrush}"
                     BorderThickness="1"
                     Click="Suggestion_Click" />
-            <Button Content="Show system info"
+            <Button x:Uid="ComposerSuggestionSystem" Content="Show system info"
                     Tag="Show system info"
                     Padding="14,6"
                     CornerRadius="16"
@@ -135,7 +135,7 @@
                     BorderBrush="{ThemeResource BorderDefaultBrush}"
                     BorderThickness="1"
                     Click="Suggestion_Click" />
-            <Button Content="List files"
+            <Button x:Uid="ComposerSuggestionFiles" Content="List files"
                     Tag="List files in current directory"
                     Padding="14,6"
                     CornerRadius="16"
@@ -171,7 +171,7 @@
                          MinHeight="48"
                          MaxHeight="160"
                          Padding="4,7,4,8"
-                         PlaceholderText="Do anything"
+                         x:Uid="ComposerInput" PlaceholderText="Do anything"
                          PlaceholderForeground="{ThemeResource ComposerPlaceholderBrush}"
                          Foreground="{ThemeResource ComposerTextBrush}"
                          FontSize="16"
@@ -248,7 +248,7 @@
                                            IconSize="Size16"
                                            Foreground="{ThemeResource ComposerMutedControlBrush}" />
                             <TextBlock x:Name="ModeLabel"
-                                       Text="Safe"
+                                       x:Uid="ComposerSafeMode" Text="Safe"
                                        FontSize="12"
                                        VerticalAlignment="Center"
                                        Foreground="{ThemeResource ComposerMutedControlBrush}" />
@@ -256,17 +256,17 @@
                         <DropDownButton.Flyout>
                             <MenuFlyout Placement="Top">
                                 <RadioMenuFlyoutItem x:Name="ModeSafeItem"
-                                                     Text="Safe — approve dangerous tools"
+                                                     x:Uid="ComposerSafeModeDescription" Text="Safe — approve dangerous tools"
                                                      GroupName="ComposerApprovalMode"
                                                      Tag="safe"
                                                      Click="Mode_Click" />
                                 <RadioMenuFlyoutItem x:Name="ModeAcceptEditsItem"
-                                                     Text="Accept edits — file writes run unprompted"
+                                                     x:Uid="ComposerAcceptEditsDescription" Text="Accept edits — file writes run unprompted"
                                                      GroupName="ComposerApprovalMode"
                                                      Tag="accept_edits"
                                                      Click="Mode_Click" />
                                 <RadioMenuFlyoutItem x:Name="ModePlanItem"
-                                                     Text="Plan — research first, then review a plan"
+                                                     x:Uid="ComposerPlanDescription" Text="Plan — research first, then review a plan"
                                                      GroupName="ComposerApprovalMode"
                                                      Tag="plan"
                                                      Click="Mode_Click" />
@@ -437,7 +437,7 @@
                                        IconSize="Size20"
                                        Foreground="{ThemeResource BrandPrimaryBrush}"
                                        VerticalAlignment="Center" />
-                        <TextBlock Text="Drop files to attach"
+                        <TextBlock x:Uid="ComposerDropHint" Text="Drop files to attach"
                                    FontSize="14"
                                    FontWeight="SemiBold"
                                    Foreground="{ThemeResource BrandPrimaryBrush}"

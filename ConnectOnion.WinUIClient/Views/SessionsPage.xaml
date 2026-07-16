@@ -15,7 +15,7 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <TextBlock Grid.Row="0" Text="Sessions" Style="{StaticResource TitleTextBlockStyle}" />
+        <TextBlock x:Uid="SessionsTitle" Grid.Row="0" Text="Sessions" Style="{StaticResource TitleTextBlockStyle}" />
 
         <Grid Grid.Row="1" ColumnSpacing="12">
             <Grid.ColumnDefinitions>
@@ -25,9 +25,9 @@
             </Grid.ColumnDefinitions>
             <TextBlock x:Name="AgentLabel" Grid.Column="0" VerticalAlignment="Center"
                        Foreground="{ThemeResource TextSecondaryBrush}" />
-            <Button x:Name="NewSessionButton" Grid.Column="1" Content="New session"
+            <Button x:Uid="SessionsNew" x:Name="NewSessionButton" Grid.Column="1" Content="New session"
                     Style="{StaticResource AccentButtonStyle}" Click="NewSession_Click" />
-            <Button Grid.Column="2" Content="Delete" Click="Delete_Click" />
+            <Button x:Uid="SessionsDelete" Grid.Column="2" Content="Delete" Click="Delete_Click" />
         </Grid>
 
         <ListView Grid.Row="2"

@@ -124,87 +124,87 @@
                          BorderThickness="0"
                          VerticalAlignment="Center">
                     <MenuBarItem Title="File">
-                        <MenuFlyoutItem Text="New Chat"
+                        <MenuFlyoutItem x:Uid="MenuNewChat" Text="New Chat"
                                         KeyboardAcceleratorTextOverride="Ctrl+N"
                                         Click="NewChat_Click" />
-                        <MenuFlyoutItem Text="Open Folder..."
+                        <MenuFlyoutItem x:Uid="MenuOpenFolder" Text="Open Folder..."
                                         KeyboardAcceleratorTextOverride="Ctrl+O"
                                         Click="OpenFolder_Click" />
-                        <MenuFlyoutItem Text="Close"
+                        <MenuFlyoutItem x:Uid="MenuClose" Text="Close"
                                         KeyboardAcceleratorTextOverride="Ctrl+W"
                                         Click="CloseWindow_Click" />
                         <MenuFlyoutSeparator />
-                        <MenuFlyoutItem Text="Settings..."
+                        <MenuFlyoutItem x:Uid="MenuSettings" Text="Settings..."
                                         KeyboardAcceleratorTextOverride="Ctrl+,"
                                         Click="SettingsMenu_Click" />
                         <MenuFlyoutSeparator />
-                        <MenuFlyoutItem Text="Exit"
+                        <MenuFlyoutItem x:Uid="MenuExit" Text="Exit"
                                         KeyboardAcceleratorTextOverride="Ctrl+Q"
                                         Click="Exit_Click" />
                     </MenuBarItem>
                     <MenuBarItem Title="Edit">
-                        <MenuFlyoutItem Text="Undo"
+                        <MenuFlyoutItem x:Uid="MenuUndo" Text="Undo"
                                         KeyboardAcceleratorTextOverride="Ctrl+Z"
                                         Click="Undo_Click" />
-                        <MenuFlyoutItem Text="Redo"
+                        <MenuFlyoutItem x:Uid="MenuRedo" Text="Redo"
                                         KeyboardAcceleratorTextOverride="Ctrl+Y"
                                         Click="Redo_Click" />
                         <MenuFlyoutSeparator />
-                        <MenuFlyoutItem Text="Cut"
+                        <MenuFlyoutItem x:Uid="MenuCut" Text="Cut"
                                         KeyboardAcceleratorTextOverride="Ctrl+X"
                                         Click="Cut_Click" />
-                        <MenuFlyoutItem Text="Copy"
+                        <MenuFlyoutItem x:Uid="MenuCopy" Text="Copy"
                                         KeyboardAcceleratorTextOverride="Ctrl+C"
                                         Click="Copy_Click" />
-                        <MenuFlyoutItem Text="Paste"
+                        <MenuFlyoutItem x:Uid="MenuPaste" Text="Paste"
                                         KeyboardAcceleratorTextOverride="Ctrl+V"
                                         Click="Paste_Click" />
-                        <MenuFlyoutItem Text="Delete"
+                        <MenuFlyoutItem x:Uid="MenuDelete" Text="Delete"
                                         Click="Delete_Click" />
                         <MenuFlyoutSeparator />
-                        <MenuFlyoutItem Text="Select All"
+                        <MenuFlyoutItem x:Uid="MenuSelectAll" Text="Select All"
                                         KeyboardAcceleratorTextOverride="Ctrl+A"
                                         Click="SelectAll_Click" />
                     </MenuBarItem>
                     <MenuBarItem Title="View">
-                        <MenuFlyoutItem Text="Toggle Sidebar"
+                        <MenuFlyoutItem x:Uid="MenuToggleSidebar" Text="Toggle Sidebar"
                                         KeyboardAcceleratorTextOverride="Ctrl+B"
                                         Click="ToggleSidebarMenu_Click" />
-                        <MenuFlyoutItem Text="Open Terminal"
+                        <MenuFlyoutItem x:Uid="MenuOpenTerminal" Text="Open Terminal"
                                         KeyboardAcceleratorTextOverride="Ctrl+`"
                                         Click="OpenTerminal_Click" />
-                        <MenuFlyoutItem Text="Find"
+                        <MenuFlyoutItem x:Uid="MenuFind" Text="Find"
                                         KeyboardAcceleratorTextOverride="Ctrl+F"
                                         Click="Find_Click" />
                         <MenuFlyoutSeparator />
-                        <MenuFlyoutItem Text="Back"
+                        <MenuFlyoutItem x:Uid="MenuBack" Text="Back"
                                         KeyboardAcceleratorTextOverride="Ctrl+["
                                         Click="BackMenu_Click" />
-                        <MenuFlyoutItem Text="Forward"
+                        <MenuFlyoutItem x:Uid="MenuForward" Text="Forward"
                                         KeyboardAcceleratorTextOverride="Ctrl+]"
                                         Click="ForwardMenu_Click" />
                         <MenuFlyoutSeparator />
-                        <MenuFlyoutItem Text="Zoom In"
+                        <MenuFlyoutItem x:Uid="MenuZoomIn" Text="Zoom In"
                                         KeyboardAcceleratorTextOverride="Ctrl+Shift+="
                                         Click="ZoomIn_Click" />
-                        <MenuFlyoutItem Text="Zoom Out"
+                        <MenuFlyoutItem x:Uid="MenuZoomOut" Text="Zoom Out"
                                         KeyboardAcceleratorTextOverride="Ctrl+-"
                                         Click="ZoomOut_Click" />
-                        <MenuFlyoutItem Text="Actual Size"
+                        <MenuFlyoutItem x:Uid="MenuActualSize" Text="Actual Size"
                                         Click="ActualSize_Click" />
                         <MenuFlyoutSeparator />
-                        <MenuFlyoutItem Text="Toggle Full Screen"
+                        <MenuFlyoutItem x:Uid="MenuFullScreen" Text="Toggle Full Screen"
                                         KeyboardAcceleratorTextOverride="F11"
                                         Click="ToggleFullScreen_Click" />
                     </MenuBarItem>
                     <MenuBarItem x:Name="HelpMenuBarItem" Title="Help" AutomationProperties.AutomationId="HelpMenuButton">
-                        <MenuFlyoutItem Text="Keyboard shortcuts" AutomationProperties.AutomationId="KeyboardShortcutsMenuItem"
+                        <MenuFlyoutItem x:Uid="MenuKeyboardShortcuts" Text="Keyboard shortcuts" AutomationProperties.AutomationId="KeyboardShortcutsMenuItem"
                                         KeyboardAcceleratorTextOverride="Ctrl+Shift+/"
                                         Click="KeyboardShortcuts_Click" />
-                        <MenuFlyoutItem Text="ConnectOnion Docs" AutomationProperties.AutomationId="ConnectOnionDocsMenuItem"
+                        <MenuFlyoutItem x:Uid="MenuDocs" Text="ConnectOnion Docs" AutomationProperties.AutomationId="ConnectOnionDocsMenuItem"
                                         Click="ConnectOnionDocs_Click" />
                         <MenuFlyoutSeparator />
-                        <MenuFlyoutItem Text="About ConnectOnion" AutomationProperties.AutomationId="AboutMenuItem"
+                        <MenuFlyoutItem x:Uid="MenuAbout" Text="About ConnectOnion" AutomationProperties.AutomationId="AboutMenuItem"
                                         Click="AboutConnectOnion_Click" />
                     </MenuBarItem>
                 </MenuBar>
@@ -293,7 +293,7 @@
                              MinWidth="0"
                              BorderThickness="0"
                              Background="Transparent"
-                             PlaceholderText="Search chat..."
+                             x:Uid="FindSearch" PlaceholderText="Search chat..."
                              TextChanged="FindTextBox_TextChanged"
                              KeyDown="FindTextBox_KeyDown" />
 
@@ -413,7 +413,7 @@
                             HorizontalAlignment="Stretch"
                             Foreground="{ThemeResource TextSecondaryBrush}"
                             Click="ResetZoom_Click">
-                        <TextBlock Text="Reset"
+                        <TextBlock x:Uid="ZoomReset" Text="Reset"
                                    FontSize="12" />
                     </Button>
                 </Grid>
@@ -443,7 +443,7 @@
                                    IconSize="Size20"
                                    Foreground="{ThemeResource BrandPrimaryBrush}"
                                    VerticalAlignment="Center" />
-                    <TextBlock Text="Drop files on the message box to attach"
+                    <TextBlock x:Uid="DropHint" Text="Drop files on the message box to attach"
                                FontSize="13"
                                FontWeight="SemiBold"
                                VerticalAlignment="Center" />

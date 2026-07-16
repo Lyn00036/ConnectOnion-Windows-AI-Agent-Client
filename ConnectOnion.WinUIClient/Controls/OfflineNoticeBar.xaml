@@ -34,7 +34,7 @@
                         MinWidth="0"
                         VerticalAlignment="Center"
                         Spacing="2">
-                <TextBlock Text="Agent is offline"
+                <TextBlock x:Uid="OfflineTitle" Text="Agent is offline"
                            FontSize="13"
                            FontWeight="SemiBold" />
                 <TextBlock Text="{x:Bind Detail, Mode=OneWay}"
@@ -64,7 +64,7 @@
                         <ic:FluentIcon Icon="ArrowClockwise"
                                        IconVariant="Regular"
                                        IconSize="Size16" />
-                        <TextBlock Text="Recheck" />
+                        <TextBlock x:Uid="OfflineRecheck" Text="Recheck" />
                     </StackPanel>
                 </Button>
             </Grid>

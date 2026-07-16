@@ -33,13 +33,13 @@
                 </Border>
 
                 <StackPanel Spacing="8" HorizontalAlignment="Center">
-                    <TextBlock Text="Choose an agent"
+                    <TextBlock x:Uid="HomeChooseAgent" Text="Choose an agent"
                                FontFamily="Georgia"
                                FontSize="36"
                                FontWeight="Bold"
                                TextAlignment="Center"
                                HorizontalAlignment="Center" />
-                    <TextBlock Text="Select an agent to start a new conversation"
+                    <TextBlock x:Uid="HomeChooseAgentDescription" Text="Select an agent to start a new conversation"
                                FontSize="18"
                                Foreground="{ThemeResource TextSecondaryBrush}"
                                TextAlignment="Center"

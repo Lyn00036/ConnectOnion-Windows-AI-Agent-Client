@@ -9,7 +9,8 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <Grid Background="{ThemeResource SidebarBackgroundBrush}"
+    <Grid AutomationProperties.AutomationId="ShellSidebar"
+          Background="{ThemeResource SidebarBackgroundBrush}"
           Padding="14,18,10,16"
           RowSpacing="10">
         <Grid.Resources>

@@ -107,10 +107,10 @@
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center"
                     Visibility="{x:Bind Vm.HasAgent, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}">
-            <TextBlock Text="No agent selected"
+            <TextBlock x:Uid="AgentEmptyTitle" Text="No agent selected"
                        Style="{StaticResource SubtitleTextBlockStyle}"
                        TextAlignment="Center" />
-            <TextBlock Text="Select an agent from the sidebar or add a new one to get started."
+            <TextBlock x:Uid="AgentEmptyDescription" Text="Select an agent from the sidebar or add a new one to get started."
                        Foreground="{ThemeResource TextSecondaryBrush}"
                        TextAlignment="Center"
                        TextWrapping="WrapWholeWords" />
