@@ -1,0 +1,23 @@
+root = true
+
+[*.cs]
+charset = utf-8
+end_of_line = crlf
+insert_final_newline = true
+
+# Repository and view-model methods are intentionally instance members because
+# they participate in dependency injection and presentation contracts.
+dotnet_diagnostic.CA1822.severity = suggestion
+dotnet_diagnostic.CA1859.severity = suggestion
+
+[tests/**/*.cs]
+# Method_Scenario_Result is the established, readable test naming convention.
+dotnet_diagnostic.CA1707.severity = none
+# Test doubles intentionally use broad exceptions to exercise failure paths.
+dotnet_diagnostic.CA2201.severity = none
+# xUnit collection fixture names intentionally end in Collection, and xUnit's
+# async fixture lifetime owns disposable fields even though it is not IDisposable.
+dotnet_diagnostic.CA1711.severity = none
+dotnet_diagnostic.CA1001.severity = none
+# Inline arrays are independent test inputs, not repeated production allocations.
+dotnet_diagnostic.CA1861.severity = none
