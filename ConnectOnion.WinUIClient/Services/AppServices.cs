@@ -32,6 +32,10 @@ public static class AppServices
     /// <summary>Session-lived cache of each agent's online status.</summary>
     public static AgentPresenceService Presence => Provider.GetRequiredService<AgentPresenceService>();
 
+    /// <summary>The live shortcut bindings (catalog defaults overlaid with the user's rebinds).
+    /// The window's key handlers ask this rather than testing hard-coded key codes.</summary>
+    public static KeyboardShortcutService Shortcuts => Provider.GetRequiredService<KeyboardShortcutService>();
+
     /// <summary>Single shared HttpClient for health probes and endpoint resolution.</summary>
     public static HttpClient Http => Provider.GetRequiredService<HttpClient>();
 

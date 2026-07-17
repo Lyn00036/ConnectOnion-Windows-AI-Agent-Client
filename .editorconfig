@@ -5,19 +5,58 @@ charset = utf-8
 end_of_line = crlf
 insert_final_newline = true
 
-# Repository and view-model methods are intentionally instance members because
-# they participate in dependency injection and presentation contracts.
+# Instance methods are intentionally retained for dependency injection,
+# mocking, interface contracts, and presentation-layer consistency.
 dotnet_diagnostic.CA1822.severity = suggestion
+
+# Abstractions are intentionally retained where they improve API boundaries,
+# dependency injection, testability, or implementation flexibility.
 dotnet_diagnostic.CA1859.severity = suggestion
 
+# Naming preference with no SDK counterpart, and its only hit here is a private
+# method whose "Locked" suffix already carries the more useful contract.
+dotnet_diagnostic.VSTHRD200.severity = none
+
+# Kept visible in the IDE but out of the build: every hit in this repo is either a
+# Microsoft.Data.Sqlite reader (whose async methods are synchronous by design, since
+# SQLite has no async I/O) or a CancellationTokenSource.Cancel whose CancelAsync
+# counterpart would buy nothing — every TaskCompletionSource these tokens feed is
+# built with RunContinuationsAsynchronously, so no continuation runs inline on the
+# canceller's thread anyway. Revisit if a genuine blocking call ever trips it.
+dotnet_diagnostic.VSTHRD103.severity = suggestion
+
+[ConnectOnion.WinUIClient/**.cs]
+# XAML event handlers must be async void, and WinUI's RoutedEventArgs is a WinRT
+# type that does not derive from System.EventArgs, so the analyzer's event-handler
+# exemption cannot recognize them. The Protocol and Core layers carry no such
+# constraint, so both rules stay active everywhere outside this project.
+dotnet_diagnostic.VSTHRD100.severity = none
+
+# The same pattern as an expression: async lambdas handed to WinUI events and to
+# DispatcherQueue.TryEnqueue, whose delegates are all void-returning. Every such
+# lambda here already contains the try/catch this rule exists to ask for.
+dotnet_diagnostic.VSTHRD101.severity = none
+
 [tests/**/*.cs]
-# Method_Scenario_Result is the established, readable test naming convention.
+# Method_Scenario_Result is the established test naming convention.
 dotnet_diagnostic.CA1707.severity = none
-# Test doubles intentionally use broad exceptions to exercise failure paths.
+
+# Broad exceptions are intentionally used to simulate unknown failure paths.
 dotnet_diagnostic.CA2201.severity = none
-# xUnit collection fixture names intentionally end in Collection, and xUnit's
-# async fixture lifetime owns disposable fields even though it is not IDisposable.
-dotnet_diagnostic.CA1711.severity = none
-dotnet_diagnostic.CA1001.severity = none
-# Inline arrays are independent test inputs, not repeated production allocations.
+
+# Inline arrays represent independent and readable test inputs.
 dotnet_diagnostic.CA1861.severity = none
+
+# Both rules guard against a deadlock that needs a SynchronizationContext to
+# happen, and the xUnit test host installs none. Tests gate async flows on their
+# own TaskCompletionSource (read as a foreign Task), and test doubles block in
+# constructors that cannot be async.
+dotnet_diagnostic.VSTHRD003.severity = none
+dotnet_diagnostic.VSTHRD002.severity = none
+
+# xUnit collection definitions conventionally use the Collection suffix.
+dotnet_diagnostic.CA1711.severity = none
+
+# Test classes and fixtures release disposable fields through xUnit's
+# IAsyncLifetime contract, which the analyzer does not recognize as disposal.
+dotnet_diagnostic.CA1001.severity = none

@@ -37,10 +37,10 @@
 
 ### Known limitations (as of this commit)
 
-- No test coverage of the WinUI layer *above* its headless surfaces — anything needing a XAML runtime (navigation, template selection, drag-and-drop, the find overlay) is untested (see `TEST_PLAN.md`).
-- No installer / release pipeline.
-- No `AutomationId`s in the XAML, so UI automation cannot be written yet.
-- `frontend/` (the legacy Electron client) is retained only as a behavioral reference and is not maintained.
+- Thin test coverage of the WinUI layer *above* its headless surfaces. A FlaUI shell smoke test exists (opt-in in CI), but navigation, template selection, drag-and-drop, and the find overlay remain untested (see `TEST_PLAN.md`).
+- No installer / release pipeline. CI publishes a trimmed unpackaged build, but nothing is released from it.
+- `AutomationId`s cover only the critical controls the smoke test drives (guarded by `AutomationContractTests`); wider automation needs more ids added first.
+- Localization is scaffolded (`Strings/en-US` + `x:Uid`) but only partially migrated, and no second locale exists to validate it.
 
 ---
 

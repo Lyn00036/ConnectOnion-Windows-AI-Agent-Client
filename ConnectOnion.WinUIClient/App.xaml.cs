@@ -106,9 +106,16 @@ namespace ConnectOnion.WinUIClient
             InitializeComponent();
 
             AppStorage.EnsureDirectories();
+            // The three Override categories are all framework chatter that reports success, not
+            // behaviour. HttpClient logs four lines per request and the resilience pipeline one
+            // per attempt, so every presence probe sweep writes ~30 lines; left at Information
+            // they were 87% of this file and buried the app's own events. At Warning the
+            // interesting half survives — a retry that actually fires still logs.
             Log.Logger = new LoggerConfiguration()
                 .MinimumLevel.Information()
                 .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+                .MinimumLevel.Override("System.Net.Http", LogEventLevel.Warning)
+                .MinimumLevel.Override("Polly", LogEventLevel.Warning)
                 .Enrich.FromLogContext()
                 .WriteTo.File(
                     System.IO.Path.Combine(AppStorage.LogsDir, "connectonion-.log"),

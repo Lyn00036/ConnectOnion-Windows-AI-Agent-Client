@@ -55,7 +55,12 @@ public static class Program
             // activation, so the notification's agentId/conversationId never travel and
             // the woken window can't navigate to the message's conversation.
             var activated = AppInstance.GetCurrent().GetActivatedEventArgs();
+            // Blocking cannot deadlock here: this runs before Application.Start, so no
+            // SynchronizationContext exists yet, and Main must not return until the
+            // redirect is done or this process races the instance it just woke.
+#pragma warning disable VSTHRD002
             main.RedirectActivationToAsync(activated).AsTask().GetAwaiter().GetResult();
+#pragma warning restore VSTHRD002
         }
         catch
         {

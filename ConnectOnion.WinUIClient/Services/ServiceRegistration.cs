@@ -61,6 +61,11 @@ public static class ServiceRegistration
         services.AddSingleton<ConversationRepository>();
         services.AddSingleton<UsageRepository>();
 
+        // ---- Keyboard ----
+        // Singleton because it is the live binding table the window's key handlers consult on
+        // every keystroke, and a rebind made in Settings has to be visible to them at once.
+        services.AddSingleton<KeyboardShortcutService>();
+
         // ---- Presence + runtime ----
         services.AddSingleton<AgentPresenceService>();
         // AgentSessionManager(HttpClient, ConversationRepository, UsageRepository?) — auto-wired.
@@ -86,6 +91,7 @@ public static class ServiceRegistration
 
         // ---- Startup wiring (runs when the host starts) ----
         services.AddHostedService<NotificationStartupService>();
+        services.AddHostedService<KeyboardShortcutStartupService>();
 
         // ---- View models (transient: one per page/dialog, resolved in each view's ctor) ----
         services.AddTransient<ChatViewModel>();

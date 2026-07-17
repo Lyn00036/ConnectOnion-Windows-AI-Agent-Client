@@ -53,17 +53,17 @@ Production projects sit at the repo root, test projects under `tests/`. Everythi
 
 | Project | In `.sln` | In CI | Responsibility |
 |---|---|---|---|
-| `ConnectOnion.WinUIClient` | ✅ | ✅ build | The WinUI 3 app (`net10.0-windows10.0.19041.0`) |
+| `ConnectOnion.WinUIClient` | ✅ | ✅ build | The WinUI 3 app: XAML, code-behind, window-bound services (`net10.0-windows10.0.19041.0`) |
+| `ConnectOnion.WinUIClient.Core` | ✅ | ✅ via tests | Every WinUI-free surface of the client (models, repositories, notifications, projections, view models) → the headless test target |
 | `ConnectOnion.Protocol` | ✅ | ✅ build | Transport-agnostic protocol library (`net10.0`), zero WinUI dependency → headless-testable |
 | `ConnectOnion.Protocol.Conformance` | ✅ | ✅ **CI gate** | Cross-checks Ed25519 / canonical JSON against the Node.js `ref-sign.js` |
 | `ConnectOnion.Protocol.LiveTest` | ❌ | ❌ | Manual smoke run against a real deployed agent |
 | `tests/ConnectOnion.Protocol.Tests` | ✅ | ✅ | xunit unit tests for the wire protocol |
-| `tests/ConnectOnion.WinUIClient.UnitTests` | ✅ | ✅ | Headless xunit tests for the app's WinUI-free surfaces |
+| `tests/ConnectOnion.WinUIClient.UnitTests` | ✅ | ✅ | Headless xunit tests over `Core`, plus the ArchUnitNET layer-boundary gate |
 | `tests/ConnectOnion.IntegrationTests` | ✅ | ✅ | xunit tests against a real SQLite file (schema, migrations, repositories, identity) |
+| `tests/ConnectOnion.WinUIClient.UITests` | ✅ | ⚠️ compile-only | FlaUI (UIA3) real-window shell smoke test; *runs* only on a `workflow_dispatch` opt-in |
 
-The two projects that test the app can't reference it (`net10.0-windows` + Windows App SDK won't load in a headless test host), so they `<Compile Include>` the individual WinUI-free production files they exercise. Extending that link list is how a new file comes under test.
-
-`frontend/` is the legacy Electron implementation and is **out of scope**.
+The test projects can't reference the app project (`net10.0-windows` + Windows App SDK won't load in a headless test host), so they take a `ProjectReference` on `ConnectOnion.WinUIClient.Core`, which holds every WinUI-free surface of the client. **Moving a production file into `Core` is how it comes under test.** (This replaces the older `<Compile Include>` link lists — those are gone.)
 
 ### 2.2 Key pages and windows
 
@@ -192,7 +192,6 @@ Ranked by *probability × blast radius*:
 
 ## 4. Out of Scope
 
-- `frontend/` (legacy Electron implementation)
 - Browser compatibility, SEO, cookies, DOM selectors, cross-browser CSS, web responsive breakpoints — **all irrelevant to a desktop app**
 - Correctness of the remote agent server itself (we test only how the *client* reacts, using a fake server)
 - Windows' own notification delivery reliability (we test our registration, payloads, and routing)

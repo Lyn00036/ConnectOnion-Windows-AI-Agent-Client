@@ -102,13 +102,18 @@ public sealed partial class AddAgentForm : UserControl
 
         if (!ValidateAddress(address)) return;
 
+        var agentsState = await AppServices.Agents.LoadAsync();
+        if (ShowDuplicateStatus(AgentEndpointDuplicateDetector.Find(agentsState.Agents, address, directUrl)))
+        {
+            return;
+        }
+
         if (!_connectionTested)
         {
             ShowStatus("Test connection successfully before adding this agent.", isError: true);
             return;
         }
 
-        var agentsState = await AppServices.Agents.LoadAsync();
         var agent = new AgentConfig
         {
             Id = Guid.NewGuid().ToString(),
@@ -137,6 +142,12 @@ public sealed partial class AddAgentForm : UserControl
         }
 
         if (!ValidateAddress(address)) return false;
+
+        var agentsState = await AppServices.Agents.LoadAsync();
+        if (ShowDuplicateStatus(AgentEndpointDuplicateDetector.Find(agentsState.Agents, address, directUrl)))
+        {
+            return false;
+        }
 
         SetBusy(true);
         try
@@ -185,6 +196,30 @@ public sealed partial class AddAgentForm : UserControl
         ShowStatus(AgentAddressValidator.ValidationMessage, isError: true);
         AddressBox.Focus(FocusState.Programmatic);
         return false;
+    }
+
+    private bool ShowDuplicateStatus(AgentEndpointDuplicate duplicate)
+    {
+        if (duplicate == AgentEndpointDuplicate.None) return false;
+
+        if (duplicate.HasFlag(AgentEndpointDuplicate.Address) &&
+            duplicate.HasFlag(AgentEndpointDuplicate.DirectUrl))
+        {
+            ShowStatus("An agent with this address and Direct URL already exists.", isError: true);
+            AddressBox.Focus(FocusState.Programmatic);
+        }
+        else if (duplicate.HasFlag(AgentEndpointDuplicate.Address))
+        {
+            ShowStatus("An agent with this address already exists.", isError: true);
+            AddressBox.Focus(FocusState.Programmatic);
+        }
+        else
+        {
+            ShowStatus("An agent with this Direct URL already exists.", isError: true);
+            DirectUrlBox.Focus(FocusState.Programmatic);
+        }
+
+        return true;
     }
 
     private static string CreateFallbackName(string address, string directUrl)

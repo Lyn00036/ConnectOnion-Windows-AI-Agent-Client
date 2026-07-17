@@ -16,5 +16,6 @@
   because tooling looks for it there. **If a document in this folder disagrees with `CLAUDE.md`,
   `CLAUDE.md` is right.**
 - **[`../README.md`](../README.md)** — build, run, and getting-started instructions.
-- `agent/` — vendored ConnectOnion agent examples and their own docs. Not ours; do not edit.
-- `frontend/` — the legacy Electron client, retained only as a behavioral reference.
+- `agent/` and `frontend/` — the vendored ConnectOnion agent examples and the legacy Electron client.
+  **Both were deleted in `197a88d`**; the repo is C#-only now. Read them out of git history if you
+  need the prior behavior.

@@ -84,7 +84,13 @@ public sealed partial class MainWindow : Window
         };
     }
 
-    /// <summary>Stops window callbacks from touching DI-owned services during final teardown.</summary>
+    /// <summary>
+    /// Stops window callbacks from touching DI-owned services — or the visual tree — during final
+    /// teardown. The dispatcher keeps pumping briefly after <c>Closed</c>, so anything still armed
+    /// (a timer tick, an animation continuation) can run against a tree the framework is already
+    /// tearing down; that surfaces as an access violation inside Microsoft.UI.Xaml.dll, which no
+    /// managed catch can see. Disarm the window's own actives here.
+    /// </summary>
     private void DetachWindowServices()
     {
         if (System.Threading.Interlocked.Exchange(ref _windowServicesDetached, 1) != 0) return;
@@ -92,6 +98,9 @@ public sealed partial class MainWindow : Window
         ThemeService.ThemeApplied -= ApplyTitleBarTheme;
         _sessionRepository.SessionsChanged -= OnSessionsChanged;
         DetachNotificationPresence();
+        DetachShortcutHints();
+        DetachViewMenu();
+        InAppNotifications.Shutdown();
     }
 
     private static AppWindow GetAppWindow(IntPtr hwnd)

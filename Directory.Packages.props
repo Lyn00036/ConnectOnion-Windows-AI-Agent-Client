@@ -5,6 +5,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Analyzers. GlobalPackageReference applies to every project and implies
+         PrivateAssets="all", so no project ever flows them to a downstream consumer. -->
+    <GlobalPackageReference Include="Microsoft.VisualStudio.Threading.Analyzers" Version="17.14.15" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageVersion Include="BouncyCastle.Cryptography" Version="2.6.2" />
     <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageVersion Include="CommunityToolkit.WinUI.Animations" Version="8.2.251219" />
