@@ -58,6 +58,7 @@ public sealed partial class ToolActivityViewModel : Common.ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsTimelineVisible))]
+    [NotifyPropertyChangedFor(nameof(AccessibilityName))]
     public partial bool IsExpanded { get; set; }
 
     [ObservableProperty]
@@ -89,7 +90,18 @@ public sealed partial class ToolActivityViewModel : Common.ObservableObject
         ToolActivityStatus.WaitingForPermission => "⚿",
         _ => "◌",
     };
-    [JsonIgnore] public string AccessibilityName => $"Tool execution: {Summary}";
+    [JsonIgnore] public string CompletionLabel => Status switch
+    {
+        ToolActivityStatus.Success => "Done",
+        ToolActivityStatus.PartialSuccess => "Completed with warnings",
+        ToolActivityStatus.Failed => "Failed",
+        ToolActivityStatus.Cancelled => "Cancelled",
+        ToolActivityStatus.WaitingForConfirmation => "Waiting for confirmation",
+        ToolActivityStatus.WaitingForPermission => "Waiting for permission",
+        _ => "Working...",
+    };
+    [JsonIgnore] public string AccessibilityName
+        => $"Tool activity. {Summary}. {CompletionLabel}. {(IsExpanded ? "Collapse" : "Expand")}";
     [JsonIgnore] public double DurationSeconds => Math.Max(0, ((CompletedAt ?? DateTimeOffset.UtcNow) - StartedAt).TotalSeconds);
     [JsonIgnore] public string DurationLabel => DurationSeconds < 1 ? $"{DurationSeconds * 1000:0} ms" : $"{DurationSeconds:0.0} s";
 
@@ -103,6 +115,7 @@ public sealed partial class ToolActivityViewModel : Common.ObservableObject
         OnPropertyChanged(nameof(IsTimelineVisible));
         OnPropertyChanged(nameof(IsDetailed));
         OnPropertyChanged(nameof(StatusGlyph));
+        OnPropertyChanged(nameof(CompletionLabel));
         OnPropertyChanged(nameof(AccessibilityName));
         OnPropertyChanged(nameof(DurationLabel));
     }

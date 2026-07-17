@@ -13,7 +13,10 @@ using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
 using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.ViewModels;
+using FluentIcons.Common;
+using FluentIcons.WinUI;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
@@ -29,6 +32,9 @@ namespace ConnectOnion.WinUIClient.Views;
 
 public sealed partial class ChatPage : Page, IFindHost, IReloadablePage
 {
+    /// <summary>Width of the centred conversation column; see the ChatColumnWidth resource in App.xaml.</summary>
+    private static double ChatColumnMaxWidth => (double)Application.Current.Resources["ChatColumnWidth"];
+
     /// <summary>Persisted scroll positions keyed by session id, survives page recreation.</summary>
     private static readonly ConcurrentDictionary<string, double> ScrollPositions = new();
 
@@ -154,6 +160,7 @@ public sealed partial class ChatPage : Page, IFindHost, IReloadablePage
         SaveScrollPosition();
         _pendingInitialSubmission = null;
         _stickToBottom = true;
+        ScrollToLatestButton.Visibility = Visibility.Collapsed;
         LoadingOverlay.Visibility = Visibility.Visible;
         await LoadConversationAsync();
     }
@@ -256,12 +263,140 @@ public sealed partial class ChatPage : Page, IFindHost, IReloadablePage
 
         ClipboardService.CopyText(message.Content);
 
+        if (sender is Button { Content: FluentIcon fluentIcon } iconButton)
+        {
+            var originalIcon = fluentIcon.Icon;
+            iconButton.IsHitTestVisible = false;
+            fluentIcon.Icon = Icon.Checkmark;
+            AutomationProperties.SetName(iconButton, "Copied");
+            await System.Threading.Tasks.Task.Delay(1000);
+            fluentIcon.Icon = originalIcon;
+            AutomationProperties.SetName(iconButton, message.IsUser ? "Copy message" : "Copy response");
+            iconButton.IsHitTestVisible = true;
+            return;
+        }
+
         if (sender is Button { Content: IconText iconText })
         {
             var original = iconText.Text;
             iconText.Text = "Copied";
             await System.Threading.Tasks.Task.Delay(1000);
             iconText.Text = original;
+        }
+    }
+
+    private static ChatMessage? MessageFrom(object sender)
+        => (sender as FrameworkElement)?.DataContext as ChatMessage;
+
+    private void MessageActions_PointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        if (MessageFrom(sender) is { IsEditing: false } message)
+        {
+            message.AreUserActionsVisible = true;
+        }
+    }
+
+    private void MessageActions_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        if (MessageFrom(sender) is { IsEditing: false } message)
+        {
+            message.AreUserActionsVisible = false;
+        }
+    }
+
+    private void MessageActions_GotFocus(object sender, RoutedEventArgs e)
+    {
+        if (MessageFrom(sender) is { IsEditing: false } message)
+        {
+            message.AreUserActionsVisible = true;
+        }
+    }
+
+    private void MessageActions_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement root || MessageFrom(sender) is not { } message) return;
+
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            var focused = FocusManager.GetFocusedElement(root.XamlRoot) as DependencyObject;
+            if (!message.IsEditing && (focused is null || !IsDescendantOf(focused, root)))
+            {
+                message.AreUserActionsVisible = false;
+            }
+        });
+    }
+
+    private static bool IsDescendantOf(DependencyObject child, DependencyObject ancestor)
+    {
+        for (DependencyObject? current = child; current is not null; current = VisualTreeHelper.GetParent(current))
+        {
+            if (ReferenceEquals(current, ancestor)) return true;
+        }
+        return false;
+    }
+
+    private void EditUserMessage_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is ChatMessage message && !Vm.IsProcessing)
+        {
+            message.BeginEditing();
+        }
+    }
+
+    private void CancelEditUserMessage_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is ChatMessage message)
+        {
+            message.CancelEditing();
+            message.AreUserActionsVisible = true;
+        }
+    }
+
+    private async void SaveEditUserMessage_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not ChatMessage message) return;
+
+        var replacement = message.EditDraft.Trim();
+        if (replacement.Length == 0) return;
+
+        message.CancelEditing();
+        if (await Vm.BranchFromMessageAsync(message, replacement))
+        {
+            QueueScrollToEnd(force: true);
+            return;
+        }
+
+        message.BeginEditing();
+        message.EditDraft = replacement;
+    }
+
+    private async void RetryUserMessage_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is ChatMessage message &&
+            await Vm.BranchFromMessageAsync(message, message.Content))
+        {
+            QueueScrollToEnd(force: true);
+        }
+    }
+
+    private async void RetryAgentMessage_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is ChatMessage message &&
+            await Vm.RetryFromAgentMessageAsync(message))
+        {
+            QueueScrollToEnd(force: true);
+        }
+    }
+
+    private async void ActivityHeader_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button header && header.Tag is ChatMessage message)
+        {
+            await DisclosureAnimation.ToggleAsync(
+                header,
+                DisclosureAnimation.FindContentAfter(header),
+                message.IsActivityExpanded,
+                message.ToggleActivityExpanded);
         }
     }
 
@@ -317,27 +452,16 @@ public sealed partial class ChatPage : Page, IFindHost, IReloadablePage
         }
     }
 
-    private void ToggleMessageCollapse_Click(object sender, RoutedEventArgs e)
-    {
-        if ((sender as FrameworkElement)?.DataContext is not ChatMessage message)
-        {
-            return;
-        }
-
-        message.IsContentExpanded = !message.IsContentExpanded;
-    }
-
     private void ChatRoot_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        var isNarrow = e.NewSize.Width < 760;
-        Grid.SetRow(ChatHeaderActions, isNarrow ? 1 : 0);
-        Grid.SetColumn(ChatHeaderActions, isNarrow ? 0 : 1);
-        Grid.SetColumnSpan(ChatHeaderActions, isNarrow ? 2 : 1);
-        ChatHeaderActions.Margin = isNarrow ? new Thickness(40, 0, 0, 0) : new Thickness(0);
-        ChatHeaderActions.Orientation = isNarrow ? Orientation.Vertical : Orientation.Horizontal;
-        ChatHeaderActions.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Right;
-
-        var horizontalInset = e.NewSize.Width < 640 ? 20 : 52;
+        // Centre a fixed-width reading column instead of letting the thread span the
+        // whole window. Left-aligned agent turns and right-aligned user turns are
+        // ~1200px apart on a maximised window otherwise, which stops them reading as
+        // one conversation. The inset never drops below the edge margin, so a narrow
+        // window degrades to the old flush-to-edge behaviour rather than going negative.
+        var edgeInset = e.NewSize.Width < 640 ? 20 : 52;
+        var centringInset = (e.NewSize.Width - ChatColumnMaxWidth) / 2;
+        var horizontalInset = Math.Max(edgeInset, centringInset);
         MessageList.Padding = new Thickness(horizontalInset, 18, horizontalInset, 22);
     }
 
@@ -359,6 +483,11 @@ public sealed partial class ChatPage : Page, IFindHost, IReloadablePage
         if (e.Action is not (NotifyCollectionChangedAction.Add or NotifyCollectionChangedAction.Replace))
         {
             return;
+        }
+
+        if (!_stickToBottom)
+        {
+            ScrollToLatestButton.Visibility = Visibility.Visible;
         }
 
         QueueScrollToEnd(force: false);
@@ -504,14 +633,23 @@ public sealed partial class ChatPage : Page, IFindHost, IReloadablePage
         }
         return tcs.Task;
     }
-    private void ScrollToEnd()
+    private void ScrollToLatest_Click(object sender, RoutedEventArgs e)
+    {
+        _stickToBottom = true;
+        ScrollToLatestButton.Visibility = Visibility.Collapsed;
+        ScrollToEnd(animate: true);
+    }
+
+    private void ScrollToEnd(bool animate = false)
     {
         if (Vm.Messages.Count == 0) return;
 
+        _stickToBottom = true;
+        ScrollToLatestButton.Visibility = Visibility.Collapsed;
         _messageScrollViewer ??= FindDescendant<ScrollViewer>(MessageList);
         if (_messageScrollViewer is not null)
         {
-            _messageScrollViewer.ChangeView(null, _messageScrollViewer.ScrollableHeight, null, disableAnimation: true);
+            _messageScrollViewer.ChangeView(null, _messageScrollViewer.ScrollableHeight, null, disableAnimation: !animate);
             return;
         }
 
@@ -524,6 +662,7 @@ public sealed partial class ChatPage : Page, IFindHost, IReloadablePage
 
         var distanceFromBottom = _messageScrollViewer.ScrollableHeight - _messageScrollViewer.VerticalOffset;
         _stickToBottom = distanceFromBottom < 96;
+        ScrollToLatestButton.Visibility = _stickToBottom ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
@@ -546,11 +685,15 @@ public sealed partial class ChatPage : Page, IFindHost, IReloadablePage
 
     /// <summary>Folds an interactive card open or shut. Purely presentational — it never touches
     /// the pending response, so collapsing a card that still awaits an answer is safe.</summary>
-    private void InteractiveHeader_Click(object sender, RoutedEventArgs e)
+    private async void InteractiveHeader_Click(object sender, RoutedEventArgs e)
     {
-        if ((sender as FrameworkElement)?.Tag is ChatMessage message)
+        if (sender is Button header && header.Tag is ChatMessage message)
         {
-            message.ToggleInteractiveExpanded();
+            await DisclosureAnimation.ToggleAsync(
+                header,
+                DisclosureAnimation.FindContentAfter(header),
+                message.IsInteractiveExpanded,
+                message.ToggleInteractiveExpanded);
         }
     }
 

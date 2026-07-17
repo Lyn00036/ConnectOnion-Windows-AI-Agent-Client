@@ -17,9 +17,23 @@ public sealed partial class ToolActivityView : UserControl
 
     public ToolActivityView() => InitializeComponent();
 
-    private void Header_Click(object sender, RoutedEventArgs e) => Activity?.ToggleExpanded();
-    private void Step_Click(object sender, RoutedEventArgs e)
+    private async void Header_Click(object sender, RoutedEventArgs e)
     {
-        if ((sender as FrameworkElement)?.Tag is ToolStepViewModel step) step.ToggleExpanded();
+        if (sender is not Button header || Activity is null) return;
+        await DisclosureAnimation.ToggleAsync(
+            header,
+            DisclosureAnimation.FindContentAfter(header),
+            Activity.IsExpanded,
+            Activity.ToggleExpanded);
+    }
+
+    private async void Step_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button header || header.Tag is not ToolStepViewModel step) return;
+        await DisclosureAnimation.ToggleAsync(
+            header,
+            DisclosureAnimation.FindContentAfter(header),
+            step.IsExpanded,
+            step.ToggleExpanded);
     }
 }

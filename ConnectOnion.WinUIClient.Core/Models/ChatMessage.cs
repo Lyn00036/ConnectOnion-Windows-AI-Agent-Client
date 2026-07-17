@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using System;
+using System.Globalization;
 using System.Text.Json.Serialization;
 using CommunityToolkit.Mvvm.ComponentModel;
 
@@ -28,9 +30,6 @@ public enum EventStatus
 /// </summary>
 public sealed partial class ChatMessage : Common.ObservableObject
 {
-    private const int CollapseThreshold = 600;
-    private const int CollapsedMaxLines = 12;
-
     private bool? _interactiveExpandOverride;
 
     public ChatMessage()
@@ -40,12 +39,18 @@ public sealed partial class ChatMessage : Common.ObservableObject
         EventKind = "";
         EventEyebrow = "";
         OnboardInviteCode = "";
-        IsContentExpanded = true;
+        IsActivityExpanded = true;
         FindQuery = "";
         ActiveFindMatchIndex = -1;
         AskUserFreeText = "";
         PlanFeedback = "";
-        Attachments.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasAttachments));
+        EditDraft = "";
+        CreatedAtUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        Attachments.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(HasAttachments));
+            OnPropertyChanged(nameof(CanEdit));
+        };
     }
 
     [JsonPropertyName("id")]
@@ -55,19 +60,43 @@ public sealed partial class ChatMessage : Common.ObservableObject
     public ChatRole Role { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsCollapsible))]
-    [NotifyPropertyChangedFor(nameof(IsContentCollapsed))]
-    [NotifyPropertyChangedFor(nameof(CollapseButtonText))]
-    [NotifyPropertyChangedFor(nameof(RenderedMaxLines))]
     [JsonPropertyName("content")]
     public partial string Content { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TimeLabel))]
+    [JsonPropertyName("createdAt")]
+    public partial long CreatedAtUnixMs { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowUserActions))]
+    [NotifyPropertyChangedFor(nameof(UserActionsOpacity))]
+    [JsonIgnore]
+    public partial bool AreUserActionsVisible { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowUserActions))]
+    [NotifyPropertyChangedFor(nameof(UserActionsOpacity))]
+    [JsonIgnore]
+    public partial bool IsEditing { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanSaveEdit))]
+    [JsonIgnore]
+    public partial string EditDraft { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ActivityHeaderTitle))]
+    [NotifyPropertyChangedFor(nameof(IsThinkingRunning))]
+    [NotifyPropertyChangedFor(nameof(ActivityTimelineText))]
+    [NotifyPropertyChangedFor(nameof(ActivityAccessibilityName))]
+    [NotifyPropertyChangedFor(nameof(TurnUsageSummary))]
     [JsonPropertyName("eventTitle")]
     public partial string EventTitle { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasEventDetail))]
+    [NotifyPropertyChangedFor(nameof(ActivityTimelineText))]
     [JsonPropertyName("eventDetail")]
     public partial string? EventDetail { get; set; }
 
@@ -93,6 +122,11 @@ public sealed partial class ChatMessage : Common.ObservableObject
     [NotifyPropertyChangedFor(nameof(IsInteractiveCollapsed))]
     [NotifyPropertyChangedFor(nameof(InteractiveOutcome))]
     [NotifyPropertyChangedFor(nameof(InteractiveAccessibilityName))]
+    [NotifyPropertyChangedFor(nameof(ActivityStatusGlyph))]
+    [NotifyPropertyChangedFor(nameof(ActivityStatusLabel))]
+    [NotifyPropertyChangedFor(nameof(ActivityHeaderTitle))]
+    [NotifyPropertyChangedFor(nameof(IsThinkingRunning))]
+    [NotifyPropertyChangedFor(nameof(ActivityAccessibilityName))]
     [JsonPropertyName("eventStatus")]
     public partial EventStatus Status { get; set; }
 
@@ -102,6 +136,27 @@ public sealed partial class ChatMessage : Common.ObservableObject
     // so IsInteractiveExpanded re-reads the cleared override.
     partial void OnStatusChanged(EventStatus value) => _interactiveExpandOverride = null;
 
+    // A thought process is supporting context, so it starts folded whether it was just streamed
+    // or reconstructed from persistence. Handle both property assignment orders used by object
+    // initializers/deserializers: either EventKind or EventTitle may arrive first.
+    partial void OnEventTitleChanged(string value)
+    {
+        if (EventKind == "activity"
+            && string.Equals(value, "Thinking", StringComparison.OrdinalIgnoreCase))
+        {
+            IsActivityExpanded = false;
+        }
+    }
+
+    partial void OnEventKindChanged(string value)
+    {
+        if (value == "activity"
+            && string.Equals(EventTitle, "Thinking", StringComparison.OrdinalIgnoreCase))
+        {
+            IsActivityExpanded = false;
+        }
+    }
+
     /// <summary>Small uppercase label shown before the title on tool cards.</summary>
     [ObservableProperty]
     [JsonPropertyName("eventEyebrow")]
@@ -110,6 +165,8 @@ public sealed partial class ChatMessage : Common.ObservableObject
     /// <summary>Right-aligned meta (timing, duration, context sizes).</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasEventMeta))]
+    [NotifyPropertyChangedFor(nameof(HasActivityTimelineMeta))]
+    [NotifyPropertyChangedFor(nameof(TurnUsageSummary))]
     [NotifyPropertyChangedFor(nameof(InteractiveOutcome))]
     [NotifyPropertyChangedFor(nameof(InteractiveAccessibilityName))]
     [JsonPropertyName("eventMeta")]
@@ -160,20 +217,93 @@ public sealed partial class ChatMessage : Common.ObservableObject
     public bool IsEvent => Role == ChatRole.Event;
 
     [JsonIgnore]
-    public bool IsCollapsible => IsAgent && !string.IsNullOrWhiteSpace(Content) && Content.Length > CollapseThreshold;
+    public string TimeLabel => DateTimeOffset.FromUnixTimeMilliseconds(CreatedAtUnixMs)
+        .ToLocalTime()
+        .ToString("h:mm tt", CultureInfo.CurrentCulture);
 
     [JsonIgnore]
-    public bool IsContentCollapsed => IsCollapsible && !IsContentExpanded;
+    public bool CanEdit => IsUser && !HasAttachments && !string.IsNullOrWhiteSpace(Content);
 
     [JsonIgnore]
-    public string CollapseButtonText => IsContentCollapsed ? "Expand" : "Collapse";
+    public bool CanSaveEdit => !string.IsNullOrWhiteSpace(EditDraft);
 
     [JsonIgnore]
-    public int RenderedMaxLines => IsContentCollapsed ? CollapsedMaxLines : 0;
+    public bool ShowUserActions => AreUserActionsVisible && !IsEditing;
+
+    [JsonIgnore]
+    public double UserActionsOpacity => ShowUserActions ? 1d : 0d;
+
+    public void BeginEditing()
+    {
+        if (!CanEdit) return;
+        EditDraft = Content;
+        AreUserActionsVisible = false;
+        IsEditing = true;
+    }
+
+    public void CancelEditing()
+    {
+        IsEditing = false;
+        EditDraft = "";
+    }
 
     /// <summary>Compact card with a colored status dot (thinking, intent, eval, compact, …).</summary>
     [JsonIgnore]
     public bool IsActivityEvent => EventKind == "activity";
+
+    [JsonIgnore]
+    public bool IsTurnUsageEvent => IsActivityEvent && EventKey == "turn_usage";
+
+    [JsonIgnore]
+    public string TurnUsageSummary => string.IsNullOrWhiteSpace(EventMeta)
+        ? EventTitle
+        : $"{EventTitle} · {EventMeta}";
+
+    [JsonIgnore]
+    public bool IsThinkingEvent => IsActivityEvent
+        && string.Equals(EventTitle, "Thinking", StringComparison.OrdinalIgnoreCase);
+
+    [JsonIgnore]
+    public bool IsThinkingRunning => IsThinkingEvent && Status == EventStatus.Running;
+
+    [JsonIgnore]
+    public string ActivityHeaderTitle => IsThinkingEvent
+        ? IsThinkingRunning ? "Thinking..." : "Thought process"
+        : IsTurnUsageEvent ? "Turn usage" : "Activity";
+
+    [JsonIgnore]
+    public string ActivityTimelineText => IsThinkingEvent
+        ? string.IsNullOrWhiteSpace(EventDetail) ? EventTitle : EventDetail
+        : IsTurnUsageEvent
+            ? string.IsNullOrWhiteSpace(EventTitle) ? "Model" : EventTitle
+            : string.IsNullOrWhiteSpace(EventDetail)
+                ? EventTitle
+                : $"{EventTitle} — {EventDetail}";
+
+    [JsonIgnore]
+    public bool HasActivityTimelineMeta => !string.IsNullOrWhiteSpace(EventMeta);
+
+    [JsonIgnore]
+    public string ActivityStatusGlyph => Status switch
+    {
+        EventStatus.Running => "◌",
+        EventStatus.Error => "✕",
+        _ => "✓",
+    };
+
+    [JsonIgnore]
+    public string ActivityStatusLabel => Status switch
+    {
+        EventStatus.Running => "Working...",
+        EventStatus.Error => "Failed",
+        _ => "Done",
+    };
+
+    [JsonIgnore]
+    public string ActivityAccessibilityName
+        => $"{ActivityHeaderTitle}. {ActivityStatusLabel}. {(IsActivityExpanded ? "Collapse" : "Expand")}";
+
+    public void ToggleActivityExpanded() => IsActivityExpanded = !IsActivityExpanded;
 
     /// <summary>Tool card with a status badge and collapsible arguments/result.</summary>
     [JsonIgnore]
@@ -270,11 +400,9 @@ public sealed partial class ChatMessage : Common.ObservableObject
     public partial bool IsOnboardingSubmitted { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsContentCollapsed))]
-    [NotifyPropertyChangedFor(nameof(CollapseButtonText))]
-    [NotifyPropertyChangedFor(nameof(RenderedMaxLines))]
+    [NotifyPropertyChangedFor(nameof(ActivityAccessibilityName))]
     [JsonIgnore]
-    public partial bool IsContentExpanded { get; set; }
+    public partial bool IsActivityExpanded { get; set; }
 
     [ObservableProperty]
     [JsonIgnore]

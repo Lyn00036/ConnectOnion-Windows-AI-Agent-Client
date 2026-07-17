@@ -137,10 +137,6 @@ public sealed partial class ChatPage
             var match = _findMatches[_currentFindIndex];
             match.Message.FindQuery = _searchQuery;
             match.Message.ActiveFindMatchIndex = match.MatchIndexInMessage;
-            if (match.Message.IsContentCollapsed)
-            {
-                match.Message.IsContentExpanded = true;
-            }
 
             if (scroll)
             {

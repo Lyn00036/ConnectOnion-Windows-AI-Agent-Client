@@ -285,6 +285,7 @@ public sealed class ConversationRepository
             EventResult = ReadNullableString(reader, 11),
             Status = ParseEventStatus(ReadNullableString(reader, 12)),
             IsOnboarding = reader.GetInt32(13) != 0,
+            CreatedAtUnixMs = reader.GetInt64(14),
         };
         // Tool activity is stored in the existing event_args payload column. This keeps the
         // schema backward compatible while making the aggregate durable across page teardown
@@ -426,7 +427,7 @@ public sealed class ConversationRepository
             _ => "done",
         };
         cmd.Parameters["$is_onboarding"].Value = m.IsOnboarding ? 1 : 0;
-        cmd.Parameters["$created_at"].Value = now;
+        cmd.Parameters["$created_at"].Value = m.CreatedAtUnixMs > 0 ? m.CreatedAtUnixMs : now;
     }
 
     private static void BindAttachment(SqliteCommand cmd, ChatAttachment a, string conversationId, long messageId, long now)

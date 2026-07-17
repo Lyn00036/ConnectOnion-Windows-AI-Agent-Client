@@ -21,6 +21,7 @@ public sealed partial class ChatMessageTemplateSelector : DataTemplateSelector
 {
     public DataTemplate? User { get; set; }
     public DataTemplate? Agent { get; set; }
+    public DataTemplate? Usage { get; set; }
     public DataTemplate? Activity { get; set; }
     public DataTemplate? ToolActivity { get; set; }
     public DataTemplate? AskUser { get; set; }
@@ -41,6 +42,7 @@ public sealed partial class ChatMessageTemplateSelector : DataTemplateSelector
 
         if (message.IsUser) return User;
         if (message.IsAgent) return Agent;
+        if (message.IsTurnUsageEvent) return Usage;
         if (message.IsActivityEvent) return Activity;
         if (message.IsToolActivityEvent) return ToolActivity;
         if (message.IsAskUserEvent) return AskUser;
