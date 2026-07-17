@@ -11,17 +11,17 @@
 
     <Grid AutomationProperties.AutomationId="ShellSidebar"
           Background="{ThemeResource SidebarBackgroundBrush}"
-          Padding="14,18,10,16"
-          RowSpacing="10">
+          Padding="10,12,8,10"
+          RowSpacing="6">
         <Grid.Resources>
             <Style x:Key="ShellNavButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
                 <Setter Property="Background" Value="Transparent" />
                 <Setter Property="BorderThickness" Value="0" />
-                <Setter Property="CornerRadius" Value="8" />
+                <Setter Property="CornerRadius" Value="6" />
                 <Setter Property="HorizontalAlignment" Value="Stretch" />
                 <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                <Setter Property="MinHeight" Value="40" />
-                <Setter Property="Padding" Value="8,6" />
+                <Setter Property="MinHeight" Value="36" />
+                <Setter Property="Padding" Value="7,4" />
             </Style>
 
             <Style x:Key="ShellIconButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
@@ -30,8 +30,8 @@
                 <Setter Property="CornerRadius" Value="6" />
                 <Setter Property="MinHeight" Value="0" />
                 <Setter Property="MinWidth" Value="0" />
-                <Setter Property="Width" Value="26" />
-                <Setter Property="Height" Value="26" />
+                <Setter Property="Width" Value="22" />
+                <Setter Property="Height" Value="22" />
                 <Setter Property="Padding" Value="0" />
             </Style>
 
@@ -46,41 +46,36 @@
         <Button Grid.Row="0"
                 Style="{StaticResource ShellNavButtonStyle}"
                 Click="ChatHome_Click">
-            <Grid ColumnSpacing="10">
+            <Grid ColumnSpacing="8">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <StackPanel Grid.Column="0"
-                            Spacing="2"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center">
-                    <Image Width="32" Height="32" Source="/Assets/icon.png" />
-                    <StackPanel Orientation="Horizontal"
-                                Spacing="3"
-                                HorizontalAlignment="Center"
-                                ToolTipService.ToolTip="Online agents">
-                        <Ellipse Width="5"
-                                 Height="5"
-                                 Fill="{ThemeResource SuccessBrush}"
-                                 VerticalAlignment="Center" />
-                        <TextBlock Text="{Binding OnlineAgentCountText}"
-                                   FontSize="9"
-                                   FontWeight="SemiBold"
-                                   Foreground="{ThemeResource TextSecondaryBrush}"
-                                   TextAlignment="Center" />
-                    </StackPanel>
-                </StackPanel>
+                <Image Grid.Column="0"
+                       Width="24"
+                       Height="24"
+                       Source="/Assets/icon.png"
+                       VerticalAlignment="Center" />
                 <TextBlock Grid.Column="1"
                            Text="ConnectOnion"
+                           FontSize="13"
                            FontWeight="SemiBold"
                            VerticalAlignment="Center" />
-                <TextBlock Grid.Column="2"
-                           Text="desktop"
-                           FontSize="10"
-                           Foreground="{ThemeResource TextSecondaryBrush}"
-                           VerticalAlignment="Center" />
+                <StackPanel Grid.Column="2"
+                            Orientation="Horizontal"
+                            Spacing="4"
+                            VerticalAlignment="Center"
+                            ToolTipService.ToolTip="Online agents">
+                    <Ellipse Width="5"
+                             Height="5"
+                             Fill="{ThemeResource SuccessBrush}"
+                             VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding OnlineAgentCountText}"
+                               FontSize="10"
+                               Foreground="{ThemeResource TextTertiaryBrush}"
+                               VerticalAlignment="Center" />
+                </StackPanel>
             </Grid>
         </Button>
 
@@ -88,6 +83,8 @@
             <StackPanel Spacing="4">
                 <Button Style="{StaticResource ShellNavButtonStyle}"
                         Click="TogglePinned_Click"
+                        MinHeight="28"
+                        Padding="7,2"
                         ToolTipService.ToolTip="Expand or collapse pinned chats">
                     <Grid ColumnSpacing="6">
                         <Grid.ColumnDefinitions>
@@ -97,8 +94,8 @@
                         <ic:FluentIcon Grid.Column="0"
                                        Icon="ChevronDown"
                                        IconVariant="Regular"
-                                       IconSize="Size16"
-                                       Foreground="{ThemeResource TextSecondaryBrush}"
+                                       IconSize="Size12"
+                                       Foreground="{ThemeResource TextTertiaryBrush}"
                                        RenderTransformOrigin="0.5,0.5">
                             <ic:FluentIcon.RenderTransform>
                                 <RotateTransform Angle="{Binding PinnedChevronAngle}" />
@@ -106,9 +103,9 @@
                         </ic:FluentIcon>
                         <TextBlock Grid.Column="1"
                                    Text="Pinned Chats"
-                                   FontSize="12"
+                                   FontSize="11"
                                    FontWeight="SemiBold"
-                                   Foreground="{ThemeResource TextSecondaryBrush}"
+                                   Foreground="{ThemeResource TextTertiaryBrush}"
                                    VerticalAlignment="Center" />
                     </Grid>
                 </Button>
@@ -117,7 +114,7 @@
                                Visibility="{Binding IsPinnedExpanded, Converter={StaticResource BoolToVis}}">
                     <ItemsRepeater.ItemTemplate>
                         <DataTemplate>
-                            <Grid Margin="0,2,0,0"
+                            <Grid Margin="0,1,0,0"
                                   PointerEntered="Row_PointerEntered"
                                   PointerExited="Row_PointerExited"
                                   GotFocus="Row_GotFocus"
@@ -148,12 +145,12 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <Border Grid.ColumnSpan="2"
-                                        CornerRadius="8"
+                                        CornerRadius="6"
                                         Background="{Binding IsSelected, Converter={StaticResource RowStateToBackground}}"
                                         Visibility="{Binding ShowRowBackground, Converter={StaticResource BoolToVis}}" />
                                 <Border Grid.ColumnSpan="2"
-                                        Width="3"
-                                        Height="22"
+                                        Width="2"
+                                        Height="18"
                                         HorizontalAlignment="Left"
                                         VerticalAlignment="Center"
                                         CornerRadius="2"
@@ -172,17 +169,17 @@
                                         <ic:FluentIcon Grid.Column="0"
                                                        Icon="Chat"
                                                        IconVariant="Regular"
-                                                       IconSize="Size16"
+                                                       IconSize="Size12"
                                                        VerticalAlignment="Center"
                                                        Foreground="{ThemeResource TextSecondaryBrush}" />
                                         <StackPanel Grid.Column="1" MinWidth="0">
                                             <TextBlock Text="{Binding Title}"
                                                        TextTrimming="CharacterEllipsis"
-                                                       FontSize="13" />
+                                                       FontSize="12" />
                                             <TextBlock Text="{Binding AgentName}"
                                                        TextTrimming="CharacterEllipsis"
-                                                       FontSize="10"
-                                                       Foreground="{ThemeResource TextSecondaryBrush}" />
+                                                       FontSize="9"
+                                                       Foreground="{ThemeResource TextTertiaryBrush}" />
                                         </StackPanel>
                                     </Grid>
                                 </Button>
@@ -203,16 +200,24 @@
                 </ItemsRepeater>
 
                 <TextBlock Text="Agents"
-                           FontSize="12"
+                           FontSize="11"
                            FontWeight="SemiBold"
-                           Foreground="{ThemeResource TextSecondaryBrush}"
-                           Margin="8,0,0,4" />
+                           Foreground="{ThemeResource TextTertiaryBrush}"
+                           Margin="7,4,0,2" />
                 <ItemsRepeater ItemsSource="{Binding ShellAgents}" AutomationProperties.AutomationId="AgentList">
                 <ItemsRepeater.ItemTemplate>
                     <DataTemplate>
-                        <StackPanel Margin="0,2">
-                            <Border CornerRadius="8"
-                                    Background="{ThemeResource SurfaceSecondaryBrush}"
+                        <StackPanel Margin="0,1">
+                            <!-- Transparent, not unset: this Border is the row's pointer
+                                 hit-test target, and a null Background doesn't hit-test, so
+                                 dropping the attribute would silently kill row hover.
+                                 It used to carry a permanent SurfaceSecondary fill, which
+                                 landed differently per theme — invisible in light (the same
+                                 value as the sidebar itself) but a raised card in dark. Hover
+                                 and selection are the inner RowStateToBackground Border's job;
+                                 this one only catches the pointer. -->
+                            <Border CornerRadius="6"
+                                    Background="Transparent"
                                     PointerEntered="Row_PointerEntered"
                                     PointerExited="Row_PointerExited"
                                     GotFocus="Row_GotFocus"
@@ -227,7 +232,7 @@
                                         <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="Transparent" />
                                     </ResourceDictionary>
                                 </Border.Resources>
-                                <Grid MinHeight="44" Padding="1.5,0" ColumnSpacing="6">
+                                <Grid MinHeight="38" Padding="1,0" ColumnSpacing="5">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="Auto" />
@@ -235,12 +240,12 @@
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <Border Grid.ColumnSpan="4"
-                                            CornerRadius="7"
+                                            CornerRadius="6"
                                             Background="{Binding IsSelected, Converter={StaticResource RowStateToBackground}}"
                                             Visibility="{Binding ShowRowBackground, Converter={StaticResource BoolToVis}}" />
                                     <Border Grid.ColumnSpan="4"
-                                            Width="3"
-                                            Height="24"
+                                            Width="2"
+                                            Height="18"
                                             HorizontalAlignment="Left"
                                             VerticalAlignment="Center"
                                             CornerRadius="2"
@@ -254,8 +259,8 @@
                                             ToolTipService.ToolTip="Expand or collapse chats">
                                         <ic:FluentIcon Icon="ChevronDown"
                                                        IconVariant="Regular"
-                                                       IconSize="Size16"
-                                                       Foreground="{ThemeResource TextSecondaryBrush}"
+                                                       IconSize="Size12"
+                                                       Foreground="{ThemeResource TextTertiaryBrush}"
                                                        RenderTransformOrigin="0.5,0.5">
                                             <ic:FluentIcon.RenderTransform>
                                                 <RotateTransform Angle="{Binding ChevronAngle}" />
@@ -263,9 +268,9 @@
                                         </ic:FluentIcon>
                                     </Button>
                                     <local:AgentAvatar Grid.Column="1"
-                                                       Size="26"
-                                                       CornerRadius="6"
-                                                       FontSize="11"
+                                                       Size="22"
+                                                       CornerRadius="5"
+                                                       FontSize="10"
                                                        VerticalAlignment="Center"
                                                        Initial="{Binding Initial}" />
                                     <Button Grid.Column="2"
@@ -286,7 +291,8 @@
                                             </Grid.ColumnDefinitions>
                                             <TextBlock Grid.Column="0"
                                                        Text="{Binding Name}"
-                                                       FontWeight="SemiBold"
+                                                       FontSize="13"
+                                                       FontWeight="Normal"
                                                        TextTrimming="CharacterEllipsis"
                                                        VerticalAlignment="Center" />
                                             <Grid Grid.Column="1"
@@ -311,7 +317,7 @@
                                     <StackPanel Grid.Column="3"
                                                 Orientation="Horizontal"
                                                 Spacing="2"
-                                                Width="54"
+                                                Width="46"
                                                 HorizontalAlignment="Right"
                                                 VerticalAlignment="Center">
                                         <StackPanel Orientation="Horizontal"
@@ -349,7 +355,7 @@
                                            Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}">
                                 <ItemsRepeater.ItemTemplate>
                                     <DataTemplate>
-                                        <Grid Margin="34,2,0,0"
+                                        <Grid Margin="28,1,0,0"
                                               PointerEntered="Row_PointerEntered"
                                               PointerExited="Row_PointerExited"
                                               GotFocus="Row_GotFocus"
@@ -369,12 +375,12 @@
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
                                             <Border Grid.ColumnSpan="2"
-                                                    CornerRadius="8"
+                                                    CornerRadius="6"
                                                     Background="{Binding IsSelected, Converter={StaticResource RowStateToBackground}}"
                                                     Visibility="{Binding ShowRowBackground, Converter={StaticResource BoolToVis}}" />
                                             <Border Grid.ColumnSpan="2"
-                                                    Width="3"
-                                                    Height="22"
+                                                    Width="2"
+                                                    Height="18"
                                                     HorizontalAlignment="Left"
                                                     VerticalAlignment="Center"
                                                     CornerRadius="2"
@@ -393,14 +399,14 @@
                                                     <ic:FluentIcon Grid.Column="0"
                                                                    Icon="Chat"
                                                                    IconVariant="Regular"
-                                                                   IconSize="Size16"
+                                                                   IconSize="Size12"
                                                                    VerticalAlignment="Center"
                                                                    Foreground="{ThemeResource TextSecondaryBrush}" />
                                                     <TextBlock Grid.Column="1"
                                                                Text="{Binding Title}"
                                                                TextTrimming="CharacterEllipsis"
                                                                VerticalAlignment="Center"
-                                                               FontSize="13" />
+                                                               FontSize="12" />
                                                 </Grid>
                                             </Button>
                                             <Button Grid.Column="1"
@@ -453,15 +459,15 @@
                  supply one (see IconText.xaml) — without it these two read as washed-out in both
                  themes. TextPrimary keeps them legible on the sidebar background either way. -->
             <Button Style="{StaticResource ShellNavButtonStyle}" Click="AddAgent_Click" AutomationProperties.AutomationId="AddAgentButton">
-                <local:IconText Glyph="Add" IconSize="Size20" Spacing="9" Text="Add Agent"
-                                Foreground="{ThemeResource TextPrimaryBrush}" />
+                <local:IconText Glyph="Add" IconSize="Size16" Spacing="8" FontSize="12" Text="Add Agent"
+                                Foreground="{ThemeResource TextSecondaryBrush}" />
             </Button>
             <Button Style="{StaticResource ShellNavButtonStyle}"
                     Click="Settings_Click"
                     AutomationProperties.AutomationId="SettingsButton"
                     AutomationProperties.Name="Open settings">
-                <local:IconText Glyph="Settings" IconSize="Size20" Spacing="9" Text="Settings"
-                                Foreground="{ThemeResource TextPrimaryBrush}" />
+                <local:IconText Glyph="Settings" IconSize="Size16" Spacing="8" FontSize="12" Text="Settings"
+                                Foreground="{ThemeResource TextSecondaryBrush}" />
             </Button>
         </StackPanel>
     </Grid>

@@ -75,6 +75,7 @@
             <SolidColorBrush x:Key="WarningBrush" Color="{ThemeResource WarningColor}" />
             <SolidColorBrush x:Key="DangerBrush" Color="{ThemeResource DangerColor}" />
             <SolidColorBrush x:Key="InfoBrush" Color="{ThemeResource InfoColor}" />
+            <SolidColorBrush x:Key="StatusRunningBrush" Color="{ThemeResource StatusRunningColor}" />
 
             <!-- Search -->
             <SolidColorBrush x:Key="SearchMatchBackgroundBrush" Color="{ThemeResource SearchMatchBackgroundColor}" />
@@ -113,9 +114,6 @@
             <SolidColorBrush x:Key="ShellHoverBrush" Color="{ThemeResource SidebarItemHoverColor}" />
             <SolidColorBrush x:Key="ShellMutedTextBrush" Color="{ThemeResource TextSecondaryColor}" />
 
-            <SolidColorBrush x:Key="ThinkingStatusBackgroundBrush" Color="#FFE7F7EE" />
-            <SolidColorBrush x:Key="ThinkingStatusBorderBrush" Color="#FF9BD7B8" />
-            <SolidColorBrush x:Key="ThinkingStatusDotBrush" Color="{ThemeResource SuccessColor}" />
             <SolidColorBrush x:Key="StatusSuccessTextBrush" Color="{ThemeResource SuccessColor}" />
             <SolidColorBrush x:Key="StatusErrorTextBrush" Color="{ThemeResource DangerColor}" />
 
@@ -128,16 +126,14 @@
             <SolidColorBrush x:Key="ComposerWaveformBaselineBrush" Color="{ThemeResource BorderStrongColor}" />
             <SolidColorBrush x:Key="ComposerActiveWaveformBrush" Color="{ThemeResource TextPrimaryColor}" />
             <SolidColorBrush x:Key="ComposerRecordingTextBrush" Color="{ThemeResource TextSecondaryColor}" />
-            <!-- Deliberately monochrome ink/paper CTA (not brand purple) — matches the
-                 restrained, non-"every button is Primary" composer convention common to
-                 AI chat clients; kept as its own literal so it doesn't drift if the brand
-                 scale changes. -->
-            <SolidColorBrush x:Key="ComposerStopButtonBackgroundBrush" Color="#FF3A3A3D" />
-            <SolidColorBrush x:Key="ComposerStopButtonForegroundBrush" Color="#FFFFFFFF" />
-            <SolidColorBrush x:Key="ComposerPrimaryButtonBackgroundBrush" Color="#FF202124" />
-            <SolidColorBrush x:Key="ComposerPrimaryButtonForegroundBrush" Color="#FFFFFFFF" />
-            <SolidColorBrush x:Key="ComposerDisabledButtonBackgroundBrush" Color="#FFE7E7EA" />
-            <SolidColorBrush x:Key="ComposerDisabledButtonForegroundBrush" Color="#FF9A9CA2" />
+            <!-- Send is the one green CTA on the screen; Stop stays neutral ink so a
+                 running turn's escape hatch never competes with it for attention. -->
+            <SolidColorBrush x:Key="ComposerStopButtonBackgroundBrush" Color="{ThemeResource ComposerStopButtonBackgroundColor}" />
+            <SolidColorBrush x:Key="ComposerStopButtonForegroundBrush" Color="{ThemeResource ComposerStopButtonForegroundColor}" />
+            <SolidColorBrush x:Key="ComposerPrimaryButtonBackgroundBrush" Color="{ThemeResource BrandPrimaryColor}" />
+            <SolidColorBrush x:Key="ComposerPrimaryButtonForegroundBrush" Color="{ThemeResource TextOnBrandColor}" />
+            <SolidColorBrush x:Key="ComposerDisabledButtonBackgroundBrush" Color="{ThemeResource ComposerDisabledButtonBackgroundColor}" />
+            <SolidColorBrush x:Key="ComposerDisabledButtonForegroundBrush" Color="{ThemeResource ComposerDisabledButtonForegroundColor}" />
 
             <!-- ============ WinUI system theme-key overrides ============ -->
             <!-- Text tiers + card surfaces + accent: these ARE WinUI's own semantic keys
@@ -158,16 +154,16 @@
             <SolidColorBrush x:Key="SurfaceStrokeColorDefaultBrush" Color="{ThemeResource BorderDefaultColor}" />
             <SolidColorBrush x:Key="SolidBackgroundFillColorBaseBrush" Color="{ThemeResource SurfaceElevatedColor}" />
 
-            <Color x:Key="BrandAccentColorSecondary">#FF5E35B1</Color>
-            <Color x:Key="BrandAccentColorTertiary">#FF512DA8</Color>
-            <Color x:Key="BrandAccentColorQuaternary">#FF4527A0</Color>
-            <Color x:Key="SystemAccentColor">#FF673AB7</Color>
-            <Color x:Key="SystemAccentColorDark1">#FF5E35B1</Color>
-            <Color x:Key="SystemAccentColorDark2">#FF512DA8</Color>
-            <Color x:Key="SystemAccentColorDark3">#FF4527A0</Color>
-            <Color x:Key="SystemAccentColorLight1">#FF7C4DFF</Color>
-            <Color x:Key="SystemAccentColorLight2">#FFB39DFF</Color>
-            <Color x:Key="SystemAccentColorLight3">#FFD1C4E9</Color>
+            <Color x:Key="BrandAccentColorSecondary">#FF166840</Color>
+            <Color x:Key="BrandAccentColorTertiary">#FF114F31</Color>
+            <Color x:Key="BrandAccentColorQuaternary">#FF0D3D26</Color>
+            <Color x:Key="SystemAccentColor">#FF1B7A4B</Color>
+            <Color x:Key="SystemAccentColorDark1">#FF166840</Color>
+            <Color x:Key="SystemAccentColorDark2">#FF114F31</Color>
+            <Color x:Key="SystemAccentColorDark3">#FF0D3D26</Color>
+            <Color x:Key="SystemAccentColorLight1">#FF22A05F</Color>
+            <Color x:Key="SystemAccentColorLight2">#FF6FCB9B</Color>
+            <Color x:Key="SystemAccentColorLight3">#FFD7EFE1</Color>
             <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="{ThemeResource BrandPrimaryColor}" />
             <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="{ThemeResource BrandPrimaryHoverColor}" />
             <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="{ThemeResource BrandPrimaryPressedColor}" />
@@ -231,6 +227,7 @@
             <SolidColorBrush x:Key="WarningBrush" Color="{ThemeResource WarningColor}" />
             <SolidColorBrush x:Key="DangerBrush" Color="{ThemeResource DangerColor}" />
             <SolidColorBrush x:Key="InfoBrush" Color="{ThemeResource InfoColor}" />
+            <SolidColorBrush x:Key="StatusRunningBrush" Color="{ThemeResource StatusRunningColor}" />
 
             <!-- Search -->
             <SolidColorBrush x:Key="SearchMatchBackgroundBrush" Color="{ThemeResource SearchMatchBackgroundColor}" />
@@ -269,9 +266,6 @@
             <SolidColorBrush x:Key="ShellHoverBrush" Color="{ThemeResource SidebarItemHoverColor}" />
             <SolidColorBrush x:Key="ShellMutedTextBrush" Color="{ThemeResource TextSecondaryColor}" />
 
-            <SolidColorBrush x:Key="ThinkingStatusBackgroundBrush" Color="#FF143426" />
-            <SolidColorBrush x:Key="ThinkingStatusBorderBrush" Color="#FF236F4A" />
-            <SolidColorBrush x:Key="ThinkingStatusDotBrush" Color="{ThemeResource SuccessColor}" />
             <SolidColorBrush x:Key="StatusSuccessTextBrush" Color="{ThemeResource SuccessColor}" />
             <SolidColorBrush x:Key="StatusErrorTextBrush" Color="{ThemeResource DangerColor}" />
 
@@ -284,12 +278,12 @@
             <SolidColorBrush x:Key="ComposerWaveformBaselineBrush" Color="{ThemeResource BorderStrongColor}" />
             <SolidColorBrush x:Key="ComposerActiveWaveformBrush" Color="{ThemeResource TextPrimaryColor}" />
             <SolidColorBrush x:Key="ComposerRecordingTextBrush" Color="{ThemeResource TextSecondaryColor}" />
-            <SolidColorBrush x:Key="ComposerStopButtonBackgroundBrush" Color="#FF3A3A3A" />
-            <SolidColorBrush x:Key="ComposerStopButtonForegroundBrush" Color="#FFFFFFFF" />
-            <SolidColorBrush x:Key="ComposerPrimaryButtonBackgroundBrush" Color="#FFFFFFFF" />
-            <SolidColorBrush x:Key="ComposerPrimaryButtonForegroundBrush" Color="#FF1F1F1F" />
-            <SolidColorBrush x:Key="ComposerDisabledButtonBackgroundBrush" Color="#FF4A4A4A" />
-            <SolidColorBrush x:Key="ComposerDisabledButtonForegroundBrush" Color="#FF8F8F8F" />
+            <SolidColorBrush x:Key="ComposerStopButtonBackgroundBrush" Color="{ThemeResource ComposerStopButtonBackgroundColor}" />
+            <SolidColorBrush x:Key="ComposerStopButtonForegroundBrush" Color="{ThemeResource ComposerStopButtonForegroundColor}" />
+            <SolidColorBrush x:Key="ComposerPrimaryButtonBackgroundBrush" Color="{ThemeResource BrandPrimaryColor}" />
+            <SolidColorBrush x:Key="ComposerPrimaryButtonForegroundBrush" Color="{ThemeResource TextOnBrandColor}" />
+            <SolidColorBrush x:Key="ComposerDisabledButtonBackgroundBrush" Color="{ThemeResource ComposerDisabledButtonBackgroundColor}" />
+            <SolidColorBrush x:Key="ComposerDisabledButtonForegroundBrush" Color="{ThemeResource ComposerDisabledButtonForegroundColor}" />
 
             <!-- ============ WinUI system theme-key overrides ============ -->
             <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="{ThemeResource TextPrimaryColor}" />
@@ -305,16 +299,16 @@
             <SolidColorBrush x:Key="SurfaceStrokeColorDefaultBrush" Color="{ThemeResource BorderDefaultColor}" />
             <SolidColorBrush x:Key="SolidBackgroundFillColorBaseBrush" Color="{ThemeResource SurfaceElevatedColor}" />
 
-            <Color x:Key="BrandAccentColorSecondary">#FFAA8BEA</Color>
-            <Color x:Key="BrandAccentColorTertiary">#FF8768CE</Color>
-            <Color x:Key="BrandAccentColorQuaternary">#FF7357B8</Color>
-            <Color x:Key="SystemAccentColor">#FF9A7AE0</Color>
-            <Color x:Key="SystemAccentColorDark1">#FFAA8BEA</Color>
-            <Color x:Key="SystemAccentColorDark2">#FF8768CE</Color>
-            <Color x:Key="SystemAccentColorDark3">#FF7357B8</Color>
-            <Color x:Key="SystemAccentColorLight1">#FF9D7BFF</Color>
-            <Color x:Key="SystemAccentColorLight2">#FFC7B8FF</Color>
-            <Color x:Key="SystemAccentColorLight3">#FF3D3154</Color>
+            <Color x:Key="BrandAccentColorSecondary">#FF4FCE8A</Color>
+            <Color x:Key="BrandAccentColorTertiary">#FF33A468</Color>
+            <Color x:Key="BrandAccentColorQuaternary">#FF2A8654</Color>
+            <Color x:Key="SystemAccentColor">#FF3DBE7A</Color>
+            <Color x:Key="SystemAccentColorDark1">#FF4FCE8A</Color>
+            <Color x:Key="SystemAccentColorDark2">#FF33A468</Color>
+            <Color x:Key="SystemAccentColorDark3">#FF2A8654</Color>
+            <Color x:Key="SystemAccentColorLight1">#FF4FCE8A</Color>
+            <Color x:Key="SystemAccentColorLight2">#FF63DA9B</Color>
+            <Color x:Key="SystemAccentColorLight3">#FF17301F</Color>
             <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="{ThemeResource BrandPrimaryColor}" />
             <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="{ThemeResource BrandPrimaryHoverColor}" />
             <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="{ThemeResource BrandPrimaryPressedColor}" />

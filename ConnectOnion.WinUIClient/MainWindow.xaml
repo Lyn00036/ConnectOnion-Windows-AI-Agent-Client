@@ -218,7 +218,7 @@
         <Grid x:Name="MainContentArea"
               Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition x:Name="ShellSidebarColumn" Width="286" />
+                <ColumnDefinition x:Name="ShellSidebarColumn" Width="264" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
@@ -235,7 +235,7 @@
             <Rectangle Grid.Column="0"
                        Width="1"
                        HorizontalAlignment="Right"
-                       Fill="{ThemeResource BorderDefaultBrush}" />
+                       Fill="{ThemeResource BorderSubtleBrush}" />
 
             <!-- Horizontal hairline separating the title bar from the content area, drawn only
                  over the content column so it meets the vertical divider above at the content's

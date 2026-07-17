@@ -12,16 +12,16 @@
     SizeChanged="Composer_SizeChanged">
 
     <StackPanel x:Name="ComposerPanel"
-                MaxWidth="880"
-                Margin="24,0,24,24"
+                MaxWidth="{StaticResource ChatComposerWidth}"
+                Margin="24,0,24,18"
                 HorizontalAlignment="Center"
                 Spacing="10"
-                Width="880">
+                Width="{StaticResource ChatComposerWidth}">
         <ScrollViewer x:Name="AttachmentsScrollViewer"
                       HorizontalScrollBarVisibility="Auto"
                       VerticalScrollBarVisibility="Disabled"
                       HorizontalAlignment="Center"
-                      MaxWidth="880"
+                      MaxWidth="{StaticResource ChatComposerWidth}"
                       Visibility="Collapsed">
             <ItemsControl x:Name="AttachmentsList" ItemsSource="{x:Bind PendingAttachments}">
                 <ItemsControl.ItemsPanel>
@@ -150,16 +150,20 @@
              to one handler, and the drop region visually matches the rounded surface
              the DropOverlay paints over. -->
         <Border x:Name="ComposerSurface"
-                CornerRadius="24"
+                CornerRadius="28"
                 Background="{ThemeResource ComposerBackgroundBrush}"
                 BorderBrush="{ThemeResource ComposerBorderBrush}"
                 BorderThickness="1"
+                Translation="0,0,8"
                 AllowDrop="True"
                 DragEnter="Composer_DragEnter"
                 DragOver="Composer_DragOver"
                 DragLeave="Composer_DragLeave"
                 Drop="Composer_Drop">
-            <Grid MinHeight="112" Padding="14,12">
+            <Border.Shadow>
+                <ThemeShadow />
+            </Border.Shadow>
+            <Grid MinHeight="124" Padding="16,14">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
@@ -168,14 +172,14 @@
                 <TextBox x:Name="InputBox"
                          AutomationProperties.AutomationId="MessageInput"
                          Grid.Row="0"
-                         MinHeight="48"
+                         MinHeight="58"
                          MaxHeight="160"
-                         Padding="4,7,4,8"
-                         x:Uid="ComposerInput" PlaceholderText="Do anything"
+                         Padding="2,5,2,8"
+                         x:Uid="ComposerInput" PlaceholderText="Write a message..."
                          PlaceholderForeground="{ThemeResource ComposerPlaceholderBrush}"
                          Foreground="{ThemeResource ComposerTextBrush}"
                          FontSize="16"
-                         FontWeight="SemiBold"
+                         FontWeight="Normal"
                          AcceptsReturn="True"
                          TextWrapping="Wrap"
                           ScrollViewer.VerticalScrollBarVisibility="Auto"
@@ -200,10 +204,9 @@
                 </TextBox>
 
                 <Grid Grid.Row="1"
-                      Margin="0,6,0,0"
-                      ColumnSpacing="8">
+                      Margin="0,8,0,0"
+                      ColumnSpacing="6">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
@@ -213,45 +216,43 @@
 
                     <Button x:Name="AddAttachmentButton"
                             Grid.Column="0"
-                            Width="36"
-                            Height="36"
+                            Width="34"
+                            Height="34"
                             Padding="0"
-                            CornerRadius="18"
+                            CornerRadius="17"
                             Background="Transparent"
-                            BorderBrush="{ThemeResource ComposerControlBorderBrush}"
-                            BorderThickness="1"
+                            BorderThickness="0"
                             Click="AddAttachment_Click"
                             ToolTipService.ToolTip="Add attachment">
                         <ic:FluentIcon Icon="Add"
                                        IconVariant="Regular"
                                        IconSize="Size20"
-                                       Foreground="{ThemeResource ComposerMutedControlBrush}" />
+                                       Foreground="{ThemeResource TextPrimaryBrush}" />
                     </Button>
 
                     <!-- Approval mode. Stays enabled mid-turn: the host applies a mode_change at
                          the agent's next iteration boundary, so switching to Safe while it works
                          is a real (if not instant) way to get approval prompts back. -->
                     <DropDownButton x:Name="ModeButton"
-                                    AutomationProperties.AutomationId="ApprovalModeButton"
-                                    Grid.Column="1"
-                                    Height="36"
-                                    Padding="12,0"
-                                    CornerRadius="18"
+                                     AutomationProperties.AutomationId="ApprovalModeButton"
+                                    Grid.Column="2"
+                                    Height="34"
+                                    Padding="9,0"
+                                    CornerRadius="17"
                                     Background="Transparent"
-                                    BorderBrush="{ThemeResource ComposerControlBorderBrush}"
-                                    BorderThickness="1"
+                                    BorderThickness="0"
                                     Visibility="Collapsed">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <ic:FluentIcon x:Name="ModeIcon"
-                                           Icon="ShieldTask"
-                                           IconVariant="Regular"
-                                           IconSize="Size16"
-                                           Foreground="{ThemeResource ComposerMutedControlBrush}" />
+                                            Icon="ShieldTask"
+                                            IconVariant="Regular"
+                                            IconSize="Size16"
+                                            Foreground="{ThemeResource TextSecondaryBrush}" />
                             <TextBlock x:Name="ModeLabel"
                                        x:Uid="ComposerSafeMode" Text="Safe"
-                                       FontSize="12"
-                                       VerticalAlignment="Center"
-                                       Foreground="{ThemeResource ComposerMutedControlBrush}" />
+                                        FontSize="12"
+                                        VerticalAlignment="Center"
+                                        Foreground="{ThemeResource TextSecondaryBrush}" />
                         </StackPanel>
                         <DropDownButton.Flyout>
                             <MenuFlyout Placement="Top">
@@ -275,8 +276,8 @@
                     </DropDownButton>
 
                     <Grid x:Name="RecordingWaveformHost"
-                          Grid.Column="2"
-                          Height="36"
+                          Grid.Column="1"
+                          Height="34"
                           MinWidth="120"
                           Visibility="Collapsed">
                         <Border Background="{ThemeResource SurfaceElevatedBrush}"
@@ -303,14 +304,13 @@
                     </Grid>
 
                     <Button x:Name="SpeechButton"
-                            Grid.Column="4"
-                            Width="36"
-                            Height="36"
+                            Grid.Column="3"
+                            Width="34"
+                            Height="34"
                             Padding="0"
-                            CornerRadius="18"
+                            CornerRadius="17"
                             Background="Transparent"
-                            BorderBrush="{ThemeResource ComposerControlBorderBrush}"
-                            BorderThickness="1"
+                            BorderThickness="0"
                             HorizontalContentAlignment="Center"
                             VerticalContentAlignment="Center"
                             Click="Speech_Click"
@@ -331,11 +331,11 @@
 
                     <Button x:Name="StopSpeechButton"
                             AutomationProperties.AutomationId="StopVoiceInputButton"
-                            Grid.Column="4"
-                            Width="36"
-                            Height="36"
+                            Grid.Column="3"
+                            Width="34"
+                            Height="34"
                             Padding="0"
-                            CornerRadius="18"
+                            CornerRadius="17"
                             Background="{ThemeResource ComposerStopButtonBackgroundBrush}"
                             BorderThickness="0"
                             HorizontalContentAlignment="Center"
@@ -352,7 +352,7 @@
 
                     <Button x:Name="SendButton"
                             AutomationProperties.AutomationId="SendMessageButton"
-                            Grid.Column="5"
+                            Grid.Column="4"
                             Width="36"
                             Height="36"
                             Padding="0"
@@ -379,7 +379,7 @@
                          both without either being hidden behind a mode switch. -->
                     <Button x:Name="StopButton"
                             AutomationProperties.AutomationId="StopResponseButton"
-                            Grid.Column="5"
+                            Grid.Column="4"
                             Width="36"
                             Height="36"
                             Padding="0"
@@ -414,15 +414,15 @@
                 <Grid x:Name="DropOverlay"
                       Grid.Row="0"
                       Grid.RowSpan="2"
-                      Margin="-14,-12,-14,-12"
+                      Margin="-16,-14,-16,-14"
                       IsHitTestVisible="False"
                       Visibility="Collapsed">
-                    <Border CornerRadius="24"
+                    <Border CornerRadius="28"
                             Background="{ThemeResource ComposerBackgroundBrush}"
                             Opacity="0.92" />
                     <Rectangle Margin="2"
-                               RadiusX="22"
-                               RadiusY="22"
+                               RadiusX="26"
+                               RadiusY="26"
                                Fill="Transparent"
                                Stroke="{ThemeResource BrandPrimaryBrush}"
                                StrokeThickness="2"

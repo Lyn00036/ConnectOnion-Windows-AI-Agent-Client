@@ -139,9 +139,9 @@ public sealed partial class MainWindow : Window
 
         ShellSidebarColumn.Width = windowWidth switch
         {
-            < 720 => new GridLength(220),
-            < 980 => new GridLength(248),
-            _ => new GridLength(286),
+            < 720 => new GridLength(208),
+            < 980 => new GridLength(232),
+            _ => new GridLength(264),
         };
     }
 

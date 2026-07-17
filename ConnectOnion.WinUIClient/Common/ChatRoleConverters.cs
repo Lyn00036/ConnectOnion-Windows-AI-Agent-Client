@@ -53,7 +53,12 @@ public sealed class PresenceToBrushConverter : IValueConverter
         => throw new NotSupportedException();
 }
 
-/// <summary>Colors an event's status dot/badge: brand purple running, green done, red error.</summary>
+/// <summary>
+/// Colors an event's status dot/badge: amber running, green done, red error.
+/// Running deliberately does NOT use BrandPrimaryBrush — Success is the brand green,
+/// so the two would render identically and the dot would stop meaning anything.
+/// See StatusRunningColor in Styles/Colors.xaml.
+/// </summary>
 public sealed class EventStatusToBrushConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
@@ -61,7 +66,7 @@ public sealed class EventStatusToBrushConverter : IValueConverter
         var key = value is EventStatus status
             ? status switch
             {
-                EventStatus.Running => "BrandPrimaryBrush",
+                EventStatus.Running => "StatusRunningBrush",
                 EventStatus.Error => "DangerBrush",
                 _ => "SuccessBrush",
             }

@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Microsoft.UI;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
@@ -79,6 +80,13 @@ public sealed partial class ChatComposer : UserControl, IDisposable
     public static readonly DependencyProperty IsStoppingProperty =
         DependencyProperty.Register(
             nameof(IsStopping),
+            typeof(bool),
+            typeof(ChatComposer),
+            new PropertyMetadata(false, OnIsBusyChanged));
+
+    public static readonly DependencyProperty CanStopProperty =
+        DependencyProperty.Register(
+            nameof(CanStop),
             typeof(bool),
             typeof(ChatComposer),
             new PropertyMetadata(false, OnIsBusyChanged));
@@ -172,12 +180,18 @@ public sealed partial class ChatComposer : UserControl, IDisposable
         set => SetValue(ModeProperty, value);
     }
 
-    /// <summary>A stop has been asked for but the turn is still going. Turns the stop button into
-    /// a force-stop, because a cooperative stop is a request the agent is free to finish ignoring.</summary>
+    /// <summary>A graceful stop was sent and the current iteration is still finishing.</summary>
     public bool IsStopping
     {
         get => (bool)GetValue(IsStoppingProperty);
         set => SetValue(IsStoppingProperty, value);
+    }
+
+    /// <summary>INPUT has reached the socket and the turn has not reached OUTPUT/ERROR.</summary>
+    public bool CanStop
+    {
+        get => (bool)GetValue(CanStopProperty);
+        set => SetValue(CanStopProperty, value);
     }
 
     public void FocusInput()
@@ -227,7 +241,10 @@ public sealed partial class ChatComposer : UserControl, IDisposable
     }
 
     private void Stop_Click(object sender, RoutedEventArgs e)
-        => StopRequested?.Invoke(this, EventArgs.Empty);
+    {
+        if (!CanStop || IsStopping) return;
+        StopRequested?.Invoke(this, EventArgs.Empty);
+    }
 
     private void ApplySuggestionVisibility(double width)
         => SuggestionPanel.Visibility = ShowSuggestions && width >= 620 ? Visibility.Visible : Visibility.Collapsed;
@@ -529,12 +546,13 @@ public sealed partial class ChatComposer : UserControl, IDisposable
             ? Brush("ComposerPrimaryButtonForegroundBrush")
             : Brush("ComposerDisabledButtonForegroundBrush");
 
-        StopButton.Visibility = IsBusy ? Visibility.Visible : Visibility.Collapsed;
-        StopRing.IsActive = IsBusy;
+        StopButton.Visibility = CanStop ? Visibility.Visible : Visibility.Collapsed;
+        StopButton.IsEnabled = CanStop && !IsStopping;
+        StopRing.IsActive = IsStopping;
         StopRing.Foreground = Brush("AppBackgroundBrush");
-        ToolTipService.SetToolTip(
-            StopButton,
-            IsStopping ? "Force stop — abandons the turn here; the agent may keep running" : "Stop");
+        var stopLabel = IsStopping ? "Stopping..." : "Stop";
+        ToolTipService.SetToolTip(StopButton, stopLabel);
+        AutomationProperties.SetName(StopButton, stopLabel);
 
         RefreshModeSelector();
 
@@ -556,7 +574,8 @@ public sealed partial class ChatComposer : UserControl, IDisposable
 
     private void Composer_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        ComposerPanel.Width = Math.Max(280, Math.Min(880, e.NewSize.Width - 48));
+        var composerWidth = (double)Application.Current.Resources["ChatComposerWidth"];
+        ComposerPanel.Width = Math.Max(280, Math.Min(composerWidth, e.NewSize.Width - 48));
         ApplySuggestionVisibility(e.NewSize.Width);
     }
 
