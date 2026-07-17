@@ -4,8 +4,9 @@ ConnectOnion Desktop is a native Windows desktop client for chatting with
 ConnectOnion-compatible agents. The current client is built with WinUI 3, C#,
 .NET 10, SQLite, and a C# ConnectOnion protocol library.
 
-The old `frontend/` Electron + React implementation is kept in the repository as
-legacy reference code. New desktop work should happen in the WinUI projects.
+The repository is C#-only. The original Electron + React `frontend/` and the
+vendored Python `agent/` examples were removed in `197a88d`; if you need the
+prior behavior, read them out of git history rather than restoring the trees.
 
 ## Current Architecture
 
@@ -211,8 +212,6 @@ connectonion-desktop/
     ConnectOnion.IntegrationTests/    SQLite schema/repository tests against a real database file
     ConnectOnion.WinUIClient.UITests/ Opt-in FlaUI real-window shell smoke tests
 
-  agent/                              Python agent implementations (email, browser, memory, simple)
-  frontend/                           Legacy Electron + React client
   .github/workflows/ci.yml            Windows/.NET CI workflow
   global.json                         SDK selection for local builds
 ```
@@ -469,7 +468,10 @@ Current CI behavior:
 - Runs `ConnectOnion.Protocol.Tests`, `ConnectOnion.WinUIClient.UnitTests`, and `ConnectOnion.IntegrationTests`
 - Runs `ConnectOnion.Protocol.Conformance`
 
-The CI workflow intentionally does not build the old `frontend/` app.
+CI also audits dependencies for known vulnerabilities, collects Cobertura coverage,
+compiles the UI smoke tests, and publishes a trimmed unpackaged build. The FlaUI
+smoke test itself only runs on a `workflow_dispatch` with `run_ui_smoke` checked,
+because it needs a real desktop session.
 
 ## Connect To An Agent
 
@@ -563,16 +565,18 @@ Known deployed development agents:
 ## Not Implemented Yet
 
 - Production installer/release pipeline (MSIX packaging is configured but not yet automated)
-- UI-level tests: the headless surfaces are covered, but anything needing a XAML runtime
-  (navigation, drag-and-drop, the find overlay) has no tests and no `AutomationId`s to target
+- Broad UI-level tests: the headless surfaces are covered and a FlaUI shell smoke test proves
+  the harness works, but navigation, drag-and-drop, and the find overlay are still untested.
+  `AutomationId`s exist on the critical controls (guarded by `AutomationContractTests`) —
+  anything beyond those needs ids added before it can be automated
 - Live protocol tests in CI
 - Full migration tooling for preserving older local app data (a pre-DPAPI identity row is
   regenerated rather than migrated; a database created before the `messages` schema isn't migrated)
 
 ## Notes For Development
 
-- Keep new desktop changes in the WinUI projects.
-- Treat `frontend/` as legacy reference unless a task explicitly asks for it.
+- Keep new desktop changes in the WinUI projects. Logic that should be tested belongs in
+  `ConnectOnion.WinUIClient.Core` — the test projects can reference that, but not the app.
 - Use `x64`, `x86`, or `ARM64` for WinUI builds. Avoid relying on `Any CPU` for
   packaged app debugging.
 - Keep generated runtime files out of source control, including `bin/`, `obj/`,
