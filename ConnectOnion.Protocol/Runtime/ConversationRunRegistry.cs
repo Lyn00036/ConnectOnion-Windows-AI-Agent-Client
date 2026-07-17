@@ -143,12 +143,9 @@ public sealed class ConversationRunRegistry
     }
 
     /// <summary>
-    /// Appends an event the <i>client</i> originated (a stop request, a force-stop notice) to the
-    /// active run's buffer, exactly as if it had arrived from the agent. Nothing on the wire
-    /// echoes these back — the host has no STOP frame to acknowledge — so without this they
-    /// would have to be drawn straight onto one page's message list, which would leave them out
-    /// of the persisted turn and invisible to every other window. Routing them through the run
-    /// instead means the one <c>ChatTurnProjection</c> renders and saves them like anything else.
+    /// Appends a client-originated lifecycle marker to the active run's buffer. The stop marker
+    /// lets every page and the persistence projection associate a later ordinary OUTPUT with the
+    /// INTERRUPT that caused it, without inventing a backend frame type.
     /// Returns false if the run already finished, in which case there is nothing to annotate.
     /// </summary>
     public bool PublishLocalEvent(string conversationId, AgentStreamEvent streamEvent)

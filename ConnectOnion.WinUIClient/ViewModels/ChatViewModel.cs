@@ -135,6 +135,10 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     [NotifyPropertyChangedFor(nameof(CanReconnect))]
     public partial bool IsProcessing { get; private set; }
 
+    /// <summary>True only after INPUT reached the socket and before OUTPUT/ERROR.</summary>
+    [ObservableProperty]
+    public partial bool CanStop { get; private set; }
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanSend))]
     [NotifyPropertyChangedFor(nameof(CanReconnect))]
@@ -196,16 +200,12 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
 
     // ---- Stop ----
 
-    /// <summary>A stop was requested but the agent hasn't wound down yet. The turn is still
-    /// running — this only means the ask is in flight, and it is what turns the Stop button into
-    /// Force stop, since a cooperative stop can simply be ignored by the model.</summary>
+    /// <summary>A graceful stop was sent and the current iteration is still finishing.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StopButtonTooltip))]
     public partial bool IsStopping { get; private set; }
 
-    public string StopButtonTooltip => IsStopping
-        ? "Force stop (abandons the turn locally; the agent may keep running)"
-        : "Stop";
+    public string StopButtonTooltip => IsStopping ? "Stopping..." : "Stop";
 
     /// <summary>
     /// Loads (or re-loads) whichever conversation is currently active. Re-entrant: switching
@@ -230,6 +230,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         _historyLoadedRunId = null;
         CanRetry = false;
         IsProcessing = false;
+        CanStop = false;
         IsStopping = false;
         StatusText = "";
         // Cleared here rather than only in RestoreConversationAsync, so the early returns below
@@ -408,12 +409,11 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         TouchSession(text);
 
         IsProcessing = true;
+        CanStop = false;
         IsStopping = false;
         StatusText = "Connecting...";
         try
         {
-            await WarnIfPreviousTurnStillRunningAsync();
-
             // Hand off to the app-level manager. It persists the user message, opens/reuses
             // the connection, and starts the run; the reply arrives back through our
             // subscription (ApplyRunSnapshot), not by awaiting here. The mode goes with every
@@ -428,71 +428,33 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         {
             LogSendFailure(_logger, _session?.Id, ex);
             IsProcessing = false;
+            CanStop = false;
             StatusText = $"Send failed: {UserFacingError(ex)}";
         }
     }
 
-    /// <summary>
-    /// After a force stop, the host may still be executing the abandoned turn. It routes an INPUT
-    /// on a session that already has an agent to that agent's runtime-input mailbox instead of
-    /// starting a new turn — so this message would arrive as a follow-up to work the user thought
-    /// they had cancelled. We cannot prevent that (there is no way to interrupt the agent), so the
-    /// least we can do is not let it happen invisibly.
-    /// </summary>
-    private async Task WarnIfPreviousTurnStillRunningAsync()
-    {
-        if (_session is null || !_runManager.MayHaveOrphanedRun(_session.Id)) return;
-
-        var status = await _runManager.GetServerSessionStatusAsync(_session.Id);
-        if (status != SessionStatuses.Running) return;
-
-        Messages.Add(new ChatMessage
-        {
-            Id = NextId(),
-            Role = ChatRole.Event,
-            EventKind = "activity",
-            EventTitle = "The agent is still working on the stopped turn",
-            EventDetail = "This message will reach it as a follow-up, not as a new turn.",
-            Status = EventStatus.Error,
-        });
-    }
-
-    /// <summary>
-    /// The Stop button. What it can achieve depends entirely on what the agent is blocked on, so
-    /// the outcome — not the click — decides what the user is told; see <see cref="StopOutcome"/>.
-    /// A second click, once <see cref="IsStopping"/> is set, escalates to a force stop. That
-    /// escalation is deliberately manual: it abandons the turn locally while the agent keeps
-    /// running on the host, which is too consequential to happen on a timer the user didn't ask for.
-    /// </summary>
+    /// <summary>Sends one graceful-stop request and keeps rendering until OUTPUT/ERROR.
+    /// Repeated clicks are ignored while the current iteration finishes.</summary>
     public async Task StopAsync()
     {
-        if (_session is null || !IsProcessing) return;
-
-        if (IsStopping)
-        {
-            StatusText = "Force-stopping...";
-            await _runManager.ForceStopAsync(_session.Id);
-            return;
-        }
+        if (_session is null || !CanStop || IsStopping) return;
 
         IsStopping = true;
         StatusText = "Stopping...";
-        var outcome = await _runManager.RequestStopAsync(_session.Id);
-
-        switch (outcome)
+        try
         {
-            case StopOutcome.Stopped:
-                // A real halt: the agent's loop is broken and its OUTPUT is on its way. Leave
-                // IsStopping set so the button stays a stop until the terminal snapshot lands.
-                StatusText = "Stopping...";
-                break;
-            case StopOutcome.StopRequested:
-                StatusText = "Asked the agent to stop...";
-                break;
-            case StopOutcome.ForceStopped:
-            case StopOutcome.NotRunning:
+            var outcome = await _runManager.RequestStopAsync(_session.Id);
+            if (outcome == StopOutcome.NotRunning)
+            {
                 IsStopping = false;
-                break;
+                CanStop = false;
+                StatusText = "";
+            }
+        }
+        catch (Exception ex)
+        {
+            IsStopping = false;
+            StatusText = $"Stop failed: {UserFacingError(ex)}";
         }
     }
 
@@ -518,9 +480,12 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
             // The DB restore already contains this run's events, final reply, and summary.
             // We still mirror its busy/status state until the terminal notification arrives.
             IsProcessing = !snapshot.IsTerminal;
-            StatusText = StatusTextFor(snapshot);
+            CanStop = !snapshot.IsTerminal && snapshot.Status == ConversationRunStatus.Running;
+            IsStopping = HasPendingStop(snapshot);
+            StatusText = IsStopping ? "Stopping..." : StatusTextFor(snapshot);
             if (snapshot.IsTerminal)
             {
+                CanStop = false;
                 IsStopping = false;
                 CanRetry = snapshot.Status == ConversationRunStatus.Failed;
                 _historyLoadedRunId = null;
@@ -537,6 +502,8 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
                 // the whole turn, so just clear the busy state — never re-append it. A failed
                 // run stays retryable, so reopening a failed conversation still offers Retry.
                 IsProcessing = false;
+                CanStop = false;
+                IsStopping = false;
                 StatusText = "";
                 CanRetry = snapshot.Status == ConversationRunStatus.Failed;
                 return;
@@ -558,19 +525,16 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         _appliedEventCount = events.Count;
 
         IsProcessing = !snapshot.IsTerminal;
-        // A stop is only ever "in progress" while its turn is: once the run reaches any terminal
-        // state the button goes back to being a send button, whether the stop is what ended it or
-        // the agent simply finished first.
-        if (snapshot.IsTerminal) IsStopping = false;
-        StatusText = StatusTextFor(snapshot);
+        CanStop = !snapshot.IsTerminal && snapshot.Status == ConversationRunStatus.Running;
+        IsStopping = HasPendingStop(snapshot);
+        StatusText = IsStopping ? "Stopping..." : StatusTextFor(snapshot);
 
         if (!snapshot.IsTerminal) return;
 
         // Terminal: mirror what the manager persisted so the live view matches the DB.
         if (snapshot.Status == ConversationRunStatus.Completed)
         {
-            _liveProjection!.AppendFinalReply(snapshot.PartialContent);
-            _liveProjection!.AppendTurnSummary();
+            _liveProjection!.AppendCompletedTurn(snapshot.PartialContent);
             CanRetry = false;
             _ = PersistSessionMetadataAsync();
         }
@@ -605,6 +569,19 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         _appliedEventCount = 0;
         _historyLoadedRunId = null;
         StoreSessionCache();
+    }
+
+    private static bool HasPendingStop(ConversationRunSnapshot snapshot)
+    {
+        if (snapshot.IsTerminal) return false;
+
+        var pending = false;
+        foreach (var e in snapshot.Events)
+        {
+            if (e.Type == "interrupt_requested") pending = true;
+            else if (e.Type == "interrupt_request_failed") pending = false;
+        }
+        return pending;
     }
 
     /// <summary>
@@ -660,6 +637,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         _historyLoadedRunId = null;
         CanRetry = false;
 
+        CanStop = false;
         IsStopping = false;
 
         _session = SessionSummary.NewConversation(_agent.Id, _sessionsState.Sessions);
@@ -678,6 +656,84 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
 
         _runSubscription = _runManager.Subscribe(
             _session.Id, snapshot => _dispatcher.TryEnqueue(() => ApplyRunSnapshot(snapshot)));
+    }
+
+    /// <summary>
+    /// Creates a real local branch at <paramref name="source"/>. Messages before the selected
+    /// user turn are copied into a new conversation, then <paramref name="replacement"/> is sent
+    /// as its first divergent turn. The original conversation remains untouched in the sidebar.
+    /// </summary>
+    public async Task<bool> BranchFromMessageAsync(ChatMessage source, string replacement)
+    {
+        replacement = replacement?.Trim() ?? "";
+        if (_agent is null || _session is null || IsProcessing || !source.CanEdit || replacement.Length == 0)
+        {
+            return false;
+        }
+
+        var sourceIndex = Messages.IndexOf(source);
+        if (sourceIndex < 0) return false;
+
+        // Preserve the original page state before switching the active conversation.
+        StoreSessionCache();
+        var prefix = Messages.Take(sourceIndex).ToList();
+        var inheritedMode = CurrentMode;
+
+        _loadGeneration++;
+        _runSubscription?.Dispose();
+        _runSubscription = null;
+        _liveProjection = null;
+        _liveRunId = null;
+        _appliedEventCount = 0;
+        _historyLoadedRunId = null;
+        CanRetry = false;
+        CanStop = false;
+        IsStopping = false;
+
+        _session = SessionSummary.NewConversation(_agent.Id, _sessionsState.Sessions);
+        _session.Mode = inheritedMode;
+        _sessionsState.Sessions.Add(_session);
+        _sessionsState.ActiveSessionId = _session.Id;
+        CurrentMode = _session.Mode;
+        await _sessions.SaveAsync(_sessionsState);
+
+        if (prefix.Count > 0)
+        {
+            await _conversations.UpsertMessagesAsync(_session.Id, prefix);
+        }
+
+        Messages.Clear();
+        foreach (var message in prefix) Messages.Add(message);
+        ResetIdCounter();
+        _createdAt = prefix.Count > 0
+            ? prefix[0].CreatedAtUnixMs
+            : DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        HeaderText = $"{_agent.Name} - {_session.Title}";
+        RaiseHeaderProperties();
+
+        _runSubscription = _runManager.Subscribe(
+            _session.Id, snapshot => _dispatcher.TryEnqueue(() => ApplyRunSnapshot(snapshot)));
+
+        await SendAsync(replacement);
+        return true;
+    }
+
+    /// <summary>Retries the user turn that produced an agent response by branching from the
+    /// nearest preceding user message. Event cards between the pair do not affect the lookup.</summary>
+    public Task<bool> RetryFromAgentMessageAsync(ChatMessage response)
+    {
+        var responseIndex = Messages.IndexOf(response);
+        if (responseIndex < 0) return Task.FromResult(false);
+
+        for (var i = responseIndex - 1; i >= 0; i--)
+        {
+            if (Messages[i] is { IsUser: true } source)
+            {
+                return BranchFromMessageAsync(source, source.Content);
+            }
+        }
+
+        return Task.FromResult(false);
     }
 
     /// <summary>Forces the app-owned socket for this conversation to reconnect to its session.</summary>
@@ -724,6 +780,8 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         CanRetry = false;
         RemoveLastFailureBubble();
         IsProcessing = true;
+        CanStop = false;
+        IsStopping = false;
         StatusText = "Connecting...";
     }
 

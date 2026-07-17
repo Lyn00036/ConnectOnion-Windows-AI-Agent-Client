@@ -93,6 +93,9 @@ public sealed class AgentConnectionService : IAsyncDisposable
     /// <summary>Streamed intermediate events (thinking, tool_call, …) for status UI.</summary>
     public event Action<AgentStreamEvent>? StreamEvent;
 
+    /// <summary>Raised immediately after an INPUT frame is written to the live socket.</summary>
+    public event Action? InputSent;
+
     /// <summary>Raised when the connection drops unexpectedly.</summary>
     public event Action<Exception>? ConnectionLost;
 
@@ -221,6 +224,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
             images: images,
             files: files);
         await SendJsonAsync(inputMsg, ct).ConfigureAwait(false);
+        InputSent?.Invoke();
 
         // Mode has to be (re)asserted *after* the INPUT, never before. The host only forwards
         // a mode_change to the agent while a turn owns the connection (`active_io` in its
@@ -259,34 +263,17 @@ public sealed class AgentConnectionService : IAsyncDisposable
         return SendJsonAsync(msg, ct);
     }
 
-    /// <summary>
-    /// Sends a prompt into a turn that is <b>already running</b>. The host routes an INPUT on a
-    /// running session to the agent's runtime-input mailbox instead of spawning a second agent,
-    /// and the agent's <c>runtime_input</c> plugin appends it to the conversation at the next
-    /// iteration boundary, framed as "additional context — do not abandon the original task
-    /// unless the user explicitly says to stop".
-    ///
-    /// That framing is the whole reason this method exists: it is how a Stop request reaches an
-    /// agent that is mid-LLM-call, because the protocol has <b>no</b> STOP frame and nothing
-    /// else can preempt the agent's loop. It is therefore <b>cooperative</b> — the model chooses
-    /// to comply — and must never be reported to the user as a completed stop. The pending
-    /// <see cref="SendInputAsync"/> stays open; the turn still ends with a normal OUTPUT.
-    /// </summary>
-    public Task SendRuntimeInputAsync(string prompt, CancellationToken ct = default)
+    /// <summary>Sends the exact graceful-stop frame on the current established socket. The
+    /// pending <see cref="SendInputAsync"/> remains open until the host returns OUTPUT/ERROR.</summary>
+    public Task SendInterruptAsync(CancellationToken ct = default)
     {
-        if (!IsConnected) return Task.CompletedTask;
-        return SendJsonAsync(
-            InputMessageBuilder.BuildInput(
-                prompt, Guid.NewGuid().ToString(), toAddress: _isDirect ? null : _address),
-            ct);
+        if (!IsConnected) throw new InvalidOperationException("Cannot stop: the agent connection is not open.");
+        return SendJsonAsync(new Dictionary<string, object?> { ["type"] = "INTERRUPT" }, ct);
     }
 
     /// <summary>
     /// Asks the host what it thinks of a session: <see cref="SessionStatuses.Running"/>,
     /// <see cref="SessionStatuses.Connected"/>, or <see cref="SessionStatuses.NotFound"/>.
-    /// Used after a force-stop, where the local run is gone but the agent thread on the host
-    /// may well still be executing — in which case the next INPUT would be swallowed as a
-    /// runtime input rather than starting a fresh turn, and the user deserves to know.
     /// Answers <see cref="SessionStatuses.NotFound"/> if there is no socket or no reply in time.
     /// </summary>
     public async Task<string> QuerySessionStatusAsync(string sessionId, CancellationToken ct = default)
@@ -466,6 +453,21 @@ public sealed class AgentConnectionService : IAsyncDisposable
             if (!string.IsNullOrEmpty(feedback)) msg["feedback"] = feedback;
         }
         return SendJsonAsync(msg, CancellationToken.None);
+    }
+
+    /// <summary>Sends the exact hard-rejection payload used to stop while the host is blocked
+    /// in its approval FIFO. An INTERRUPT frame at this point would be consumed as the approval
+    /// response, so this payload intentionally has no type, scope, session, or routing fields.</summary>
+    public Task RejectApprovalForStopAsync(string feedback = "用户中断")
+    {
+        if (!IsConnected) throw new InvalidOperationException("Cannot stop: the agent connection is not open.");
+        ResumeWatchdogAfterHumanResponse();
+        return SendJsonAsync(new Dictionary<string, object?>
+        {
+            ["approved"] = false,
+            ["mode"] = ApprovalRejectModes.Hard,
+            ["feedback"] = feedback,
+        }, CancellationToken.None);
     }
 
     /// <summary>Responds to a plan_review turn. Port of PLAN_REVIEW_RESPONSE.</summary>
@@ -731,6 +733,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
         // Clear event subscribers so the old connection can be GC'd even
         // if the subscriber (ChatViewModel) is still alive.
         StreamEvent = null;
+        InputSent = null;
         ConnectionLost = null;
         AskUserRequested = null;
         ApprovalRequested = null;

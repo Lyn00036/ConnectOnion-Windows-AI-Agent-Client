@@ -59,17 +59,9 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
     // reads this to pick its tier: only an "approval" can be turned into a real halt.
     private readonly ConcurrentDictionary<string, string> _pendingInteractive = new();
 
-    // Conversations whose local run was force-stopped while the host's agent was (as far as we
-    // know) still executing. Cleared once the host confirms the session went idle.
-    private readonly ConcurrentDictionary<string, byte> _orphanedRuns = new();
-
-    /// <summary>What a cooperative stop actually says to the agent. Phrased as an instruction the
-    /// model can act on, because that is all it is: the host frames a runtime input with "do NOT
-    /// abandon the original task unless they explicitly say to stop", so this has to be that
-    /// explicit say-so, in those words.</summary>
-    private const string StopPrompt =
-        "Stop what you are doing and end this turn now. Do not start any new tool calls. "
-        + "Briefly summarize what you completed and what is left unfinished.";
+    // Run id for each conversation whose graceful-stop frame has been sent. This is app-level
+    // state so switching pages cannot re-enable Stop and send a duplicate frame.
+    private readonly ConcurrentDictionary<string, string> _interruptRequestedRuns = new();
 
     /// <summary>Shown for an interactive turn that history reload finds was never answered
     /// (the WebSocket wait it replied to is gone, so it can never be resolved now).</summary>
@@ -123,6 +115,7 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         // prior turn so they can't leak onto this run's cards at persist time.
         _interactiveAnswers.TryRemove(conversationId, out _);
         _pendingInteractive.TryRemove(conversationId, out _);
+        _interruptRequestedRuns.TryRemove(conversationId, out _);
 
         List<string>? images = null;
         List<OutgoingFileAttachment>? files = null;
@@ -213,11 +206,12 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         _agentsById[agent.Id] = agent;
         _interactiveAnswers.TryRemove(conversationId, out _);
         _pendingInteractive.TryRemove(conversationId, out _);
+        _interruptRequestedRuns.TryRemove(conversationId, out _);
         var connection = _connections.GetOrCreate(conversationId, agent);
         return _runs.RetryRun(conversationId, NewExecutor(agent, conversationId, connection));
     }
 
-    // ---- Stop, in the three tiers the protocol actually permits ----
+    // ---- Graceful stop ----
 
     public void ClearPendingInteractive(string conversationId)
         => _pendingInteractive.TryRemove(conversationId, out _);
@@ -228,98 +222,41 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         if (run is null || run.IsTerminal) return StopOutcome.NotRunning;
 
         var connection = _connections.Get(conversationId);
-        if (connection is not { IsConnected: true })
-        {
-            // No live socket to negotiate over: nothing cooperative is possible, and leaving the
-            // user staring at a spinner they cannot dismiss is worse than abandoning the run.
-            await ForceStopAsync(conversationId).ConfigureAwait(false);
-            return StopOutcome.ForceStopped;
-        }
+        if (connection is not { IsConnected: true }) return StopOutcome.NotRunning;
 
-        _pendingInteractive.TryRemove(conversationId, out var pending);
-
-        // Tier 1 — the agent is parked at an approval gate. Rejecting hard is the one and only
-        // thing in this protocol that halts the loop: it sets stop_signal, the rest of the tool
-        // batch is dropped, and the turn ends properly with an OUTPUT.
-        if (pending == "approval")
-        {
-            await connection.RespondApprovalAsync(
-                approved: false,
-                scope: "once",
-                rejectMode: ApprovalRejectModes.Hard,
-                feedback: "Stopped by the user.").ConfigureAwait(false);
-            RecordInteractiveAnswer(conversationId, "Stopped by user", EventStatus.Error);
-            PublishStopEvent(conversationId, stopped: true);
-            return StopOutcome.Stopped;
-        }
-
-        // Tier 2 — the agent is blocked on a question or a plan review. We cannot halt it, but we
-        // can unblock it with an answer that says to stop; anything else (a runtime input) would
-        // sit in a queue the agent isn't reading while it waits on io.receive().
-        if (pending == "ask_user")
-        {
-            await connection.RespondAskUserAsync(StopPrompt).ConfigureAwait(false);
-            RecordInteractiveAnswer(conversationId, "Stop requested", EventStatus.Error);
-            PublishStopEvent(conversationId, stopped: false);
+        if (!_interruptRequestedRuns.TryAdd(conversationId, run.RunId))
             return StopOutcome.StopRequested;
-        }
-        if (pending == "plan_review")
-        {
-            await connection.RespondPlanReviewAsync(StopPrompt).ConfigureAwait(false);
-            RecordInteractiveAnswer(conversationId, "Stop requested", EventStatus.Error);
-            PublishStopEvent(conversationId, stopped: false);
-            return StopOutcome.StopRequested;
-        }
 
-        // Tier 3 — the agent is mid-LLM-call or mid-tool. Nothing can preempt it, so all that is
-        // left is to ask, as a runtime input it will read at its next iteration boundary.
-        await connection.SendRuntimeInputAsync(StopPrompt).ConfigureAwait(false);
-        PublishStopEvent(conversationId, stopped: false);
-        return StopOutcome.StopRequested;
-    }
-
-    public async Task ForceStopAsync(string conversationId)
-    {
-        var run = _runs.GetActiveRun(conversationId);
-        if (run is null || run.IsTerminal) return;
-
-        // Buffered before the cancel, because a terminal run stops accepting events — and this
-        // notice is the whole point: the turn is gone from *this* app, not from the host.
         _runs.PublishLocalEvent(conversationId, new AgentStreamEvent(
-            "stop_forced",
-            "Force-stopped",
-            null,
-            """
-            {"type":"stop_forced","detail":"Stopped locally. The agent may still be running on the host — the protocol has no way to interrupt it. Your next message could be delivered to that turn as a follow-up."}
-            """));
+            "interrupt_requested", "Stopping", null,
+            "{\"type\":\"interrupt_requested\"}"));
 
-        // The socket is deliberately left open: it is how we can still ask the host whether the
-        // agent finished (GetServerSessionStatusAsync), and how a follow-up would reach it.
-        _orphanedRuns[conversationId] = 0;
-        _pendingInteractive.TryRemove(conversationId, out _);
-        await _runs.CancelRunAsync(conversationId, run.RunId).ConfigureAwait(false);
+        _pendingInteractive.TryGetValue(conversationId, out var pending);
+
+        try
+        {
+            // The approval FIFO would parse INTERRUPT as the approval response. A hard rejection
+            // is the protocol-defined equivalent and ends the same loop without corrupting logs.
+            if (pending == "approval")
+            {
+                await connection.RejectApprovalForStopAsync("用户中断").ConfigureAwait(false);
+                _pendingInteractive.TryRemove(conversationId, out _);
+                RecordInteractiveAnswer(conversationId, "Stopped by user", EventStatus.Error);
+                return StopOutcome.StopRequested;
+            }
+
+            await connection.SendInterruptAsync().ConfigureAwait(false);
+            return StopOutcome.StopRequested;
+        }
+        catch
+        {
+            _interruptRequestedRuns.TryRemove(conversationId, out _);
+            _runs.PublishLocalEvent(conversationId, new AgentStreamEvent(
+                "interrupt_request_failed", "Stop failed", null,
+                "{\"type\":\"interrupt_request_failed\"}"));
+            throw;
+        }
     }
-
-    public bool MayHaveOrphanedRun(string conversationId) => _orphanedRuns.ContainsKey(conversationId);
-
-    public async Task<string> GetServerSessionStatusAsync(string conversationId)
-    {
-        var connection = _connections.Get(conversationId);
-        if (connection is not { IsConnected: true }) return SessionStatuses.NotFound;
-
-        var status = await connection.QuerySessionStatusAsync(conversationId).ConfigureAwait(false);
-        if (status != SessionStatuses.Running) _orphanedRuns.TryRemove(conversationId, out _);
-        return status;
-    }
-
-    /// <summary>Records the stop in the turn itself, so it survives into history and shows up in
-    /// every window — not just the one whose button was clicked.</summary>
-    private void PublishStopEvent(string conversationId, bool stopped)
-        => _runs.PublishLocalEvent(conversationId, stopped
-            ? new AgentStreamEvent("stop_requested", "Stopped", null,
-                """{"type":"stop_requested","stopped":true}""")
-            : new AgentStreamEvent("stop_requested", "Stop requested", null,
-                """{"type":"stop_requested","stopped":false}"""));
 
     // ---- Mode ----
 
@@ -356,7 +293,7 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         }
         _interactiveAnswers.TryRemove(conversationId, out _);
         _pendingInteractive.TryRemove(conversationId, out _);
-        _orphanedRuns.TryRemove(conversationId, out _);
+        _interruptRequestedRuns.TryRemove(conversationId, out _);
         await _connections.RemoveAsync(conversationId).ConfigureAwait(false);
     }
 
@@ -388,17 +325,14 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
     {
         var agentName = _agentsById.TryGetValue(snapshot.AgentId, out var a) ? a.Name : null;
 
-        // The turn reached OUTPUT, so the host's session is idle again — whatever we feared was
-        // orphaned by an earlier force-stop has demonstrably finished.
         _pendingInteractive.TryRemove(snapshot.ConversationId, out _);
-        _orphanedRuns.TryRemove(snapshot.ConversationId, out _);
+        _interruptRequestedRuns.TryRemove(snapshot.ConversationId, out _);
 
         var (window, nextId) = await LoadTurnWindowAsync(snapshot.ConversationId).ConfigureAwait(false);
         var target = new ListProjectionTarget(window, agentName, _http, nextId);
         var projection = new ChatTurnProjection(target);
         foreach (var e in snapshot.Events) projection.Apply(e);
-        projection.AppendFinalReply(finalReply);
-        projection.AppendTurnSummary();
+        projection.AppendCompletedTurn(finalReply);
         if (target.PendingImages.Count > 0)
         {
             try { await Task.WhenAll(target.PendingImages).ConfigureAwait(false); }
@@ -438,6 +372,7 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
     {
         var agentName = _agentsById.TryGetValue(snapshot.AgentId, out var a) ? a.Name : null;
         _pendingInteractive.TryRemove(snapshot.ConversationId, out _);
+        _interruptRequestedRuns.TryRemove(snapshot.ConversationId, out _);
 
         var (window, nextId) = await LoadTurnWindowAsync(snapshot.ConversationId).ConfigureAwait(false);
         var target = new ListProjectionTarget(window, agentName, _http, nextId);

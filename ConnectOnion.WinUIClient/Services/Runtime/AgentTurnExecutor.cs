@@ -42,6 +42,7 @@ public sealed class AgentTurnExecutor : ITurnExecutor
 
     public async Task<string> ExecuteAsync(TurnRequest request, IRunSink sink)
     {
+        void OnInputSent() => sink.SetRunning();
         void OnStream(AgentStreamEvent e)
         {
             sink.SetRunning();
@@ -71,6 +72,7 @@ public sealed class AgentTurnExecutor : ITurnExecutor
             _onInteractive?.Invoke("plan_review");
         }
 
+        _connection.InputSent += OnInputSent;
         _connection.StreamEvent += OnStream;
         _connection.OnboardRequired += OnOnboard;
         _connection.AskUserRequested += OnAsk;
@@ -88,6 +90,7 @@ public sealed class AgentTurnExecutor : ITurnExecutor
         }
         finally
         {
+            _connection.InputSent -= OnInputSent;
             _connection.StreamEvent -= OnStream;
             _connection.OnboardRequired -= OnOnboard;
             _connection.AskUserRequested -= OnAsk;

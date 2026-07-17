@@ -38,6 +38,9 @@ public sealed class ChatTurnProjection
     private double? _turnContextPercent;
     private long _turnToolCallsCount;
     private ToolActivityProjector? _toolActivity;
+    private ChatMessage? _streamedFinalReply;
+    private readonly List<ChatMessage> _thinkingActivities = new();
+    private bool _wasInterrupted;
 
     public ChatTurnProjection(IChatProjectionTarget target) => _target = target;
 
@@ -91,6 +94,16 @@ public sealed class ChatTurnProjection
                 : null;
         switch (e.Type)
         {
+            // Local-only lifecycle markers. They intentionally render no separate bubble; the
+            // successful marker is attached to the final OUTPUT message instead.
+            case "interrupt_requested":
+                _wasInterrupted = true;
+                break;
+
+            case "interrupt_request_failed":
+                _wasInterrupted = false;
+                break;
+
             case "tool_call":
                 GetToolActivity().ApplyCall(e);
                 break;
@@ -117,16 +130,20 @@ public sealed class ChatTurnProjection
             }
 
             case "thinking":
-                Add(new ChatMessage
+            {
+                var thinking = new ChatMessage
                 {
                     Id = NextId(),
                     Role = ChatRole.Event,
                     EventKind = "activity",
                     EventTitle = "Thinking",
                     EventDetail = Str("content"),
-                    Status = EventStatus.Done,
-                });
+                    Status = EventStatus.Running,
+                };
+                _thinkingActivities.Add(thinking);
+                Add(thinking);
                 break;
+            }
 
             case "intent":
             {
@@ -230,13 +247,15 @@ public sealed class ChatTurnProjection
                 var content = Str("content");
                 if (!string.IsNullOrEmpty(content))
                 {
-                    Add(new ChatMessage
+                    CompleteThinkingActivities(EventStatus.Done);
+                    _streamedFinalReply = new ChatMessage
                     {
                         Id = NextId(),
                         Role = ChatRole.Agent,
                         Content = content,
                         AgentName = AgentName,
-                    });
+                    };
+                    Add(_streamedFinalReply);
                 }
                 break;
             }
@@ -260,32 +279,6 @@ public sealed class ChatTurnProjection
                 Add(item);
                 break;
             }
-
-            // ---- locally-originated (see ConversationRunRegistry.PublishLocalEvent) ----
-
-            case "stop_requested":
-            {
-                var stopped = Flag("stopped") == true;
-                var item = NewActivity(null, stopped ? "Stopped" : "Stop requested", EventStatus.Done);
-                // Worded to promise exactly what happened. A cooperative stop is a message to the
-                // model, not an interrupt: the turn is still running until the agent chooses to
-                // wind down, and telling the user otherwise would be a lie the spinner contradicts.
-                if (!stopped) item.EventDetail = "Asked the agent to stop. It will finish the step it is on.";
-                Add(item);
-                break;
-            }
-
-            case "stop_forced":
-                Add(new ChatMessage
-                {
-                    Id = NextId(),
-                    Role = ChatRole.Event,
-                    EventKind = "activity",
-                    EventTitle = "Force-stopped",
-                    EventDetail = Str("detail"),
-                    Status = EventStatus.Error,
-                });
-                break;
 
             // ---- interactive turns & onboarding (synthetic events, see AgentTurnExecutor) ----
 
@@ -374,9 +367,13 @@ public sealed class ChatTurnProjection
     public void AppendFinalReply(string reply)
     {
         _toolActivity?.Complete();
+        CompleteThinkingActivities(EventStatus.Done);
         if (string.IsNullOrEmpty(reply)) return;
-        var lastAgent = Messages.LastOrDefault(m => m.Role == ChatRole.Agent);
-        if (lastAgent is not null && lastAgent.Content == reply) return;
+        if (_streamedFinalReply is not null && _streamedFinalReply.Content == reply)
+        {
+            if (_wasInterrupted) _streamedFinalReply.EventMeta = "Stopped";
+            return;
+        }
 
         Add(new ChatMessage
         {
@@ -384,16 +381,42 @@ public sealed class ChatTurnProjection
             Role = ChatRole.Agent,
             Content = reply,
             AgentName = AgentName,
+            EventMeta = _wasInterrupted ? "Stopped" : null,
         });
     }
 
-    /// <summary>One summary bubble at the end of a turn: model + duration/tokens/context/tools.</summary>
+    /// <summary>
+    /// Completes a successful turn in display order: tool activity, consumption summary, then the
+    /// final output. If the stream already emitted the final assistant bubble, it is temporarily
+    /// removed and reinserted after the summary instead of being duplicated.
+    /// </summary>
+    public void AppendCompletedTurn(string reply)
+    {
+        _toolActivity?.Complete();
+        CompleteThinkingActivities(EventStatus.Done);
+
+        var streamedFinal = _streamedFinalReply is not null
+            && (string.IsNullOrEmpty(reply) || _streamedFinalReply.Content == reply)
+                ? _streamedFinalReply
+                : null;
+        if (streamedFinal is not null) Messages.Remove(streamedFinal);
+
+        AppendTurnSummary();
+
+        if (streamedFinal is not null)
+        {
+            if (_wasInterrupted) streamedFinal.EventMeta = "Stopped";
+            Add(streamedFinal);
+        }
+        else
+        {
+            AppendFinalReply(reply);
+        }
+    }
+
+    /// <summary>One summary bubble before the final output: model + duration/tokens/context/tools.</summary>
     public void AppendTurnSummary()
     {
-        var hasAnyMetric = _turnHasUsage || _turnDurationMs > 0
-            || _turnContextPercent is not null || _turnToolCallsCount > 0;
-        if (!hasAnyMetric && string.IsNullOrEmpty(_turnModel)) return;
-
         var parts = new List<string>();
         if (_turnDurationMs > 0) parts.Add(FormatDuration(_turnDurationMs));
         if (_turnHasUsage) parts.Add($"{FormatTokenCount(_turnTokensIn)}→{FormatTokenCount(_turnTokensOut)} tok");
@@ -405,8 +428,9 @@ public sealed class ChatTurnProjection
             Id = NextId(),
             Role = ChatRole.Event,
             EventKind = "activity",
-            EventTitle = _turnModel ?? "Model",
-            EventMeta = parts.Count > 0 ? string.Join(" · ", parts) : null,
+            EventKey = "turn_usage",
+            EventTitle = _turnModel ?? "Turn usage",
+            EventMeta = parts.Count > 0 ? string.Join(" · ", parts) : "Usage not reported",
             Status = EventStatus.Done,
         });
     }
@@ -415,7 +439,20 @@ public sealed class ChatTurnProjection
     /// or is cancelled. The error stays in the activity details rather than becoming a second
     /// oversized tool bubble.</summary>
     public void CompleteToolActivity(ToolActivityStatus status, string? error = null)
-        => _toolActivity?.Complete(status, error);
+    {
+        _toolActivity?.Complete(status, error);
+        CompleteThinkingActivities(status == ToolActivityStatus.Failed
+            ? EventStatus.Error
+            : EventStatus.Done);
+    }
+
+    private void CompleteThinkingActivities(EventStatus status)
+    {
+        foreach (var thinking in _thinkingActivities)
+        {
+            if (thinking.Status == EventStatus.Running) thinking.Status = status;
+        }
+    }
 
     private ToolActivityProjector GetToolActivity()
     {

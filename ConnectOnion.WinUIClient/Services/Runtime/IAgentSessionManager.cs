@@ -11,33 +11,14 @@ namespace ConnectOnion.WinUIClient.Services.Runtime;
 /// its optimistic UI with the app-level run.</summary>
 public sealed record SendMessageResult(string RunId, string UserMessageId, string AssistantMessageId);
 
-/// <summary>
-/// What a Stop actually achieved. The protocol has no STOP frame, so this is not a formality —
-/// the three outcomes differ in whether the agent on the host has really stopped, and the UI
-/// must not claim more than happened.
-/// </summary>
+/// <summary>Result of submitting a graceful stop for the active turn.</summary>
 public enum StopOutcome
 {
     /// <summary>Nothing was running.</summary>
     NotRunning,
 
-    /// <summary>The agent was parked on an <c>approval_needed</c> turn and we rejected it with
-    /// <c>reject_hard</c>. This sets <c>stop_signal</c> host-side: the rest of the tool batch is
-    /// dropped, the iteration loop breaks, and the turn ends with a normal OUTPUT. The only
-    /// genuine, deterministic stop the protocol offers.</summary>
-    Stopped,
-
-    /// <summary>The agent was mid-work (or parked on a question), so all we could do was ask:
-    /// either answering the open interactive turn with a stop instruction, or injecting a
-    /// runtime-input "stop now". The model decides whether to comply, and the turn keeps
-    /// running until it does. Not a stop — a request.</summary>
+    /// <summary>INTERRUPT, or the approval-specific hard rejection, was sent successfully.</summary>
     StopRequested,
-
-    /// <summary>The local run was abandoned. The user's chat is unblocked immediately, but the
-    /// agent thread on the host <b>keeps executing</b> — nothing can preempt it — which is why
-    /// this is only ever reached by an explicit second action. See
-    /// <see cref="IAgentSessionManager.GetServerSessionStatusAsync"/>.</summary>
-    ForceStopped,
 }
 
 /// <summary>
@@ -79,24 +60,10 @@ public interface IAgentSessionManager
     ConversationRunSnapshot? RetryRun(AgentConfig agent, string conversationId);
 
     /// <summary>
-    /// The best stop the protocol allows right now, chosen from what the agent is currently
-    /// blocked on — see <see cref="StopOutcome"/> for what each one really does. Never abandons
-    /// the local run: that is <see cref="ForceStopAsync"/>, and it is a separate, deliberate
-    /// second action because it leaves the agent running on the host.
+    /// Sends INTERRUPT on the active run's existing socket. While approval is pending it sends
+    /// the exact reject_hard payload instead. Repeated requests are idempotent.
     /// </summary>
     Task<StopOutcome> RequestStopAsync(string conversationId);
-
-    /// <summary>Abandons the local run. The host keeps executing the turn; the conversation is
-    /// flagged so the next send can warn that it will land as a follow-up to it.</summary>
-    Task ForceStopAsync(string conversationId);
-
-    /// <summary>True once <see cref="ForceStopAsync"/> abandoned a run here and nothing has since
-    /// confirmed the host went idle.</summary>
-    bool MayHaveOrphanedRun(string conversationId);
-
-    /// <summary>Asks the host whether this conversation's session still has an agent running —
-    /// one of <see cref="SessionStatuses"/>. Clears the orphan flag when the answer is "no".</summary>
-    Task<string> GetServerSessionStatusAsync(string conversationId);
 
     /// <summary>
     /// Switches the conversation's approval mode. Applies to a turn in flight immediately (the
