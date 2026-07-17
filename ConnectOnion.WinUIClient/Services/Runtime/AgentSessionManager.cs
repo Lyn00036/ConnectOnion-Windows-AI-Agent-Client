@@ -12,6 +12,8 @@ using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services.Attachments;
 using ConnectOnion.WinUIClient.Services.Notifications;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ConnectOnion.WinUIClient.Services.Runtime;
 
@@ -24,6 +26,13 @@ namespace ConnectOnion.WinUIClient.Services.Runtime;
 /// </summary>
 public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
 {
+    /// <summary>Every unhandled fault the run pipeline raises funnels here. A turn that dies this
+    /// way leaves the chat looking merely stuck, so this is often the only trace of why.</summary>
+    private static readonly Action<ILogger, Exception?> LogRunFailure =
+        LoggerMessage.Define(LogLevel.Error, new EventId(1, "RunFailure"),
+            "Conversation run pipeline raised an unhandled fault");
+
+    private readonly ILogger<AgentSessionManager> _logger;
     private readonly HttpClient _http;
     private readonly ConversationRepository _conversations;
     private readonly UsageRepository _usage;
@@ -73,14 +82,21 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
     /// <param name="usage">Optional so existing callers and tests that don't care about accounting
     /// can omit it; a default instance is used when it isn't supplied.</param>
     public AgentSessionManager(
-        HttpClient http, ConversationRepository conversations, UsageRepository? usage = null)
+        HttpClient http,
+        ConversationRepository conversations,
+        UsageRepository? usage = null,
+        ILogger<AgentSessionManager>? logger = null)
     {
         _http = http;
         _conversations = conversations;
         _usage = usage ?? new UsageRepository();
+        _logger = logger ?? NullLogger<AgentSessionManager>.Instance;
         _connections = new AgentConnectionRegistry(http);
         _runs = new ConversationRunRegistry(this, new DebugRunLogger(), onError: ex =>
-            Debug.WriteLine($"[run] error: {ex}"));
+        {
+            Debug.WriteLine($"[run] error: {ex}");
+            LogRunFailure(_logger, ex);
+        });
     }
 
     /// <summary>The app-owned sockets, exposed so the view model can answer interactive turns

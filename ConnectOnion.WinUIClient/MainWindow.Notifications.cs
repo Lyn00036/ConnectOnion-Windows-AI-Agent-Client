@@ -52,6 +52,14 @@ public sealed partial class MainWindow : IChatWindow
     }
 
     private void OnIdentityReset(string reason)
+    {
+        // The toast tells whoever is watching; this tells whoever reads the log afterwards.
+        // IdentityStore itself can only reach Debug output, which Release builds compile away.
+        Serilog.Log.Warning("Agent identity was reset and regenerated: {Reason}", reason);
+        ShowIdentityResetToast(reason);
+    }
+
+    private void ShowIdentityResetToast(string reason)
         => DispatcherQueue.TryEnqueue(() => ShowInAppToast(new InAppToastModel(
             "New identity generated",
             $"Your previous ConnectOnion identity could not be recovered — {reason}. "
