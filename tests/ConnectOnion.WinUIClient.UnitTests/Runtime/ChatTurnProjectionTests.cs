@@ -33,6 +33,101 @@ public sealed class ChatTurnProjectionTests
     }
 
     [Fact]
+    public void AppendCompletedTurn_PutsUsageBeforeStreamedFinalReply()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+        projection.Apply(Event("llm_result", "{\"model\":\"model-a\",\"usage\":{\"input_tokens\":120,\"output_tokens\":30},\"duration_ms\":250}"));
+        projection.Apply(Event("assistant", "{\"content\":\"final reply\"}"));
+
+        projection.AppendCompletedTurn("final reply");
+
+        Assert.Equal(2, target.Messages.Count);
+        Assert.True(target.Messages[0].IsEvent);
+        Assert.Equal("turn_usage", target.Messages[0].EventKey);
+        Assert.Equal("model-a", target.Messages[0].EventTitle);
+        Assert.Contains("120→30 tok", target.Messages[0].EventMeta);
+        Assert.True(target.Messages[1].IsAgent);
+        Assert.Equal("final reply", target.Messages[1].Content);
+    }
+
+    [Fact]
+    public void AppendCompletedTurn_WithoutReportedUsage_StillAddsHonestSummaryFirst()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+
+        projection.AppendCompletedTurn("final reply");
+
+        Assert.Equal(2, target.Messages.Count);
+        Assert.Equal("Turn usage", target.Messages[0].EventTitle);
+        Assert.Equal("Usage not reported", target.Messages[0].EventMeta);
+        Assert.Equal("final reply", target.Messages[1].Content);
+    }
+
+    [Fact]
+    public void Apply_Thinking_RemainsCollapsedAndLoadingUntilReplyArrives()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+
+        projection.Apply(Event("thinking", "{\"content\":\"Checking the request.\"}"));
+
+        var thinking = Assert.Single(target.Messages);
+        Assert.True(thinking.IsThinkingRunning);
+        Assert.False(thinking.IsActivityExpanded);
+        Assert.Equal("Thinking...", thinking.ActivityHeaderTitle);
+
+        projection.Apply(Event("assistant", "{\"content\":\"Final reply\"}"));
+
+        Assert.False(thinking.IsThinkingRunning);
+        Assert.Equal(EventStatus.Done, thinking.Status);
+        Assert.Equal("Thought process", thinking.ActivityHeaderTitle);
+    }
+
+    [Fact]
+    public void CompleteToolActivity_Failed_StopsThinkingLoader()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+        projection.Apply(Event("thinking", "{\"content\":\"Checking the request.\"}"));
+
+        projection.CompleteToolActivity(ToolActivityStatus.Failed, "failed");
+
+        var thinking = Assert.Single(target.Messages);
+        Assert.False(thinking.IsThinkingRunning);
+        Assert.Equal(EventStatus.Error, thinking.Status);
+    }
+
+    [Fact]
+    public void AppendCompletedTurn_AfterInterrupt_MarksFinalOutputAsStopped()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+        projection.Apply(Event("interrupt_requested", "{\"type\":\"interrupt_requested\"}"));
+        projection.Apply(Event("assistant", "{\"content\":\"What would you like me to do?\"}"));
+
+        projection.AppendCompletedTurn("What would you like me to do?");
+
+        var reply = Assert.Single(target.Messages, message => message.IsAgent);
+        Assert.Equal("Stopped", reply.EventMeta);
+    }
+
+    [Fact]
+    public void AppendCompletedTurn_AfterInterruptSendFailure_DoesNotMarkOutputStopped()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+        projection.Apply(Event("interrupt_requested", "{\"type\":\"interrupt_requested\"}"));
+        projection.Apply(Event("interrupt_request_failed", "{\"type\":\"interrupt_request_failed\"}"));
+
+        projection.AppendCompletedTurn("normal reply");
+
+        var reply = Assert.Single(target.Messages, message => message.IsAgent);
+        Assert.Null(reply.EventMeta);
+    }
+
+    [Fact]
     public void Apply_ConsecutiveToolCalls_UsesSingleActivityBubbleWithMultipleSteps()
     {
         var target = new FakeTarget();
@@ -73,48 +168,6 @@ public sealed class ChatTurnProjectionTests
         // The agent can enter plan mode on its own, and that has to be visible: it changes what the
         // agent is allowed to do for the rest of the turn.
         Assert.Equal("by agent", bubble.EventMeta);
-    }
-
-    [Fact]
-    public void Apply_StopRequested_SaysItWasOnlyRequestedNotDone()
-    {
-        var target = new FakeTarget();
-        var projection = new ChatTurnProjection(target);
-
-        projection.Apply(Event("stop_requested", "{\"stopped\":false}"));
-
-        var bubble = Assert.Single(target.Messages);
-        Assert.Equal("Stop requested", bubble.EventTitle);
-        // A cooperative stop is a message to the model, not an interrupt — claiming "Stopped" while
-        // the spinner keeps going would be a lie.
-        Assert.Contains("Asked the agent to stop", bubble.EventDetail);
-    }
-
-    [Fact]
-    public void Apply_StopThatActuallyHalted_SaysStopped()
-    {
-        var target = new FakeTarget();
-        var projection = new ChatTurnProjection(target);
-
-        projection.Apply(Event("stop_requested", "{\"stopped\":true}"));
-
-        var bubble = Assert.Single(target.Messages);
-        Assert.Equal("Stopped", bubble.EventTitle);
-        Assert.Null(bubble.EventDetail);
-    }
-
-    [Fact]
-    public void Apply_StopForced_WarnsTheAgentMayStillBeRunning()
-    {
-        var target = new FakeTarget();
-        var projection = new ChatTurnProjection(target);
-
-        projection.Apply(Event("stop_forced", "{\"detail\":\"Stopped locally. The agent may still be running.\"}"));
-
-        var bubble = Assert.Single(target.Messages);
-        Assert.Equal("Force-stopped", bubble.EventTitle);
-        Assert.Equal(EventStatus.Error, bubble.Status);
-        Assert.Contains("may still be running", bubble.EventDetail);
     }
 
     private static AgentStreamEvent Event(string type, string json) => new(type, type, null, json);

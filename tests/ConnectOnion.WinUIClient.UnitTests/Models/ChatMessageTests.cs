@@ -49,6 +49,69 @@ public sealed class ChatMessageTests
         Assert.Contains("Collapse", message.InteractiveAccessibilityName);
     }
 
+    [Fact]
+    public void ThinkingActivity_UsesThoughtProcessTimelinePresentation()
+    {
+        var message = new ChatMessage
+        {
+            Role = ChatRole.Event,
+            EventKind = "activity",
+            EventTitle = "Thinking",
+            EventDetail = "Checking the request before replying.",
+            Status = EventStatus.Done,
+        };
+
+        Assert.Equal("Thought process", message.ActivityHeaderTitle);
+        Assert.Equal("Checking the request before replying.", message.ActivityTimelineText);
+        Assert.Equal("Done", message.ActivityStatusLabel);
+        Assert.False(message.IsActivityExpanded);
+
+        message.ToggleActivityExpanded();
+
+        Assert.True(message.IsActivityExpanded);
+        Assert.Contains("Collapse", message.ActivityAccessibilityName);
+    }
+
+    [Fact]
+    public void ThinkingActivity_WhileRunning_ShowsLoadingHeaderAndStaysCollapsed()
+    {
+        var message = new ChatMessage
+        {
+            Role = ChatRole.Event,
+            EventKind = "activity",
+            EventTitle = "Thinking",
+            Status = EventStatus.Running,
+        };
+
+        Assert.True(message.IsThinkingRunning);
+        Assert.Equal("Thinking...", message.ActivityHeaderTitle);
+        Assert.False(message.IsActivityExpanded);
+
+        message.Status = EventStatus.Done;
+
+        Assert.False(message.IsThinkingRunning);
+        Assert.Equal("Thought process", message.ActivityHeaderTitle);
+    }
+
+    [Fact]
+    public void UsageActivity_UsesTurnUsageHeaderAndKeepsMetrics()
+    {
+        var message = new ChatMessage
+        {
+            Role = ChatRole.Event,
+            EventKind = "activity",
+            EventKey = "turn_usage",
+            EventTitle = "model-a",
+            EventMeta = "120→30 tok",
+            Status = EventStatus.Done,
+        };
+
+        Assert.Equal("Turn usage", message.ActivityHeaderTitle);
+        Assert.Equal("model-a", message.ActivityTimelineText);
+        Assert.True(message.HasActivityTimelineMeta);
+        Assert.Equal("model-a · 120→30 tok", message.TurnUsageSummary);
+    }
+
     private static ChatMessage InteractiveMessage(EventStatus status) => new()
     {
         Role = ChatRole.Event,

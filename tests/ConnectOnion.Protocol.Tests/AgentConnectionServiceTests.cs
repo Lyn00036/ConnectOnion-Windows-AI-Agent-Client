@@ -57,6 +57,36 @@ public sealed class AgentConnectionServiceTests
     }
 
     [Fact]
+    public async Task SendInterruptAsync_ActiveTurn_SendsExactFrameOnExistingSocket()
+    {
+        string? interruptJson = null;
+        var inputSent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var server = new FakeAgentServer(async (socket, ct) =>
+        {
+            await FakeAgentServer.ReceiveTextAsync(socket, ct); // CONNECT
+            await FakeAgentServer.SendTextAsync(socket, "{\"type\":\"CONNECTED\"}", ct);
+            await FakeAgentServer.ReceiveTextAsync(socket, ct); // INPUT
+            interruptJson = await FakeAgentServer.ReceiveTextAsync(socket, ct);
+            await FakeAgentServer.SendTextAsync(
+                socket, "{\"type\":\"OUTPUT\",\"result\":\"What would you like me to do?\"}", ct);
+        });
+        await using var service = Service(server);
+        service.InputSent += inputSent.SetResult;
+
+        var turn = service.SendInputAsync("start", null);
+        await inputSent.Task;
+        await service.SendInterruptAsync();
+
+        Assert.Equal("What would you like me to do?", await turn);
+        using var interrupt = System.Text.Json.JsonDocument.Parse(interruptJson!);
+        var properties = interrupt.RootElement.EnumerateObject().ToList();
+        Assert.Single(properties);
+        Assert.Equal("type", properties[0].Name);
+        Assert.Equal("INTERRUPT", properties[0].Value.GetString());
+        await server.Completion;
+    }
+
+    [Fact]
     public async Task SendInputAsync_AskUser_RaisesRequestAndSendsAnswer()
     {
         string? responseJson = null;
@@ -233,6 +263,36 @@ public sealed class AgentConnectionServiceTests
         Assert.False(response.GetBool("approved"));
         Assert.Equal(ApprovalRejectModes.Hard, response.GetString("mode"));
         Assert.Equal("no", response.GetString("feedback"));
+        await server.Completion;
+    }
+
+    [Fact]
+    public async Task RejectApprovalForStopAsync_SendsExactFifoPayloadWithoutTypeOrScope()
+    {
+        string? responseJson = null;
+        await using var server = new FakeAgentServer(async (socket, ct) =>
+        {
+            await FakeAgentServer.ReceiveTextAsync(socket, ct);
+            await FakeAgentServer.SendTextAsync(socket, "{\"type\":\"CONNECTED\"}", ct);
+            await FakeAgentServer.ReceiveTextAsync(socket, ct);
+            await FakeAgentServer.SendTextAsync(
+                socket, "{\"type\":\"approval_needed\",\"tool\":\"bash\",\"arguments\":{}}", ct);
+            responseJson = await FakeAgentServer.ReceiveTextAsync(socket, ct);
+            await FakeAgentServer.SendTextAsync(socket, "{\"type\":\"OUTPUT\",\"result\":\"stopped\"}", ct);
+        });
+        await using var service = Service(server);
+        service.ApprovalRequested += request => _ = service.RejectApprovalForStopAsync();
+
+        Assert.Equal("stopped", await service.SendInputAsync("start", null));
+
+        using var response = System.Text.Json.JsonDocument.Parse(responseJson!);
+        var root = response.RootElement;
+        Assert.Equal(3, root.EnumerateObject().Count());
+        Assert.False(root.GetProperty("approved").GetBoolean());
+        Assert.Equal("reject_hard", root.GetProperty("mode").GetString());
+        Assert.Equal("用户中断", root.GetProperty("feedback").GetString());
+        Assert.False(root.TryGetProperty("type", out _));
+        Assert.False(root.TryGetProperty("scope", out _));
         await server.Completion;
     }
 

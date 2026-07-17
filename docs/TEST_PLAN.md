@@ -390,12 +390,13 @@ Note the test steps pass no `-p:Platform`. The solution build maps the conforman
 | **UT-CHAT-008** | Unicode / Chinese / emoji / multiline / very long | A | P1 | See test data | Preserved verbatim; not truncated or mangled | ✅ | xunit | `InputMessageBuilder` |
 | **UT-CHAT-009** | `CanRetry` / `ShowRetryBar` logic | A | P1 | After a failure | Retry bar appears and is mutually exclusive with the offline notice | ✅ | xunit | `ChatViewModel:119,133` |
 | **UI-CHAT-001** | Composer clears and keeps focus after send | B | P1 | — | Focus remains in the input | ⚠️ | MSTest (WinUI) | `ChatComposer.xaml.cs` |
+| **UI-CHAT-002** | Disclosure bubbles animate open and closed | B | P1 | Thought process, interactive cards, tool activity and tool steps | 140 ms fade/vertical transition; header is guarded against repeat clicks; OS animation preference is respected | ⚠️ manual | WinUI | `DisclosureAnimation` |
 
 ### 11.6 Streaming and projection (STREAM)
 
 | ID | Title | Layer | Pri | Expected | Auto | Framework | Code location |
 |---|---|---|---|---|---|---|---|
-| **UT-STREAM-001** | thinking / tool / assistant events project to the right bubbles | A | **P0** | `EventKind` maps 1:1 to a template | ✅ | xunit | `ChatTurnProjection.Apply` |
+| **UT-STREAM-001** | thinking / tool / assistant events project to the right bubbles | A | **P0** | `EventKind` maps 1:1 to a template; Thinking is collapsed and loading until assistant output, then reaches a terminal state on success/failure/cancel | ✅ | xunit | `ChatTurnProjection.Apply`, `ChatMessageTests` |
 | **UT-STREAM-002** | **Live and headless paths produce identical bubbles** | A | **P0** | Same event sequence through an `ObservableCollection` target and a plain `List` target yields **identical** output | ✅ | xunit | `ChatTurnProjection` — 🔴 **the core invariant that prevents double-rendering when a page opens mid-turn** |
 | **UT-STREAM-003** | Final reply is de-duplicated | A | **P0** | `AppendFinalReply` adds nothing when it equals the last assistant bubble | ✅ | xunit | `ChatTurnProjection.AppendFinalReply` |
 | **UT-STREAM-004** | Repeated `event_key` merges instead of appending | A | **P0** | running → done updates the same row | ✅ | xunit | `ChatTurnProjection` |
@@ -409,6 +410,10 @@ Note the test steps pass no `-p:Platform`. The solution build maps the conforman
 | **UT-STREAM-012** | Unanswered interactive cards are sealed as "No selection" | C | **P0** | Reloaded history shows "No selection", not dead controls | ✅ | xunit | `NoSelectionMeta` (`AgentSessionManager:50`) |
 | **UT-STREAM-013** | Interactive card default collapse state | A | P1 | Resolved → collapsed; awaiting → expanded | ✅ | xunit | `ChatMessage.IsInteractiveExpanded` |
 | **UT-STREAM-014** | 1000 events in one turn, nothing dropped | C | P1 | All projected, in order | ✅ | xunit | `ConversationRun` |
+| **UT-STREAM-015** | Graceful stop uses the latest wire protocol | B | **P0** | Existing socket receives exactly `{ "type": "INTERRUPT" }`; ordinary OUTPUT still completes the turn | ✅ | xunit | `AgentConnectionServiceTests.SendInterruptAsync_*` |
+| **UT-STREAM-016** | Stop during approval uses the FIFO-safe hard rejection | B | **P0** | Exactly `approved=false`, `mode=reject_hard`, `feedback=用户中断`; no `type`/`scope` fields | ✅ | xunit | `AgentConnectionServiceTests.RejectApprovalForStopAsync_*` |
+| **UT-STREAM-017** | Interrupted OUTPUT is marked without an extra activity bubble | A | **P0** | Final agent message has `EventMeta=Stopped`; failed interrupt send leaves it unmarked | ✅ | xunit | `ChatTurnProjectionTests.AppendCompletedTurn_AfterInterrupt*` |
+| **UI-STREAM-001** | Stop enters an idempotent disabled intermediate state | B | **P0** | Button is visible only after INPUT, disabled while `IsStopping`, and disappears on OUTPUT/ERROR/disconnect | ⚠️ | MSTest (WinUI) | `ChatComposer.CanStop`, `ChatViewModel.ApplyRunSnapshot` |
 
 ### 11.7 Conversation management (SESSION)
 
@@ -755,7 +760,7 @@ connectonion-desktop/
     │   │   ├── ToolActivityProjectorTests.cs
     │   │   └── ToolActivityMigrationTests.cs
     │   ├── Models/
-    │   │   └── ChatMessageTests.cs                   # interactive card collapse state
+    │   │   └── ChatMessageTests.cs                   # interactive + thought-process collapse/loading state
     │   ├── Converters/
     │   │   ├── BoolToVisibilityConverterTests.cs
     │   │   ├── EventStatusToBrushConverterTests.cs
