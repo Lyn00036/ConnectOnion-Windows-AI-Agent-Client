@@ -258,9 +258,8 @@ public sealed class ConversationRepository
     /// <summary>
     /// Every write here is best-effort: a failed save must not take the live conversation down
     /// with it. That is a deliberate trade, but a silent one is not — a message the user can see
-    /// on screen and that is quietly missing after a restart should leave a trace to find. Debug
-    /// output is the only sink this app has today; if a real logger ever lands, this is the one
-    /// place to route it through.
+    /// on screen and that is quietly missing after a restart should leave a trace to find. The
+    /// Debug line is for an attached debugger only; the logger call is what survives in Release.
     /// </summary>
     private void LogFailure(string operation, string conversationId, Exception ex)
     {

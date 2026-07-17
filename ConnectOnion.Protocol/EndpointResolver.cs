@@ -135,7 +135,11 @@ public static class EndpointResolver
     {
         try
         {
+            // Not actually foreign: the in-flight task is one this class started and is
+            // handed in only so the caller that owns it also completes the cache entry.
+#pragma warning disable VSTHRD003
             var endpoint = await task.ConfigureAwait(false);
+#pragma warning restore VSTHRD003
             lock (CacheGate) EndpointCache[key] = new EndpointCacheEntry(endpoint, DateTimeOffset.UtcNow);
             return endpoint;
         }
@@ -228,7 +232,10 @@ public static class EndpointResolver
     {
         try
         {
+            // Same in-flight task this class started — see CompleteEndpointAsync.
+#pragma warning disable VSTHRD003
             var info = await task.ConfigureAwait(false);
+#pragma warning restore VSTHRD003
             lock (CacheGate) AgentInfoCache[key] = new AgentInfoCacheEntry(info, DateTimeOffset.UtcNow);
             return info;
         }

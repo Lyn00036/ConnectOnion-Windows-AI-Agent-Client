@@ -74,7 +74,12 @@ public static class IdentityStore
 
         try
         {
+            // Blocking is safe only because AppDatabase.OpenAsync awaits with
+            // ConfigureAwait(false) the whole way down, so no continuation captures the UI
+            // context EnsureIdentity is called on. Keep that true or make this async.
+#pragma warning disable VSTHRD002
             using var connection = AppDatabase.OpenAsync().GetAwaiter().GetResult();
+#pragma warning restore VSTHRD002
             using var command = connection.CreateCommand();
             command.CommandText = """
                 SELECT private_seed
@@ -139,7 +144,10 @@ public static class IdentityStore
                 identity.PrivateSeed.ToArray(), Entropy, DataProtectionScope.CurrentUser);
             var storedSeed = Convert.ToBase64String(protectedSeed);
 
+            // Safe for the same reason as Load's open — see the note there.
+#pragma warning disable VSTHRD002
             using var connection = AppDatabase.OpenAsync().GetAwaiter().GetResult();
+#pragma warning restore VSTHRD002
             using var command = connection.CreateCommand();
             command.CommandText = """
                 INSERT INTO identity_keys (id, address, private_seed)
