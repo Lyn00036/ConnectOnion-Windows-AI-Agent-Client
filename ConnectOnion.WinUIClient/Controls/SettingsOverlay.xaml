@@ -69,6 +69,10 @@
                                 <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Style="{StaticResource SettingsNavIconStyle}" Glyph="&#xE8D6;"/><TextBlock Text="Audio"/></StackPanel>
                             </RadioButton>
                             <RadioButton GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
+                                Click="KeyboardNav_Click" AutomationProperties.Name="Keyboard shortcuts settings">
+                                <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Style="{StaticResource SettingsNavIconStyle}" Glyph="&#xE765;"/><TextBlock Text="Keyboard"/></StackPanel>
+                            </RadioButton>
+                            <RadioButton GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
                                 Click="IdentityNav_Click" AutomationProperties.Name="Identity settings">
                                 <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Style="{StaticResource SettingsNavIconStyle}" Glyph="&#xE77B;"/><TextBlock Text="Identity"/></StackPanel>
                             </RadioButton>
@@ -103,6 +107,12 @@
                                   VerticalScrollMode="Enabled" VerticalScrollBarVisibility="Auto"
                                   HorizontalContentAlignment="Stretch">
                         <controls:UsageSettingsContent x:Name="UsageContent" Margin="28,6,28,28" />
+                    </ScrollViewer>
+                    <ScrollViewer x:Name="KeyboardScrollViewer" Grid.Row="1" Visibility="Collapsed"
+                                  HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollMode="Enabled" VerticalScrollBarVisibility="Auto"
+                                  HorizontalContentAlignment="Stretch">
+                        <controls:KeyboardSettingsContent x:Name="KeyboardContent" Margin="28,6,28,28" />
                     </ScrollViewer>
                 </Grid>
             </Grid>

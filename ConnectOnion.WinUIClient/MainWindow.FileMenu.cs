@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
+using ConnectOnion.WinUIClient.Services;
 using ConnectOnion.WinUIClient.Views;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -18,6 +19,7 @@ public sealed partial class MainWindow
         RegisterEditMenuAccelerators();
         RegisterViewMenuAccelerators();
         RegisterHelpMenuAccelerators();
+        RegisterShortcutHints();
         RegisterDragDropHint();
     }
 
@@ -44,45 +46,45 @@ public sealed partial class MainWindow
         // While a modal overlay is open it owns all input — don't fire background
         // accelerators behind it.
         if (IsModalOverlayOpen) return;
-        if (!IsKeyDown(VirtualKey.Control)) return;
 
-        var hasShift = IsKeyDown(VirtualKey.Shift);
-        var hasAlt = IsKeyDown(VirtualKey.Menu);
-
-        if (e.Key == VirtualKey.N && !hasShift && !hasAlt)
+        switch (MatchShortcut(e))
         {
-            await StartNewChatAsync();
-            e.Handled = true;
-            return;
-        }
-
-        if (e.Key == VirtualKey.O && !hasShift && !hasAlt)
-        {
-            await PickAndOpenFolderAsync();
-            e.Handled = true;
-            return;
-        }
-
-        if (e.Key == VirtualKey.W && !hasShift && !hasAlt)
-        {
-            MinimizeToTray();
-            e.Handled = true;
-            return;
-        }
-
-        if ((int)e.Key == 188 && !hasShift && !hasAlt)
-        {
-            ShowSettingsOverlay();
-            e.Handled = true;
-            return;
-        }
-
-        if (e.Key == VirtualKey.Q && !hasShift && !hasAlt)
-        {
-            ExitApplication();
-            e.Handled = true;
+            case KeyboardShortcutCatalog.Ids.NewChat:
+                await StartNewChatAsync();
+                e.Handled = true;
+                return;
+            case KeyboardShortcutCatalog.Ids.OpenFolder:
+                await PickAndOpenFolderAsync();
+                e.Handled = true;
+                return;
+            case KeyboardShortcutCatalog.Ids.CloseWindow:
+                MinimizeToTray();
+                e.Handled = true;
+                return;
+            case KeyboardShortcutCatalog.Ids.OpenSettings:
+                ShowSettingsOverlay();
+                e.Handled = true;
+                return;
+            case KeyboardShortcutCatalog.Ids.Exit:
+                ExitApplication();
+                e.Handled = true;
+                return;
         }
     }
+
+    /// <summary>
+    /// Resolves a keystroke to the shortcut id it is bound to, or null. The single place the
+    /// window turns raw keys into actions — the bindings themselves live in
+    /// <see cref="KeyboardShortcutCatalog"/> and whatever the user rebound them to, so no handler
+    /// hard-codes a key any more. The key goes through <see cref="LayoutKeys"/> first so a
+    /// punctuation binding means the character, not a US keyboard position.
+    /// </summary>
+    private static string? MatchShortcut(KeyRoutedEventArgs e)
+        => AppServices.Shortcuts.Match(
+            LayoutKeys.Normalize((int)e.Key),
+            IsKeyDown(VirtualKey.Control),
+            IsKeyDown(VirtualKey.Shift),
+            IsKeyDown(VirtualKey.Menu));
 
     private static bool IsKeyDown(VirtualKey key)
         => (GetKeyState((int)key) & 0x8000) != 0;

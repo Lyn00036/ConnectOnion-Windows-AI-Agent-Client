@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Window
     x:Class="ConnectOnion.WinUIClient.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -63,7 +63,7 @@
         </Grid.Resources>
 
         <Grid.RowDefinitions>
-            <RowDefinition Height="36" />
+            <RowDefinition Height="32" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -124,21 +124,21 @@
                          BorderThickness="0"
                          VerticalAlignment="Center">
                     <MenuBarItem Title="File">
-                        <MenuFlyoutItem x:Uid="MenuNewChat" Text="New Chat"
+                        <MenuFlyoutItem x:Uid="MenuNewChat" x:Name="NewChatMenuItem" Text="New Chat"
                                         KeyboardAcceleratorTextOverride="Ctrl+N"
                                         Click="NewChat_Click" />
-                        <MenuFlyoutItem x:Uid="MenuOpenFolder" Text="Open Folder..."
+                        <MenuFlyoutItem x:Uid="MenuOpenFolder" x:Name="OpenFolderMenuItem" Text="Open Folder..."
                                         KeyboardAcceleratorTextOverride="Ctrl+O"
                                         Click="OpenFolder_Click" />
-                        <MenuFlyoutItem x:Uid="MenuClose" Text="Close"
+                        <MenuFlyoutItem x:Uid="MenuClose" x:Name="CloseWindowMenuItem" Text="Close"
                                         KeyboardAcceleratorTextOverride="Ctrl+W"
                                         Click="CloseWindow_Click" />
                         <MenuFlyoutSeparator />
-                        <MenuFlyoutItem x:Uid="MenuSettings" Text="Settings..."
+                        <MenuFlyoutItem x:Uid="MenuSettings" x:Name="SettingsMenuItem" Text="Settings..."
                                         KeyboardAcceleratorTextOverride="Ctrl+,"
                                         Click="SettingsMenu_Click" />
                         <MenuFlyoutSeparator />
-                        <MenuFlyoutItem x:Uid="MenuExit" Text="Exit"
+                        <MenuFlyoutItem x:Uid="MenuExit" x:Name="ExitMenuItem" Text="Exit"
                                         KeyboardAcceleratorTextOverride="Ctrl+Q"
                                         Click="Exit_Click" />
                     </MenuBarItem>
@@ -167,38 +167,38 @@
                                         Click="SelectAll_Click" />
                     </MenuBarItem>
                     <MenuBarItem Title="View">
-                        <MenuFlyoutItem x:Uid="MenuToggleSidebar" Text="Toggle Sidebar"
+                        <MenuFlyoutItem x:Uid="MenuToggleSidebar" x:Name="ToggleSidebarMenuItem" Text="Toggle Sidebar"
                                         KeyboardAcceleratorTextOverride="Ctrl+B"
                                         Click="ToggleSidebarMenu_Click" />
-                        <MenuFlyoutItem x:Uid="MenuOpenTerminal" Text="Open Terminal"
+                        <MenuFlyoutItem x:Uid="MenuOpenTerminal" x:Name="OpenTerminalMenuItem" Text="Open Terminal"
                                         KeyboardAcceleratorTextOverride="Ctrl+`"
                                         Click="OpenTerminal_Click" />
-                        <MenuFlyoutItem x:Uid="MenuFind" Text="Find"
+                        <MenuFlyoutItem x:Uid="MenuFind" x:Name="FindMenuItem" Text="Find"
                                         KeyboardAcceleratorTextOverride="Ctrl+F"
                                         Click="Find_Click" />
                         <MenuFlyoutSeparator />
-                        <MenuFlyoutItem x:Uid="MenuBack" Text="Back"
+                        <MenuFlyoutItem x:Uid="MenuBack" x:Name="BackMenuItem" Text="Back"
                                         KeyboardAcceleratorTextOverride="Ctrl+["
                                         Click="BackMenu_Click" />
-                        <MenuFlyoutItem x:Uid="MenuForward" Text="Forward"
+                        <MenuFlyoutItem x:Uid="MenuForward" x:Name="ForwardMenuItem" Text="Forward"
                                         KeyboardAcceleratorTextOverride="Ctrl+]"
                                         Click="ForwardMenu_Click" />
                         <MenuFlyoutSeparator />
-                        <MenuFlyoutItem x:Uid="MenuZoomIn" Text="Zoom In"
+                        <MenuFlyoutItem x:Uid="MenuZoomIn" x:Name="ZoomInMenuItem" Text="Zoom In"
                                         KeyboardAcceleratorTextOverride="Ctrl+Shift+="
                                         Click="ZoomIn_Click" />
-                        <MenuFlyoutItem x:Uid="MenuZoomOut" Text="Zoom Out"
+                        <MenuFlyoutItem x:Uid="MenuZoomOut" x:Name="ZoomOutMenuItem" Text="Zoom Out"
                                         KeyboardAcceleratorTextOverride="Ctrl+-"
                                         Click="ZoomOut_Click" />
                         <MenuFlyoutItem x:Uid="MenuActualSize" Text="Actual Size"
                                         Click="ActualSize_Click" />
                         <MenuFlyoutSeparator />
-                        <MenuFlyoutItem x:Uid="MenuFullScreen" Text="Toggle Full Screen"
+                        <MenuFlyoutItem x:Uid="MenuFullScreen" x:Name="FullScreenMenuItem" Text="Toggle Full Screen"
                                         KeyboardAcceleratorTextOverride="F11"
                                         Click="ToggleFullScreen_Click" />
                     </MenuBarItem>
                     <MenuBarItem x:Name="HelpMenuBarItem" Title="Help" AutomationProperties.AutomationId="HelpMenuButton">
-                        <MenuFlyoutItem x:Uid="MenuKeyboardShortcuts" Text="Keyboard shortcuts" AutomationProperties.AutomationId="KeyboardShortcutsMenuItem"
+                        <MenuFlyoutItem x:Uid="MenuKeyboardShortcuts" x:Name="KeyboardShortcutsMenuItem" Text="Keyboard shortcuts" AutomationProperties.AutomationId="KeyboardShortcutsMenuItem"
                                         KeyboardAcceleratorTextOverride="Ctrl+Shift+/"
                                         Click="KeyboardShortcuts_Click" />
                         <MenuFlyoutItem x:Uid="MenuDocs" Text="ConnectOnion Docs" AutomationProperties.AutomationId="ConnectOnionDocsMenuItem"

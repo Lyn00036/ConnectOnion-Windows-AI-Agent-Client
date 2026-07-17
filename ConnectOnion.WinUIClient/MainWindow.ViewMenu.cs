@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using ConnectOnion.WinUIClient.Services;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -36,6 +37,14 @@ public sealed partial class MainWindow
     {
         RootGrid.KeyDown += ViewMenuShortcut_KeyDown;
         _zoomPopupIdleTimer.Tick += ZoomPopupIdleTimer_Tick;
+    }
+
+    /// <summary>Called when the window closes: a pending idle tick would hide the zoom popup —
+    /// i.e. touch the visual tree — after teardown has started. Stop it before that can happen.</summary>
+    private void DetachViewMenu()
+    {
+        _zoomPopupIdleTimer.Stop();
+        _zoomPopupIdleTimer.Tick -= ZoomPopupIdleTimer_Tick;
     }
 
     private void ToggleSidebarMenu_Click(object sender, RoutedEventArgs e)
@@ -88,66 +97,49 @@ public sealed partial class MainWindow
         if (e.Handled) return;
         if (IsModalOverlayOpen) return;
 
-        var hasControl = IsKeyDown(VirtualKey.Control);
-        var hasShift = IsKeyDown(VirtualKey.Shift);
-        var hasAlt = IsKeyDown(VirtualKey.Menu);
+        var id = MatchShortcut(e);
+        if (id is null) return;
 
-        if (!hasControl && !hasShift && !hasAlt && e.Key == VirtualKey.F11)
+        // Full screen and Find are the two that stay live while the caret is in a text box;
+        // the rest would fight the editor for keys it legitimately owns, so they stand down.
+        // (This split predates rebinding and is about focus, not about which keys are bound.)
+        if (id is not (KeyboardShortcutCatalog.Ids.ToggleFullScreen or KeyboardShortcutCatalog.Ids.Find)
+            && IsEditableInputFocused())
         {
-            ToggleFullScreenCommand();
-            e.Handled = true;
             return;
         }
 
-        if (hasControl && !hasShift && !hasAlt && e.Key == VirtualKey.F)
+        switch (id)
         {
-            FindCommand();
-            e.Handled = true;
-            return;
+            case KeyboardShortcutCatalog.Ids.ToggleFullScreen:
+                ToggleFullScreenCommand();
+                break;
+            case KeyboardShortcutCatalog.Ids.Find:
+                FindCommand();
+                break;
+            case KeyboardShortcutCatalog.Ids.ToggleSidebar:
+                ToggleSidebarCommand();
+                break;
+            case KeyboardShortcutCatalog.Ids.OpenTerminal:
+                OpenTerminalCommand();
+                break;
+            case KeyboardShortcutCatalog.Ids.GoBack:
+                BackCommand();
+                break;
+            case KeyboardShortcutCatalog.Ids.GoForward:
+                ForwardCommand();
+                break;
+            case KeyboardShortcutCatalog.Ids.ZoomIn:
+                ZoomInCommand();
+                break;
+            case KeyboardShortcutCatalog.Ids.ZoomOut:
+                ZoomOutCommand();
+                break;
+            default:
+                return;   // a shortcut another handler owns
         }
 
-        if (!hasControl || hasAlt || IsEditableInputFocused()) return;
-
-        if (!hasShift && e.Key == VirtualKey.B)
-        {
-            ToggleSidebarCommand();
-            e.Handled = true;
-            return;
-        }
-
-        if (!hasShift && (int)e.Key == 192)
-        {
-            OpenTerminalCommand();
-            e.Handled = true;
-            return;
-        }
-
-        if (!hasShift && (int)e.Key == 219)
-        {
-            BackCommand();
-            e.Handled = true;
-            return;
-        }
-
-        if (!hasShift && (int)e.Key == 221)
-        {
-            ForwardCommand();
-            e.Handled = true;
-            return;
-        }
-
-        if (hasShift && ((int)e.Key == 187 || e.Key == VirtualKey.Add))
-        {
-            ZoomInCommand();
-            e.Handled = true;
-            return;
-        }
-
-        if (!hasShift && ((int)e.Key == 189 || e.Key == VirtualKey.Subtract))
-        {
-            ZoomOutCommand();
-            e.Handled = true;
-        }
+        e.Handled = true;
     }
 
     private void OpenTerminalCommand()

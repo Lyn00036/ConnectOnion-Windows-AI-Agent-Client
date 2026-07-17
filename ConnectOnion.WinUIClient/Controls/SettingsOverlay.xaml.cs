@@ -69,10 +69,12 @@ public sealed partial class SettingsOverlay : UserControl
     private void AudioNav_Click(object sender, RoutedEventArgs e) => SelectCategory("Audio");
     private void IdentityNav_Click(object sender, RoutedEventArgs e) => SelectCategory("Identity");
     private void UsageNav_Click(object sender, RoutedEventArgs e) => SelectCategory("Usage");
+    private void KeyboardNav_Click(object sender, RoutedEventArgs e) => SelectCategory("Keyboard");
 
     /// <summary>
-    /// Swaps the right-hand pane. Identity and Usage are standalone controls; every other category
-    /// is a section of <see cref="SettingsContent"/>, which stays hidden while one of them is shown.
+    /// Swaps the right-hand pane. Identity, Usage and Keyboard are standalone controls; every other
+    /// category is a section of <see cref="SettingsContent"/>, which stays hidden while one of them
+    /// is shown.
     /// </summary>
     private void SelectCategory(string category)
     {
@@ -80,11 +82,13 @@ public sealed partial class SettingsOverlay : UserControl
 
         var isIdentity = category == "Identity";
         var isUsage = category == "Usage";
-        var isSettingsPage = !isIdentity && !isUsage;
+        var isKeyboard = category == "Keyboard";
+        var isSettingsPage = !isIdentity && !isUsage && !isKeyboard;
 
         SettingsContent.Visibility = isSettingsPage ? Visibility.Visible : Visibility.Collapsed;
         IdentityScrollViewer.Visibility = isIdentity ? Visibility.Visible : Visibility.Collapsed;
         UsageScrollViewer.Visibility = isUsage ? Visibility.Visible : Visibility.Collapsed;
+        KeyboardScrollViewer.Visibility = isKeyboard ? Visibility.Visible : Visibility.Collapsed;
 
         if (isSettingsPage)
             SettingsContent.SelectCategory(category);
@@ -92,6 +96,11 @@ public sealed partial class SettingsOverlay : UserControl
         // Re-read the ledger on entry: a turn may well have finished while Settings sat open.
         if (isUsage)
             UsageContent.Refresh();
+
+        // Bindings can have moved since this pane was last shown — the dialog cannot change them,
+        // but a second window's Settings can.
+        if (isKeyboard)
+            KeyboardContent.Refresh();
     }
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) => SettingsContent.Filter(SearchBox.Text);
 }
