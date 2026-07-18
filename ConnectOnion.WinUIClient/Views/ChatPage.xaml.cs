@@ -214,11 +214,15 @@ public sealed partial class ChatPage : Page, IFindHost, IReloadablePage
         // so a reply that lands here is suppressed (the user already sees it).
         ReportViewing(active: true);
 
-        // Show empty state when there are no messages after loading completes.
-        if (Vm.Messages.Count == 0)
-        {
-            EmptyStatePanel.Visibility = Visibility.Visible;
-        }
+        // The page is cached and reused across conversations. A previous empty
+        // conversation may have left this panel visible, while history changes
+        // raised during LoadAsync are intentionally ignored by
+        // Messages_CollectionChanged. Always derive the final state from the
+        // conversation that just finished loading instead of only handling the
+        // empty case.
+        EmptyStatePanel.Visibility = Vm.Messages.Count == 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
 
         // Wait for the ListView to materialize its virtualized item containers
         // before removing the overlay.  A fixed delay cannot account for

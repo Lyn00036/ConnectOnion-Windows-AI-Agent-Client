@@ -1,0 +1,125 @@
+# AGENTS.md
+
+This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
+
+## Project Overview
+
+ConnectOnion Desktop is a native Windows client (WinUI 3, C#, .NET 10) for chatting with ConnectOnion-compatible agents over WebSocket. `frontend/` is the **legacy** Electron + React + TypeScript implementation, kept only as reference for prior UX/business behavior — do not build new features there unless explicitly asked; all active work happens in the WinUI projects at the repo root.
+
+Prose docs live in `docs/` (see `docs/README.md`): the wire protocol (`SESSION_MESSAGE_STRUCTURE.md`), the test plan and backlog (`TEST_PLAN.md`), the requirements brief, and a historical record of the Electron → WinUI migration. **This file is the authoritative description of the architecture — where a document in `docs/` disagrees with it, this one is right.**
+
+## Solution Layout
+
+Production projects sit at the repo root; every test project lives under `tests/`. All but one are wired into the `.sln` — keep this in mind when running `dotnet build`/`dotnet test` against the solution vs. a project directly:
+
+| Project | In `.sln`? | In CI? | Purpose |
+|---|---|---|---|
+| `ConnectOnion.WinUIClient/` | yes | build | The WinUI 3 app (`net10.0-windows10.0.19041.0`) |
+| `ConnectOnion.Protocol/` | yes | build | Transport-agnostic protocol library (`net10.0`, no WinUI dependency) |
+| `ConnectOnion.Protocol.Conformance/` | yes | yes | Cross-checks C# Ed25519/canonical-JSON signing against a Node.js reference signer (`ref-sign.js`) — this is the CI gate |
+| `ConnectOnion.Protocol.LiveTest/` | no | no | Console script for a real end-to-end run against a deployed agent; run directly with `dotnet run` |
+| `tests/ConnectOnion.Protocol.Tests/` | yes | yes | xunit unit tests for `ConnectOnion.Protocol` (wire schema, encoding, event parsing) |
+| `tests/ConnectOnion.WinUIClient.UnitTests/` | yes | yes | Headless xunit tests for the WinUI-free surfaces of the app (projection, notifications, caches, view models) |
+| `tests/ConnectOnion.IntegrationTests/` | yes | yes | xunit tests against a real SQLite file (schema/migrations, repositories, identity store) |
+
+The two test projects that cover the WinUI app cannot reference it — it targets `net10.0-windows` and drags in the Windows App SDK, which a headless test host can't load. They instead `<Compile Include>` the specific WinUI-free production files they exercise (see either `.csproj`). **Adding a production file to one of those link lists is how you bring it under test** — if a new file won't link because it pulls in XAML types, that's the signal its logic belongs in a WinUI-free class, not that the test project needs the Windows App SDK.
+
+The `.sln` lives at `ConnectOnion.WinUIClient/ConnectOnion.WinUIClient.sln` even though it references every other project by relative path (`..\ConnectOnion.Protocol\...`, `..\tests\...`).
+
+SDK pin: `global.json` sets `"version": "10.0.100"` with `rollForward: latestFeature` (any newer .NET 10 feature-band SDK works).
+
+## Commands
+
+Everything except `ConnectOnion.Protocol.LiveTest` is in the solution; the test projects are also runnable one at a time by `.csproj` path.
+
+```powershell
+# Restore + build the solution (app, protocol, conformance, all three test projects)
+dotnet restore ConnectOnion.WinUIClient\ConnectOnion.WinUIClient.sln -p:Platform=x64
+dotnet build ConnectOnion.WinUIClient\ConnectOnion.WinUIClient.sln --configuration Debug --no-restore -p:Platform=x64
+
+# Run the app unpackaged (no MSIX deploy step needed)
+dotnet run --project ConnectOnion.WinUIClient\ConnectOnion.WinUIClient.csproj -p:Platform=x64 -p:RunUnpackaged=true
+
+# Protocol unit tests (xunit) — the test-writing target for wire-protocol work
+dotnet test tests\ConnectOnion.Protocol.Tests\ConnectOnion.Protocol.Tests.csproj
+dotnet test tests\ConnectOnion.Protocol.Tests\ConnectOnion.Protocol.Tests.csproj --filter "FullyQualifiedName~InputMessageBuilderTests"
+
+# Headless WinUI-layer unit tests, and SQLite integration tests
+dotnet test tests\ConnectOnion.WinUIClient.UnitTests\ConnectOnion.WinUIClient.UnitTests.csproj
+dotnet test tests\ConnectOnion.IntegrationTests\ConnectOnion.IntegrationTests.csproj
+
+# Protocol conformance gate (matches CI exactly)
+dotnet run --project ConnectOnion.Protocol.Conformance\ConnectOnion.Protocol.Conformance.csproj --configuration Release
+
+# Live protocol smoke test against a real deployed agent (not in CI)
+dotnet run --project ConnectOnion.Protocol.LiveTest\ConnectOnion.Protocol.LiveTest.csproj -- <directUrl> <address> "<prompt>"
+```
+
+`Platform` must be `x64`, `x86`, or `ARM64` for the WinUI project — `Any CPU` doesn't work for packaged debugging. Visual Studio F5 (Debug/x64, Deploy checked for `ConnectOnion.WinUIClient` in Configuration Manager) is the most reliable path for XAML debugging; `dotnet run -p:RunUnpackaged=true` is the fast CLI loop.
+
+CI (`.github/workflows/ci.yml`, `windows-latest`) builds the `.sln` in Release/x64 with packaging disabled, then runs all three test projects and finally the Conformance gate. It does **not** run `ConnectOnion.Protocol.LiveTest` (that needs a live agent), and does not touch `frontend/`. The test steps deliberately omit `-p:Platform` and rebuild rather than passing `--no-build`: the solution build maps the conformance project to `Any CPU`, so forcing the platform through to a standalone `dotnet test`/`dotnet run` sends it looking for output under `bin\x64\...` that the solution never produced — there is a comment in the workflow env block about exactly this.
+
+There is no lint/format command configured for this repo.
+
+## Local data
+
+SQLite at `%AppData%\ConnectOnion\connectonion.db` when run unpackaged (`dotnet run`), or under `%LOCALAPPDATA%\Packages\<msix-identity>\LocalState\ConnectOnion\` when run packaged/deployed from Visual Studio. WAL journal mode, foreign keys on.
+
+**Schema changes go through `Data/SchemaMigrator.cs` — `CREATE TABLE IF NOT EXISTS` alone cannot evolve a table that already exists.** `AppDatabase.EnsureInitializedAsync` first ensures the baseline (`CreateSchemaAsync`), then steps any older database forward. The version lives in SQLite's own `PRAGMA user_version` (a header integer: no table needed, no query cost, and written inside the same transaction as the migration it records) — not in `app_meta`. To add a column: append one `Migration(n, sql)` to `SchemaMigrator.Migrations` and bump `LatestVersion`; never edit or renumber a released migration, because databases in the wild have already recorded running it. Each migration runs in its own transaction, so schema change and version bump commit together or not at all. `user_version == 0` means "never versioned" and is stamped as the version-1 baseline (pre-versioning builds produced exactly that shape); a database at a version *newer* than this build throws rather than running against a shape it doesn't understand. Deleting the `.db` file still works to reset dev state, but it is a convenience — no longer the upgrade path.
+
+Tables: `app_meta`, `agents`, `sessions`, `preferences`, `messages` (one row per chat bubble, not a JSON blob — see the WinUI client architecture notes below), `message_attachments` (attachment **metadata only**: kind/filename/mime/size/cache-path — never the base64 payload), `executions`, `trace_events`, `identity_keys` (`private_seed` is a DPAPI-protected (`CurrentUser` scope) blob, base64-encoded — never plaintext), `usage_events` (schema v2).
+
+Deleting a conversation is **not** an FK cascade — the children are deleted explicitly, in order (`ConversationRepository.DeleteConversationAsync` → attachments + messages; `DeleteExecutionsAndTracesAsync` → traces + executions), and only then does `SessionRepository.SaveAsync` remove the `sessions` row. The FKs declare no `ON DELETE`, so getting that order wrong raises a constraint violation that the repositories' `try/catch` swallows into a log line. Keep the order.
+
+`usage_events` is the **token-usage ledger** and is the deliberate exception to all of the above: it has **no foreign key** and is **never** touched by conversation or agent deletion. Usage records that tokens were *spent*, which stays true after the chat is gone; a cascade would make the Usage panel's totals silently shrink whenever a user tidies their sidebar. `conversation_id`/`agent_id` are therefore allowed to dangle (they exist only for drill-down, which must `LEFT JOIN` and tolerate a miss), and `agent_name` is snapshotted at write time so a deleted agent's rows can still be labelled. The only code path that ever deletes from it is `UsageRepository.ClearAsync`, reached solely from the explicit, confirmed "Clear usage history" button in Settings → Usage.
+
+`IdentityStore` distinguishes *nothing stored* (first run → generate quietly) from *stored but unreadable* (a copied `.db`, a restored profile, or a pre-DPAPI row). The second case still regenerates — there is nothing to recover — but it is **not silent**: it raises `IdentityStore.IdentityReset`, latches `WasReset`/`ResetReason`, and `MainWindow` surfaces an error toast, because the app's address changes and every agent that authorized the old one must authorize the new one. Don't collapse those two paths back together.
+
+Image cache for received `agent_image` attachments lives under `%AppData%\ConnectOnion\cache\images\`, filenames are the content's SHA-256 hash (never trust a remote-provided filename).
+
+## Architecture
+
+### Protocol layer (`ConnectOnion.Protocol`)
+
+Deliberately has zero WinUI/platform dependency so it's unit-testable headless. This is where wire-format logic belongs — don't duplicate JSON parsing in the WinUI layer.
+
+- **`AgentConnectionService`** — the WebSocket state machine (C# port of the TS SDK's `remote-agent.ts`): opens/authenticates via `CONNECT`→`CONNECTED`, sends `INPUT`, resolves on `OUTPUT`. Interactive turns (`ask_user`, `approval_needed`, `plan_review`) and onboarding are surfaced as dedicated C# events, not lumped into the generic stream; everything else (`thinking`, `tool_call`, `tool_result`, `llm_call`, `llm_result`, `assistant`, `agent_image`, `intent`, `eval`, `compact`, `tool_blocked`, `files_received`) is forwarded as a generic `StreamEvent` carrying the raw JSON for the ViewModel to interpret. A 60s silence watchdog is the only bounded wait — `ask_user` legitimately pends on a human indefinitely.
+- **`WireMessage`** — thin `JsonElement` wrapper (`GetString`/`GetBool`/`TryGet`), not raw `JsonDocument.Parse` scattered around. Outgoing messages are plain `Dictionary<string, object?>` serialized with the default `JsonSerializer` (no source-gen context, no attribute-based DTOs) — follow this convention for new message types rather than introducing typed request/response classes.
+- **`InputMessageBuilder`** — pure function building the `INPUT` frame dict; kept separate from `AgentConnectionService` specifically so the exact wire shape (text-only / images / files / mixed) is unit-testable without a live socket.
+- **`AttachmentModels`** — `DataUrlCodec` (encode/decode `data:` URLs, and the size-limit math replicated from the Python host's `validate_files`: the server measures the **encoded string length**, not raw bytes, so client-side preflight must too) and `AttachmentWireEvents` (typed parsers for the real `agent_image`/`files_received` wire events — see "Multimodal attachments" below for the full protocol contract).
+- **`EndpointResolver`** — relay lookup, direct-endpoint probing, `/info` fetch and parsing (`AgentAcceptedInputs`/`AgentFileInputs` capability model).
+- **`AgentIdentity` / `CanonicalJson` / `Hex`** — Ed25519 identity and canonical-JSON signing, verified byte-for-byte against `ref-sign.js` by the Conformance project.
+
+### WinUI client (`ConnectOnion.WinUIClient`)
+
+Hand-rolled MVVM (no CommunityToolkit.Mvvm) — `Common/ObservableObject.cs` and `Common/RelayCommand.cs` are the base primitives; follow their existing pattern for new models/view models rather than introducing a different notification style. `Services/AppServices.cs` is a manual static service-locator singleton (no DI container) exposing the SQLite repositories, shared `HttpClient`, and presence cache.
+
+- **Pages own their ViewModel** as a `public XyzViewModel Vm { get; } = new();` property; XAML uses `x:Bind` against `Vm.*`, code-behind wires routed events (`Click`, `PointerEntered`, etc.) that call `Vm` methods. `ChatViewModel` is split across two partial-class files: `ChatViewModel.cs` (session/connection lifecycle, `SendAsync`) and `ChatViewModel.StreamEvents.cs` (stream-event → `ChatMessage` mapping, interactive-turn bubbles, per-turn token/duration aggregation).
+- **The run runtime owns connections and turns, not pages** (`Services/Runtime/`): `AgentSessionManager` (app-level, on `AppServices`) holds the per-conversation WebSockets (`AgentConnectionRegistry`) and drives each turn through the headless `ConversationRunRegistry`. It persists the user message on send, buffers the run's stream events, and — when the reply lands — projects them into bubbles and writes them *before* publishing the run's terminal state, so a page opened mid-turn loads history from SQLite and replays the live events on top instead of double-rendering them. A `ChatPage` only ever `Subscribe`s; closing it does not cancel the turn, and a turn completes (and notifies) with no page open at all. `ChatTurnProjection` is the single stream-event → `ChatMessage` mapping, driven identically by the live view model (`IChatProjectionTarget` over the `ObservableCollection`) and by the headless persist path (over a plain list) — put new event handling there, never in one of the two callers.
+- **Chat list rendering and caches**: `ChatPage.xaml` has one `DataTemplate` per bubble kind dispatched by `Common/ChatMessageTemplateSelector` — don't collapse them back into a single template that builds every bubble variant and hides all but one with `Visibility`, which is what made scrolling expensive. `Services/ConversationCache` keeps the last 4 *idle* conversations in memory (real LRU; invalidated when a session/agent is deleted, and never used for a conversation with an active run — that must load the authoritative persisted history). `Common/LocalPathToImageSourceConverter` decodes attachment thumbnails at the 280px the templates render at and caches `BitmapImage`s by path, because virtualization re-runs the converter for the same paths on every recycle.
+- **Chat message persistence**: `messages` is one row per rendered bubble (not a serialized envelope), keyed `(conversation_id, id)`. Writes are **incremental** — `ConversationRepository.UpsertMessagesAsync` is the only write path and touches only the rows handed to it (`INSERT ... ON CONFLICT(conversation_id, id) DO UPDATE`, `created_at` left alone on update); each written row's attachments are replaced wholesale by a `message_id`-scoped delete plus re-insert, because an attachment's id is content-derived and an existing agent bubble can gain an image mid-turn. Nothing reads or rewrites the whole conversation on a save, so a turn costs O(turn), not O(conversation). The persist path (`AgentSessionManager.LoadTurnWindowAsync`) therefore loads only what a turn's projection can actually touch: `GetNextMessageIdAsync` (a `SELECT MAX(id)+1`, no rows) plus `LoadLastAgentMessageAsync` — that one row is the seed because an `agent_image` event hangs its attachment on the last agent bubble and the final reply is deduped against it. If you add a projection step that mutates an *older* row, that window is what you have to widen. `ChatMessage` carries generic `Event*` fields (`EventKind`, `EventTitle`, `EventDetail`, `EventArgs`, `EventMeta`, `Status`) reused across very different bubble types (`activity`, `tool_activity`, `ask_user`, `approval`, `plan_review`) — check `EventKind` before assuming what a field means for a given bubble.
+- **Interactive turns** (`ask_user`/`approval_needed`/`plan_review`) render as persistent inline chat bubbles with live controls (submit button, approve/reject, etc.), not `ContentDialog` popups — this matches the reference web client's chat-item-feed model and keeps the decision visible in history. Their live *control* state (options/fields/free text) is intentionally **not** persisted to SQLite — once the WebSocket session is gone, answering is meaningless. The *resolved result* is persisted, though: the reply-less event stream can't carry the user's answer, so when the page answers it calls `AgentSessionManager.RecordInteractiveAnswer`, and at turn-persist time `ResolveInteractiveCards` stamps the chosen result onto the re-projected card's `EventMeta`/`Status`. Any interactive card a persisted (terminal) run left unanswered is sealed as `"No selection"` — so reloaded history shows what was chosen (or that nothing was) instead of dead, unanswerable controls.
+- **Multimodal attachments**: outgoing images/files are picked via `AttachmentPickerService` (`FileOpenPicker`, HWND resolved through the static `App.MainWindow` since `ChatComposer` is a `UserControl` with no HWND of its own), preflight-validated via `AttachmentValidationService` against the agent's real `/info` capability (client-side checks are a UX nicety — the server remains the final authority), and encoded off the UI thread via `AttachmentEncoder` right after validation passes (never re-encoded, never read into memory before validation). Incoming `agent_image` events are decoded/downloaded and cached to disk via `AttachmentImageCacheService` *before* ever touching `ChatMessage` or SQLite — the message list and DB only ever hold a local cache path plus metadata, never a base64 payload. Wire contract specifics (exactly what `images`/`files` look like on `INPUT`, what `agent_image`/`files_received` look like coming back, and what is/isn't actually enforced server-side) live in the `ConnectOnion.Protocol` doc comments above, not duplicated here — read `AttachmentModels.cs` and `InputMessageBuilder.cs` before changing this path.
+- **Drag-and-drop attachments**: `Controls/ChatComposer` is the only real drop target — `AttachmentDropService` (the drop counterpart to `AttachmentPickerService`) classifies dropped `StorageFile`s by extension (no file-type filter like the picker gets) into `PendingAttachment` drafts, which still flow through the same `AttachmentValidationService`/`AttachmentEncoder` pipeline; dropped folders are skipped silently rather than recursively expanded. `MainWindow.DragDrop.cs` only paints a window-wide "drop it on the composer" hint (`RootGrid.AllowDrop` + handlers registered with `handledEventsToo: true` so the hint still updates after the composer's own drag handlers mark the event `Handled`) — it is not itself a drop target.
+- **Global find overlay** (Ctrl+F, `MainWindow.ViewMenu.cs`): pages that support in-content search implement `Views.IFindHost` (`OpenFind`/`CloseFind`/`SetFindQuery`/`SelectNextFindMatch`/`SelectPreviousFindMatch`, plus a `FindStateChanged` event); `MainWindow` attaches to whatever `ContentFrame.Content` currently is and drives one shared find UI (`FindOverlayPanel`/`FindTextBox`) against it — add `IFindHost` to a new page rather than building a page-local find UI.
+- **Sidebar** (`Controls/ShellSidebar.xaml[.cs]`): `ItemsRepeater`-based agent/session tree. Row hover and selection are unified through one `RowStateToBackgroundConverter`-driven Border per row (bound to a computed `ShowRowBackground = IsSelected || IsHovered`) rather than each sub-button showing its own independent hover — sub-button chrome is neutralized via a `Resources` dictionary declared **inline on each row's container element**, not shared through a `StaticResource` (WinUI requires a `ResourceDictionary` assigned to `FrameworkElement.Resources` to be uniquely owned per element; a shared instance throws `XamlParseException` the moment a second row tries to reuse it).
+- **Color system** (`Styles/Colors.xaml` + `Styles/Brushes.xaml`, merged into `App.xaml` after `XamlControlsResources`): the single source of truth for every color in the app — a Deep Purple brand palette expanded into semantic Light/Dark tokens (`BrandPrimaryBrush`, `SurfaceElevatedBrush`, `TextSecondaryBrush`, `SidebarItemSelectedBrush`, `SearchMatchBackgroundBrush`, `UserMessageBackgroundBrush`, ...). `Colors.xaml` holds raw `Color` resources per theme; `Brushes.xaml` wraps them as `SolidColorBrush`es pages actually bind to via `{ThemeResource ...}`, **and** re-points WinUI's own themed keys (`TextFillColorSecondaryBrush`, `CardBackgroundFillColorDefaultBrush`, `AccentFillColorDefaultBrush`, `ButtonBackgroundPointerOver`/`Pressed`, `FocusVisualPrimaryBrush`, ...) at the same tokens so native Fluent chrome (Expander, default Button hover, hyperlinks) stays visually consistent without replacing any `ControlTemplate` — `ToggleSwitch`/`CheckBox`/`RadioButton` are deliberately left alone. Code-behind that needs a raw `Windows.UI.Color` (Win2D canvas draws in `ChatComposer`, `AppWindowTitleBar` in `MainWindow.xaml.cs`) goes through `ThemeService.GetColor(key, isDark)` rather than duplicating hex literals; anything reading a `Brush` by string key (converters, `HighlightedTextBlock`, `WinUiMarkdownRenderer`) reads fresh from `Application.Current.Resources[key]` each time rather than caching, so a live theme flip never leaves stale colors on screen. A handful of pre-existing resource keys (`ShellBackgroundBrush`, `ComposerBackgroundBrush`, `StatusSuccessTextBrush`, ...) are kept as redirects onto the new tokens for source compatibility — prefer the new semantic names in new code.
+
+### WinUI/XAML gotchas already paid for in this codebase
+
+Worth knowing before you re-discover them via a build or runtime failure:
+
+- A type referenced from an `x:Bind` `DataTemplate` needs plain `{ get; set; }` properties — `required` or `init` accessors break the compiler-generated `XamlTypeInfo.g.cs` reflection metadata with a confusing `CS9035`/`CS8852`.
+- `FluentIcons.WinUI`'s `IconSize` enum only has specific values (`Size10/12/16/20/24/28/32/48`, no `Size14` etc.) — check the actual enum rather than guessing a round number.
+- `Microsoft.UI.Xaml.EventTrigger` has no `RoutedEvent` property (that's WPF-only); it always fires on `Loaded` implicitly. A XAML-declared `Loaded`-triggered `Storyboard` needs `<EventTrigger>` with no `RoutedEvent` attribute, or just start the `Storyboard` from a code-behind `Loaded` handler — the latter is what this repo uses for the sidebar's online-status breathing animation.
+- `Style` setters can't target `Resources` (not a `DependencyProperty`); scope resource overrides by declaring them inline on the actual element instance instead.
+
+## Git conventions
+
+Conventional Commits, enforced by convention rather than tooling: `<type>(<scope>): <summary>` (types: `feat`/`fix`/`docs`/`test`/`refactor`/`style`/`chore`/`build`/`ci`; recommended scopes include `chat`, `agent`, `sessions`, `storage`, `settings`, `files`, `ui`, `ci`, `build` — see `docs/GIT_COMMIT_CONVENTION.md` for the full list). PRs use the same format for their title.
+
+## Not implemented yet
+
+- Production installer/release automation (MSIX packaging is configured but not wired into CI)
+- **UI-level** tests for the WinUI layer. The headless surfaces (projection, notifications, caches, view models, repositories) are covered by `tests/`, but anything requiring a XAML runtime — page navigation, template selection, drag-and-drop, the find overlay — is still untested. See `docs/TEST_PLAN.md` for the backlog.
+- No `AutomationId` anywhere in the XAML, so UI automation can't be written against the app yet.

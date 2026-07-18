@@ -13,6 +13,7 @@ using ConnectOnion.Protocol.Runtime;
 using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
+using ConnectOnion.WinUIClient.Services.Attachments;
 using ConnectOnion.WinUIClient.Services.Notifications;
 using ConnectOnion.WinUIClient.Services.Runtime;
 using ConnectOnion.WinUIClient.Data;
@@ -379,8 +380,8 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
 
     public async Task SendAsync(string text, IReadOnlyList<PendingAttachment>? attachments = null)
     {
-        text = text?.Trim() ?? "";
         var hasAttachments = attachments is { Count: > 0 };
+        text = AttachmentPromptService.Resolve(text, attachments);
         if ((text.Length == 0 && !hasAttachments) || _agent is null || _session is null || IsProcessing) return;
 
         // A new send supersedes any prior failure — the old attempt is no longer retryable.
