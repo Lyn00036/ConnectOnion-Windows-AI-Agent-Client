@@ -26,35 +26,19 @@
                 <Setter Property="HorizontalAlignment" Value="Left" />
             </Style>
 
-            <Style x:Key="TitleIconButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
-                <Setter Property="Background" Value="Transparent" />
-                <Setter Property="BorderThickness" Value="0" />
+            <Style x:Key="TitleIconButtonStyle" TargetType="Button" BasedOn="{StaticResource SmallIconButtonStyle}">
                 <Setter Property="CornerRadius" Value="6" />
-                <Setter Property="Width" Value="28" />
-                <Setter Property="Height" Value="28" />
-                <Setter Property="MinWidth" Value="0" />
-                <Setter Property="MinHeight" Value="0" />
-                <Setter Property="Padding" Value="0" />
             </Style>
 
-            <Style x:Key="ZoomHudButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
-                <Setter Property="Background" Value="Transparent" />
-                <Setter Property="BorderThickness" Value="0" />
+            <Style x:Key="ZoomHudButtonStyle" TargetType="Button" BasedOn="{StaticResource SmallIconButtonStyle}">
                 <Setter Property="CornerRadius" Value="4" />
-                <Setter Property="MinWidth" Value="0" />
-                <Setter Property="MinHeight" Value="0" />
                 <Setter Property="Width" Value="26" />
                 <Setter Property="Height" Value="26" />
-                <Setter Property="Padding" Value="0" />
                 <Setter Property="Foreground" Value="{ThemeResource TextSecondaryBrush}" />
             </Style>
 
-            <Style x:Key="FindHudButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
-                <Setter Property="Background" Value="Transparent" />
-                <Setter Property="BorderThickness" Value="0" />
+            <Style x:Key="FindHudButtonStyle" TargetType="Button" BasedOn="{StaticResource SmallIconButtonStyle}">
                 <Setter Property="CornerRadius" Value="4" />
-                <Setter Property="MinWidth" Value="0" />
-                <Setter Property="MinHeight" Value="0" />
                 <Setter Property="Width" Value="28" />
                 <Setter Property="Height" Value="28" />
                 <Setter Property="Padding" Value="0" />

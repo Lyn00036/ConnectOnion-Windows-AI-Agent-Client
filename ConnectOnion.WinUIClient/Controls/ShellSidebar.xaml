@@ -14,25 +14,14 @@
           Padding="10,12,8,10"
           RowSpacing="6">
         <Grid.Resources>
-            <Style x:Key="ShellNavButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
-                <Setter Property="Background" Value="Transparent" />
-                <Setter Property="BorderThickness" Value="0" />
-                <Setter Property="CornerRadius" Value="6" />
-                <Setter Property="HorizontalAlignment" Value="Stretch" />
-                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Style x:Key="ShellNavButtonStyle" TargetType="Button" BasedOn="{StaticResource TransparentButtonStyle}">
                 <Setter Property="MinHeight" Value="36" />
                 <Setter Property="Padding" Value="7,4" />
             </Style>
 
-            <Style x:Key="ShellIconButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
-                <Setter Property="Background" Value="Transparent" />
-                <Setter Property="BorderThickness" Value="0" />
-                <Setter Property="CornerRadius" Value="6" />
-                <Setter Property="MinHeight" Value="0" />
-                <Setter Property="MinWidth" Value="0" />
+            <Style x:Key="ShellIconButtonStyle" TargetType="Button" BasedOn="{StaticResource SmallIconButtonStyle}">
                 <Setter Property="Width" Value="22" />
                 <Setter Property="Height" Value="22" />
-                <Setter Property="Padding" Value="0" />
             </Style>
 
         </Grid.Resources>
@@ -451,10 +440,6 @@
         </ScrollViewer>
 
         <StackPanel Grid.Row="2" Spacing="6">
-            <local:AddAgentForm x:Name="AddAgentPanel"
-                                Visibility="Collapsed"
-                                AgentAdded="AddAgentForm_AgentAdded" />
-
             <!-- IconText paints its icon and label from its own Foreground, so each site must
                  supply one (see IconText.xaml) — without it these two read as washed-out in both
                  themes. TextPrimary keeps them legible on the sidebar background either way. -->

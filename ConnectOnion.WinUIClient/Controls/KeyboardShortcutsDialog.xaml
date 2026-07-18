@@ -10,11 +10,9 @@
     IsHitTestVisible="False"
     IsTabStop="False">
     <UserControl.Resources>
-        <Style x:Key="ShortcutsCloseButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+        <Style x:Key="ShortcutsCloseButtonStyle" TargetType="Button" BasedOn="{StaticResource SmallIconButtonStyle}">
             <Setter Property="Width" Value="36" /><Setter Property="Height" Value="36" />
-            <Setter Property="MinWidth" Value="0" /><Setter Property="MinHeight" Value="0" />
-            <Setter Property="Padding" Value="0" /><Setter Property="BorderThickness" Value="0" />
-            <Setter Property="CornerRadius" Value="8" /><Setter Property="Background" Value="Transparent" />
+            <Setter Property="CornerRadius" Value="8" />
         </Style>
     </UserControl.Resources>
 
