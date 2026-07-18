@@ -9,34 +9,24 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <UserControl.Resources>
-        <Style x:Key="AddAgentIconButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="CornerRadius" Value="6" />
-            <Setter Property="MinHeight" Value="0" />
-            <Setter Property="MinWidth" Value="0" />
-            <Setter Property="Width" Value="26" />
-            <Setter Property="Height" Value="26" />
-            <Setter Property="Padding" Value="0" />
-        </Style>
-    </UserControl.Resources>
-
     <Border Padding="12"
             CornerRadius="14"
             Background="{ThemeResource SurfaceElevatedBrush}"
             BorderBrush="{ThemeResource BorderDefaultBrush}"
             BorderThickness="1">
-        <StackPanel Spacing="8">
+        <StackPanel Spacing="10">
+            <!-- Title bar -->
             <Grid>
                 <TextBlock Text="{Binding FormTitle, ElementName=Root}"
                            FontSize="13"
                            FontWeight="SemiBold"
                            VerticalAlignment="Center" />
-                <Button Style="{StaticResource AddAgentIconButtonStyle}"
+                <Button Style="{StaticResource SmallIconButtonStyle}"
                         HorizontalAlignment="Right"
+                        Width="26"
+                        Height="26"
                         Click="Close_Click"
-                        ToolTipService.ToolTip="Close add agent form">
+                        ToolTipService.ToolTip="Close">
                     <ic:FluentIcon Icon="Dismiss"
                                    IconVariant="Regular"
                                    IconSize="Size16"
@@ -44,17 +34,21 @@
                 </Button>
             </Grid>
 
-            <TextBox x:Name="AddressBox"
-                     AutomationProperties.AutomationId="AgentAddressInput"
-                     PlaceholderText="Address"
-                     TextChanged="AddAgentField_TextChanged"
-                     MinHeight="38" />
-            <TextBox x:Name="DirectUrlBox"
-                     AutomationProperties.AutomationId="AgentDirectUrlInput"
-                     PlaceholderText="Optional direct URL"
-                     TextChanged="AddAgentField_TextChanged"
-                     MinHeight="38" />
+            <!-- Single input that accepts address or Direct URL -->
+            <StackPanel Spacing="4">
+                <TextBlock Text="Address or Direct URL"
+                           FontSize="12"
+                           Foreground="{ThemeResource TextSecondaryBrush}" />
+                <TextBox x:Name="InputBox"
+                         AutomationProperties.AutomationId="AgentAddressInput"
+                         PlaceholderText="e.g. 0x... or wss://..."
+                         TextChanged="InputBox_TextChanged"
+                         KeyDown="InputBox_KeyDown"
+                         FontSize="14"
+                         MinHeight="36" />
+            </StackPanel>
 
+            <!-- Action buttons -->
             <Grid ColumnSpacing="8">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -64,9 +58,11 @@
 
                 <Button Grid.Column="0"
                         x:Name="TestButton"
-                        AutomationProperties.AutomationId="TestConnectionButton"
                         Content="Test connection"
                         Click="TestConnection_Click"
+                        FontSize="13"
+                        Padding="12,6"
+                        MinHeight="34"
                         HorizontalAlignment="Stretch" />
                 <Button Grid.Column="1"
                         x:Name="SubmitButton"
@@ -74,16 +70,20 @@
                         Content="{Binding SubmitLabel, ElementName=Root}"
                         Style="{StaticResource AccentButtonStyle}"
                         IsEnabled="False"
-                        Click="Submit_Click" />
+                        Click="Submit_Click"
+                        FontSize="13"
+                        Padding="14,6"
+                        MinHeight="34" />
                 <ProgressRing Grid.Column="2"
-                              x:Name="TestRing"
+                              x:Name="BusyRing"
                               Width="18"
                               Height="18"
                               IsActive="False"
-                              VerticalAlignment="Center"
-                              Visibility="Collapsed" />
+                              Visibility="Collapsed"
+                              VerticalAlignment="Center" />
             </Grid>
 
+            <!-- Status / error text -->
             <TextBlock x:Name="StatusText"
                        FontSize="11"
                        Foreground="{ThemeResource TextSecondaryBrush}"

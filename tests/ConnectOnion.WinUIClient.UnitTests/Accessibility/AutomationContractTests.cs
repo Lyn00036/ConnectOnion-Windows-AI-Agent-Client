@@ -10,8 +10,6 @@ public sealed partial class AutomationContractTests
         "AgentList",
         "AddAgentButton",
         "AgentAddressInput",
-        "AgentDirectUrlInput",
-        "TestConnectionButton",
         "SubmitAgentButton",
         "MessageList",
         "MessageInput",

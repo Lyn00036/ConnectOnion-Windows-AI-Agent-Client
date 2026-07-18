@@ -92,7 +92,7 @@ public sealed partial class HomePage : Page
     }
 
     private void AddAnotherAgent_Click(object sender, RoutedEventArgs e)
-        => AddAgentPanel.Toggle();
+        => AddAgentPanel.Show();
 
     private async void AddAgentForm_AgentAdded(AgentConfig _)
     {

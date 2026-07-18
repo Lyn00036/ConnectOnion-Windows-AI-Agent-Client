@@ -163,14 +163,8 @@ public sealed partial class ShellSidebar
 
     private async void AddAgent_Click(object sender, RoutedEventArgs e)
     {
-        AddAgentPanel.Toggle();
         await RefreshAsync();
-    }
-
-    private async void AddAgentForm_AgentAdded(AgentConfig _)
-    {
-        await RefreshAsync();
-        RequestNavigation(typeof(AgentDetailPage), forceReload: true);
+        RequestNavigation(typeof(HomePage), forceReload: true);
     }
 
     private async void Settings_Click(object sender, RoutedEventArgs e)

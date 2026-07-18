@@ -34,13 +34,12 @@
 
                 <StackPanel Spacing="8" HorizontalAlignment="Center">
                     <TextBlock x:Uid="HomeChooseAgent" Text="Choose an agent"
-                               FontFamily="Georgia"
-                               FontSize="36"
+                               FontSize="32"
                                FontWeight="Bold"
                                TextAlignment="Center"
                                HorizontalAlignment="Center" />
                     <TextBlock x:Uid="HomeChooseAgentDescription" Text="Select an agent to start a new conversation"
-                               FontSize="18"
+                               FontSize="16"
                                Foreground="{ThemeResource TextSecondaryBrush}"
                                TextAlignment="Center"
                                HorizontalAlignment="Center" />
@@ -125,9 +124,8 @@
             </Button>
 
             <controls:AddAgentForm x:Name="AddAgentPanel"
-                                   Width="420"
-                                   MaxWidth="620"
-                                   HorizontalAlignment="Center"
+                                   MaxWidth="560"
+                                   HorizontalAlignment="Stretch"
                                    Visibility="Collapsed"
                                    AgentAdded="AddAgentForm_AgentAdded" />
                 </StackPanel>
