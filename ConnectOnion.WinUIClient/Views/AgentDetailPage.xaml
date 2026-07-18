@@ -35,8 +35,7 @@
                             HorizontalAlignment="Center"
                             Spacing="8">
                     <TextBlock Text="{x:Bind Vm.AgentName, Mode=OneWay}"
-                               FontFamily="Georgia"
-                               FontSize="28"
+                               FontSize="24"
                                FontWeight="Bold"
                                TextAlignment="Center" />
                     <Ellipse Width="7"

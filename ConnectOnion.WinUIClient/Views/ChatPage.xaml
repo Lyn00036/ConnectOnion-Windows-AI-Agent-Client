@@ -27,13 +27,9 @@
                  narration is a borderless wash, the border here reads as "this one wants something
                  from you" instead of being chrome every row happens to have. Don't flatten these
                  for consistency — the inconsistency is carrying the signal. -->
-            <Style x:Key="InteractiveCardHeaderStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+            <Style x:Key="InteractiveCardHeaderStyle" TargetType="Button" BasedOn="{StaticResource TransparentButtonStyle}">
                 <Setter Property="Padding" Value="0" />
-                <Setter Property="Background" Value="Transparent" />
-                <Setter Property="BorderThickness" Value="0" />
                 <Setter Property="MinHeight" Value="0" />
-                <Setter Property="HorizontalAlignment" Value="Stretch" />
-                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             </Style>
 
             <Style x:Key="InteractiveEyebrowStyle" TargetType="TextBlock">
@@ -203,13 +199,8 @@
                                         AutomationProperties.Name="Retry from this message"
                                         ToolTipService.ToolTip="Retry from this message"
                                         Visibility="{x:Bind CanEdit, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                                    <ic:FluentIcon Icon="ArrowClockwise" IconVariant="Regular" IconSize="Size16"
-                                                   RenderTransformOrigin="0.5,0.5"
-                                                   Foreground="{ThemeResource TextSecondaryBrush}">
-                                        <ic:FluentIcon.RenderTransform>
-                                            <ScaleTransform ScaleX="0.75" ScaleY="0.75" />
-                                        </ic:FluentIcon.RenderTransform>
-                                    </ic:FluentIcon>
+                                    <ic:FluentIcon Icon="ArrowClockwise" IconVariant="Regular" IconSize="Size12"
+                                                   Foreground="{ThemeResource TextSecondaryBrush}" />
                                 </Button>
                                 <Button Tag="{x:Bind}"
                                         Padding="3"
@@ -222,13 +213,8 @@
                                         AutomationProperties.Name="Edit message"
                                         ToolTipService.ToolTip="Edit message"
                                         Visibility="{x:Bind CanEdit, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                                    <ic:FluentIcon Icon="Edit" IconVariant="Regular" IconSize="Size16"
-                                                   RenderTransformOrigin="0.5,0.5"
-                                                   Foreground="{ThemeResource TextSecondaryBrush}">
-                                        <ic:FluentIcon.RenderTransform>
-                                            <ScaleTransform ScaleX="0.75" ScaleY="0.75" />
-                                        </ic:FluentIcon.RenderTransform>
-                                    </ic:FluentIcon>
+                                    <ic:FluentIcon Icon="Edit" IconVariant="Regular" IconSize="Size12"
+                                                   Foreground="{ThemeResource TextSecondaryBrush}" />
                                 </Button>
                                 <Button Padding="3"
                                         MinWidth="24"
@@ -239,13 +225,8 @@
                                         Click="CopyMessage_Click"
                                         AutomationProperties.Name="Copy message"
                                         ToolTipService.ToolTip="Copy message">
-                                    <ic:FluentIcon Icon="Copy" IconVariant="Regular" IconSize="Size16"
-                                                   RenderTransformOrigin="0.5,0.5"
-                                                   Foreground="{ThemeResource TextSecondaryBrush}">
-                                        <ic:FluentIcon.RenderTransform>
-                                            <ScaleTransform ScaleX="0.75" ScaleY="0.75" />
-                                        </ic:FluentIcon.RenderTransform>
-                                    </ic:FluentIcon>
+                                    <ic:FluentIcon Icon="Copy" IconVariant="Regular" IconSize="Size12"
+                                                   Foreground="{ThemeResource TextSecondaryBrush}" />
                                 </Button>
                             </StackPanel>
                         </Grid>
@@ -363,13 +344,8 @@
                                     Click="RetryAgentMessage_Click"
                                     AutomationProperties.Name="Retry this response"
                                     ToolTipService.ToolTip="Retry this response">
-                                <ic:FluentIcon Icon="ArrowClockwise" IconVariant="Regular" IconSize="Size16"
-                                               RenderTransformOrigin="0.5,0.5"
-                                               Foreground="{ThemeResource TextSecondaryBrush}">
-                                    <ic:FluentIcon.RenderTransform>
-                                        <ScaleTransform ScaleX="0.75" ScaleY="0.75" />
-                                    </ic:FluentIcon.RenderTransform>
-                                </ic:FluentIcon>
+                                <ic:FluentIcon Icon="ArrowClockwise" IconVariant="Regular" IconSize="Size12"
+                                               Foreground="{ThemeResource TextSecondaryBrush}" />
                             </Button>
                             <Button Padding="3"
                                     MinWidth="24"
@@ -380,13 +356,8 @@
                                     Click="CopyMessage_Click"
                                     AutomationProperties.Name="Copy response"
                                     ToolTipService.ToolTip="Copy response">
-                                <ic:FluentIcon Icon="Copy" IconVariant="Regular" IconSize="Size16"
-                                               RenderTransformOrigin="0.5,0.5"
-                                               Foreground="{ThemeResource TextSecondaryBrush}">
-                                    <ic:FluentIcon.RenderTransform>
-                                        <ScaleTransform ScaleX="0.75" ScaleY="0.75" />
-                                    </ic:FluentIcon.RenderTransform>
-                                </ic:FluentIcon>
+                                <ic:FluentIcon Icon="Copy" IconVariant="Regular" IconSize="Size12"
+                                               Foreground="{ThemeResource TextSecondaryBrush}" />
                             </Button>
                         </StackPanel>
                     </Grid>
@@ -462,15 +433,10 @@
                             <Border Width="21" Height="21" CornerRadius="10.5"
                                     Background="{ThemeResource ChatBackgroundBrush}"
                                     VerticalAlignment="Top">
-                                <ic:FluentIcon Icon="Clock" IconVariant="Regular" IconSize="Size16"
-                                               RenderTransformOrigin="0.5,0.5"
+                                <ic:FluentIcon Icon="Clock" IconVariant="Regular" IconSize="Size12"
                                                HorizontalAlignment="Center"
                                                VerticalAlignment="Center"
-                                               Foreground="{ThemeResource TextTertiaryBrush}">
-                                    <ic:FluentIcon.RenderTransform>
-                                        <ScaleTransform ScaleX="0.75" ScaleY="0.75" />
-                                    </ic:FluentIcon.RenderTransform>
-                                </ic:FluentIcon>
+                                               Foreground="{ThemeResource TextTertiaryBrush}" />
                             </Border>
                             <StackPanel Grid.Column="1" Spacing="3">
                                 <TextBlock Text="{x:Bind ActivityTimelineText, Mode=OneWay}"
@@ -526,7 +492,7 @@
 
             <DataTemplate x:Key="ChatToolActivityTemplate" x:DataType="models:ChatMessage">
                 <controls:ToolActivityView Activity="{x:Bind ToolActivity, Mode=OneWay}"
-                                           HorizontalAlignment="Left" />
+                                           HorizontalAlignment="Stretch" />
             </DataTemplate>
 
             <!-- Ask-user card: collapsible header + question + inline answer controls (dynamic
@@ -841,42 +807,7 @@
             <ListView.Header>
                 <Grid MaxWidth="{StaticResource ChatColumnWidth}"
                       Margin="0,0,0,18"
-                      ColumnSpacing="12"
-                      HorizontalAlignment="Stretch">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <controls:AgentAvatar Size="26"
-                                          CornerRadius="7"
-                                          FontSize="11"
-                                          Initial="{x:Bind Vm.SelectedAgentInitial, Mode=OneWay}" />
-                    <StackPanel Grid.Column="1"
-                                VerticalAlignment="Center">
-                        <TextBlock Text="{x:Bind Vm.SelectedAgentName, Mode=OneWay}"
-                                   FontSize="13"
-                                   FontWeight="SemiBold"
-                                   TextTrimming="CharacterEllipsis" />
-                        <TextBlock FontSize="9"
-                                   Foreground="{ThemeResource TextTertiaryBrush}">
-                            <Run Text="Session " />
-                            <Run Text="{x:Bind Vm.SessionShortId, Mode=OneWay}" />
-                        </TextBlock>
-                    </StackPanel>
-                    <StackPanel Grid.Column="2"
-                                Orientation="Horizontal"
-                                Spacing="6"
-                                VerticalAlignment="Center">
-                        <Ellipse Width="7"
-                                 Height="7"
-                                 Fill="{x:Bind Vm.Presence, Mode=OneWay, Converter={StaticResource PresenceToBrush}}" />
-                        <TextBlock Text="{x:Bind Vm.PresenceLabel, Mode=OneWay}"
-                                   FontSize="11"
-                                   Foreground="{ThemeResource TextTertiaryBrush}"
-                                   VerticalAlignment="Center" />
-                    </StackPanel>
-                </Grid>
+                      HorizontalAlignment="Stretch" />
             </ListView.Header>
             <ListView.ItemContainerStyle>
                 <Style TargetType="ListViewItem">
@@ -998,6 +929,32 @@
                                    StopRequested="Composer_StopRequested"
                                    ModeChangeRequested="Composer_ModeChangeRequested"
                                    SubmitRequested="Composer_SubmitRequested" />
+
+                        <!-- Simple centered title bar below the composer -->
+                        <TextBlock FontSize="10"
+                                   Foreground="{ThemeResource TextTertiaryBrush}"
+                                   HorizontalAlignment="Center"
+                                   Margin="0,4,0,12">
+                                <Run Text="{x:Bind Vm.SelectedAgentName, Mode=OneWay}" />
+                                <Run Text="· Session " />
+                                <Run Text="{x:Bind Vm.SessionShortId, Mode=OneWay}" />
+                        </TextBlock>
+        </StackPanel>
+
+        <!-- Empty state: shown after loading completes when no messages exist -->
+        <StackPanel x:Name="EmptyStatePanel"
+                    Grid.Row="0"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Spacing="8"
+                    Visibility="Collapsed">
+            <TextBlock x:Uid="ChatEmptyTitle" Text="No messages yet"
+                       Style="{StaticResource SubtitleTextBlockStyle}"
+                       HorizontalAlignment="Center" />
+            <TextBlock x:Uid="ChatEmptyDescription" Text="Type a message below to start the conversation."
+                       Foreground="{ThemeResource TextSecondaryBrush}"
+                       HorizontalAlignment="Center"
+                       TextWrapping="WrapWholeWords" />
         </StackPanel>
 
         <!-- Loading overlay hides the empty-state flash before conversation data arrives -->

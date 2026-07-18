@@ -13,9 +13,9 @@
 
     <StackPanel x:Name="ComposerPanel"
                 MaxWidth="{StaticResource ChatComposerWidth}"
-                Margin="24,0,24,18"
+                Margin="24,0,24,12"
                 HorizontalAlignment="Center"
-                Spacing="10"
+                Spacing="6"
                 Width="{StaticResource ChatComposerWidth}">
         <ScrollViewer x:Name="AttachmentsScrollViewer"
                       HorizontalScrollBarVisibility="Auto"
@@ -163,7 +163,7 @@
             <Border.Shadow>
                 <ThemeShadow />
             </Border.Shadow>
-            <Grid MinHeight="124" Padding="16,14">
+            <Grid MinHeight="100" Padding="12,10">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
@@ -172,9 +172,9 @@
                 <TextBox x:Name="InputBox"
                          AutomationProperties.AutomationId="MessageInput"
                          Grid.Row="0"
-                         MinHeight="58"
-                         MaxHeight="160"
-                         Padding="2,5,2,8"
+                         MinHeight="44"
+                         MaxHeight="140"
+                         Padding="0,3,0,3"
                          x:Uid="ComposerInput" PlaceholderText="Write a message..."
                          PlaceholderForeground="{ThemeResource ComposerPlaceholderBrush}"
                          Foreground="{ThemeResource ComposerTextBrush}"
@@ -204,7 +204,7 @@
                 </TextBox>
 
                 <Grid Grid.Row="1"
-                      Margin="0,8,0,0"
+                      Margin="0,4,0,0"
                       ColumnSpacing="6">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
