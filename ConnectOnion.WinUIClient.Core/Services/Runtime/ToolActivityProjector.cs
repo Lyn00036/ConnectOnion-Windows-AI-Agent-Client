@@ -17,25 +17,39 @@ namespace ConnectOnion.WinUIClient.Services.Runtime;
 /// </summary>
 public sealed class ToolActivityProjector
 {
+    /// <summary>Argument/result JSON keys whose <i>value</i> is replaced wholesale by
+    /// <c>[hidden]</c>. Matched by exact (case-insensitive) property name, so this only
+    /// catches structured payloads — free-form text goes through <see cref="SanitizeText"/>
+    /// instead, and the two are deliberately both applied.</summary>
     private static readonly HashSet<string> SensitiveKeys = new(StringComparer.OrdinalIgnoreCase)
     {
         "authorization", "cookie", "set-cookie", "token", "access_token", "refresh_token",
         "api_key", "apikey", "password", "secret", "client_secret", "private_key",
     };
+    /// <summary>Substrings that mean "the tool ran, but the answer is not usable" — the step
+    /// is shown as a warning rather than an error, because the agent will usually carry on.</summary>
     private static readonly string[] WarningPatterns =
     {
         "access denied", "permission denied", "unauthorized", "forbidden", "403", "404",
         "empty result", "no content", "captcha", "rate limit", "redirect failed",
     };
+    /// <summary>Substrings that mean the tool call itself did not complete. Checked before the
+    /// warning list, so an overlapping result classifies as the more severe of the two. Note
+    /// the leading space on <c>" error"</c>: it keeps this off words that merely contain the
+    /// letters (stderr, terrorism, no_errors) at the cost of missing a result that opens with it.</summary>
     private static readonly string[] FailurePatterns =
     {
         "timeout", "connection refused", "failed", " error", "exception", "network error",
     };
+    /// <summary>Tool-name substrings that earn a step the high-risk marker in the UI. This is a
+    /// presentation hint only — it does not gate execution (the agent's own approval flow does
+    /// that) — so a false positive costs nothing but a badge, which is why the list is broad.</summary>
     private static readonly string[] HighRiskTokens =
     {
         "send", "delete", "write", "remove", "command", "execute", "upload", "download",
         "payment", "purchase", "submit", "permission", "account", "database",
     };
+    // Argument names probed, in order, to work out what a step acted *on* (see DisplayTarget).
     private static readonly string[] UrlPropertyNames = { "url", "uri", "href" };
     private static readonly string[] PathPropertyNames = { "path", "file", "file_path", "filename" };
 
@@ -43,11 +57,15 @@ public sealed class ToolActivityProjector
 
     public ToolActivityProjector(ToolActivityViewModel activity) => Activity = activity;
 
+    /// <summary>Projects a <c>tool_call</c> frame into a new running step (or returns the
+    /// existing one if this frame has already been seen).</summary>
     public ToolStepViewModel ApplyCall(AgentStreamEvent e)
     {
         using var doc = JsonDocument.Parse(e.RawJson);
         var root = doc.RootElement;
         var toolName = String(root, "name") ?? String(root, "tool") ?? "tool";
+        // A call with no id still gets a step — the user should see that *something* ran — but
+        // the synthetic id is intentionally unmatchable, so a later result cannot bind to it.
         var id = CorrelationId(root, e) ?? $"unmatched-call-{Activity.Steps.Count + 1}";
         var existing = Activity.Steps.FirstOrDefault(step => step.Id == id);
         if (existing is not null) return existing; // duplicate stream frame / page replay
@@ -68,10 +86,16 @@ public sealed class ToolActivityProjector
         Activity.Steps.Add(step);
         Activity.Status = ToolActivityStatus.Running;
         Activity.Summary = RunningSummary(step);
-        Activity.IsExpanded = true;
+        // Deliberately does not touch IsExpanded. A tool starting is the ordinary case and the
+        // header already reports it; forcing the card open here also fought the user, since a
+        // card collapsed mid-turn sprang back open on the very next tool_call.
         return step;
     }
 
+    /// <summary>Folds a <c>tool_result</c> frame into the step it belongs to. Returns null when
+    /// the result cannot be correlated (no id, or an id for a call this activity never saw) —
+    /// dropping it is correct, because attaching a result to the wrong step is worse than
+    /// showing none.</summary>
     public ToolStepViewModel? ApplyResult(AgentStreamEvent e)
     {
         using var doc = JsonDocument.Parse(e.RawJson);
@@ -94,13 +118,21 @@ public sealed class ToolActivityProjector
         step.Error = classification.Status == ToolStepStatus.Failed ? SanitizeText(result) : null;
         step.Summary = classification.Summary;
         step.CompletedAt = Timestamp(root) ?? DateTimeOffset.UtcNow;
+        // Prefer the agent's own measurement; the wall-clock fallback also counts the time the
+        // frame spent in transit, so it is an upper bound rather than the tool's real cost.
         step.DurationMs = Number(root, "timing_ms") ?? Number(root, "duration_ms")
             ?? Math.Max(0, (step.CompletedAt.Value - step.StartedAt).TotalMilliseconds);
+        // Tools can overlap, so the header keeps naming whatever is *still* running; falling
+        // back to this step covers the case where that was the last one outstanding.
         Activity.Summary = RunningSummary(Activity.Steps.LastOrDefault(item => item.Status == ToolStepStatus.Running) ?? step);
         Activity.RefreshPresentation();
         return step;
     }
 
+    /// <summary>Projects a <c>tool_blocked</c> frame: a step that was refused before it ran, so
+    /// it is born terminal (started and completed at the same instant, no result to wait for)
+    /// and forces the card open — a silently blocked action is exactly what a user needs to see.
+    /// The blocked <c>command</c> rides in <c>Result</c> so the detail pane shows what was refused.</summary>
     public ToolStepViewModel AddBlocked(AgentStreamEvent e)
     {
         using var doc = JsonDocument.Parse(e.RawJson);
@@ -125,10 +157,15 @@ public sealed class ToolActivityProjector
         Activity.Status = ToolActivityStatus.Failed;
         Activity.ErrorSummary = step.Summary;
         Activity.Summary = $"Tool execution failed · view details";
+        // One of the three deliberate exceptions to the collapsed default: a refused action is
+        // exactly what a user needs to see without hunting for it.
         Activity.IsExpanded = true;
         return step;
     }
 
+    /// <summary>Parks the card while the agent waits on the user. Forces the card open — the
+    /// second exception to the collapsed default: the turn cannot proceed until the user acts,
+    /// so hiding what is being asked would stall them behind a closed card.</summary>
     public void WaitForConfirmation(bool permission = false)
     {
         Activity.Status = permission ? ToolActivityStatus.WaitingForPermission : ToolActivityStatus.WaitingForConfirmation;
@@ -136,16 +173,23 @@ public sealed class ToolActivityProjector
         Activity.IsExpanded = true;
     }
 
+    /// <summary>Seals the activity when the turn ends. Steps left running never get a result
+    /// frame (the turn is over), so they are closed out here rather than spinning forever.</summary>
     public void Complete(ToolActivityStatus? terminalStatus = null, string? error = null)
     {
         foreach (var running in Activity.Steps.Where(step => step.Status is ToolStepStatus.Running or ToolStepStatus.Pending))
         {
+            // Warning, not Failed: the tool may well have succeeded — all we actually know is
+            // that we never saw its result, which is a reporting gap, not a proven failure.
             running.Status = terminalStatus == ToolActivityStatus.Cancelled ? ToolStepStatus.Cancelled : ToolStepStatus.Warning;
             running.Summary ??= terminalStatus == ToolActivityStatus.Cancelled ? "Cancelled" : "No result returned";
             running.CompletedAt = DateTimeOffset.UtcNow;
             running.DurationMs ??= Math.Max(0, (running.CompletedAt.Value - running.StartedAt).TotalMilliseconds);
         }
 
+        // A rolled-up status is only ever PartialSuccess or Success: one bad step among many
+        // does not make the activity a failure, and the caller can still pass Failed/Cancelled
+        // explicitly when the *turn* actually died.
         var hasFailed = Activity.Steps.Any(step => step.Status == ToolStepStatus.Failed);
         var hasWarning = Activity.Steps.Any(step => step.Status == ToolStepStatus.Warning);
         Activity.Status = terminalStatus ?? (hasFailed ? ToolActivityStatus.PartialSuccess : hasWarning ? ToolActivityStatus.PartialSuccess : ToolActivityStatus.Success);
@@ -159,10 +203,16 @@ public sealed class ToolActivityProjector
             ToolActivityStatus.PartialSuccess => $"Tool execution completed · {Activity.Steps.Count(step => step.Status is ToolStepStatus.Warning or ToolStepStatus.Failed)} steps had issues",
             _ => $"Tool execution completed · {count} steps · {Activity.DurationLabel}",
         };
+        // Collapse on the way out unless the user asked for detail or something broke: a
+        // finished, successful activity is noise once the reply is on screen.
         Activity.IsExpanded = Activity.DisplayMode == ToolDisplayMode.Detailed || Activity.Status == ToolActivityStatus.Failed;
+
         Activity.RefreshPresentation();
     }
 
+    /// <summary>Human label for a tool. The table covers the tools the reference agents ship
+    /// with; anything else falls back to title-casing the raw name, so a custom tool still
+    /// reads as words rather than an identifier.</summary>
     public static string DisplayName(string toolName) => toolName.ToLowerInvariant() switch
     {
         "open_browser" => "Open browser", "go_to" or "navigate" => "Navigate to page", "get_text" => "Read page content",
@@ -178,6 +228,9 @@ public sealed class ToolActivityProjector
         return HighRiskTokens.Any(token => normalized.Contains(token, StringComparison.Ordinal));
     }
 
+    /// <summary>Redacts a JSON argument/result blob key-by-key. Falls back to the text scrubber
+    /// when the payload does not parse — a tool that returns something other than JSON must
+    /// still not be able to print a bearer token into the timeline.</summary>
     public static string SanitizeJson(string raw)
     {
         try
@@ -197,9 +250,18 @@ public sealed class ToolActivityProjector
             ? value
             : value[..MaxRetainedResultChars] + "\n… (truncated)";
 
+    /// <summary>Scrubs <c>key: value</c> / <c>key=value</c> secrets out of free-form text (log
+    /// lines, stack traces, HTML). Best-effort by construction — it only catches the labelled
+    /// form, so a bare token in prose survives; treat it as reducing accidental exposure in the
+    /// UI, not as a guarantee.</summary>
     public static string SanitizeText(string value)
         => Regex.Replace(value ?? "", "(?i)(authorization|cookie|token|api[_-]?key|password|secret)\\s*[:=]\\s*([^\\s,;]+)", "$1=[hidden]");
 
+    /// <summary>Rebuilds a JSON tree with sensitive values replaced and every string scrubbed.
+    /// Reconstructing rather than string-editing is what makes the redaction total: a secret
+    /// nested ten levels down in an array is reached by the same recursion as a top-level one.
+    /// Unhandled kinds (null, undefined, comments) collapse to null, which is lossless enough
+    /// for a display-only payload.</summary>
     private static object? Redact(JsonElement element) => element.ValueKind switch
     {
         JsonValueKind.Object => element.EnumerateObject().ToDictionary(
@@ -213,22 +275,42 @@ public sealed class ToolActivityProjector
         _ => null,
     };
 
+    /// <summary>The id that binds a result back to its call. Agents disagree on the property
+    /// name, so all the spellings in the wild are probed in order; the stream event's own id is
+    /// the last resort, and it only correlates when the host echoes it on both frames.</summary>
     private static string? CorrelationId(JsonElement root, AgentStreamEvent e)
         => String(root, "tool_id") ?? String(root, "toolCallId") ?? String(root, "call_id") ?? String(root, "callId") ?? String(root, "invocation_id") ?? String(root, "invocationId") ?? String(root, "id") ?? e.EventId;
+    // Kind-checked accessors: every read on this path is against an agent-supplied payload of
+    // no guaranteed shape, so a wrong type must return null rather than throw. Nothing here
+    // coerces (a number in a string slot reads as absent) — that keeps a malformed frame
+    // rendering as a step with a missing field instead of a plausible-looking wrong one.
     private static string? String(JsonElement root, string property) => root.ValueKind == JsonValueKind.Object && root.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
     private static double? Number(JsonElement root, string property) => root.ValueKind == JsonValueKind.Object && root.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.Number ? value.GetDouble() : null;
     private static string? ObjectJson(JsonElement root, string property) => root.ValueKind == JsonValueKind.Object && root.TryGetProperty(property, out var value) && value.ValueKind is JsonValueKind.Object or JsonValueKind.Array ? value.GetRawText() : null;
 
+    /// <summary>Reads the frame's <c>ts</c>. Agents send either seconds or milliseconds with no
+    /// marker, so the magnitude decides: 1e12 is year 33658 in seconds and 2001 in
+    /// milliseconds, which makes it an unambiguous split for any timestamp this app will see.</summary>
     private static DateTimeOffset? Timestamp(JsonElement root)
     {
         var ts = Number(root, "ts");
         if (ts is null) return null;
+        // Out-of-range values throw rather than clamping; a nonsense timestamp falls back to
+        // the local clock at the call site instead of taking the turn down.
         try { return ts > 1_000_000_000_000 ? DateTimeOffset.FromUnixTimeMilliseconds((long)ts.Value) : DateTimeOffset.FromUnixTimeSeconds((long)ts.Value); }
         catch { return null; }
     }
 
+    /// <summary>The "what did it act on" subtitle beside a step: a host, a filename, a search
+    /// phrase. Probed in specificity order — a URL's host identifies the step better than the
+    /// path it happens to also carry — and an empty string is a fine answer, since the row
+    /// still reads correctly with just the tool's display name.
+    /// <para><c>toolName</c> is unused today; the parameter is kept so a per-tool rule can be
+    /// added here without touching the call sites.</para></summary>
     private static string DisplayTarget(string toolName, string args)
     {
+        // Arguments are agent-supplied and not guaranteed to be JSON at all; anything that
+        // fails to parse simply has no target.
         try
         {
             using var doc = JsonDocument.Parse(args);
@@ -248,6 +330,10 @@ public sealed class ToolActivityProjector
         return "";
     }
 
+    /// <summary>Decides how a completed step reads. The host's own <c>status</c> field is
+    /// authoritative for failure; everything else is inferred from the result text, because
+    /// most tools report their problems in prose and never set a status at all. Order matters:
+    /// failure beats warning, and an empty result is a warning rather than a success.</summary>
     private static (ToolStepStatus Status, string Summary) Classify(string? transportStatus, string result)
     {
         var text = result ?? "";
@@ -263,6 +349,10 @@ public sealed class ToolActivityProjector
         var completed = step.Sequence - 1;
         return completed > 0 ? $"{completed} steps completed, {step.DisplayName}…" : $"{step.DisplayName}…";
     }
+    /// <summary>Turns a raw failure string into one short phrase a non-developer can act on.
+    /// The checks are ordered most-specific-first (403 before generic permission wording), and
+    /// anything unrecognised falls through to a scrubbed, single-line, truncated excerpt —
+    /// showing a strange error badly is still better than hiding it.</summary>
     private static string FriendlyProblem(string value)
     {
         if (value.Contains("access denied", StringComparison.OrdinalIgnoreCase) || value.Contains("forbidden", StringComparison.OrdinalIgnoreCase) || value.Contains("403")) return "Page access denied";

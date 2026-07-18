@@ -7,11 +7,18 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace ConnectOnion.WinUIClient.Views;
 
+/// <summary>
+/// The flat conversation list — create, select, delete. The sidebar's agent tree is the primary
+/// way into a conversation; this page is the management view over the same data, which is why
+/// both share one <see cref="SessionsViewModel"/>.
+/// </summary>
 public sealed partial class SessionsPage : Page
 {
     public SessionsViewModel Vm { get; } = App.GetService<SessionsViewModel>();
 
-    // The agent new sessions are created under (the persisted selected agent).
+    // The agent new sessions are created under (the persisted selected agent). Captured once on
+    // load: with no agent selected there is nothing to create a conversation against, which is
+    // what the disabled button and the explanatory label below cover.
     private AgentConfig? _currentAgent;
 
     public SessionsPage()

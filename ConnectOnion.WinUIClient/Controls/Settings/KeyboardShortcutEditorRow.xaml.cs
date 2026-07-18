@@ -34,6 +34,9 @@ public sealed partial class KeyboardShortcutEditorRow : UserControl
         Unloaded += (_, _) => Detach();
     }
 
+    /// <summary>Moves the PropertyChanged subscription from the old row to the new one. Rows are
+    /// swapped as the settings list virtualizes, so unsubscribing from the outgoing row is what
+    /// stops a recycled control from re-rendering on behalf of a shortcut it no longer shows.</summary>
     private static void OnRowChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var control = (KeyboardShortcutEditorRow)d;
@@ -67,6 +70,9 @@ public sealed partial class KeyboardShortcutEditorRow : UserControl
         Render();
     }
 
+    /// <summary>Rebuilds the whole row from the model. Idempotent and total — every element's
+    /// text and visibility is assigned on each pass — so it can be called from the property
+    /// change, the rebind, and the reset without any of them tracking what actually moved.</summary>
     private void Render()
     {
         if (Row is null) return;
@@ -82,10 +88,15 @@ public sealed partial class KeyboardShortcutEditorRow : UserControl
 
         Hotkey.Visibility = Row.IsCustomizable ? Visibility.Visible : Visibility.Collapsed;
         FixedKeys.Visibility = Row.IsCustomizable ? Visibility.Collapsed : Visibility.Visible;
+        // Reset only appears once the shortcut actually differs from the factory chord — there
+        // is nothing to reset otherwise, and a permanent button implies there is.
         ResetButton.Visibility = Row.IsCustomizable && Row.IsRebound ? Visibility.Visible : Visibility.Collapsed;
 
         if (Row.IsCustomizable)
         {
+            // Shows what is *bound*, not what was typed: a refused rebind (the chord belongs to
+            // another action) must snap the capture control back rather than display a
+            // combination that will never fire.
             Hotkey.ShowChord(Row.Chord);
             AutomationProperties.SetName(Hotkey, $"{Row.Name} shortcut, {Row.Binding.DisplayText}");
         }

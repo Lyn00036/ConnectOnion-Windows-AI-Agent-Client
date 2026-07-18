@@ -14,7 +14,14 @@ namespace ConnectOnion.WinUIClient.Views;
 // QueueFindRefresh()/_findDebounceTimer.Stop() calls live in ChatPage.xaml.cs.
 public sealed partial class ChatPage
 {
+    /// <summary>Every match in the conversation, flattened across messages and in transcript
+    /// order — so next/previous can walk the whole conversation as one list rather than
+    /// tracking a position within a message and a position among messages.</summary>
     private readonly List<FindMatch> _findMatches = new();
+    /// <summary>Debounces the search. Matching walks every message's text, so running it on
+    /// each keystroke makes typing in a long conversation stutter. Stopped in the page's
+    /// Unloaded handler — a live timer on a navigated-away page is the class of bug that shows
+    /// up as a crash at window close (see CLAUDE.md).</summary>
     private readonly DispatcherTimer _findDebounceTimer = new() { Interval = TimeSpan.FromMilliseconds(150) };
     private int _currentFindIndex = -1;
     private string _searchQuery = "";
@@ -37,6 +44,9 @@ public sealed partial class ChatPage
         MessageList.Focus(FocusState.Programmatic);
     }
 
+    /// <summary>Esc closes find — but only while a search is actually active, so the key stays
+    /// available to whatever else has focus the rest of the time (which is why Esc is listed as
+    /// non-customizable in the shortcut catalog).</summary>
     private void ChatRoot_KeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (!string.IsNullOrWhiteSpace(_searchQuery) && e.Key == VirtualKey.Escape)
@@ -70,6 +80,11 @@ public sealed partial class ChatPage
         FindAllMatches();
     }
 
+    /// <summary>Rebuilds the match list from scratch and jumps to the first hit.
+    /// <para>Searches <c>message.Content</c> only, so matches inside tool arguments, event
+    /// details, or attachment names are not found — a deliberate limit, since those are
+    /// collapsed by default and highlighting inside a closed card would report a match the user
+    /// cannot see.</para></summary>
     private void FindAllMatches()
     {
         _findMatches.Clear();
@@ -87,6 +102,10 @@ public sealed partial class ChatPage
         {
             if (string.IsNullOrEmpty(message.Content)) continue;
 
+            // Two counters with different jobs: `cursor` walks characters, while `localIndex`
+            // counts matches *within this message* and is what the highlighter uses to pick out
+            // the active occurrence. Advancing the cursor past the whole match (not by one)
+            // gives non-overlapping matches, matching what a user expects from a find bar.
             var localIndex = 0;
             var cursor = 0;
             while (cursor < message.Content.Length)
@@ -113,6 +132,7 @@ public sealed partial class ChatPage
     {
         if (_findMatches.Count == 0) return;
 
+        // Wraps around the end, so find keeps cycling rather than dead-ending at the last match.
         _currentFindIndex = (_currentFindIndex + 1 + _findMatches.Count) % _findMatches.Count;
         ApplyCurrentFindMatch(scroll: true);
     }
@@ -125,8 +145,13 @@ public sealed partial class ChatPage
         ApplyCurrentFindMatch(scroll: true);
     }
 
+    /// <summary>Moves the "current match" highlight and refreshes the status text.</summary>
+    /// <param name="scroll">False on the initial search so a user still typing is not yanked
+    /// around the transcript; true for explicit next/previous.</param>
     private void ApplyCurrentFindMatch(bool scroll)
     {
+        // Clear the active marker everywhere first. Note this leaves FindQuery intact, so all
+        // matches stay dimly highlighted and only the active one is re-marked below.
         foreach (var message in Vm.Messages)
         {
             message.ActiveFindMatchIndex = -1;
@@ -159,10 +184,16 @@ public sealed partial class ChatPage
         }
     }
 
+    /// <summary>Tells MainWindow's shared find overlay to re-read <see cref="FindStatusText"/>
+    /// and <see cref="HasFindMatches"/>. The page owns the matching; the window owns the UI, so
+    /// this event is the only channel between them (see <see cref="IFindHost"/>).</summary>
     private void UpdateFindButtons()
     {
         FindStateChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>A single hit: which bubble, and which occurrence within that bubble. Holds the
+    /// message by reference rather than by index, so the list survives new messages arriving
+    /// mid-search — a live turn can append while the find bar is open.</summary>
     private readonly record struct FindMatch(ChatMessage Message, int MatchIndexInMessage);
 }

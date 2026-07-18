@@ -18,7 +18,7 @@ them.** Where they disagree with the code, the code wins. Concretely:
 |---|---|
 | §32–34 typed request/response DTO classes | `ConnectOnion.Protocol` uses `WireMessage` (a thin `JsonElement` wrapper) for inbound and plain `Dictionary<string, object?>` for outbound. **No attribute-based DTOs, no source-gen context.** Follow that convention for new message types. |
 | §35 recommended SQLite schema | The real schema lives in `AppDatabase.CreateSchemaAsync`, versioned by `PRAGMA user_version` via `Data/SchemaMigrator.cs`. Notably `messages` is **one row per rendered bubble**, not a session JSON blob, and `message_attachments` stores metadata + a local cache path only — **never a base64 payload**. |
-| §36 recommended client mapping | The single stream-event → bubble mapping is `Services/Runtime/ChatTurnProjection.cs`, driven identically by the live view model and the headless persist path. Do not add event handling anywhere else. |
+| §36 recommended client mapping | The single stream-event → bubble mapping is `Services/Runtime/ChatTurnProjection.cs`; the per-event-type dispatch table it drives is `ChatTurnProjection.Events.cs`, which is where a new event type is handled. Both are driven identically by the live view model and the headless persist path. Do not add event handling anywhere else. |
 | §37 recommended WinUI state machine | Connections and in-flight turns are owned app-level by `AgentSessionManager` + `ConversationRunRegistry`, **not by a page**. A turn survives page close, conversation switch, and tray minimize. |
 
 Where the protocol is implemented in this repo:

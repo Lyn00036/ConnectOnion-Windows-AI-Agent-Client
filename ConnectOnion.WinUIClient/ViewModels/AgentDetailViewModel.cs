@@ -100,10 +100,20 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
 
     public ObservableCollection<InfoField> InfoFields { get; } = new();
 
-    public string DisplayModel => GetInfoValue("model") ?? "deepseek-v4-pro";
+    /// <summary>The agent's model, exactly as it reported it — empty when <c>/info</c> did not
+    /// say. Never guesses: this label sits under the agent's name and reads as fact, so naming
+    /// a model the agent may not be running is worse than showing nothing. The row hides itself
+    /// via <see cref="HasDisplayModel"/> instead.</summary>
+    public string DisplayModel => GetInfoValue("model") ?? "";
+
+    public bool HasDisplayModel => !string.IsNullOrWhiteSpace(DisplayModel);
 
     public bool HasToolSummary => !string.IsNullOrWhiteSpace(ToolSummaryLineOne);
 
+    // The tool list is split across two fixed lines rather than wrapped, so the card's height
+    // stays constant no matter how many tools an agent advertises: five on the first line, up
+    // to three on the second, then "+N more". The trailing "·" on line one is the separator
+    // *into* line two, so it is only correct while a second line can follow.
     public string ToolSummaryLineOne
     {
         get
@@ -156,6 +166,9 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
     {
         if (Agent is null || !IsOnline || (string.IsNullOrWhiteSpace(prompt) && !hasAttachments)) return false;
 
+        // Note what this does *not* do: it creates and selects the session but never sends the
+        // prompt. The caller navigates to ChatPage, which picks up the prompt and sends it —
+        // sending here would race the page that is about to own the conversation.
         var agentsState = await _agents.LoadAsync();
         agentsState.SelectedAgentId = Agent.Id;
         await _agents.SaveAsync(agentsState);
@@ -337,6 +350,7 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
     private void RaiseProfileSummaryProperties()
     {
         OnPropertyChanged(nameof(DisplayModel));
+        OnPropertyChanged(nameof(HasDisplayModel));
         OnPropertyChanged(nameof(HasToolSummary));
         OnPropertyChanged(nameof(ToolSummaryLineOne));
         OnPropertyChanged(nameof(ToolSummaryLineTwo));
@@ -345,8 +359,14 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
     private string? GetInfoValue(string name)
         => InfoFields.FirstOrDefault(field => string.Equals(field.Name, name, StringComparison.OrdinalIgnoreCase))?.Value;
 
+    /// <summary>Recovers the tool names from the flattened <c>/info</c> fields, which is
+    /// necessarily shape-guessing: agents publish tools either as an array of strings (flattened
+    /// to one comma-joined <c>tools</c> field) or as an array of objects (flattened to indexed
+    /// <c>tools[0].name</c> keys). Both are handled; anything else yields an empty list, and the
+    /// summary row simply hides.</summary>
     private List<string> GetToolNames()
     {
+        // String-array shape: FlattenObject already joined it into one field.
         var direct = GetInfoValue("tools");
         if (!string.IsNullOrWhiteSpace(direct))
         {
@@ -356,6 +376,9 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
                 .ToList();
         }
 
+        // Object-array shape. The predicate takes either "tools[0].name" or a bare "tools[0]"
+        // and skips every other nested property, so a tool's description or parameters cannot
+        // be mistaken for a tool name.
         return InfoFields
             .Where(field => field.Name.StartsWith("tools[", StringComparison.OrdinalIgnoreCase)
                             && (field.Name.EndsWith(".name", StringComparison.OrdinalIgnoreCase)
@@ -372,6 +395,9 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
         return CultureInfo.InvariantCulture.TextInfo.ToTitleCase(normalized.ToLowerInvariant());
     }
 
+    /// <summary>Renders a leaf JSON value for the raw-fields table. Numbers go through
+    /// <c>GetRawText</c> so they display exactly as the agent wrote them — parsing to double
+    /// would round large integers and add or drop trailing zeros.</summary>
     private static string ElementToString(JsonElement element) => element.ValueKind switch
     {
         JsonValueKind.String => element.GetString() ?? "",

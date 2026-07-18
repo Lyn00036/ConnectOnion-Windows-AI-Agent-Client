@@ -38,10 +38,23 @@ public sealed partial class ChatComposer
     private const double AmplitudeGain = 12.0;
 
     // ---- Recording state machine ----
+    //
+    // Four states rather than a bool, because both transitions take real time and the UI has to
+    // show something during them: Starting compiles speech constraints (hundreds of ms) and
+    // Stopping drains the recognizer's final result. Treating either as "recording" would let a
+    // second click re-enter mid-transition; treating either as "idle" would drop the audio the
+    // user is still speaking. IsRecordingActive covers all three non-Idle states, which is what
+    // the re-entrancy guards test.
     private enum RecordingState { Idle, Starting, Recording, Stopping }
     private RecordingState _recordingState = RecordingState.Idle;
-    private const int StartBufferMs = 500;  // capture audio before recognition starts
-    private const int StopBufferMs = 500;   // capture final speech before teardown
+    /// <summary>Audio is metered for this long before the recognizer starts, so the waveform is
+    /// already moving when the user begins speaking rather than snapping to life late.</summary>
+    private const int StartBufferMs = 500;
+    /// <summary>Capture continues for this long after Stop, so a word still in flight when the
+    /// user clicks lands in the transcript instead of being cut off.</summary>
+    private const int StopBufferMs = 500;
+    /// <summary>Cancels the in-progress start or stop sequence. Replaced (not reused) at each
+    /// transition, so a Stop cleanly aborts a Start that is still compiling constraints.</summary>
     private CancellationTokenSource? _recordingCts;
 
     // ---- Speech recognition ----
@@ -49,6 +62,8 @@ public sealed partial class ChatComposer
     private AudioGraph? _audioGraph;
     private AudioDeviceInputNode? _audioInputNode;
     private AudioFrameOutputNode? _audioFrameOutputNode;
+    /// <summary>Guards the amplitude fields, which are written from the AudioGraph's callback
+    /// thread and read by the Win2D draw handler on the UI thread.</summary>
     private readonly object _amplitudeLock = new();
     private readonly DispatcherTimer _recordingElapsedTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private string _latestSpeechText = "";
@@ -57,6 +72,10 @@ public sealed partial class ChatComposer
     private DateTimeOffset _recordingStartedAt;
 
     // ---- Waveform ring buffer ----
+    // Fixed-size and overwriting: the waveform scrolls, so only the most recent MaxRingSamples
+    // are ever drawn and an unbounded list would grow for the whole recording to no purpose.
+    // _sampleCount saturates at capacity and exists to distinguish a partially-filled buffer
+    // (draw only what we have) from a wrapped one (draw everything, oldest first).
     private readonly double[] _sampleRing = new double[MaxRingSamples];
     private int _sampleWritePos;
     private int _sampleCount;
@@ -87,11 +106,16 @@ public sealed partial class ChatComposer
             // --- Starting: show spinner, start audio meter, buffer delay ---
             _recordingState = RecordingState.Starting;
             RefreshSendButtonState();
+            // Not awaited: the meter runs for the whole session, so awaiting it here would
+            // never return. It observes the same token, so a cancelled start tears it down.
             _ = StartAudioMeterAsync(ct);
 
             await Task.Delay(StartBufferMs, ct);
 
             // --- Start recognizer ---
+            // A fresh recognizer per session, with the old one's handlers detached first: a
+            // SpeechRecognizer cannot be restarted after cancellation, and leaving handlers on
+            // a disposed instance would deliver a previous session's results into this one.
             DetachSpeechRecognizerEvents();
             _speechRecognizer?.Dispose();
             _speechRecognizer = new SpeechRecognizer();
@@ -121,6 +145,11 @@ public sealed partial class ChatComposer
             RefreshSendButtonState();
         }
         catch (OperationCanceledException) { /* aborted */ }
+        // The three ways speech legitimately fails on a user's machine: microphone or online
+        // speech permission denied (UnauthorizedAccess), the speech stack unavailable or
+        // already in use (InvalidOperation), and a WinRT/COM-level failure. All three are the
+        // user's environment, not a bug, so they surface as one actionable message rather than
+        // a crash. Anything else is left to propagate.
         catch (Exception ex) when (ex is UnauthorizedAccessException or InvalidOperationException or COMException)
         {
             _recordingState = RecordingState.Idle;
@@ -179,6 +208,10 @@ public sealed partial class ChatComposer
         SpeechRecognizer sender,
         SpeechRecognitionHypothesisGeneratedEventArgs args)
     {
+        // Hypotheses are the recognizer's running guess and get revised as the user keeps
+        // speaking, so this only *stores* the latest — it must not append. It is the safety net
+        // for the final utterance, which cancellation can end before a Result is generated;
+        // AppendLatestSpeechText flushes it during teardown.
         _latestSpeechText = args.Hypothesis.Text;
     }
 
@@ -206,6 +239,9 @@ public sealed partial class ChatComposer
         InputBox.SelectionStart = InputBox.Text.Length;
     }
 
+    /// <summary>Flushes the pending hypothesis at teardown. Cleared afterwards so the same text
+    /// cannot be appended twice — a hypothesis that did get confirmed as a Result was already
+    /// appended by <see cref="SpeechRecognition_ResultGenerated"/>.</summary>
     private void AppendLatestSpeechText()
     {
         if (string.IsNullOrWhiteSpace(_latestSpeechText)) return;
@@ -250,6 +286,8 @@ public sealed partial class ChatComposer
     {
         double target;
         lock (_amplitudeLock) { target = _targetAmplitude; }
+        // Exponential moving average. Raw RMS jitters frame to frame and would render as noise;
+        // this lags the signal slightly in exchange for bars that read as speech.
         _smoothedAmplitude = _smoothedAmplitude * (1 - SmoothingFactor) + target * SmoothingFactor;
 
         _sampleRing[_sampleWritePos] = Math.Clamp(_smoothedAmplitude, 0, 1);
@@ -282,7 +320,10 @@ public sealed partial class ChatComposer
         ds.FillRectangle(0, 0, w, h, _bgColor);
         ds.DrawLine(0, centerY, w, centerY, _baselineColor, 1, _dashStyle);
 
-        // Only advance and render bars while recording
+        // Only advance and render bars while recording. Note the ring buffer is advanced from
+        // *inside* the draw callback, which ties the scroll speed to the render loop rather
+        // than to real time — deliberate, since the waveform is an activity indicator, not a
+        // measurement, and it keeps the bars evenly spaced whatever the frame rate.
         if (_recordingState == RecordingState.Recording)
         {
             AdvanceWaveform();
@@ -297,6 +338,9 @@ public sealed partial class ChatComposer
                 float barX = w - BarWidth - k * SampleStride;
                 if (barX < 0) break;
 
+                // Walk backwards from the newest sample so the waveform scrolls right-to-left.
+                // The double modulo is the standard fix for C#'s % returning a negative
+                // remainder for negative operands, which a single % would produce here.
                 int ringIndex = ((_sampleWritePos - 1 - k) % MaxRingSamples + MaxRingSamples) % MaxRingSamples;
                 double amp = _sampleRing[ringIndex];
                 float halfH = Math.Max(1, (float)(amp * maxHalf));

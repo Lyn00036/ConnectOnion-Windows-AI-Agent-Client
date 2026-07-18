@@ -7,40 +7,61 @@ using Microsoft.Data.Sqlite;
 namespace ConnectOnion.WinUIClient.Data;
 
 /// <summary>
-/// SQLite backing store for local app state. The schema keeps structured index
-/// data queryable while retaining conversation envelopes as JSON blobs.
+/// SQLite backing store for local app state, and the only place a connection is opened.
+///
+/// Everything is relational — <c>messages</c> is one row per rendered chat bubble, not a
+/// serialized conversation envelope, which is what lets a turn be written incrementally
+/// (O(turn) rather than O(conversation)). The only JSON in the schema is genuinely opaque
+/// payload: an agent's <c>/info</c> response, a trace event's body, the preference blobs.
 /// </summary>
 public static class AppDatabase
 {
+    // First open wins and everyone else waits: schema creation plus migration must happen
+    // exactly once, and repositories open connections concurrently from the very first frame.
     private static readonly SemaphoreSlim InitGate = new(1, 1);
     private static bool _initialized;
 
     public static string DatabasePath => Path.Combine(AppStorage.RootDir, "connectonion.db");
 
+    /// <summary>Opens a ready-to-use connection, initializing the database on first call.
+    /// Callers own the returned connection and must dispose it.</summary>
     public static async Task<SqliteConnection> OpenAsync(CancellationToken cancellationToken = default)
     {
         await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
 
         var connection = new SqliteConnection(ConnectionString());
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+        // foreign_keys is per-connection in SQLite, not a property of the file — so it has to
+        // be re-asserted on every open, not just at init. Without it the FK declarations in
+        // the schema are inert and the ordered deletes in ConversationRepository would silently
+        // leave orphans instead of failing loudly.
         await ExecuteAsync(connection, "PRAGMA foreign_keys = ON;", cancellationToken).ConfigureAwait(false);
         return connection;
     }
 
     private static async Task EnsureInitializedAsync(CancellationToken cancellationToken)
     {
+        // Fast path: an unsynchronized read of a bool that only ever goes false→true. A torn
+        // read is not possible, and the worst case is redundantly taking the gate below.
         if (_initialized) return;
 
         await InitGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            // Double-check: several callers can be queued on the gate, and only the first
+            // should do the work.
             if (_initialized) return;
 
+            // winsqlite3 is the copy of SQLite that ships with Windows, so the app carries no
+            // native SQLite binary of its own. This must run before any connection is opened.
             SQLitePCL.raw.SetProvider(new SQLitePCL.SQLite3Provider_winsqlite3());
             AppStorage.EnsureDirectories();
             await using var connection = new SqliteConnection(ConnectionString());
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
+            // WAL is persistent (it lives in the file header), so unlike foreign_keys this one
+            // genuinely is a once-per-database setting. It matters here because a turn writes
+            // while the UI reads, and WAL lets those not block each other.
             await ExecuteAsync(connection, "PRAGMA journal_mode = WAL;", cancellationToken).ConfigureAwait(false);
             await ExecuteAsync(connection, "PRAGMA foreign_keys = ON;", cancellationToken).ConfigureAwait(false);
 
@@ -63,6 +84,8 @@ public static class AppDatabase
         var builder = new SqliteConnectionStringBuilder
         {
             DataSource = DatabasePath,
+            // ReadWriteCreate: first run has no file, and creating it here is what makes
+            // "delete the .db to reset dev state" work without any other setup.
             Mode = SqliteOpenMode.ReadWriteCreate,
             Cache = SqliteCacheMode.Shared,
         };
@@ -198,6 +221,11 @@ public static class AppDatabase
             """).ConfigureAwait(false);
     }
 
+    // app_meta is the generic key/value scratch table for small singleton values that don't
+    // deserve a column. Note the schema *version* is deliberately not one of them — it lives
+    // in SQLite's own PRAGMA user_version so it can be written inside the same transaction as
+    // the migration that earned it (see SchemaMigrator).
+
     public static async Task<string?> GetMetaAsync(SqliteConnection connection, string key)
     {
         await using var command = connection.CreateCommand();
@@ -237,6 +265,10 @@ public static class AppDatabase
         await command.ExecuteNonQueryAsync().ConfigureAwait(false);
     }
 
+    /// <summary>Binds a parameter, mapping .NET <c>null</c> to <see cref="DBNull"/>.
+    /// Every repository binds through this rather than <c>AddWithValue</c> directly, because
+    /// passing a bare null to AddWithValue throws instead of writing SQL NULL — and most of
+    /// the columns in this schema are nullable.</summary>
     public static void Add(SqliteCommand command, string name, object? value)
         => command.Parameters.AddWithValue(name, value ?? DBNull.Value);
 

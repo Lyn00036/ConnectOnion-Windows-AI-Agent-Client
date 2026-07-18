@@ -12,10 +12,21 @@ using System.Runtime.InteropServices.WindowsRuntime;
 
 namespace ConnectOnion.WinUIClient.ViewModels;
 
+/// <summary>
+/// Backs the settings page. Preferences are held in one <see cref="PreferencesSnapshot"/> and
+/// exposed as get-only projections over it — every write goes through an explicit
+/// <c>Set…Async</c> so persisting is never an accidental side effect of a binding.
+///
+/// Each setter is guarded by <c>_loaded</c> and an equality check, which together make settings
+/// writes idempotent: populating the page cannot save, and re-picking the current value is a
+/// no-op rather than a redundant database round-trip.
+/// </summary>
 public sealed partial class SettingsViewModel : Common.ObservableObject
 {
     private readonly PreferencesRepository _repo;
     private PreferencesSnapshot _prefs = new();
+    /// <summary>False until <see cref="LoadAsync"/> finishes. Gates every save, so the load's
+    /// own assignments cannot write the freshly-read values straight back.</summary>
     private bool _loaded;
 
     public ThemeMode Theme => _prefs.Theme;
@@ -51,6 +62,10 @@ public sealed partial class SettingsViewModel : Common.ObservableObject
 
         Microphones = await EnumerateMicrophonesAsync();
 
+        // Restore the saved microphone, falling back to the "System default" row when that
+        // device is gone — unplugging a headset must not leave the picker on a dead entry.
+        // FirstOrDefault on a tuple yields (null, 0) when nothing matches, so the index is
+        // checked rather than trusted; index 0 is the synthetic default row added below.
         var idx = Microphones
             .Select((m, i) => (m, i))
             .FirstOrDefault(x => x.m.DeviceId == _prefs.MicrophoneDeviceId).i;
@@ -59,6 +74,8 @@ public sealed partial class SettingsViewModel : Common.ObservableObject
                 .FirstOrDefault(x => x.m.IsDefault).i;
         SelectedMicIndex = idx >= 0 ? idx : 0;
 
+        // Manual notifications: these are computed from _prefs, which was replaced wholesale
+        // above, so nothing raised a change for them.
         OnPropertyChanged(nameof(Theme));
         OnPropertyChanged(nameof(MessageFontSize));
         OnPropertyChanged(nameof(EnterToSend));
@@ -72,6 +89,7 @@ public sealed partial class SettingsViewModel : Common.ObservableObject
     {
         if (!_loaded || _prefs.Theme == theme) return;
         _prefs.Theme = theme;
+        // Applied before the await so the UI flips immediately; the save is allowed to trail.
         ThemeService.Apply(theme);
         OnPropertyChanged(nameof(Theme));
         await _repo.SaveAsync(_prefs);
@@ -100,8 +118,15 @@ public sealed partial class SettingsViewModel : Common.ObservableObject
         await _repo.SaveAsync(_prefs);
     }
 
+    /// <summary>Enumerates capture devices for the microphone picker. Always returns at least
+    /// the synthetic "System default" row (empty device id), which is what the app stores when
+    /// the user has expressed no preference.</summary>
     private static async Task<IReadOnlyList<MicrophoneItem>> EnumerateMicrophonesAsync()
     {
+        // Wrapped in Task.Run and hand-adapted through a TCS: DeviceInformation.FindAllAsync is
+        // a WinRT IAsyncOperation, and device enumeration can block for a noticeable moment on
+        // machines with many audio endpoints. Pushing it off the UI thread keeps the settings
+        // page from hitching when it opens.
         var devices = await Task.Run(() =>
         {
             var op = DeviceInformation.FindAllAsync(DeviceClass.AudioCapture);
@@ -121,6 +146,8 @@ public sealed partial class SettingsViewModel : Common.ObservableObject
         {
             new("System default", "", IsDefault: true),
         };
+        // Disabled endpoints are filtered out: Windows keeps reporting devices that are present
+        // but switched off, and offering one would silently record no audio.
         foreach (var d in devices)
         {
             if (d.IsEnabled)

@@ -199,8 +199,17 @@
                                         AutomationProperties.Name="Retry from this message"
                                         ToolTipService.ToolTip="Retry from this message"
                                         Visibility="{x:Bind CanEdit, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                                    <ic:FluentIcon Icon="ArrowClockwise" IconVariant="Regular" IconSize="Size12"
-                                                   Foreground="{ThemeResource TextSecondaryBrush}" />
+                                    <!-- All three action icons take the Size16-scaled-to-12 treatment, even
+                                         the two that do have a Size12 glyph: mixing the two fonts in one row
+                                         reads as inconsistent, because the Size12 designs carry heavier
+                                         strokes and measure 12px against the scaled icon's 16px slot. -->
+                                    <ic:FluentIcon Icon="ArrowClockwise" IconVariant="Regular" IconSize="Size16"
+                                                   RenderTransformOrigin="0.5,0.5"
+                                                   Foreground="{ThemeResource TextSecondaryBrush}">
+                                        <ic:FluentIcon.RenderTransform>
+                                            <ScaleTransform ScaleX="0.75" ScaleY="0.75" />
+                                        </ic:FluentIcon.RenderTransform>
+                                    </ic:FluentIcon>
                                 </Button>
                                 <Button Tag="{x:Bind}"
                                         Padding="3"
@@ -213,8 +222,13 @@
                                         AutomationProperties.Name="Edit message"
                                         ToolTipService.ToolTip="Edit message"
                                         Visibility="{x:Bind CanEdit, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                                    <ic:FluentIcon Icon="Edit" IconVariant="Regular" IconSize="Size12"
-                                                   Foreground="{ThemeResource TextSecondaryBrush}" />
+                                    <ic:FluentIcon Icon="Edit" IconVariant="Regular" IconSize="Size16"
+                                                   RenderTransformOrigin="0.5,0.5"
+                                                   Foreground="{ThemeResource TextSecondaryBrush}">
+                                        <ic:FluentIcon.RenderTransform>
+                                            <ScaleTransform ScaleX="0.75" ScaleY="0.75" />
+                                        </ic:FluentIcon.RenderTransform>
+                                    </ic:FluentIcon>
                                 </Button>
                                 <Button Padding="3"
                                         MinWidth="24"
@@ -225,8 +239,13 @@
                                         Click="CopyMessage_Click"
                                         AutomationProperties.Name="Copy message"
                                         ToolTipService.ToolTip="Copy message">
-                                    <ic:FluentIcon Icon="Copy" IconVariant="Regular" IconSize="Size12"
-                                                   Foreground="{ThemeResource TextSecondaryBrush}" />
+                                    <ic:FluentIcon Icon="Copy" IconVariant="Regular" IconSize="Size16"
+                                                   RenderTransformOrigin="0.5,0.5"
+                                                   Foreground="{ThemeResource TextSecondaryBrush}">
+                                        <ic:FluentIcon.RenderTransform>
+                                            <ScaleTransform ScaleX="0.75" ScaleY="0.75" />
+                                        </ic:FluentIcon.RenderTransform>
+                                    </ic:FluentIcon>
                                 </Button>
                             </StackPanel>
                         </Grid>
@@ -310,8 +329,11 @@
                     <ItemsControl ItemsSource="{x:Bind Attachments}"
                                   ItemTemplate="{StaticResource AttachmentChipTemplate}"
                                   Visibility="{x:Bind HasAttachments, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                    <!-- Collapses (not just disables) once the code is submitted: a spent invite
+                         box is dead UI, and IsOnboarding alone is not observable so it could
+                         never take the row away. -->
                     <Grid ColumnSpacing="8"
-                          Visibility="{x:Bind IsOnboarding, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                          Visibility="{x:Bind IsOnboardingInputEnabled, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
@@ -344,8 +366,14 @@
                                     Click="RetryAgentMessage_Click"
                                     AutomationProperties.Name="Retry this response"
                                     ToolTipService.ToolTip="Retry this response">
-                                <ic:FluentIcon Icon="ArrowClockwise" IconVariant="Regular" IconSize="Size12"
-                                               Foreground="{ThemeResource TextSecondaryBrush}" />
+                                <!-- Matches the user-message action row above: same font, same scale. -->
+                                <ic:FluentIcon Icon="ArrowClockwise" IconVariant="Regular" IconSize="Size16"
+                                               RenderTransformOrigin="0.5,0.5"
+                                               Foreground="{ThemeResource TextSecondaryBrush}">
+                                    <ic:FluentIcon.RenderTransform>
+                                        <ScaleTransform ScaleX="0.75" ScaleY="0.75" />
+                                    </ic:FluentIcon.RenderTransform>
+                                </ic:FluentIcon>
                             </Button>
                             <Button Padding="3"
                                     MinWidth="24"
@@ -356,8 +384,13 @@
                                     Click="CopyMessage_Click"
                                     AutomationProperties.Name="Copy response"
                                     ToolTipService.ToolTip="Copy response">
-                                <ic:FluentIcon Icon="Copy" IconVariant="Regular" IconSize="Size12"
-                                               Foreground="{ThemeResource TextSecondaryBrush}" />
+                                <ic:FluentIcon Icon="Copy" IconVariant="Regular" IconSize="Size16"
+                                               RenderTransformOrigin="0.5,0.5"
+                                               Foreground="{ThemeResource TextSecondaryBrush}">
+                                    <ic:FluentIcon.RenderTransform>
+                                        <ScaleTransform ScaleX="0.75" ScaleY="0.75" />
+                                    </ic:FluentIcon.RenderTransform>
+                                </ic:FluentIcon>
                             </Button>
                         </StackPanel>
                     </Grid>

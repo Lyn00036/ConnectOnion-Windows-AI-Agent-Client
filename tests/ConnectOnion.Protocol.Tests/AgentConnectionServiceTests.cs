@@ -205,6 +205,40 @@ public sealed class AgentConnectionServiceTests
     }
 
     [Fact]
+    public async Task SendInputAsync_OnboardWaitsPastSilenceTimeout_WatchdogStaysConnected()
+    {
+        var onboardRaised = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var server = new FakeAgentServer(async (socket, ct) =>
+        {
+            await FakeAgentServer.ReceiveTextAsync(socket, ct);
+            await FakeAgentServer.SendTextAsync(socket, "{\"type\":\"ONBOARD_REQUIRED\"}", ct);
+            var submit = WireMessage.Parse(await FakeAgentServer.ReceiveTextAsync(socket, ct));
+            Assert.Equal("ONBOARD_SUBMIT", submit.Type);
+            await FakeAgentServer.SendTextAsync(socket, "{\"type\":\"ONBOARD_SUCCESS\"}", ct);
+            await FakeAgentServer.SendTextAsync(socket, "{\"type\":\"CONNECTED\"}", ct);
+            await FakeAgentServer.ReceiveTextAsync(socket, ct);
+            await FakeAgentServer.SendTextAsync(socket, "{\"type\":\"OUTPUT\",\"result\":\"onboarded\"}", ct);
+        });
+        await using var service = Service(
+            server,
+            connectTimeout: TimeSpan.FromSeconds(1),
+            silenceTimeout: TimeSpan.FromMilliseconds(250),
+            watchdogInterval: TimeSpan.FromMilliseconds(25));
+        Exception? connectionLoss = null;
+        service.ConnectionLost += error => connectionLoss = error;
+        service.OnboardRequired += () => onboardRaised.TrySetResult();
+        var send = service.SendInputAsync("start", null);
+
+        await onboardRaised.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        // A human typing an invite code takes as long as it takes — the socket must survive it.
+        await Task.Delay(750);
+        Assert.Null(connectionLoss);
+        await service.SubmitOnboardInviteCodeAsync("invite-123");
+
+        Assert.Equal("onboarded", await send);
+    }
+
+    [Fact]
     public async Task SendInputAsync_WithMode_SendsModeChangeOnTheFrameAfterInput()
     {
         string? connectJson = null;

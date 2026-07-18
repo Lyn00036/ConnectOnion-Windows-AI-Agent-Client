@@ -42,8 +42,13 @@ public sealed class AgentIdentity
         _privateSeed = privateSeed;
     }
 
+    /// <summary>Mints a brand-new identity. Called on first run and whenever the stored seed is
+    /// unreadable — note that generating a new one changes the app's address, so every agent
+    /// that authorized the old one must authorize this one (see <c>IdentityStore</c>).</summary>
     public static AgentIdentity Generate()
     {
+        // SecureRandom, not System.Random: this seed *is* the private key, so it must come from
+        // a CSPRNG. A predictable seed here is a forgeable identity.
         var random = new SecureRandom();
         var seed = new byte[32];
         random.NextBytes(seed);
@@ -59,7 +64,13 @@ public sealed class AgentIdentity
 
         var privateKey = new Ed25519PrivateKeyParameters(seed, 0);
         var publicKey = privateKey.GeneratePublicKey().GetEncoded();
+        // The address is fully derived from the seed — nothing else is stored, and the same
+        // seed always reproduces the same identity. That is what makes the seed the one and
+        // only thing worth backing up (and the one and only thing worth protecting).
         var address = "0x" + Hex.ToLowerString(publicKey);
+        // Cloned so the identity does not alias the caller's array: a caller that zeroes its
+        // buffer after handing it over (the correct thing to do with key material) would
+        // otherwise quietly zero this identity's key too.
         return new AgentIdentity(address, publicKey, (byte[])seed.Clone());
     }
 
@@ -83,6 +94,8 @@ public sealed class AgentIdentity
         if (address is null || message is null || signatureHex is null)
             return false;
 
+        // 66 = "0x" + 64 hex chars for the 32-byte public key. Checked before the hex decode so
+        // a wrong-length address is rejected cheaply rather than through an exception.
         if (!address.StartsWith("0x", StringComparison.Ordinal) || address.Length != 66)
             return false;
 
@@ -134,9 +147,15 @@ public sealed class AgentIdentity
                 throw new ArgumentException($"Duplicate payload key: '{pair.Key}'.", nameof(payload));
         }
 
+        // Signed over the *list*, not the dictionary built above: CanonicalJson sorts the keys
+        // itself, and a Dictionary's enumeration order is unspecified. The dictionary exists
+        // only for duplicate detection and for the envelope's own payload field.
         var canonical = CanonicalJson.Serialize(payload);
         var signature = Sign(canonical);
 
+        // The timestamp is lifted out for the envelope's convenience field; it stays inside the
+        // signed payload as well, which is what actually makes it tamper-evident. A verifier
+        // must read the payload's copy, never this one.
         object? timestamp = null;
         foreach (var pair in payload)
         {

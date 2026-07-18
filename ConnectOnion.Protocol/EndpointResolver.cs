@@ -47,13 +47,25 @@ public static class EndpointResolver
 {
     public const string DefaultRelay = "wss://oo.openonion.ai";
     private static readonly TimeSpan EndpointCacheTtl = TimeSpan.FromMinutes(1);
+    // Offline is cached for half as long as online, deliberately: an agent that just came back
+    // up should be usable within ~30s, whereas re-confirming a working endpoint is pure cost.
     private static readonly TimeSpan AgentInfoOnlineCacheTtl = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan AgentInfoOfflineCacheTtl = TimeSpan.FromSeconds(30);
+    /// <summary>How long the last endpoint that actually answered for an agent is remembered.
+    /// Longer than the others because it is only a *hint* — it is re-probed before use, and a
+    /// miss just falls through to the full parallel sweep.</summary>
     private static readonly TimeSpan DirectInfoCacheTtl = TimeSpan.FromMinutes(5);
+    // One lock over all five dictionaries. They are only ever touched in short, non-awaiting
+    // critical sections (the network calls happen outside), so finer-grained locking would buy
+    // nothing but a chance to get the ordering wrong.
     private static readonly object CacheGate = new();
     private static readonly Dictionary<string, EndpointCacheEntry> EndpointCache = new();
     private static readonly Dictionary<string, AgentInfoCacheEntry> AgentInfoCache = new();
     private static readonly Dictionary<string, DirectInfoCacheEntry> DirectInfoCache = new();
+    // In-flight request coalescing: a second caller asking for the same key while a lookup is
+    // running awaits that task instead of starting its own. This matters because presence
+    // sweeps fan out across every agent at once — without it, N sidebar rows for one agent
+    // would each open their own relay lookup.
     private static readonly Dictionary<string, Task<ResolvedEndpoint?>> EndpointInflight = new();
     private static readonly Dictionary<string, Task<AgentInfo>> AgentInfoInflight = new();
     private static readonly JsonDocumentOptions JsonOptions = new()
@@ -65,8 +77,13 @@ public static class EndpointResolver
     private sealed record AgentInfoCacheEntry(AgentInfo Info, DateTimeOffset CheckedAt);
     private sealed record DirectInfoCacheEntry(string EndpointUrl, DateTimeOffset CheckedAt);
 
+    /// <summary>Reduces a relay URL to its bare origin so the same relay always produces the
+    /// same cache key. Users and configs write the relay in several shapes — with or without a
+    /// trailing slash, and sometimes including the <c>/ws</c> or <c>/ws/announce</c> path a
+    /// socket connects to — and all of them must resolve identically.</summary>
     public static string NormalizeRelayUrl(string relayUrl)
     {
+        // Trailing slash first: "/ws/" must lose the slash before the suffix test can see "/ws".
         var normalized = relayUrl.TrimEnd('/');
         if (normalized.EndsWith("/ws/announce", StringComparison.Ordinal))
             normalized = normalized[..^"/ws/announce".Length];
@@ -75,6 +92,9 @@ public static class EndpointResolver
         return normalized;
     }
 
+    /// <summary>The relay's HTTP origin. Relays are configured as <c>wss://</c> because that is
+    /// what a socket wants, but lookups are ordinary REST calls, so the scheme is swapped here
+    /// rather than making every call site carry two URLs. A plain http(s) relay passes through.</summary>
     private static string ToHttps(string relayUrl)
     {
         var normalized = NormalizeRelayUrl(relayUrl);
@@ -87,6 +107,11 @@ public static class EndpointResolver
 
     // localhost first, then private ranges, then public — a caller is most
     // likely able to reach the closest endpoint.
+    //
+    // Substring matching, not real CIDR parsing: "10." matches "110.x" and "172.16." misses the
+    // rest of that /12. That is tolerable because this only sets *probe order* — a
+    // misclassified endpoint is still probed, just sooner or later than ideal, and every
+    // candidate is address-verified before use. Don't reuse this for anything that gates access.
     private static int Proximity(string url)
     {
         if (url.Contains("localhost") || url.Contains("127.0.0.1")) return 0;
@@ -102,8 +127,12 @@ public static class EndpointResolver
         HttpClient http, string agentAddress, string relayUrl, int timeoutMs = 3000,
         bool forceRefresh = false)
     {
+        // Keyed by relay *and* address: the same agent announced on two relays is two lookups.
         var key = $"{NormalizeRelayUrl(relayUrl)}|{agentAddress}";
         Task<ResolvedEndpoint?> task;
+        // Only the caller that started the lookup writes the cache and clears the in-flight
+        // entry; everyone else just awaits. Without this, joiners would race to remove an entry
+        // a later caller had already replaced.
         var ownsTask = false;
 
         lock (CacheGate)
@@ -174,10 +203,16 @@ public static class EndpointResolver
             // Many advertised endpoints (localhost, docker IPs, NAT-bound public
             // IPs) fail from the caller's network; one failure must not abort.
             var info = await GetJsonAsync(http, $"{httpUrl}/info", timeoutMs).ConfigureAwait(false);
+            // The address check is the real gate, not a sanity check: the relay's endpoint list
+            // is only a claim, and a stale or hijacked entry could point at some other agent
+            // (or a machine that reused the address). An endpoint is only accepted once it
+            // identifies itself as the agent we asked for.
             if (info is not null &&
                 info.Value.TryGetProperty("address", out var addr) &&
                 addr.GetString() == agentAddress)
             {
+                // Socket scheme follows the endpoint's own: never silently downgrade a
+                // TLS endpoint to ws://.
                 var isHttps = httpUrl.StartsWith("https", StringComparison.OrdinalIgnoreCase);
                 var baseUrl = httpUrl
                     .Replace("https://", "", StringComparison.OrdinalIgnoreCase)
@@ -254,6 +289,9 @@ public static class EndpointResolver
             .ConfigureAwait(false);
         if (record is null) return new AgentInfo(agentAddress, false);
 
+        // "Online" means the relay currently holds a live connection for this agent. Note the
+        // asymmetry with the direct probes below: reaching an endpoint directly also proves the
+        // agent is up, so a successful probe overrides this to true even if the relay says no.
         var online = record.Value.TryGetProperty("relay", out var relayEl) &&
                      relayEl.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined);
 
@@ -314,6 +352,9 @@ public static class EndpointResolver
             })
             .ToList();
 
+        // WhenAny in a loop rather than WhenAll: the first endpoint that verifies wins and the
+        // rest are abandoned mid-flight. They are plain GETs against a short timeout, so
+        // letting them finish unobserved is cheaper than cancelling them.
         while (pending.Count > 0)
         {
             var done = await Task.WhenAny(pending).ConfigureAwait(false);
@@ -335,8 +376,13 @@ public static class EndpointResolver
         return fallback;
     }
 
+    /// <summary>Parses one metadata source (a relay profile or an <c>/info</c> body) into the
+    /// common shape. <c>Address</c>/<c>Online</c> are left empty on purpose — they are not this
+    /// source's to state, and <see cref="MergeAgentInfo"/> supplies them.</summary>
     private static AgentInfo ParseInfoSource(JsonElement source)
     {
+        // "name" is the documented field; "alias" is what older agents emit. Whitespace-only
+        // values are treated as absent so they don't shadow a real name from a weaker source.
         string? name = null;
         if (TryGetString(source, "name", out var n) && !string.IsNullOrWhiteSpace(n)) name = n;
         else if (TryGetString(source, "alias", out var a) && !string.IsNullOrWhiteSpace(a)) name = a;
@@ -353,6 +399,13 @@ public static class EndpointResolver
             AcceptedInputs: ParseAcceptedInputs(source));
     }
 
+    /// <summary>Layers the three metadata sources, field by field, in decreasing authority:
+    /// <b>direct</b> (the agent answering for itself, right now) beats <b>profile</b> (what it
+    /// published to the relay) beats <b>fallback</b> (whatever the relay record carried).
+    /// Per-field rather than whole-object, so a sparse <c>/info</c> response fills in from the
+    /// profile instead of blanking the fields it happened to omit.
+    /// <para><c>Address</c> always comes from the fallback: it is the address the caller asked
+    /// about, and a remote source must not be able to rewrite an agent's identity.</para></summary>
     private static AgentInfo MergeAgentInfo(
         AgentInfo fallback, AgentInfo? profile, AgentInfo? direct, bool online)
     {
@@ -379,6 +432,10 @@ public static class EndpointResolver
         return new AgentInfo(address, online);
     }
 
+    /// <summary>Reads the tool list, which agents publish either as bare strings or as objects
+    /// with a <c>name</c>. Returns null (not an empty list) when there is nothing usable, so
+    /// <see cref="MergeAgentInfo"/> can fall through to a source that does know the tools —
+    /// an empty list would read as "this agent has no tools" and win the merge.</summary>
     private static IReadOnlyList<string>? NormalizeTools(JsonElement source)
     {
         if (!source.TryGetProperty("tools", out var toolsEl) ||
@@ -404,6 +461,10 @@ public static class EndpointResolver
         return names.Count > 0 ? names : null;
     }
 
+    /// <summary>Reads the skill list. Stricter than <see cref="NormalizeTools"/> — a skill must
+    /// be an object with a real name, and anything else is skipped rather than guessed at.
+    /// Description defaults to empty (it is display text); location stays null when absent.
+    /// Same null-not-empty contract as the tool list, for the same merge reason.</summary>
     private static IReadOnlyList<SkillInfo>? NormalizeSkills(JsonElement source)
     {
         if (!source.TryGetProperty("skills", out var skillsEl) ||
@@ -460,6 +521,11 @@ public static class EndpointResolver
         }
     }
 
+    /// <summary>Reads the agent's declared input capabilities. Every field is a nullable
+    /// tri-state: null means "the agent said nothing", which is not the same as an explicit
+    /// false. Callers must treat unknown as permissive — the server is the real authority, and
+    /// refusing to let a user attach an image because an old agent omitted the field would
+    /// break working setups. A limit of 0 is likewise treated as unstated rather than as a ban.</summary>
     private static AgentAcceptedInputs? ParseAcceptedInputs(JsonElement source)
     {
         if (!source.TryGetProperty("accepted_inputs", out var inputsEl) ||
@@ -516,10 +582,17 @@ public static class EndpointResolver
             if (!response.IsSuccessStatusCode) return null;
             await using var stream = await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
             using var doc = await JsonDocument.ParseAsync(stream, JsonOptions, cts.Token).ConfigureAwait(false);
+            // Clone is required, not defensive: the element is backed by the document's pooled
+            // buffers, which the using above returns to the pool on the way out. Returning the
+            // raw root would hand the caller memory that is about to be reused.
             return doc.RootElement.Clone();
         }
         catch
         {
+            // Every failure mode of a probe — DNS, refused, timeout, 500, malformed body — means
+            // the same thing to every caller here: this endpoint didn't answer. That is the
+            // class's documented contract, not a swallowed bug. The timeout arrives as a
+            // cancellation and is caught by the same clause, since it is not an error either.
             return null;
         }
     }

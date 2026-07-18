@@ -29,11 +29,20 @@ public sealed class ConversationRunRegistry
     private readonly IRunLogger _logger;
     private readonly Action<Exception>? _onError;
 
+    // All four are keyed by conversation id and outlive any page.
+    /// <summary>Runs currently executing. An entry existing here *is* the "conversation is
+    /// busy" flag, which is why entries are removed only once the run is fully terminal.</summary>
     private readonly ConcurrentDictionary<string, ConversationRun> _active = new();
+    /// <summary>The last snapshot per conversation, kept after the run leaves <c>_active</c> so
+    /// a page opened moments later can still see how the turn ended instead of finding nothing.</summary>
     private readonly ConcurrentDictionary<string, ConversationRunSnapshot> _lastSnapshots = new();
+    /// <summary>Requests from failed runs, held so the UI can offer a retry without the caller
+    /// having to reconstruct the original turn. Cleared when a new run starts.</summary>
     private readonly ConcurrentDictionary<string, TurnRequest> _retryable = new();
     private readonly ConcurrentDictionary<string, Subscription> _subscriptions = new();
 
+    // volatile: set on the shutdown path and read by StartRun on arbitrary threads, with no
+    // lock between them. Only ever goes false → true, so a plain flag is sufficient.
     private volatile bool _shuttingDown;
 
     public ConversationRunRegistry(
@@ -63,6 +72,8 @@ public sealed class ConversationRunRegistry
             Cts = new CancellationTokenSource(),
         };
 
+        // TryAdd is the enforcement point for "one run per conversation" — an atomic claim
+        // rather than a check-then-add, so two simultaneous sends cannot both win.
         if (!_active.TryAdd(request.ConversationId, run))
         {
             run.Cts.Dispose();
@@ -78,8 +89,13 @@ public sealed class ConversationRunRegistry
             run.Sequence++;
             snapshot = run.SnapshotLocked();
         }
+        // Published before the task starts, so a caller that subscribes on the next line is
+        // guaranteed to see the run exist rather than racing its first event.
         StoreAndPublish(snapshot, "Queued", run.CreatedAt);
 
+        // Task.Run, not a bare call: StartRun is invoked from the UI thread, and the executor's
+        // synchronous prologue would otherwise run there. The task is deliberately not awaited —
+        // outliving its caller is the entire point of this class.
         run.ExecutionTask = Task.Run(() => RunAsync(run, executor));
         return snapshot;
     }
@@ -121,6 +137,11 @@ public sealed class ConversationRunRegistry
         var subscription = _subscriptions.GetOrAdd(conversationId, _ => new Subscription());
         var token = subscription.Add(handler);
 
+        // Replay-on-subscribe. This is what lets a page attach mid-turn and catch up: it gets
+        // the accumulated snapshot immediately, then live updates. Note the ordering — the
+        // handler is registered *before* the replay, so an update landing in between is
+        // delivered rather than dropped (the cost is a possible duplicate, which the snapshot's
+        // monotonic sequence lets consumers discard).
         var current = GetActiveRun(conversationId);
         if (current is not null) SafeInvoke(handler, current);
 
@@ -180,6 +201,8 @@ public sealed class ConversationRunRegistry
     /// </summary>
     public async Task ShutdownAsync(TimeSpan timeout)
     {
+        // Order matters: the flag goes up first so no new run can be registered into the set we
+        // are about to snapshot and cancel.
         _shuttingDown = true;
         var runs = _active.Values.ToArray();
         foreach (var run in runs) run.Cts.Cancel();
@@ -214,6 +237,10 @@ public sealed class ConversationRunRegistry
 
             Finalize(run, ConversationRunStatus.Completed, finalReply, null, null);
         }
+        // The `when` filter matters: only a cancellation *we* requested counts as Cancelled. An
+        // OperationCanceledException from anywhere else (an HTTP timeout inside the executor) is
+        // a genuine failure and must fall through to the Failed handler, where it becomes
+        // retryable — reporting it as a user cancellation would hide a real problem.
         catch (OperationCanceledException) when (run.Cts.IsCancellationRequested)
         {
             await FinalizeFailureAsync(run, ConversationRunStatus.Cancelled, "cancelled", "The turn was cancelled.");
@@ -224,6 +251,10 @@ public sealed class ConversationRunRegistry
         }
         finally
         {
+            // Key-and-value overload, not TryRemove(key): by the time this runs a *newer* run
+            // may already hold this conversation's slot, and removing by key alone would evict
+            // it — leaving a live turn invisible to GetActiveRun and the conversation wrongly
+            // idle. Only remove the entry if it is still this run.
             _active.TryRemove(new KeyValuePair<string, ConversationRun>(run.ConversationId, run));
             run.Cts.Dispose();
         }
@@ -256,6 +287,10 @@ public sealed class ConversationRunRegistry
         }
     }
 
+    /// <summary>The one place a run becomes terminal. Every other mutation path checks
+    /// <c>Finalized</c> and bails, so once this has run no later event can revive the run or
+    /// overwrite how it ended — which is what makes "terminal exactly once" hold even when a
+    /// cancellation and a completion arrive at the same moment.</summary>
     private void Finalize(
         ConversationRun run, ConversationRunStatus status,
         string? finalReply, string? code, string? message)
@@ -269,15 +304,23 @@ public sealed class ConversationRunRegistry
             run.CompletedAt = DateTimeOffset.UtcNow;
             run.ErrorCode = code;
             run.ErrorMessage = message;
+            // An empty final reply leaves the streamed partial in place rather than blanking it:
+            // some turns answer entirely through the stream and send nothing in the OUTPUT.
             if (finalReply is not null && finalReply.Length > 0) run.PartialContent = finalReply;
             run.Sequence++;
             snapshot = run.SnapshotLocked();
         }
+        // Publishing happens outside the lock — subscribers run arbitrary code (including UI
+        // marshalling), and holding a run's gate across that is how deadlocks get built.
         var elapsed = (run.CompletedAt ?? DateTimeOffset.UtcNow) - run.CreatedAt;
         StoreAndPublish(snapshot, status.ToString(), run.CreatedAt, elapsed);
     }
 
     // ----- sink callbacks (from the executor thread) -----
+    //
+    // All three follow the same shape: take the gate, bail if already terminal or unchanged,
+    // mutate, bump Sequence, snapshot, release, then publish. The no-op guards are what keep a
+    // chatty executor from waking every subscriber with an identical snapshot.
 
     private void SetStatus(ConversationRun run, ConversationRunStatus status)
     {
@@ -338,6 +381,9 @@ public sealed class ConversationRunRegistry
 
         if (_subscriptions.TryGetValue(snapshot.ConversationId, out var subscription))
         {
+            // Safe to iterate while subscribers come and go: Handlers() walks a copy-on-write
+            // array that Add/Remove replace wholesale rather than mutate. A page unsubscribing
+            // from inside its own callback (what navigation does) just misses the next round.
             foreach (var handler in subscription.Handlers()) SafeInvoke(handler, snapshot);
         }
     }

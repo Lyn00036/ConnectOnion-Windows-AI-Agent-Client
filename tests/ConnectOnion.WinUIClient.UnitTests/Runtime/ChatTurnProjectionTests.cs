@@ -155,6 +155,22 @@ public sealed class ChatTurnProjectionTests
     }
 
     [Fact]
+    public void Apply_OnboardSuccess_RetiresThePendingInviteCard()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+
+        projection.Apply(Event("ONBOARD_REQUIRED", "{}"));
+        projection.Apply(Event("ONBOARD_SUCCESS", "{}"));
+
+        var card = target.Messages[0];
+        Assert.True(card.IsOnboardingSubmitted);
+        Assert.False(card.IsOnboarding);
+        Assert.False(card.IsOnboardingInputEnabled);
+        Assert.Equal("Onboarding complete", target.Messages[1].EventTitle);
+    }
+
+    [Fact]
     public void Apply_ModeChangedByAgent_AddsCardSayingWhoChangedIt()
     {
         var target = new FakeTarget();

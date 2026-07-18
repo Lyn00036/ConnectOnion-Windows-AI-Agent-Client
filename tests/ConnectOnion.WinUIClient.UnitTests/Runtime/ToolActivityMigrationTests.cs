@@ -1,3 +1,4 @@
+using System.Globalization;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services.Runtime;
 
@@ -36,6 +37,58 @@ public sealed class ToolActivityMigrationTests
         Assert.Same(user, upgraded[0]);
         Assert.Equal("tool_activity", upgraded[1].EventKind);
         Assert.Same(agent, upgraded[2]);
+    }
+
+    // The legacy writer was `ms < 1000 ? $"{ms:0} ms" : $"{ms / 1000:0.0} s"`, so these two
+    // shapes are the only ones real data can contain. "340 ms" used to come back as 340000
+    // because the seconds check matched the "s" inside "ms".
+    [Theory]
+    [InlineData("340 ms", 340d)]
+    [InlineData("999 ms", 999d)]
+    [InlineData("1.5 s", 1500d)]
+    [InlineData("12.0 s", 12000d)]
+    public void UpgradeLegacyToolMessages_LegacyDurationMeta_ParsesToMilliseconds(string meta, double expectedMs)
+    {
+        var row = Legacy(1, "read_file", EventStatus.Done);
+        row.EventMeta = meta;
+
+        var upgraded = ToolActivityMigration.UpgradeLegacyToolMessages(new[] { row });
+
+        var step = Assert.Single(upgraded[0].ToolActivity!.Steps);
+        Assert.Equal(expectedMs, step.DurationMs);
+    }
+
+    [Fact]
+    public void UpgradeLegacyToolMessages_DecimalMeta_ParsesUnderACommaDecimalCulture()
+    {
+        // The meta string always used '.' as the decimal point, but parsing used the ambient
+        // culture — so under a comma-decimal locale "1.5 s" parsed as 15 seconds.
+        var original = CultureInfo.CurrentCulture;
+        CultureInfo.CurrentCulture = new CultureInfo("de-DE");
+        try
+        {
+            var row = Legacy(1, "read_file", EventStatus.Done);
+            row.EventMeta = "1.5 s";
+
+            var upgraded = ToolActivityMigration.UpgradeLegacyToolMessages(new[] { row });
+
+            Assert.Equal(1500d, Assert.Single(upgraded[0].ToolActivity!.Steps).DurationMs);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = original;
+        }
+    }
+
+    [Fact]
+    public void UpgradeLegacyToolMessages_UnparseableMeta_LeavesDurationUnset()
+    {
+        var row = Legacy(1, "read_file", EventStatus.Done);
+        row.EventMeta = "unknown";
+
+        var upgraded = ToolActivityMigration.UpgradeLegacyToolMessages(new[] { row });
+
+        Assert.Null(Assert.Single(upgraded[0].ToolActivity!.Steps).DurationMs);
     }
 
     private static ChatMessage Legacy(long id, string tool, EventStatus status) => new()

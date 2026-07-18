@@ -33,12 +33,17 @@
                     PointerEntered="Header_PointerEntered"
                     PointerExited="Header_PointerExited"
                     AutomationProperties.Name="{x:Bind Activity.AccessibilityName, Mode=OneWay}">
+                <!-- Title | summary + chevron | spacer.
+                     The trailing star column is what keeps the group left-aligned: the chevron
+                     sits directly after the summary text rather than being pushed to the far
+                     right edge of the card. The header duration that used to occupy the right
+                     edge is gone — Complete() already appends it to the summary text itself
+                     ("… · 3 steps · 1.4 s"), so it was the same number twice. -->
                 <Grid ColumnSpacing="8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
                     <TextBlock x:Name="HeaderTitle"
@@ -46,41 +51,44 @@
                                FontSize="14"
                                Foreground="{ThemeResource TextSecondaryBrush}"
                                VerticalAlignment="Center" />
-                    <TextBlock Grid.Column="1"
-                               Text="{x:Bind Activity.Summary, Mode=OneWay}"
-                               FontSize="11"
-                               Foreground="{ThemeResource TextTertiaryBrush}"
-                               TextTrimming="CharacterEllipsis"
-                               VerticalAlignment="Center" />
-                    <TextBlock x:Name="HeaderDuration"
-                               Grid.Column="2"
-                               Text="{x:Bind Activity.DurationLabel, Mode=OneWay}"
-                               Margin="8,0,0,0"
-                               FontSize="11"
-                               Foreground="{ThemeResource TextTertiaryBrush}"
-                               VerticalAlignment="Center" />
-                    <Grid x:Name="HeaderChevron"
-                          Grid.Column="3"
-                          Width="20"
-                          Height="20"
-                          Margin="4,0,0,0"
-                          VerticalAlignment="Center"
-                          Opacity="0">
-                        <ic:FluentIcon Icon="ChevronUp"
-                                       IconVariant="Regular"
-                                       IconSize="Size12"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center"
-                                       Foreground="{ThemeResource TextTertiaryBrush}"
-                                       Visibility="{x:Bind Activity.IsExpanded, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-                        <ic:FluentIcon Icon="ChevronDown"
-                                       IconVariant="Regular"
-                                       IconSize="Size12"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center"
-                                       Foreground="{ThemeResource TextTertiaryBrush}"
-                                       Visibility="{x:Bind Activity.IsExpanded, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
-                    </Grid>
+
+                    <StackPanel Grid.Column="1"
+                                Orientation="Horizontal"
+                                Spacing="2"
+                                VerticalAlignment="Center">
+                        <!-- MaxWidth is required for TextTrimming to do anything: the column is
+                             Auto now, so without a cap a long summary would size the column to
+                             its full width and never ellipsize. -->
+                        <TextBlock Text="{x:Bind Activity.Summary, Mode=OneWay}"
+                                   MaxWidth="560"
+                                   FontSize="11"
+                                   Foreground="{ThemeResource TextTertiaryBrush}"
+                                   TextTrimming="CharacterEllipsis"
+                                   VerticalAlignment="Center" />
+                        <!-- 16px, not 20: the box only centres the 12px glyph, and the extra
+                             padding read as a gap between the text and the icon. It is not a
+                             hit target of its own — the whole header row is the button. -->
+                        <Grid x:Name="HeaderChevron"
+                              Width="16"
+                              Height="16"
+                              VerticalAlignment="Center"
+                              Opacity="0">
+                            <ic:FluentIcon Icon="ChevronUp"
+                                           IconVariant="Regular"
+                                           IconSize="Size12"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           Foreground="{ThemeResource TextTertiaryBrush}"
+                                           Visibility="{x:Bind Activity.IsExpanded, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                            <ic:FluentIcon Icon="ChevronDown"
+                                           IconVariant="Regular"
+                                           IconSize="Size12"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           Foreground="{ThemeResource TextTertiaryBrush}"
+                                           Visibility="{x:Bind Activity.IsExpanded, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
+                        </Grid>
+                    </StackPanel>
                 </Grid>
             </Button>
 
@@ -194,57 +202,34 @@
                                                   VerticalScrollBarVisibility="Auto"
                                                   HorizontalScrollBarVisibility="Disabled"
                                                   Visibility="{x:Bind IsExpanded, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                                        <!-- The step's Input (its arguments) is deliberately not
+                                             rendered. The header row already names the tool and
+                                             its target ("Read file · a.txt"), which is the part
+                                             a user is scanning for; the raw argument JSON was
+                                             noise above the result. The data is still captured
+                                             on the step (redacted, and persisted in event_args)
+                                             — this is a display choice, not a collection one, so
+                                             re-adding a block bound to Arguments restores it. -->
+                                        <!-- One output block, not a Result card plus an Error
+                                             card. A failed step carries the same text in both
+                                             fields, so two cards printed the same message twice.
+                                             Status drives the accent (DangerBrush when failed)
+                                             through ToolStatusToBrushConverter, and DetailLabel
+                                             switches the heading — the styling carries the
+                                             success/failure distinction the second card used to. -->
                                         <StackPanel Spacing="7">
-                                            <Border Background="{ThemeResource SurfaceSecondaryBrush}"
-                                                    CornerRadius="7"
-                                                    Padding="10,8"
-                                                    Visibility="{x:Bind HasArguments, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                                                <StackPanel Spacing="4">
-                                                    <TextBlock Text="Input"
-                                                               FontSize="11"
-                                                               FontWeight="SemiBold"
-                                                               Foreground="{ThemeResource TextTertiaryBrush}" />
-                                                    <TextBlock Text="{x:Bind Arguments, Mode=OneWay}"
-                                                               FontFamily="Consolas"
-                                                               FontSize="11"
-                                                               Foreground="{ThemeResource TextSecondaryBrush}"
-                                                               TextWrapping="Wrap"
-                                                               IsTextSelectionEnabled="True" />
-                                                </StackPanel>
-                                            </Border>
-
                                             <Border Background="{ThemeResource SurfaceElevatedBrush}"
-                                                    BorderBrush="{ThemeResource BorderDefaultBrush}"
-                                                    BorderThickness="1"
-                                                    CornerRadius="8"
-                                                    Padding="10,8"
-                                                    Visibility="{x:Bind ShowResult, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                                                <StackPanel Spacing="5">
-                                                    <TextBlock Text="Result"
-                                                               FontSize="11"
-                                                               FontWeight="SemiBold"
-                                                               Foreground="{ThemeResource TextTertiaryBrush}" />
-                                                    <TextBlock Text="{x:Bind Result, Mode=OneWay}"
-                                                               FontFamily="Consolas"
-                                                               FontSize="11"
-                                                               Foreground="{ThemeResource TextPrimaryBrush}"
-                                                               TextWrapping="Wrap"
-                                                               IsTextSelectionEnabled="True" />
-                                                </StackPanel>
-                                            </Border>
-
-                                            <Border Background="{ThemeResource SurfaceElevatedBrush}"
-                                                    BorderBrush="{ThemeResource DangerBrush}"
+                                                    BorderBrush="{x:Bind Status, Mode=OneWay, Converter={StaticResource ToolStatusToBrush}}"
                                                     BorderThickness="2,0,0,0"
                                                     CornerRadius="4"
-                                                    Padding="10,7"
-                                                    Visibility="{x:Bind HasError, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                                                <StackPanel Spacing="4">
-                                                    <TextBlock Text="Error"
+                                                    Padding="10,8"
+                                                    Visibility="{x:Bind HasDetail, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                                                <StackPanel Spacing="5">
+                                                    <TextBlock Text="{x:Bind DetailLabel, Mode=OneWay}"
                                                                FontSize="11"
                                                                FontWeight="SemiBold"
-                                                               Foreground="{ThemeResource DangerBrush}" />
-                                                    <TextBlock Text="{x:Bind Error, Mode=OneWay}"
+                                                               Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource ToolStatusToBrush}}" />
+                                                    <TextBlock Text="{x:Bind DetailText, Mode=OneWay}"
                                                                FontFamily="Consolas"
                                                                FontSize="11"
                                                                Foreground="{ThemeResource TextPrimaryBrush}"

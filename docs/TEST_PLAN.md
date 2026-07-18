@@ -121,7 +121,7 @@ Write path: `ConversationRepository.UpsertMessagesAsync` is the **only** writer 
 - `Program.cs` — **custom entry point** (`DISABLE_XAML_GENERATED_MAIN`). `AppInstance.FindOrRegisterForKey("ConnectOnion.Main")`; a non-primary instance calls `RedirectActivationToAsync` and **exits before WinUI starts**, so a second `Application` is never constructed.
 - `App.xaml.cs` — `OnLaunched` → `AppStorage.EnsureDirectories()` → `AppServices.InitializeNotifications()` → construct the one `MainWindow` → `HandleColdStartActivation()` → `FlushPendingActivation()`
 - `App.ActivateMainWindow()` / `_pendingActivation` (`Interlocked`) — **cold-start race**: a redirected second launch can arrive *before* the main window exists; the request is buffered and replayed once the window is ready.
-- `MainWindow.Tray.cs` — minimize-to-tray, `BringToForeground`, `RestoreFromTray`
+- `Shell/MainWindow.Tray.cs` — minimize-to-tray, `BringToForeground`, `RestoreFromTray`
 - `AgentSessionManager.ShutdownAsync()` — drains in-flight runs within 8s, then releases all sockets
 
 ### 2.8 Existing tests
@@ -314,7 +314,7 @@ Note the test steps pass no `-p:Platform`. The solution build maps the conforman
 | **LC-START-003** | DB init failure does not crash the app | C | **P0** | Make `.db` read-only / directory unwritable | Launch | A comprehensible error is surfaced; no silent crash | ✅ | xunit | `AppDatabase.OpenAsync` — **Risk: there is no try/catch today; this will likely crash. The expected result documents what *should* happen.** |
 | **LC-INST-001** | Second instance redirects and exits | E | **P0** | App already running | Launch the exe again | Second process exits; no second window; existing window comes forward | ✅ | FlaUI + process assertions | `Program.Main`, `AppInstance.FindOrRegisterForKey` |
 | **LC-INST-002** | Cold-start activation is buffered and replayed | A | **P1** | — | Call `App.ActivateMainWindow()` *before* the window exists, then create it and `FlushPendingActivation()` | Activation is honored exactly once, not dropped | ⚠️ partial | xunit (after extracting the buffer) | `App._pendingActivation` / `FlushPendingActivation` — **Risk: coupled to static `App`; extract `PendingActivationBuffer` to make it testable (INFRA-5)** |
-| **LC-TRAY-001** | Tray click restores the window | E | P1 | Minimized to tray | Click tray icon | Window restores to foreground | ⚠️ | FlaUI | `MainWindow.Tray.cs` `RestoreFromTray` |
+| **LC-TRAY-001** | Tray click restores the window | E | P1 | Minimized to tray | Click tray icon | Window restores to foreground | ⚠️ | FlaUI | `Shell/MainWindow.Tray.cs` `RestoreFromTray` |
 | **LC-EXIT-001** | Graceful shutdown drains in-flight runs | C | **P0** | A run is streaming | Call `ShutdownAsync()` | Completes within 8s; all sockets released; no unhandled exception | ✅ | xunit + fake server | `AgentSessionManager.ShutdownAsync` |
 | **LC-EXIT-002** | Shutdown still releases when a run hangs | C | P1 | Fake server never replies | `ShutdownAsync()` | Returns after the 8s bound; sockets disposed anyway | ✅ | xunit | same |
 
@@ -467,11 +467,11 @@ Note the test steps pass no `-p:Platform`. The solution build maps the conforman
 | **UT-ABOUT-003** | Copyright year is taken from the clock | A | P2 | `© {DateTime.Now.Year} ConnectOnion` | ✅ | `AppVersionService.CopyrightText` |
 | **UI-ABOUT-004** | High DPI (150% / 200%): text is not clipped | F | P2 | Layout adapts | ❌ manual | `AboutOverlay.xaml` (ScrollViewer backstop) |
 | **UT-HELP-001** | Help menu contains Keyboard shortcuts / ConnectOnion Docs / About | B | P1 | All three present, in order | ⚠️ | `MainWindow.xaml` `HelpMenuBarItem` |
-| **UT-HELP-002** | Docs opens the correct URL | A | **P0** | `https://docs.connectonion.com/` | ⚠️ | `MainWindow.HelpMenu.cs` `DocsUrl` — **Risk: `Launcher.LaunchUriAsync` is static WinRT and cannot be mocked. Extract `IUriLauncher` (INFRA-4) to automate this.** |
+| **UT-HELP-002** | Docs opens the correct URL | A | **P0** | `https://docs.connectonion.com/` | ⚠️ | `Shell/MainWindow.HelpMenu.cs` `DocsUrl` — **Risk: `Launcher.LaunchUriAsync` is static WinRT and cannot be mocked. Extract `IUriLauncher` (INFRA-4) to automate this.** |
 | **UT-HELP-003** | A failed Docs launch surfaces an error toast (never silent) | A | P1 | `NotificationType.Error` toast | ⚠️ | same (`launched == false` branch) |
-| **UT-HELP-004** | Docs and About are separate commands | A | P2 | Two independent handlers; no shared event branching on text | ✅ code review | `MainWindow.HelpMenu.cs` |
+| **UT-HELP-004** | Docs and About are separate commands | A | P2 | Two independent handlers; no shared event branching on text | ✅ code review | `Shell/MainWindow.HelpMenu.cs` |
 | **UT-KBD-001** | The shortcut catalog matches real handlers | A | **P0** | Every entry in `KeyboardShortcutCatalog` has a corresponding KeyDown handler in `MainWindow.*Menu.cs` | ✅ | xunit (reflection / string comparison) — the file's own comment demands this |
-| **UT-KBD-002** | Ctrl+Shift+/ opens the shortcuts window | B | P1 | VK_OEM_2 (191) + Ctrl + Shift | ⚠️ | `MainWindow.HelpMenu.cs` `VkOemSlash` — **Risk: the OEM key code differs on non-US layouts** |
+| **UT-KBD-002** | Ctrl+Shift+/ opens the shortcuts window | B | P1 | VK_OEM_2 (191) + Ctrl + Shift | ⚠️ | `Shell/MainWindow.HelpMenu.cs` `VkOemSlash` — **Risk: the OEM key code differs on non-US layouts** |
 | **UI-KBD-003** | Shortcut search filters | A | P1 | Filters by keyword; empty state when no results | ✅ | `KeyboardShortcutsViewModel.IsEmpty` |
 | **UI-SET-001** | Settings persist across restart | D | **P0** | Theme / font size / sidebar written to `preferences` | ✅ | `PreferencesRepository` + `SettingsViewModel` |
 | **UI-SET-002** | Theme switch applies immediately with no stale colors | B | P1 | Converters and the renderer read brushes fresh each time | ⚠️ | `ThemeService`, `Brushes.xaml` |
@@ -487,7 +487,7 @@ Note the test steps pass no `-p:Platform`. The solution build maps the conforman
 | **UT-NOTIF-005** | Foreground but on another view → in-app toast | A | **P0** | `NotificationChannel.InApp` | ✅ | `:41` |
 | **UT-NOTIF-006** | Background → system notification | A | **P0** | `NotificationChannel.System` | ✅ | `:44` |
 | **UT-NOTIF-007** | Dedup cache suppresses repeats | A | P1 | The same run notifies once | ✅ | `DedupCache` |
-| **UT-NOTIF-008** | Click activates the window and opens the right conversation | C | **P0** | `IChatWindow.ShowConversationAsync(agentId, conversationId)` invoked | ✅ | `ConversationNavigationService` + `MainWindow.Notifications.cs:41` |
+| **UT-NOTIF-008** | Click activates the window and opens the right conversation | C | **P0** | `IChatWindow.ShowConversationAsync(agentId, conversationId)` invoked | ✅ | `ConversationNavigationService` + `Shell/MainWindow.Notifications.cs` |
 | **UT-NOTIF-009** | Target conversation was deleted → falls back to HomePage | C | P1 | No crash | ✅ | `MainWindow.ShowConversationAsync:47` |
 | **UT-NOTIF-010** | Cold-start notification click | C | **P0** | `HandleColdStart(arguments)` buffers until the window is ready | ✅ | `App.HandleColdStartActivation` + `NotificationActivationRouter` |
 | **UT-NOTIF-011** | Notification registration failure does not block startup | C | P1 | `NotificationLog.Warn` records it; the app continues | ✅ | `App.HandleColdStartActivation` try/catch |
@@ -505,7 +505,7 @@ Note the test steps pass no `-p:Platform`. The solution build maps the conforman
 | **UI-NAV-005** | Rapid repeated navigation does not crash | E | P1 | 10 fast page switches | ⚠️ | FlaUI |
 | **UI-NAV-006** | Custom title bar drag region works | F | P2 | The window can be dragged | ❌ manual | `TitleBarDragRegion` |
 | **UI-NAV-007** | Multi-monitor / DPI change | F | P2 | Layout stays correct | ❌ manual | — |
-| **UI-FIND-001** | Ctrl+F opens Find; `IFindHost` pages respond | B | P1 | Match count correct; next/prev works | ⚠️ | `MainWindow.ViewMenu.cs` + `ChatPage.Find.cs` |
+| **UI-FIND-001** | Ctrl+F opens Find; `IFindHost` pages respond | B | P1 | Match count correct; next/prev works | ⚠️ | `Shell/MainWindow.ViewMenu.cs` + `ChatPage.Find.cs` |
 
 ### 11.13 Keyboard and focus (FOCUS)
 
@@ -927,7 +927,7 @@ These were never testing problems — they are real design gaps that writing the
 |---|---|---|
 | 1 | 🔴 **No DB migration framework** — the documented recovery was "delete the database" | **Fixed.** `Data/SchemaMigrator.cs` versions the DB via SQLite's `PRAGMA user_version` and applies ordered forward migrations in a transaction. Existing databases (version 0) are stamped as the version-1 baseline without running anything, since that is exactly the shape pre-versioning builds produced. A database written by a *newer* build now fails loudly instead of being silently mangled. `AppDatabase.EnsureInitializedAsync` calls it right after the baseline schema. **Enables `DB-MIGRATION-001/002`.** |
 | 2 | 🔴 **`IdentityStore` silently regenerated the identity on decrypt failure** | **Fixed.** `Load()` now distinguishes *nothing stored* (normal first run → generate quietly) from *stored but unreadable* (identity is being thrown away → report). The latter raises `IdentityStore.IdentityReset` and latches `WasReset` / `ResetReason`; `MainWindow` surfaces it as an error toast telling the user their address changed and agents must re-authorize. **Enables `DB-ID-002`.** |
-| 3 | 🟠 **`Launcher.LaunchUriAsync` is static and unmockable** | **Fixed.** `Services/UriLauncher.cs` introduces `IUriLauncher` + `SystemUriLauncher`, exposed as the settable `AppServices.UriLauncher`. `MainWindow.HelpMenu.cs` now goes through it. A test substitutes a fake and asserts the URI. **Enables `UT-HELP-002` and `E2E-012`; INFRA-4 is done.** |
+| 3 | 🟠 **`Launcher.LaunchUriAsync` is static and unmockable** | **Fixed.** `Services/UriLauncher.cs` introduces `IUriLauncher` + `SystemUriLauncher`, exposed as the settable `AppServices.UriLauncher`. `Shell/MainWindow.HelpMenu.cs` now goes through it. A test substitutes a fake and asserts the URI. **Enables `UT-HELP-002` and `E2E-012`; INFRA-4 is done.** |
 | 4 | 🟠 **`AppServices` is a static locator** | **No change needed.** `AgentSessionManager` already exposes `public AgentSessionManager(HttpClient, ConversationRepository)`, and the repositories are constructible. Tests construct instances directly and bypass `AppServices` entirely. |
 | 5 | 🟡 **Ctrl+Shift+/ hard-coded VK 191** | **Fixed.** `ProducesSlash(VirtualKey)` asks the *current keyboard layout* what character a key types (`MapVirtualKeyW` with `MAPVK_VK_TO_CHAR`), so the shortcut works on layouts where `/` is not on VK_OEM_2. Numpad divide is accepted too; VK 191 remains only as a fallback. **Removes the `UT-KBD-002` layout risk.** |
 | 6 | 🟡 **`Name[..1]` splits emoji / surrogate pairs** | **Fixed.** The bug existed in *four* places (`ChatViewModel`, `HomePage`, `AgentDetailViewModel`, `ShellAgentItem`), which is why it now lives in one: `Common/NameInitial.cs` takes the first *grapheme* via `StringInfo.GetTextElementEnumerator`. **Enables `UT-AGENT-005`.** |

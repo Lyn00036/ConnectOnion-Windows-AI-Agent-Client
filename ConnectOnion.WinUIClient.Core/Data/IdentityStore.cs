@@ -23,6 +23,10 @@ public static class IdentityStore
     // defense in depth on top of the per-user DPAPI master key, not instead of it.
     private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("ConnectOnion.IdentityStore.v1");
 
+    // Process-lifetime cache. The identity cannot change while the app runs (nothing offers
+    // to regenerate it), so this is a pure memoization — and it matters, because EnsureIdentity
+    // is called synchronously from connection setup and would otherwise hit the database and
+    // DPAPI on every connect.
     private static AgentIdentity? _cached;
 
     /// <summary>
@@ -162,7 +166,12 @@ public static class IdentityStore
         }
         catch
         {
-            // Persist is best-effort; a fresh identity per run still works.
+            // Persist is best-effort; a fresh identity per run still works — but "works" here
+            // means the app functions, not that the user is unaffected. An identity that never
+            // persists gives a new address on every launch, so every agent has to re-authorize
+            // this client each time. If that is ever reported, this silent catch is the place
+            // to look: unlike the unreadable-identity path above, it raises no IdentityReset
+            // and sets no WasReset flag, so nothing surfaces it.
         }
     }
 }

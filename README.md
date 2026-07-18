@@ -85,135 +85,154 @@ enforces foreign keys.
 connectonion-desktop/
   Directory.Packages.props            Central NuGet package versions and audit policy
   Directory.Build.props               Shared analyzer and deterministic-build settings
-  ConnectOnion.WinUIClient.Core/       WinUI-free data, models, policies, and projections
-  ConnectOnion.WinUIClient/
-    ConnectOnion.WinUIClient.sln      Visual Studio solution
-    ConnectOnion.WinUIClient.csproj   WinUI 3 desktop app, net10.0-windows
-    App.xaml[.cs]                     App startup
-    MainWindow.xaml[.cs]              Shell window with Mica backdrop, custom title bar
-    MainWindow.Tray.cs               System tray icon, close dialog, minimize/restore
-    MainWindow.FileMenu.cs           File menu handlers and keyboard shortcuts
-    MainWindow.EditMenu.cs           Undo/redo/cut/copy/paste/select-all + accelerators
-    MainWindow.ViewMenu.cs           Sidebar toggle, zoom, full screen, find overlay
-    MainWindow.HelpMenu.cs           Keyboard shortcuts, ConnectOnion docs, About overlay
-    MainWindow.DragDrop.cs           Window-level drag-and-drop attachment handling
-    MainWindow.Notifications.cs      In-app toast host, notification activation routing
-    Views/
-      HomePage                        Agent selection landing page
-      ChatPage                        Real-time chat with streaming events
-      ChatPage.Find.cs                In-chat find (IFindHost implementation)
-      AgentDetailPage                 Agent edit, /info display, connection test, delete
-      SessionsPage                    Per-agent session management
-      SettingsPage                    Theme, sidebar, font size, shortcuts, identity
-      IFindHost.cs                    Contract the shared Ctrl+F overlay drives a page through
-    ViewModels/
-      ChatViewModel.cs                 Session lifecycle, run subscription, SendAsync
-      ChatViewModel.StreamEvents.cs    Live stream-event -> ChatMessage projection target
-      SessionsViewModel.cs             Session CRUD, active session tracking
-      AgentDetailViewModel.cs          Agent form state, /info loading, connection testing
-      SettingsViewModel.cs             Preference read/write
-      KeyboardShortcutsViewModel.cs    Shortcut catalog + overrides for the help dialog
-      PresenceAwareViewModel.cs        Shared online/offline status base for pages
-    Controls/
-      ShellSidebar.xaml[.cs]          Agent list + session list navigation
-      AddAgentForm.xaml[.cs]          Inline agent creation form
-      ChatComposer.xaml[.cs]          Message input, attachment picker/drop, mic device
-      ToolActivityView.xaml[.cs]      Collapsible per-turn tool execution timeline
-      SettingsOverlay.xaml[.cs]       Modal settings surface over the shell
-      IdentitySettingsContent.xaml    Local Ed25519 identity panel (inside settings)
-      InAppNotificationHost.xaml      In-app toast surface
-      KeyboardShortcutsDialog.xaml    Shortcut help dialog
-      OfflineNoticeBar.xaml           Agent-offline banner
-      MarkdownTextBlock.cs            Markdown chat bubble rendering host
-      HighlightedTextBlock.cs         Find-match highlighting
-    Models/
-      AgentConfig.cs                  Saved agent connection
-      AgentHealthResponse.cs          /health endpoint shape
-      ChatMessage.cs                  Chat bubble (user/agent/event), generic Event* fields
-      ChatAttachment.cs               Resolved attachment metadata for a chat bubble
-      PendingAttachment.cs            Picked/dropped attachment awaiting send
-      ToolActivity.cs                 Per-turn tool timeline aggregate (persisted as event_args)
-      AskUserEntries.cs               ask_user interactive turn field models
-      OnboardSubmission.cs            Onboarding invite code payload
-      PreferencesSnapshot.cs          Theme, font size, sidebar, shortcuts, mic device
-      SessionSummary.cs               Indexed conversation metadata
-      ShellAgentItem.cs               Sidebar agent list item
-      ShellSessionItem.cs             Sidebar session list item
-      Notifications/                  Notification request/decision/settings models
-    Data/
-      AppDatabase.cs                  SQLite initialization and baseline schema
+
+  ConnectOnion.WinUIClient.Core/      Every WinUI-free surface of the client. The testability
+                                      seam: test projects reference this, never the app project.
+    Data/                             SQLite persistence (this whole layer is Core-only)
+      AppDatabase.cs                  Connection open, baseline schema, PRAGMA setup
       SchemaMigrator.cs               Versioned forward migrations (PRAGMA user_version)
       AppStorage.cs                   Local filesystem directory setup
-      AgentRepository.cs              Agent CRUD (SQLite)
-      SessionRepository.cs            Session CRUD (SQLite)
-      ConversationRepository.cs       Message/attachment persistence, incremental upsert (SQLite)
-      PreferencesRepository.cs        Preference persistence (SQLite)
-      UsageRepository.cs              Token-usage ledger persistence (no FK, never cascaded)
-      IdentityStore.cs                Local Ed25519 identity persistence, DPAPI-encrypted seed
+      AgentRepository.cs              Agent CRUD
+      SessionRepository.cs            Session CRUD
+      ConversationRepository.cs       Message/attachment persistence, incremental upsert
+      ConversationRepository.Mapping.cs  Row<->object SQL plumbing for the above
+      PreferencesRepository.cs        Preference persistence
+      UsageRepository.cs              Token-usage ledger (no FK, never cascaded)
+      IdentityStore.cs                Ed25519 identity persistence, DPAPI-encrypted seed
+      AppJsonContext.cs               Source-generated JSON context for local persistence
+    Models/                           AgentConfig, ChatMessage, ChatAttachment, SessionSummary,
+                                      ToolActivity, PreferencesSnapshot, KeyChord/KeyBinding,
+                                      UsageModels, AskUserEntries, Notifications/
     Services/
-      AppServices.cs                  Process-wide singleton service locator
       ConversationCache.cs            LRU cache of the last few idle conversations
-      ConnectionTester.cs             Direct URL and relay reachability probes
-      AgentInfoService.cs             /info fetch, 5-minute cache, change detection
-      AgentPresenceService.cs         In-memory online status cache with TTL
-      ThemeService.cs                 Light/dark theme management, raw Color lookup
+      SessionSelection.cs             The one testable "which session?" rule
+      KeyboardShortcutCatalog.cs      Single source of truth for every advertised shortcut
+      KeyboardShortcutService.cs      Resolves catalog default + user override into a chord
+      AgentAddressValidator.cs        Per-keystroke address validation
+      AgentEndpointDuplicateDetector.cs  Duplicate detection across address/direct URL
       MimeTypeResolver.cs             Extension -> MIME type lookup
+      AppVersionService.cs            Assembly version for the About overlay
+      Runtime/
+        ChatTurnProjection.cs         The single stream-event -> ChatMessage mapping
+        ChatTurnProjection.Events.cs    ...its per-event-type dispatch table
+        ToolActivityProjector.cs      tool_call/tool_result -> tool timeline aggregation
+        ToolActivityMigration.cs      Upgrades legacy persisted tool bubbles at load
+        UsageProjector.cs             Finished run -> token-usage ledger rows
+        AgentConnectionRegistry.cs    Per-conversation app-owned WebSockets, idle eviction
+      Attachments/                    Validation, encoding, attachment-only prompt fallback
+      Notifications/                  Dedup, policy, text shaping (no UI, no OS calls)
+    ViewModels/                       KeyboardSettings / KeyboardShortcuts (WinUI-free)
+    Common/                           ObservableObject base, NameInitial
+
+  ConnectOnion.WinUIClient/           The WinUI 3 app: XAML, code-behind, and anything that
+                                      needs a window or the Windows App SDK
+    ConnectOnion.WinUIClient.sln      Visual Studio solution (references every other project)
+    ConnectOnion.WinUIClient.csproj   net10.0-windows
+    App.xaml[.cs]                     Generic Host build, Serilog, composition root
+    Program.cs                        Entry point
+    MainWindow.xaml[.cs]              Shell window, Mica backdrop, custom title bar
+    Shell/                            The rest of the MainWindow partial (see Shell/README.md)
+      MainWindow.FileMenu.cs          File menu handlers
+      MainWindow.EditMenu.cs          Undo/cut/copy/paste against the last focused text box
+      MainWindow.ViewMenu.cs          Sidebar toggle, zoom, full screen, shared find overlay
+      MainWindow.HelpMenu.cs          Shortcuts dialog, docs link, About overlay
+      MainWindow.Shortcuts.cs         Pushes live chords into menu accelerator text
+      MainWindow.Notifications.cs     In-app toast host, notification activation routing
+      MainWindow.DragDrop.cs          Window-wide "drop it on the composer" hint
+      MainWindow.Tray.cs              Tray icon, close dialog, minimize/restore
+      MainWindow.Tray.Interop.cs      The Win32 P/Invoke the tray needs
+    Views/
+      HomePage                        Agent selection landing page
+      ChatPage                        Real-time chat; split by concern:
+        ChatPage.Scrolling.cs           Scroll position, stick-to-bottom, load overlay
+        ChatPage.MessageActions.cs      Copy / edit / retry and the hover-reveal chrome
+        ChatPage.Attachments.cs         Opening and saving message attachments
+        ChatPage.Interactive.cs         ask_user / approval / plan-review cards
+        ChatPage.Find.cs                In-chat find (IFindHost implementation)
+      AgentDetailPage                 Agent edit, /info display, connection test, delete
+      SessionsPage                    Conversation management list
+      SettingsPage                    Theme, font size, notifications, audio
+      IFindHost.cs                    Contract the shared Ctrl+F overlay drives a page through
+      IReloadablePage.cs              Contract for pages reused across navigation
+    ViewModels/
+      ChatViewModel.cs                State, properties, conversation load/restore
+      ChatViewModel.Run.cs            Send/stop/mode; folds run snapshots into the list
+      ChatViewModel.Conversation.cs   New / branch / retry (re-points the run subscription)
+      ChatViewModel.StreamEvents.cs   Live stream-event -> ChatMessage projection target
+      SessionsViewModel.cs            Session CRUD, active session tracking
+      AgentDetailViewModel.cs         Agent form state, /info loading, connection testing
+      SettingsViewModel.cs            Preference read/write
+      UsageViewModel.cs               Per-model token totals for the Usage panel
+      PresenceAwareViewModel.cs       Shared online/offline status base for pages
+    Controls/                         Grouped by surface (see Controls/README.md; all keep the
+                                      flat ConnectOnion.WinUIClient.Controls namespace)
+      Chat/                           ChatComposer (+ .Speech), ToolActivityView, OfflineNoticeBar
+      Agents/                         AddAgentForm, AgentAvatar
+      Settings/                       SettingsOverlay + content panes, shortcut editing, HotkeyInput
+      Shell/                          ShellSidebar (+ .Events), InAppNotificationHost, AboutOverlay
+      Primitives/                     MarkdownTextBlock, HighlightedTextBlock, IconText,
+                                      DisclosureAnimation (no view-model or feature-model refs)
+    Services/                         Everything here needs a window, the SDK, or DI wiring
+      ServiceRegistration.cs          Generic Host registrations (AddAppServices)
+      AppServices.cs                  Typed accessor over App.Services for framework-created code-behind
+      AgentPresenceService.cs         In-memory online status cache with TTL
+      AgentInfoService.cs             /info fetch, cache, change detection
+      ConnectionTester.cs             Direct URL and relay reachability probes
+      ThemeService.cs                 Light/dark theme management, raw Color lookup
+      UriLauncher.cs                  Mockable wrapper over Launcher.LaunchUriAsync
+      ClipboardService.cs             Clipboard writes
+      LayoutKeys.cs                   Keyboard-layout translation (P/Invokes MapVirtualKeyW)
+      KeyboardShortcutStartupService.cs  IHostedService that loads shortcut overrides
       Runtime/
         AgentSessionManager.cs        App-level turn lifecycle: send, run, project, persist
-        AgentConnectionRegistry.cs    Per-conversation app-owned WebSockets, idle eviction
         AgentTurnExecutor.cs          Drives one turn over a connection
-        ChatTurnProjection.cs         The single stream-event -> ChatMessage mapping
-        ToolActivityProjector.cs      tool_call/tool_result -> tool timeline aggregation
-      Attachments/
-        AttachmentPickerService.cs    FileOpenPicker for outgoing images/files
-        AttachmentDropService.cs      Drag-and-drop attachment handling
-        AttachmentValidationService.cs Preflight checks against agent /info capabilities
-        AttachmentEncoder.cs          Off-UI-thread data: URL encoding
-        AttachmentImageCacheService.cs Decode/cache incoming agent_image attachments
-        AttachmentIntake.cs           Shared picker/drop -> validated attachment pipeline
-      Notifications/                  Windows toasts, in-app toasts, dedup/policy, routing
+        IAgentSessionManager.cs       The contract pages depend on
+      Attachments/                    Picker, drop, image cache (the window-bound half)
+      Notifications/                  Windows toasts, in-app toasts, activation routing
+    Models/                           Sidebar row items only (the rest live in Core)
     Rendering/
       WinUiMarkdownRenderer.cs        Markdown -> WinUI inline/block rendering for chat
-    Common/
-      ObservableObject.cs             INotifyPropertyChanged base class
-      RelayCommand.cs                 ICommand implementation
-      ChatMessageTemplateSelector.cs  Dispatches each bubble kind to its own DataTemplate
-      BoolToVisibilityConverter.cs    XAML value converters
-      ChatRoleConverters.cs           Role-based alignment and color converters
-      RowStateToBackgroundConverter.cs  Unified hover/selected row background
-      LocalPathToImageSourceConverter.cs  Cached image path -> size-capped BitmapImage
+    Common/                           Template selector and XAML value converters
     Styles/
       Colors.xaml                     Raw Light/Dark Color resources (brand palette)
       Brushes.xaml                    Semantic brushes + re-pointed Fluent theme keys
+    Strings/en-US/                    .resw resources (localization is scaffolded, not finished)
     Properties/PublishProfiles/       win-x86, win-x64, win-arm64 profiles
     Package.appxmanifest              MSIX package manifest
 
-  ConnectOnion.Protocol/
+  ConnectOnion.Protocol/              Transport-agnostic, no WinUI dependency
     AgentConnectionService.cs         WebSocket state machine
     AgentIdentity.cs                  Ed25519 identity and signing
-    CanonicalJson.cs                  Canonical JSON serializer
-    EndpointResolver.cs               Relay lookup and endpoint probing
-    WireMessage.cs                    Protocol message definitions
+    CanonicalJson.cs                  Canonical JSON serializer (byte-identical to the JS signer)
+    EndpointResolver.cs               Relay lookup, endpoint probing, /info capability parsing
+    WireMessage.cs                    Thin JsonElement wrapper over an incoming frame
     InputMessageBuilder.cs            Builds the INPUT wire frame (text/images/files)
     AttachmentModels.cs               DataUrlCodec + agent_image/files_received parsers
+    AgentInteractiveParsers.cs        ask_user frame parsing
     InteractiveModels.cs              ask_user, approval, plan review models
+    AgentModes.cs                     Approval-mode constants and display names
     Hex.cs                            Lowercase hex helpers
+    Runtime/
+      ConversationRunRegistry.cs      App-level owner of every in-flight turn
+      ConversationRun.cs              One run's mutable state
+      ConversationRunSnapshot.cs      Immutable published view of a run
+      ConversationRunStatus.cs        Run status enum
+      RunContracts.cs                 IRunSink / IRunPersistence / ITurnExecutor
 
   ConnectOnion.Protocol.Conformance/
-    Program.cs                        C# vs JS signing conformance runner
+    Program.cs                        C# vs JS signing conformance runner (the CI gate)
     ref-sign.js                       Reference JavaScript signer
 
   ConnectOnion.Protocol.LiveTest/
-    Program.cs                        Optional live WebSocket integration test
+    Program.cs                        Optional live WebSocket test against a real agent
 
   tests/
     ConnectOnion.Protocol.Tests/      xunit tests for ConnectOnion.Protocol
-    ConnectOnion.WinUIClient.UnitTests/  Headless tests for the WinUI-free app surfaces
+    ConnectOnion.WinUIClient.UnitTests/  Headless tests over Core, plus the ArchUnit layer gate
     ConnectOnion.IntegrationTests/    SQLite schema/repository tests against a real database file
     ConnectOnion.WinUIClient.UITests/ Opt-in FlaUI real-window shell smoke tests
 
   .github/workflows/ci.yml            Windows/.NET CI workflow
-  global.json                         SDK selection for local builds
 ```
 
 ## Requirements

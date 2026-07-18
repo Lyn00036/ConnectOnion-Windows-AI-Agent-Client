@@ -10,8 +10,20 @@ using Windows.System;
 
 namespace ConnectOnion.WinUIClient;
 
+/// <summary>
+/// The View menu: zoom, full screen, sidebar visibility, navigation, and the window-level find
+/// overlay.
+///
+/// Two things here belong to the window rather than to any page, and that is why they live in
+/// this partial. Zoom is applied as a render transform over the whole content frame, so it is
+/// not a page's business; and there is exactly one find UI, which attaches to whatever page is
+/// currently loaded through <see cref="Views.IFindHost"/> — a page implements that interface
+/// rather than building a find bar of its own.
+/// </summary>
 public sealed partial class MainWindow
 {
+    // Zoom is clamped to a modest range on purpose: this scales the entire UI including chrome,
+    // so anything beyond these bounds starts clipping layouts rather than just enlarging text.
     private const double ZoomStep = 0.1;
     private const double MinZoom = 0.8;
     private const double MaxZoom = 1.4;
@@ -26,7 +38,13 @@ public sealed partial class MainWindow
 
     private double _zoomFactor = 1.0;
     private bool _isFullScreen;
+    /// <summary>Guards against the feedback loop when the window writes the query back into the
+    /// find box (restoring a remembered search): the resulting TextChanged would otherwise
+    /// re-drive the page's search as though the user had typed it.</summary>
     private bool _isUpdatingFindText;
+    /// <summary>The page currently wired to the shared find UI, or null when the loaded page
+    /// does not support in-content search. Re-resolved on navigation, which is what lets one
+    /// overlay serve every page.</summary>
     private Views.IFindHost? _activeFindHost;
     private readonly DispatcherTimer _zoomPopupIdleTimer = new()
     {
@@ -92,9 +110,17 @@ public sealed partial class MainWindow
     private void ToggleFullScreen_Click(object sender, RoutedEventArgs e)
         => ToggleFullScreenCommand();
 
+    /// <summary>Dispatches the View menu's keyboard shortcuts.
+    /// <para>Note it never compares key codes: <c>MatchShortcut</c> asks
+    /// <c>KeyboardShortcutService</c>, which resolves the catalog default against the user's
+    /// override — so a rebound shortcut works here with no change to this file. Falling through
+    /// (rather than marking Handled) on an unrecognized id is what lets the File/Help partials
+    /// see the same keystroke.</para></summary>
     private void ViewMenuShortcut_KeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (e.Handled) return;
+        // A modal overlay owns the keyboard while it is up; firing menu commands underneath it
+        // would act on a window the user cannot currently see or reach.
         if (IsModalOverlayOpen) return;
 
         var id = MatchShortcut(e);
@@ -142,6 +168,10 @@ public sealed partial class MainWindow
         e.Handled = true;
     }
 
+    /// <summary>Opens a terminal at the user's profile directory. Prefers Windows Terminal and
+    /// falls back to PowerShell, which is always present — <c>wt.exe</c> is not installed on
+    /// every Windows build. Both go through the shell (<c>UseShellExecute</c>) so PATH
+    /// resolution and the app-execution aliases work.</summary>
     private void OpenTerminalCommand()
     {
         try
@@ -164,6 +194,9 @@ public sealed partial class MainWindow
         }
     }
 
+    /// <summary>Ctrl+F. Silently does nothing on a page that does not implement
+    /// <see cref="Views.IFindHost"/> — showing a find bar that cannot search anything would be
+    /// worse than no response.</summary>
     private void FindCommand()
     {
         if (ContentFrame.Content is not Views.IFindHost findHost) return;
@@ -172,9 +205,13 @@ public sealed partial class MainWindow
         UpdateFindOverlayPosition();
         FindOverlayPanel.Visibility = Visibility.Visible;
         findHost.OpenFind();
+        // Re-run the previous query: reopening find should show the search you had, not a blank
+        // bar, and the SelectAll below means typing still replaces it in one keystroke.
         findHost.SetFindQuery(FindTextBox.Text);
         UpdateFindOverlayState();
 
+        // Focus is deferred: the overlay was made visible microseconds ago and cannot take
+        // focus until the framework has laid it out.
         DispatcherQueue.TryEnqueue(() =>
         {
             FindTextBox.Focus(FocusState.Programmatic);
@@ -199,8 +236,14 @@ public sealed partial class MainWindow
         RestartZoomPopupIdleTimer();
     }
 
+    /// <summary>Applies zoom as a render transform over the content area. A transform, not a
+    /// font-size change: it scales the whole UI uniformly and costs nothing to apply, at the
+    /// cost of not reflowing — which is why the zoom range above is deliberately narrow.
+    /// Origin is top-left so zooming grows downward-right rather than drifting the content.</summary>
     private void SetZoom(double zoomFactor)
     {
+        // Rounded to 2dp so repeated ±0.1 steps land back exactly on 1.0 rather than
+        // accumulating float error and leaving "Reset" permanently enabled at 100%.
         _zoomFactor = Math.Round(zoomFactor, 2);
         UpdateZoomPercentText();
         MainContentArea.RenderTransformOrigin = new Windows.Foundation.Point(0, 0);
@@ -217,8 +260,13 @@ public sealed partial class MainWindow
         ResetZoomButton.IsEnabled = Math.Abs(_zoomFactor - DefaultZoom) > 0.001;
     }
 
+    /// <summary>Positions the zoom popup clear of the window's caption buttons. This app draws
+    /// its own title bar, so the popup shares that strip and would otherwise sit under
+    /// minimize/maximize/close and swallow those clicks.</summary>
     private void UpdateZoomPopupPosition()
     {
+        // 144 is the standard three-button caption width, used only before the column has
+        // measured (first show); after that the real width wins.
         var captionWidth = CaptionButtonsColumn.ActualWidth > 0
             ? CaptionButtonsColumn.ActualWidth
             : 144;
@@ -235,6 +283,9 @@ public sealed partial class MainWindow
         var captionWidth = CaptionButtonsColumn.ActualWidth > 0
             ? CaptionButtonsColumn.ActualWidth
             : 144;
+        // Shrinks toward the minimum on a narrow window rather than being clipped by the caption
+        // buttons; below FindOverlayMinWidth it stops shrinking, since a find box narrower than
+        // that can't show its counter and buttons anyway.
         var availableWidth = Math.Max(FindOverlayMinWidth, RootGrid.ActualWidth - captionWidth - 16);
 
         FindOverlayPanel.Width = Math.Min(FindOverlayWidth, availableWidth);
@@ -245,6 +296,9 @@ public sealed partial class MainWindow
             0);
     }
 
+    /// <summary>Points the shared find UI at a page, detaching from the previous one. Without
+    /// the swap, a navigated-away page would keep pushing match counts into an overlay that is
+    /// now searching something else — and the window would hold it alive through the handler.</summary>
     private void AttachFindHost(Views.IFindHost findHost)
     {
         if (ReferenceEquals(_activeFindHost, findHost)) return;
@@ -256,6 +310,8 @@ public sealed partial class MainWindow
         _activeFindHost.FindStateChanged += FindHost_FindStateChanged;
     }
 
+    // Marshalled: the page may raise this from a debounce timer or a background continuation,
+    // and everything UpdateFindOverlayState touches is UI.
     private void FindHost_FindStateChanged(object? sender, EventArgs e)
         => DispatcherQueue.TryEnqueue(UpdateFindOverlayState);
 
@@ -273,6 +329,8 @@ public sealed partial class MainWindow
     {
         FindOverlayPanel.Visibility = Visibility.Collapsed;
         _activeFindHost?.CloseFind();
+        // Guarded: this assignment raises TextChanged, which would otherwise push an empty
+        // query back into the page we just told to close.
         _isUpdatingFindText = true;
         FindTextBox.Text = "";
         _isUpdatingFindText = false;
@@ -285,10 +343,15 @@ public sealed partial class MainWindow
         _activeFindHost?.SetFindQuery(FindTextBox.Text);
     }
 
+    /// <summary>Enter / Shift+Enter step through matches, Esc closes — the conventional find-bar
+    /// keys, handled here rather than through the shortcut catalog because they only apply while
+    /// the find box has focus and would otherwise collide with the composer's own Enter.</summary>
     private void FindTextBox_KeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (e.Key == VirtualKey.Enter)
         {
+            // Shift read live from the keyboard source: KeyRoutedEventArgs carries no
+            // modifier state, so there is nothing on `e` to test.
             if ((Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift) & Windows.UI.Core.CoreVirtualKeyStates.Down) != 0)
                 _activeFindHost?.SelectPreviousFindMatch();
             else
@@ -314,6 +377,10 @@ public sealed partial class MainWindow
     private void CloseFind_Click(object sender, RoutedEventArgs e)
         => CloseFindOverlay();
 
+    /// <summary>Restarts the popup's auto-hide countdown. Called after every zoom interaction so
+    /// the popup stays up while the user is adjusting and dismisses itself once they stop.
+    /// No-ops when the popup is hidden — arming a timer whose only job is to hide something
+    /// already hidden is how a stray tick ends up running against a torn-down tree.</summary>
     private void RestartZoomPopupIdleTimer()
     {
         if (ZoomPopupPanel.Visibility != Visibility.Visible) return;
@@ -336,10 +403,14 @@ public sealed partial class MainWindow
             : AppWindowPresenterKind.Default);
     }
 
+    /// <summary>Whether the caret is in something the user types into. Used to stand shortcuts
+    /// down so they don't steal keys an editor legitimately owns.</summary>
     private bool IsEditableInputFocused()
     {
         var focused = FocusManager.GetFocusedElement(RootGrid.XamlRoot) as DependencyObject;
 
+        // Walks up the tree rather than testing the focused element alone: focus often lands on
+        // a part *inside* a text control's template, which is not itself a TextBox.
         while (focused is not null)
         {
             if (focused is TextBox or RichEditBox or PasswordBox or AutoSuggestBox or NumberBox)

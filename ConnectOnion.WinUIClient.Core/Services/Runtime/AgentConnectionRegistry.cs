@@ -47,6 +47,14 @@ public sealed class AgentConnectionRegistry
         _clock = clock ?? (() => Environment.TickCount64);
     }
 
+    /// <summary>The conversation's socket, creating it on first use. <see cref="Lazy{T}"/> is
+    /// what makes this safe under concurrency: <c>GetOrAdd</c>'s factory can run on several
+    /// threads at once and discard the losers, which for a raw socket would mean silently
+    /// leaking a live WebSocket. Wrapping it means only the value that won the race is ever
+    /// constructed.
+    /// <para>The <paramref name="agent"/> is captured by the factory, so a conversation keeps
+    /// the config it was first opened with until the socket is removed — an agent edited
+    /// mid-session needs a <see cref="RemoveAsync"/> to take effect.</para></summary>
     public AgentConnectionService GetOrCreate(string conversationId, AgentConfig agent)
     {
         _lastUsed[conversationId] = _clock();
@@ -66,6 +74,9 @@ public sealed class AgentConnectionRegistry
         return null;
     }
 
+    /// <summary>Drops a conversation's socket — conversation or agent deleted, or idle eviction.
+    /// Removed from the map <i>before</i> the await, so a concurrent <see cref="GetOrCreate"/>
+    /// builds a fresh socket rather than handing back the one being disposed.</summary>
     public async Task RemoveAsync(string conversationId)
     {
         _lastUsed.TryRemove(conversationId, out _);
@@ -83,8 +94,12 @@ public sealed class AgentConnectionRegistry
     public async Task TrimIdleAsync(Func<string, bool> isBusy)
     {
         var evictable = _connections
+            // IsValueCreated: an entry whose lazy never ran holds no socket, so there is
+            // nothing to close and forcing it would create the very thing we are trimming.
             .Where(kv => kv.Value.IsValueCreated && !isBusy(kv.Key))
             .Select(kv => kv.Key)
+            // Newest first, then skip the keepers — so what survives the Skip is everything
+            // older than the MaxIdleConnections most recently touched.
             .OrderByDescending(id => _lastUsed.TryGetValue(id, out var t) ? t : 0)
             .Skip(MaxIdleConnections)
             .ToList();

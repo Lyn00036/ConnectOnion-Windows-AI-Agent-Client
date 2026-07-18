@@ -31,6 +31,11 @@ public sealed partial class IconText : UserControl
             nameof(IconSize),
             typeof(IconSize),
             typeof(IconText),
+            // Size16 is the default on purpose, not just as a common size: IconSize selects a
+            // separate font file per size, and the smaller ones are incomplete (Size12 ships 439
+            // glyphs against Size16's 4372). A missing glyph renders as a blank box with no
+            // build error, so anything smaller than 16 must be a scaled-down Size16 rather than
+            // a genuine small size — see the FluentIcons notes in CLAUDE.md.
             new PropertyMetadata(FluentIcons.Common.IconSize.Size16));
 
     public static readonly DependencyProperty SpacingProperty =

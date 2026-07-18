@@ -59,10 +59,29 @@ public sealed partial class ChatViewModel
         }
         catch (Exception ex)
         {
+            connection.InviteCode = null;
             message.IsOnboardingSubmitted = false;
             message.Content = $"Invite code submission failed: {ex.Message}";
             StatusText = "";
         }
+    }
+
+    /// <summary>Re-arms an invite-code card whose submission never reached ONBOARD_SUCCESS
+    /// (rejected code, dropped socket) so the user can try again. The stored code is dropped
+    /// with it — the connection auto-submits <see cref="AgentConnectionService.InviteCode"/>
+    /// on the next ONBOARD_REQUIRED, and replaying a code the agent just refused would only
+    /// fail again without the user ever seeing the box.</summary>
+    private void ReopenPendingOnboarding()
+    {
+        var reopened = false;
+        foreach (var message in Messages)
+        {
+            if (!message.IsOnboarding || !message.IsOnboardingSubmitted) continue;
+            message.IsOnboardingSubmitted = false;
+            message.Content = "Onboarding did not complete. Check the invite code and try again.";
+            reopened = true;
+        }
+        if (reopened && CurrentConnection is { } connection) connection.InviteCode = null;
     }
 
     /// <summary>Submits an ask_user bubble's answer: dynamic fields → JSON, multi-select →

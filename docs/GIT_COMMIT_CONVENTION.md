@@ -1,3 +1,4 @@
+
 # Git Commit Convention
 
 This project uses Conventional Commits.

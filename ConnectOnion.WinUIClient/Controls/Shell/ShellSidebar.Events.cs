@@ -95,11 +95,25 @@ public sealed partial class ShellSidebar
         catch { /* Ignore errors during agent deletion. */ }
     }
 
+    /// <summary>A conversation row inside an agent's branch. Focuses that agent, since the user
+    /// clicked within its subtree and expects the tree to follow.</summary>
     private async void Session_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.Tag is string sessionId)
         {
             await SelectSessionAsync(sessionId);
+        }
+    }
+
+    /// <summary>A conversation row in the pinned section. Same navigation, but the tree below is
+    /// left as the user arranged it — see <see cref="SelectSessionAsync"/>. Separate handler
+    /// rather than a flag on the row, because the two call sites are already distinct elements
+    /// in the XAML and this keeps the difference visible where the click is wired.</summary>
+    private async void PinnedSession_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is string sessionId)
+        {
+            await SelectSessionAsync(sessionId, preserveSidebarState: true);
         }
     }
 

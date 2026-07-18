@@ -21,7 +21,7 @@ namespace ConnectOnion.WinUIClient.Services.Runtime;
 /// model/token/duration metrics) and is <b>not</b> thread-safe: the caller applies
 /// events on a single thread (the UI dispatcher, or the persistence task).
 /// </summary>
-public sealed class ChatTurnProjection
+public sealed partial class ChatTurnProjection
 {
     private readonly IChatProjectionTarget _target;
 
@@ -80,271 +80,6 @@ public sealed class ChatTurnProjection
         }
     }
 
-    private void ApplyParsed(AgentStreamEvent e, JsonElement root)
-    {
-        // An unparseable frame still projects its bubble (with empty fields), exactly as before —
-        // the readers below tolerate a missing property but not an *undefined* element.
-        if (root.ValueKind != JsonValueKind.Object) root = EmptyObject.RootElement;
-
-        string? Str(string name) => root.ValueKind == JsonValueKind.Object
-            && root.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String
-                ? v.GetString() : null;
-        double? Num(string name) => root.ValueKind == JsonValueKind.Object
-            && root.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number
-                ? v.GetDouble() : null;
-        bool? Flag(string name) => root.ValueKind == JsonValueKind.Object
-            && root.TryGetProperty(name, out var v)
-                ? v.ValueKind == JsonValueKind.True ? true
-                    : v.ValueKind == JsonValueKind.False ? false : (bool?)null
-                : null;
-        switch (e.Type)
-        {
-            // Local-only lifecycle markers. They intentionally render no separate bubble; the
-            // successful marker is attached to the final OUTPUT message instead.
-            case "interrupt_requested":
-                _wasInterrupted = true;
-                break;
-
-            case "interrupt_request_failed":
-                _wasInterrupted = false;
-                break;
-
-            case "tool_call":
-                GetToolActivity().ApplyCall(e);
-                break;
-
-            case "tool_result":
-                _toolActivity?.ApplyResult(e);
-                break;
-
-            case "llm_call":
-                if (Str("model") is { } callModel) _turnModel = callModel;
-                break;
-
-            case "llm_result":
-            {
-                if (Str("model") is { } resultModel) _turnModel = resultModel;
-
-                var (tokIn, tokOut) = TryParseRawTokenUsage(root);
-                if (tokIn is not null) { _turnTokensIn += tokIn.Value; _turnHasUsage = true; }
-                if (tokOut is not null) { _turnTokensOut += tokOut.Value; _turnHasUsage = true; }
-                if (Num("duration_ms") is { } dur) _turnDurationMs += dur;
-                if (Num("context_percent") is { } ctx) _turnContextPercent = ctx;
-                if (Num("tool_calls_count") is { } tcc) _turnToolCallsCount += (long)tcc;
-                break;
-            }
-
-            case "thinking":
-            {
-                var thinking = new ChatMessage
-                {
-                    Id = NextId(),
-                    Role = ChatRole.Event,
-                    EventKind = "activity",
-                    EventTitle = "Thinking",
-                    EventDetail = Str("content"),
-                    Status = EventStatus.Running,
-                };
-                _thinkingActivities.Add(thinking);
-                Add(thinking);
-                break;
-            }
-
-            case "intent":
-            {
-                var id = Str("id");
-                if (Str("status") == "analyzing")
-                {
-                    Add(NewActivity(id, "Understanding request...", EventStatus.Running));
-                }
-                else if (FindEvent(id, "activity") is { } existing)
-                {
-                    existing.EventTitle = "Request understood";
-                    existing.EventDetail = Str("ack");
-                    existing.Status = EventStatus.Done;
-                }
-                break;
-            }
-
-            case "eval":
-            {
-                var id = Str("id");
-                if (Str("status") == "evaluating")
-                {
-                    var item = NewActivity(id, "Evaluating result...", EventStatus.Running);
-                    item.EventDetail = Str("expected");
-                    Add(item);
-                }
-                else if (FindEvent(id, "activity") is { } existing)
-                {
-                    existing.EventTitle = "Evaluation complete";
-                    existing.EventDetail = Str("summary") ?? Str("expected");
-                    existing.Status = Flag("passed") == false ? EventStatus.Error : EventStatus.Done;
-                }
-                break;
-            }
-
-            case "compact":
-            {
-                var id = Str("id");
-                if (Str("status") == "compacting")
-                {
-                    Add(NewActivity(id, "Compacting context...", EventStatus.Running));
-                }
-                else if (FindEvent(id, "activity") is { } existing)
-                {
-                    existing.EventTitle = "Context compacted";
-                    existing.Status = Str("status") == "error" ? EventStatus.Error : EventStatus.Done;
-                    existing.EventDetail = Str("message") ?? Str("error");
-                    if (Num("context_before") is { } before && Num("context_after") is { } after)
-                        existing.EventMeta = $"{before:0} → {after:0}";
-                }
-                break;
-            }
-
-            case "tool_blocked":
-                GetToolActivity().AddBlocked(e);
-                break;
-
-            case "agent_image":
-            {
-                // Don't render the image yet — buffer it and hang it on the final output when the
-                // turn completes (see FlushPendingImages). Rendering here would drop the image in
-                // above the tool activity, usage summary, and final reply that stream in after it.
-                if (AttachmentWireEvents.TryGetAgentImageDataUrl(WireMessage.Wrap(root), out var dataUrl))
-                    _pendingAgentImages.Add(dataUrl);
-                break;
-            }
-
-            case "files_received":
-            {
-                var names = new List<string>();
-                if (AttachmentWireEvents.TryGetFilesReceived(WireMessage.Wrap(root), out var files))
-                {
-                    foreach (var file in files) names.Add(file.Name);
-                }
-                var item = NewActivity(null, $"Files received - {names.Count} file(s)", EventStatus.Done);
-                if (names.Count > 0) item.EventDetail = string.Join(", ", names);
-                Add(item);
-                break;
-            }
-
-            case "assistant":
-            {
-                var content = Str("content");
-                if (!string.IsNullOrEmpty(content))
-                {
-                    CompleteThinkingActivities(EventStatus.Done);
-                    _streamedFinalReply = new ChatMessage
-                    {
-                        Id = NextId(),
-                        Role = ChatRole.Agent,
-                        Content = content,
-                        AgentName = AgentName,
-                    };
-                    Add(_streamedFinalReply);
-                }
-                break;
-            }
-
-            case "ONBOARD_SUCCESS":
-                Add(NewActivity(null, "Onboarding complete", EventStatus.Done));
-                break;
-
-            case "mode_changed":
-            {
-                // The agent can enter plan mode by itself (triggered_by: "agent"), so this card is
-                // not an echo of the user's own click — it is the only place a mode the *agent*
-                // chose becomes visible.
-                var item = NewActivity(null, $"Mode: {AgentModes.DisplayName(Str("mode"))}", EventStatus.Done);
-                item.EventMeta = Str("triggered_by") switch
-                {
-                    "agent" => "by agent",
-                    "ulw_checkpoint" => "by checkpoint",
-                    _ => null,
-                };
-                Add(item);
-                break;
-            }
-
-            // ---- interactive turns & onboarding (synthetic events, see AgentTurnExecutor) ----
-
-            case "ONBOARD_REQUIRED":
-                if (!Messages.Any(m => m.IsOnboarding && !m.IsOnboardingSubmitted))
-                {
-                    Add(new ChatMessage
-                    {
-                        Id = NextId(),
-                        Role = ChatRole.Agent,
-                        AgentName = AgentName,
-                        IsOnboarding = true,
-                        Content = "This agent requires an invite code before the conversation can continue.",
-                    });
-                }
-                break;
-
-            case "ask_user":
-            {
-                var request = AgentInteractiveParsers.ParseAskUser(WireMessage.Wrap(root));
-                var message = new ChatMessage
-                {
-                    Id = NextId(),
-                    Role = ChatRole.Event,
-                    EventKind = "ask_user",
-                    EventKey = request.Id,
-                    EventEyebrow = "Question",
-                    EventTitle = request.Text,
-                    Status = EventStatus.Running,
-                };
-                message.AskUserMultiSelect = request.MultiSelect;
-                foreach (var option in request.Options)
-                {
-                    message.AskUserOptions.Add(option);
-                    if (request.MultiSelect) message.AskUserOptionEntries.Add(new AskUserOptionEntry { Text = option });
-                }
-                foreach (var field in request.Fields)
-                {
-                    message.AskUserFields.Add(new AskUserFieldEntry
-                    {
-                        Name = field.Name,
-                        Label = field.Label,
-                        Placeholder = field.Placeholder,
-                    });
-                }
-                Add(message);
-                break;
-            }
-
-            case "approval_needed":
-                _toolActivity?.WaitForConfirmation();
-                Add(new ChatMessage
-                {
-                    Id = NextId(),
-                    Role = ChatRole.Event,
-                    EventKind = "approval",
-                    EventEyebrow = "Approval needed",
-                    EventTitle = Str("tool") ?? "",
-                    EventDetail = Str("description"),
-                    EventArgs = root.ValueKind == JsonValueKind.Object && root.TryGetProperty("arguments", out var a)
-                        ? PrettyJson(a.GetRawText()) : PrettyJson("{}"),
-                    Status = EventStatus.Running,
-                });
-                break;
-
-            case "plan_review":
-                Add(new ChatMessage
-                {
-                    Id = NextId(),
-                    Role = ChatRole.Event,
-                    EventKind = "plan_review",
-                    EventEyebrow = "Plan review",
-                    EventTitle = "Review the plan",
-                    EventDetail = Str("plan_content") ?? "",
-                    Status = EventStatus.Running,
-                });
-                break;
-        }
-    }
 
     /// <summary>
     /// Adds the final agent reply exactly once — only if it differs from the last agent
@@ -382,10 +117,15 @@ public sealed class ChatTurnProjection
         _toolActivity?.Complete();
         CompleteThinkingActivities(EventStatus.Done);
 
+        // Reuse the streamed bubble only when it *is* the final answer. An empty reply counts as
+        // a match (the OUTPUT carried nothing new), but a reply that differs means the stream's
+        // bubble was a partial, so it stays where it is and the real answer is appended below.
         var streamedFinal = _streamedFinalReply is not null
             && (string.IsNullOrEmpty(reply) || _streamedFinalReply.Content == reply)
                 ? _streamedFinalReply
                 : null;
+        // Remove-and-reinsert rather than inserting the summary above it: the bubble keeps its
+        // identity (and its id), so nothing downstream sees it as a new message.
         if (streamedFinal is not null) Messages.Remove(streamedFinal);
 
         AppendTurnSummary();
@@ -419,6 +159,9 @@ public sealed class ChatTurnProjection
             EventKind = "activity",
             EventKey = "turn_usage",
             EventTitle = _turnModel ?? "Turn usage",
+            // The bubble is added even when the agent reported nothing measurable. "Usage not
+            // reported" is an honest answer; omitting the row entirely would leave the user
+            // unable to tell a free turn from an unreported one.
             EventMeta = parts.Count > 0 ? string.Join(" · ", parts) : "Usage not reported",
             Status = EventStatus.Done,
         });
@@ -458,6 +201,11 @@ public sealed class ChatTurnProjection
 
         foreach (var dataUrl in _pendingAgentImages)
         {
+            // Attached in the Encoding state and handed to the target, which decodes/caches it
+            // to disk off this path and then flips the status. The bubble therefore renders a
+            // placeholder immediately instead of blocking the turn on image I/O — and the
+            // base64 payload never lands on the ChatMessage, only the resulting cache path.
+            // "image" is a placeholder name; the real one comes from the content hash.
             var attachment = new ChatAttachment
             {
                 Kind = AttachmentKind.Image,
@@ -470,6 +218,10 @@ public sealed class ChatTurnProjection
         _pendingAgentImages.Clear();
     }
 
+    /// <summary>Stops every thinking spinner this turn opened. There is no "thinking finished"
+    /// frame on the wire — the agent simply moves on — so the loader is retired by whatever
+    /// comes next (a reply, a failure, the end of the turn). Only Running rows are touched, so
+    /// an already-settled one keeps the status it was settled with.</summary>
     private void CompleteThinkingActivities(EventStatus status)
     {
         foreach (var thinking in _thinkingActivities)
@@ -478,6 +230,9 @@ public sealed class ChatTurnProjection
         }
     }
 
+    /// <summary>The turn's one tool-activity card, created on first use. Lazily, because most
+    /// turns call no tools at all and an empty card is pure clutter; one per turn, because the
+    /// card's job is to collapse a turn's whole tool timeline into a single expandable row.</summary>
     private ToolActivityProjector GetToolActivity()
     {
         if (_toolActivity is not null) return _toolActivity;
@@ -485,7 +240,9 @@ public sealed class ChatTurnProjection
         {
             TurnId = Guid.NewGuid().ToString("N"),
             DisplayMode = ToolDisplayMode.Compact,
-            IsExpanded = true,
+            // Starts collapsed (the model's default) — stated explicitly because this is the
+            // card a live turn creates, and it is the one users see most.
+            IsExpanded = false,
         };
         Add(new ChatMessage
         {
@@ -517,6 +274,9 @@ public sealed class ChatTurnProjection
         Status = status,
     };
 
+    /// <summary>Finds the open row a completion frame belongs to. <c>LastOrDefault</c>, not
+    /// <c>FirstOrDefault</c>: agents reuse ids across a long conversation, and the most recent
+    /// row carrying that key is always the one this frame is completing.</summary>
     private ChatMessage? FindEvent(string? key, string kind)
         => string.IsNullOrEmpty(key)
             ? null
@@ -525,6 +285,9 @@ public sealed class ChatTurnProjection
     private static string FormatDuration(double ms)
         => ms < 1000 ? $"{ms:0} ms" : $"{ms / 1000:0.0} s";
 
+    /// <summary>Re-indents a JSON blob for the approval card's argument pane. Unparseable input
+    /// is returned untouched rather than swallowed — the user still needs to see what the agent
+    /// is asking to run, even if it isn't valid JSON.</summary>
     internal static string? PrettyJson(string? raw)
     {
         if (string.IsNullOrEmpty(raw)) return null;

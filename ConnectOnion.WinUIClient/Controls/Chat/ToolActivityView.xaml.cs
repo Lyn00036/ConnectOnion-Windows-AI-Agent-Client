@@ -6,6 +6,15 @@ using Microsoft.UI.Xaml.Media;
 
 namespace ConnectOnion.WinUIClient.Controls;
 
+/// <summary>
+/// The expandable tool-execution card in the transcript: a header summarizing the turn's tool
+/// activity, over a timeline of individually expandable steps.
+///
+/// Two levels of disclosure, handled differently on purpose. Expanding the *card* changes the
+/// height of a chat bubble, so it has to preserve scroll position (see
+/// <see cref="Header_Click"/>); expanding a *step* happens inside an already-expanded card and
+/// does not.
+/// </summary>
 public sealed partial class ToolActivityView : UserControl
 {
     public static readonly DependencyProperty ActivityProperty = DependencyProperty.Register(
@@ -38,6 +47,10 @@ public sealed partial class ToolActivityView : UserControl
         // Restore the scroll offset after the layout pass settles, preventing
         // the ListView's internal ScrollViewer from adjusting the viewport when
         // the timeline item height changes.
+        // Low priority so this runs after the framework's own layout pass — restoring the offset
+        // synchronously here would be immediately overwritten by the ScrollViewer reacting to
+        // the new item height. The `> 0` guard skips the restore when the list was at the top,
+        // where there is nothing to correct.
         if (savedOffset is > 0 && scroller is not null)
         {
             DispatcherQueue.TryEnqueue(

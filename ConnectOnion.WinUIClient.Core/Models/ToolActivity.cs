@@ -34,12 +34,18 @@ public sealed partial class ToolActivityViewModel : Common.ObservableObject
     {
         Status = ToolActivityStatus.Running;
         DisplayMode = ToolDisplayMode.Compact;
-        IsExpanded = true;
+        // Collapsed by default. The card's header already says what is running and how far along
+        // it is, so the timeline is detail the user opens when they want it — auto-expanding it
+        // pushed the agent's actual reply down the page on every tool-using turn.
+        // Three things still force it open, and they are exceptions on purpose: a blocked tool,
+        // a turn waiting on the user's approval, and a failed run (see ToolActivityProjector).
+        IsExpanded = false;
         Summary = "Running tools…";
         StartedAt = DateTimeOffset.UtcNow;
     }
 
     public string TurnId { get; set; } = Guid.NewGuid().ToString("N");
+
     public ObservableCollection<ToolStepViewModel> Steps { get; set; } = new();
 
     [ObservableProperty]
@@ -158,12 +164,16 @@ public sealed partial class ToolStepViewModel : Common.ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasResult))]
-    [NotifyPropertyChangedFor(nameof(ShowResult))]
+    [NotifyPropertyChangedFor(nameof(DetailText))]
+    [NotifyPropertyChangedFor(nameof(HasDetail))]
+    [NotifyPropertyChangedFor(nameof(DetailLabel))]
     public partial string? Result { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasError))]
-    [NotifyPropertyChangedFor(nameof(ShowResult))]
+    [NotifyPropertyChangedFor(nameof(DetailText))]
+    [NotifyPropertyChangedFor(nameof(HasDetail))]
+    [NotifyPropertyChangedFor(nameof(DetailLabel))]
     public partial string? Error { get; set; }
 
     [ObservableProperty]
@@ -184,13 +194,35 @@ public sealed partial class ToolStepViewModel : Common.ObservableObject
     [JsonIgnore] public bool HasSummary => !string.IsNullOrWhiteSpace(Summary);
     [JsonIgnore] public string TimelineText => string.Join(" · ", new[] { DisplayTarget, Summary }.Where(value => !string.IsNullOrWhiteSpace(value)));
     [JsonIgnore] public bool HasTimelineText => !string.IsNullOrWhiteSpace(TimelineText);
+    /// <summary>Currently bound by nothing: the step detail no longer renders an Input block
+    /// (see <c>ToolActivityView.xaml</c>). Kept because <see cref="Arguments"/> is still
+    /// captured and persisted, so restoring that block is a XAML-only change.</summary>
     [JsonIgnore] public bool HasArguments => !string.IsNullOrWhiteSpace(Arguments);
     [JsonIgnore] public bool HasResult => !string.IsNullOrWhiteSpace(Result);
-    // When a step failed, the error text already carries the failure detail and the Result often
-    // mirrors it — showing both duplicates the same message. Suppress the Result body once an
-    // error is present so the expanded step shows the failure exactly once.
-    [JsonIgnore] public bool ShowResult => HasResult && !HasError;
     [JsonIgnore] public bool HasError => !string.IsNullOrWhiteSpace(Error);
+
+    // ---- The step's one output block ----
+    //
+    // Result and Error are not two different things to show. On a failed step the projector
+    // writes the *same* string into both (ToolActivityProjector.ApplyResult), so rendering a
+    // "Result" card and an "Error" card meant printing one message twice in two styles. The UI
+    // therefore renders exactly one block, and only its styling changes with Status.
+    //
+    // Both fields stay on the model and in storage: Error is what marks a step as failed for
+    // anything reading the data rather than looking at it, and collapsing them here would lose
+    // that distinction.
+
+    /// <summary>The single body to render. Prefers <see cref="Error"/> because on a failure it
+    /// is the authoritative text; falls back to <see cref="Result"/> for a normal step.</summary>
+    [JsonIgnore] public string? DetailText => HasError ? Error : Result;
+
+    [JsonIgnore] public bool HasDetail => !string.IsNullOrWhiteSpace(DetailText);
+
+    /// <summary>Heading over the block. The accent colour beside it comes from
+    /// <see cref="Status"/> via <c>ToolStatusToBrushConverter</c>, so a failed step reads as an
+    /// error from its chrome and this label without needing a second card.</summary>
+    [JsonIgnore] public string DetailLabel => HasError ? "Error" : "Result";
+
     [JsonIgnore] public string DurationLabel => DurationMs is null ? "" : DurationMs < 1000 ? $"{DurationMs:0} ms" : $"{DurationMs / 1000:0.0} s";
     [JsonIgnore] public string AccessibilityName => $"{StatusGlyph} {DisplayName}{(HasSummary ? ", " + Summary : "")}";
 

@@ -62,6 +62,11 @@ public sealed class UsageRepository
                     cache_write_tokens = excluded.cache_write_tokens,
                     duration_ms        = excluded.duration_ms;
                 """;
+            // The UPDATE arm covers only the measured values. Identity and provenance
+            // (conversation, agent, agent_name, model, created_at) are left as first written,
+            // so a replay cannot re-attribute an already-recorded call to a different agent —
+            // and agent_name in particular is a deliberate snapshot, kept so a deleted agent's
+            // rows can still be labelled in the panel.
 
             var id = cmd.Parameters.Add("$id", SqliteType.Text);
             var conv = cmd.Parameters.Add("$conv", SqliteType.Text);
@@ -74,6 +79,9 @@ public sealed class UsageRepository
             var cacheWrite = cmd.Parameters.Add("$cache_write", SqliteType.Integer);
             var duration = cmd.Parameters.Add("$duration", SqliteType.Real);
             var created = cmd.Parameters.Add("$created", SqliteType.Integer);
+            // Explicit Prepare because the loop below rebinds and re-executes this one command
+            // per record; compiling the statement once is the point of holding the parameter
+            // handles in locals rather than looking them up by name each iteration.
             cmd.Prepare();
 
             foreach (var r in records)
@@ -124,6 +132,12 @@ public sealed class UsageRepository
                 GROUP BY model
                 ORDER BY (SUM(input_tokens) + SUM(output_tokens)) DESC;
                 """;
+            // The "$x IS NULL OR col = $x" idiom keeps one statement for all four filter
+            // combinations (all time / windowed × all agents / one agent) instead of
+            // assembling a WHERE clause by string building.
+            //
+            // Ranked by input+output only: cached and cache-write tokens are reported but do
+            // not decide the order, since they are not what the user is being billed for.
             AppDatabase.Add(cmd, "$since", sinceUnixMs);
             AppDatabase.Add(cmd, "$agent", agentId);
 
@@ -161,6 +175,8 @@ public sealed class UsageRepository
             var value = await cmd.ExecuteScalarAsync().ConfigureAwait(false);
             if (value is null || value is DBNull) return null;
 
+            // Stored UTC, shown local — this is a date the user reads ("since 3 March"), so it
+            // has to be in their own timezone rather than the ledger's.
             return DateTimeOffset.FromUnixTimeMilliseconds(
                 Convert.ToInt64(value, System.Globalization.CultureInfo.InvariantCulture)).ToLocalTime();
         }

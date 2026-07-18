@@ -18,7 +18,7 @@ namespace ConnectOnion.WinUIClient.Data;
 /// Replaces the previous JSON blob approach so messages can be queried,
 /// paged, and written incrementally.
 /// </summary>
-public sealed class ConversationRepository
+public sealed partial class ConversationRepository
 {
     private static readonly Action<ILogger, string, string, Exception?> LogDatabaseFailure =
         LoggerMessage.Define<string, string>(LogLevel.Error, new EventId(1, "ConversationDatabaseFailure"),
@@ -56,24 +56,39 @@ public sealed class ConversationRepository
             await LoadAttachmentsIntoAsync(connection, conversationId, messages, cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
         }
+        // Cancellation is not a failure — rethrow it so a page that navigated away during the
+        // load doesn't get logged as a database error, and doesn't silently receive a partial
+        // conversation as if it were the whole thing.
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }
         catch (Exception ex)
         {
-            // Missing / corrupt table → start fresh.
+            // Missing / corrupt table → start fresh. Note `messages` may already hold rows
+            // read before the failure; they are returned rather than discarded, since a
+            // partial history still beats an empty one for a user staring at the page.
             LogFailure(nameof(LoadMessagesAsync), conversationId, ex);
         }
         return messages;
     }
 
+    /// <summary>
+    /// Attaches each row's attachments to the already-materialized messages, in one pass.
+    ///
+    /// Separate query rather than a JOIN on the message read: a JOIN would repeat every
+    /// message column once per attachment and then need de-duplicating in code. Two queries
+    /// and a dictionary is both cheaper and simpler. Pass <paramref name="onlyMessageId"/> to
+    /// scope it to a single bubble (the <see cref="LoadLastAgentMessageAsync"/> path).
+    /// </summary>
     private static async Task LoadAttachmentsIntoAsync(
         SqliteConnection connection, string conversationId, IReadOnlyList<ChatMessage> messages,
         long? onlyMessageId = null, CancellationToken cancellationToken = default)
     {
         if (messages.Count == 0) return;
 
+        // Index by id so the reader below is a dictionary hit per attachment rather than a
+        // scan of the message list — this runs over a whole conversation on every open.
         var byId = new Dictionary<long, ChatMessage>();
         foreach (var m in messages) byId[m.Id] = m;
 
@@ -99,6 +114,9 @@ public sealed class ConversationRepository
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
             var messageId = reader.GetInt64(0);
+            // An attachment whose message wasn't in the requested set is skipped rather than
+            // treated as an error — expected whenever this is called with a scoped message
+            // list, and harmless otherwise.
             if (!byId.TryGetValue(messageId, out var message)) continue;
 
             message.Attachments.Add(new ChatAttachment
@@ -204,7 +222,12 @@ public sealed class ConversationRepository
             await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
             await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync().ConfigureAwait(false);
 
+            // One timestamp for the whole batch: a turn's bubbles are conceptually written at
+            // one instant, and sharing it keeps their created_at ordering consistent with
+            // their id ordering.
             var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            // Commands are built once and re-bound per row inside the loop. Rebuilding them
+            // per message would re-prepare the same SQL for every bubble in the turn.
             await using var upsertMessage = CreateMessageUpsert(connection, transaction);
             await using var clearAttachments = CreateAttachmentDelete(connection, transaction);
             await using var insertAttachment = CreateAttachmentInsert(connection, transaction);
@@ -234,12 +257,23 @@ public sealed class ConversationRepository
         }
     }
 
+    /// <summary>
+    /// Drops a conversation's bubbles and their attachments.
+    ///
+    /// <b>The statement order is load-bearing.</b> The FKs in this schema declare no
+    /// <c>ON DELETE</c> behavior, so nothing cascades — children must go before parents by
+    /// hand. Reversing these two lines raises a constraint violation that the catch below
+    /// swallows into a log line, leaving the conversation half-deleted with no visible error.
+    /// The same applies one level up in <c>SessionRepository</c>: this method and
+    /// <c>DeleteExecutionsAndTracesAsync</c> both have to run before the <c>sessions</c> row.
+    /// </summary>
     public async Task DeleteMessagesAsync(string conversationId)
     {
         try
         {
             await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
             await using var command = connection.CreateCommand();
+            // Attachments reference messages, so they go first.
             command.CommandText = """
                 DELETE FROM message_attachments WHERE conversation_id = $conversation_id;
                 DELETE FROM messages WHERE conversation_id = $conversation_id;
@@ -267,202 +301,6 @@ public sealed class ConversationRepository
         LogDatabaseFailure(_logger, operation, conversationId, ex);
     }
 
-    private static ChatMessage RowToMessage(SqliteDataReader reader)
-    {
-        var m = new ChatMessage
-        {
-            Id = reader.GetInt64(0),
-            Role = ParseRole(reader.GetString(1)),
-            Content = ReadNullableString(reader, 2) ?? "",
-            AgentName = ReadNullableString(reader, 3),
-            EventKind = ReadNullableString(reader, 4) ?? "",
-            EventKey = ReadNullableString(reader, 5),
-            EventEyebrow = ReadNullableString(reader, 6) ?? "",
-            EventTitle = ReadNullableString(reader, 7) ?? "",
-            EventDetail = ReadNullableString(reader, 8),
-            EventMeta = ReadNullableString(reader, 9),
-            EventArgs = ReadNullableString(reader, 10),
-            EventResult = ReadNullableString(reader, 11),
-            Status = ParseEventStatus(ReadNullableString(reader, 12)),
-            IsOnboarding = reader.GetInt32(13) != 0,
-            CreatedAtUnixMs = reader.GetInt64(14),
-        };
-        // Tool activity is stored in the existing event_args payload column. This keeps the
-        // schema backward compatible while making the aggregate durable across page teardown
-        // and application restart. Legacy per-tool rows still load normally and are upgraded
-        // by the chat projection when they are next replayed/saved.
-        if (m.EventKind == "tool_activity" && !string.IsNullOrWhiteSpace(m.EventArgs))
-        {
-            try
-            {
-                m.ToolActivity = JsonSerializer.Deserialize<ToolActivityViewModel>(m.EventArgs);
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[db] tool activity payload for message {m.Id} could not be restored: {ex}");
-                m.EventKind = "activity";
-                m.EventTitle = "Tool execution history could not be restored";
-            }
-        }
-        return m;
-    }
-
-    // The write commands below are built once per transaction and rebound per row. Microsoft.Data
-    // .Sqlite caches the compiled statement on the command object, so reusing one command means the
-    // statement is parsed once rather than once per bubble — which is what made saving a long
-    // conversation scale badly, far more than the row writes themselves.
-
-    private static SqliteCommand CreateMessageUpsert(SqliteConnection connection, SqliteTransaction transaction)
-    {
-        var cmd = connection.CreateCommand();
-        cmd.Transaction = transaction;
-        cmd.CommandText = """
-            INSERT INTO messages
-              (id, conversation_id, role, content, agent_name,
-               event_kind, event_key, event_eyebrow, event_title,
-               event_detail, event_meta, event_args, event_result,
-               event_status, is_onboarding, created_at)
-            VALUES
-              ($id, $conversation_id, $role, $content, $agent_name,
-               $event_kind, $event_key, $event_eyebrow, $event_title,
-               $event_detail, $event_meta, $event_args, $event_result,
-               $event_status, $is_onboarding, $created_at)
-            ON CONFLICT(conversation_id, id) DO UPDATE SET
-               role = excluded.role,
-               content = excluded.content,
-               agent_name = excluded.agent_name,
-               event_kind = excluded.event_kind,
-               event_key = excluded.event_key,
-               event_eyebrow = excluded.event_eyebrow,
-               event_title = excluded.event_title,
-               event_detail = excluded.event_detail,
-               event_meta = excluded.event_meta,
-               event_args = excluded.event_args,
-               event_result = excluded.event_result,
-               event_status = excluded.event_status,
-               is_onboarding = excluded.is_onboarding;
-            """;
-        cmd.Parameters.Add("$id", SqliteType.Integer);
-        cmd.Parameters.Add("$conversation_id", SqliteType.Text);
-        cmd.Parameters.Add("$role", SqliteType.Text);
-        cmd.Parameters.Add("$content", SqliteType.Text);
-        cmd.Parameters.Add("$agent_name", SqliteType.Text);
-        cmd.Parameters.Add("$event_kind", SqliteType.Text);
-        cmd.Parameters.Add("$event_key", SqliteType.Text);
-        cmd.Parameters.Add("$event_eyebrow", SqliteType.Text);
-        cmd.Parameters.Add("$event_title", SqliteType.Text);
-        cmd.Parameters.Add("$event_detail", SqliteType.Text);
-        cmd.Parameters.Add("$event_meta", SqliteType.Text);
-        cmd.Parameters.Add("$event_args", SqliteType.Text);
-        cmd.Parameters.Add("$event_result", SqliteType.Text);
-        cmd.Parameters.Add("$event_status", SqliteType.Text);
-        cmd.Parameters.Add("$is_onboarding", SqliteType.Integer);
-        cmd.Parameters.Add("$created_at", SqliteType.Integer);
-        return cmd;
-    }
-
-    private static SqliteCommand CreateAttachmentDelete(SqliteConnection connection, SqliteTransaction transaction)
-    {
-        var cmd = connection.CreateCommand();
-        cmd.Transaction = transaction;
-        // (conversation_id, message_id) is a prefix of the table's primary key, so this is a seek.
-        cmd.CommandText = """
-            DELETE FROM message_attachments
-            WHERE conversation_id = $conversation_id AND message_id = $message_id;
-            """;
-        cmd.Parameters.Add("$conversation_id", SqliteType.Text);
-        cmd.Parameters.Add("$message_id", SqliteType.Integer);
-        return cmd;
-    }
-
-    private static SqliteCommand CreateAttachmentInsert(SqliteConnection connection, SqliteTransaction transaction)
-    {
-        var cmd = connection.CreateCommand();
-        cmd.Transaction = transaction;
-        cmd.CommandText = """
-            INSERT INTO message_attachments
-              (id, conversation_id, message_id, kind, file_name, mime_type,
-               size_bytes, local_cache_path, remote_uri, status, created_at)
-            VALUES
-              ($id, $conversation_id, $message_id, $kind, $file_name, $mime_type,
-               $size_bytes, $local_cache_path, $remote_uri, $status, $created_at);
-            """;
-        cmd.Parameters.Add("$id", SqliteType.Text);
-        cmd.Parameters.Add("$conversation_id", SqliteType.Text);
-        cmd.Parameters.Add("$message_id", SqliteType.Integer);
-        cmd.Parameters.Add("$kind", SqliteType.Text);
-        cmd.Parameters.Add("$file_name", SqliteType.Text);
-        cmd.Parameters.Add("$mime_type", SqliteType.Text);
-        cmd.Parameters.Add("$size_bytes", SqliteType.Integer);
-        cmd.Parameters.Add("$local_cache_path", SqliteType.Text);
-        cmd.Parameters.Add("$remote_uri", SqliteType.Text);
-        cmd.Parameters.Add("$status", SqliteType.Text);
-        cmd.Parameters.Add("$created_at", SqliteType.Integer);
-        return cmd;
-    }
-
-    private static void BindMessage(SqliteCommand cmd, ChatMessage m, string conversationId, long now)
-    {
-        var eventArgs = m.IsToolActivityEvent
-            ? JsonSerializer.Serialize(m.ToolActivity)
-            : m.EventArgs;
-
-        cmd.Parameters["$id"].Value = m.Id;
-        cmd.Parameters["$conversation_id"].Value = conversationId;
-        cmd.Parameters["$role"].Value = m.Role.ToString().ToLowerInvariant();
-        cmd.Parameters["$content"].Value = string.IsNullOrEmpty(m.Content) ? DBNull.Value : m.Content;
-        cmd.Parameters["$agent_name"].Value = m.AgentName ?? (object)DBNull.Value;
-        cmd.Parameters["$event_kind"].Value = string.IsNullOrEmpty(m.EventKind) ? DBNull.Value : m.EventKind;
-        cmd.Parameters["$event_key"].Value = m.EventKey ?? (object)DBNull.Value;
-        cmd.Parameters["$event_eyebrow"].Value = string.IsNullOrEmpty(m.EventEyebrow) ? DBNull.Value : m.EventEyebrow;
-        cmd.Parameters["$event_title"].Value = string.IsNullOrEmpty(m.EventTitle) ? DBNull.Value : m.EventTitle;
-        cmd.Parameters["$event_detail"].Value = m.EventDetail ?? (object)DBNull.Value;
-        cmd.Parameters["$event_meta"].Value = m.EventMeta ?? (object)DBNull.Value;
-        cmd.Parameters["$event_args"].Value = eventArgs ?? (object)DBNull.Value;
-        cmd.Parameters["$event_result"].Value = m.EventResult ?? (object)DBNull.Value;
-        cmd.Parameters["$event_status"].Value = m.Status switch
-        {
-            EventStatus.Running => "running",
-            EventStatus.Error => "error",
-            _ => "done",
-        };
-        cmd.Parameters["$is_onboarding"].Value = m.IsOnboarding ? 1 : 0;
-        cmd.Parameters["$created_at"].Value = m.CreatedAtUnixMs > 0 ? m.CreatedAtUnixMs : now;
-    }
-
-    private static void BindAttachment(SqliteCommand cmd, ChatAttachment a, string conversationId, long messageId, long now)
-    {
-        cmd.Parameters["$id"].Value = a.Id;
-        cmd.Parameters["$conversation_id"].Value = conversationId;
-        cmd.Parameters["$message_id"].Value = messageId;
-        cmd.Parameters["$kind"].Value = a.Kind == AttachmentKind.Image ? "image" : "file";
-        cmd.Parameters["$file_name"].Value = a.FileName;
-        cmd.Parameters["$mime_type"].Value = a.MimeType ?? (object)DBNull.Value;
-        cmd.Parameters["$size_bytes"].Value = a.SizeBytes;
-        cmd.Parameters["$local_cache_path"].Value = a.LocalCachePath ?? (object)DBNull.Value;
-        cmd.Parameters["$remote_uri"].Value = a.RemoteUri ?? (object)DBNull.Value;
-        cmd.Parameters["$status"].Value = a.Status == AttachmentStatus.Failed ? "failed" : "sent";
-        cmd.Parameters["$created_at"].Value = now;
-    }
-
-    private static ChatRole ParseRole(string value)
-        => value switch
-        {
-            "agent" => ChatRole.Agent,
-            "event" => ChatRole.Event,
-            _ => ChatRole.User,
-        };
-
-    private static EventStatus ParseEventStatus(string? value)
-        => value switch
-        {
-            "running" => EventStatus.Running,
-            "error" => EventStatus.Error,
-            _ => EventStatus.Done,
-        };
-
-    private static string? ReadNullableString(SqliteDataReader reader, int ordinal)
-        => reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);
 
     // ---- executions ----
 

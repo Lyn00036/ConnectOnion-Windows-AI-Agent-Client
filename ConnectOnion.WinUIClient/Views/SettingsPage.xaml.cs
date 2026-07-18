@@ -7,10 +7,28 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace ConnectOnion.WinUIClient.Views;
 
+/// <summary>
+/// Settings, as stacked <c>SettingsCard</c> sections filtered by the category rail and the
+/// search box.
+///
+/// The controls here are driven imperatively (assign <c>IsOn</c>/<c>SelectedIndex</c> on
+/// load, save on the change event) rather than two-way bound. That is deliberate for the
+/// enum pickers: theme and font size are <c>ComboBox</c> indices, so a binding would need a
+/// converter per enum in both directions, and the index→enum mapping would end up split
+/// between XAML and code anyway. The cost is <see cref="_initializing"/> — see below.
+/// </summary>
 public sealed partial class SettingsPage : Page
 {
     private readonly SettingsViewModel _vm = App.GetService<SettingsViewModel>();
+
+    /// <summary>Suppresses the save handlers while <see cref="OnLoaded"/> populates the
+    /// controls. Without it, every assignment below raises Toggled/SelectionChanged, and
+    /// opening the page would write the settings straight back — harmless for equal values,
+    /// but it also fires the side effects (theme re-apply, a settings write per control).</summary>
     private bool _initializing;
+
+    /// <summary>Remembered so <see cref="Filter"/> can restore the chosen category when the
+    /// search box is cleared, rather than defaulting back to General.</summary>
     private string _currentCategory = "General";
 
     public SettingsPage()
@@ -23,6 +41,8 @@ public sealed partial class SettingsPage : Page
     {
         await _vm.LoadAsync();
 
+        // Everything between here and the reset must stay assignment-only — any call that
+        // could await would let a real user toggle land while the guard is up and be dropped.
         _initializing = true;
         ThemeChoice.SelectedIndex = _vm.Theme switch
         {
@@ -61,6 +81,9 @@ public sealed partial class SettingsPage : Page
 
     private async void EnableNotificationsSwitch_Toggled(object sender, RoutedEventArgs e)
     {
+        // The enable/disable of the detail panel happens *before* the _initializing check, so
+        // the master switch still greys out its dependents while the page is populating.
+        // Only the persistence below is suppressed.
         NotificationDetailPanel.IsEnabled = EnableNotificationsSwitch.IsOn;
         if (_initializing) return;
         await SaveNotificationSettingsAsync();
@@ -72,6 +95,11 @@ public sealed partial class SettingsPage : Page
         await SaveNotificationSettingsAsync();
     }
 
+    /// <summary>Rebuilds the whole settings object from the switches and saves it. Writing
+    /// all seven every time (rather than patching one field) keeps the saved state a
+    /// straight snapshot of what is on screen, so a half-applied save is not possible.
+    /// Note the detail switches are read even when the master switch is off — their values
+    /// are preserved, so turning notifications back on restores the user's prior choices.</summary>
     private System.Threading.Tasks.Task SaveNotificationSettingsAsync()
     {
         var settings = new Models.Notifications.NotificationSettings
@@ -123,6 +151,9 @@ public sealed partial class SettingsPage : Page
         _vm.SelectedMicIndex = MicChoice.SelectedIndex;
     }
 
+    /// <summary>Called by the settings shell when the user picks a category in the left rail.
+    /// Sections are shown/hidden rather than navigated, so scroll and control state survive
+    /// switching categories.</summary>
     public void SelectCategory(string category)
     {
         _currentCategory = category;
@@ -137,6 +168,15 @@ public sealed partial class SettingsPage : Page
         ContentScrollViewer.ChangeView(null, 0, null, true);
     }
 
+    /// <summary>
+    /// Settings search. Matches against a hand-written keyword string per section rather
+    /// than the rendered text, so a user can find "dark" or "newline" even though neither
+    /// word is a card header — but it also means <b>adding a setting requires adding its
+    /// words to the relevant line below</b>, or it becomes unfindable.
+    ///
+    /// Search deliberately overrides the category rail: while a query is active, any section
+    /// can show regardless of the selected category, and clearing the box restores it.
+    /// </summary>
     public void Filter(string query)
     {
         if (string.IsNullOrWhiteSpace(query))
@@ -153,6 +193,9 @@ public sealed partial class SettingsPage : Page
         ContentScrollViewer.ChangeView(null, 0, null, true);
     }
 
+    // Note the direction: the *keyword list* is searched for the user's query, not the other
+    // way round. So "the" matches (it is a substring of "theme") — a prefix-ish match that
+    // happens to behave well for incremental typing, which is what this box gets.
     private static bool Contains(string query, string terms)
         => terms.Contains(query, StringComparison.OrdinalIgnoreCase);
 }

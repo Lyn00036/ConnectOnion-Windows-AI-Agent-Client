@@ -61,77 +61,107 @@ dotnet run --project ConnectOnion.WinUIClient.csproj -p:Platform=x64 -p:RunUnpac
 ## Project Structure
 
 ```
+The app project holds only what needs a window or the Windows App SDK. Everything
+WinUI-free — persistence, models, policy, projections — lives in the sibling
+ConnectOnion.WinUIClient.Core project, which is what the test projects reference.
+
 ConnectOnion.WinUIClient/
-├── App.xaml / App.xaml.cs              Application entry point
+├── App.xaml / App.xaml.cs              Generic Host build, Serilog, composition root
+├── Program.cs                          Entry point
 ├── MainWindow.xaml / MainWindow.xaml.cs Shell window, custom title bar, navigation frame
 ├── Package.appxmanifest                 MSIX package manifest
 │
+├── Shell/                              The rest of the MainWindow partial (see Shell/README.md)
+│   ├── MainWindow.FileMenu.cs           File menu handlers
+│   ├── MainWindow.EditMenu.cs           Edit commands against the last focused text box
+│   ├── MainWindow.ViewMenu.cs           Zoom, full screen, sidebar, shared find overlay
+│   ├── MainWindow.HelpMenu.cs           Shortcuts dialog, docs link, About overlay
+│   ├── MainWindow.Shortcuts.cs          Live chords → menu accelerator text
+│   ├── MainWindow.Notifications.cs      In-app toast host, activation routing
+│   ├── MainWindow.DragDrop.cs           Window-wide drop hint (not itself a drop target)
+│   └── MainWindow.Tray.cs / .Tray.Interop.cs  Tray icon + the Win32 P/Invoke it needs
+│
 ├── Views/                              XAML pages
 │   ├── HomePage                         Agent selection (landing)
-│   ├── ChatPage                         Real-time chat with streaming events
-│   ├── SessionsPage                     Per-agent session list & management
+│   ├── ChatPage                         Real-time chat, split by concern:
+│   │   ├── ChatPage.Scrolling.cs         Scroll, stick-to-bottom, load overlay
+│   │   ├── ChatPage.MessageActions.cs    Copy / edit / retry + hover-reveal chrome
+│   │   ├── ChatPage.Attachments.cs       Opening and saving attachments
+│   │   ├── ChatPage.Interactive.cs       ask_user / approval / plan-review cards
+│   │   └── ChatPage.Find.cs              In-chat find (IFindHost)
+│   ├── SessionsPage                     Conversation list & management
 │   ├── AgentDetailPage                  Agent edit / connection test / info
-│   └── SettingsPage                     Theme, sidebar, font size, shortcuts, identity
+│   └── SettingsPage                     Theme, font size, notifications, audio
 │
-├── ViewModels/                         MVVM state & commands
-│   ├── ChatViewModel                    Message list, run subscription, send input
+├── ViewModels/                         MVVM state & commands (the window-bound ones)
+│   ├── ChatViewModel                    State, properties, conversation load/restore
+│   │   ├── ChatViewModel.Run.cs          Send/stop/mode; folds run snapshots into the list
+│   │   ├── ChatViewModel.Conversation.cs New / branch / retry
+│   │   └── ChatViewModel.StreamEvents.cs Live projection target
 │   ├── SessionsViewModel                Session CRUD, active session tracking
-│   ├── AgentDetailViewModel             Agent form state, connection testing
-│   ├── KeyboardShortcutsViewModel       Shortcut catalog & user overrides
-│   └── SettingsViewModel                Preference read/write
+│   ├── AgentDetailViewModel             Agent form state, /info loading, connection testing
+│   ├── SettingsViewModel                Preference read/write
+│   ├── UsageViewModel                   Per-model token totals for the Usage panel
+│   └── PresenceAwareViewModel           Shared online/offline base for pages
 │
-├── Models/                             Data types
-│   ├── AgentConfig                      Saved agent connection
-│   ├── ChatMessage                      Chat bubble (user / agent / event)
-│   ├── ChatAttachment                   Attachment metadata on a bubble (never base64)
-│   ├── PendingAttachment                Picked / dropped attachment awaiting send
-│   ├── ToolActivity                     Per-turn tool execution timeline aggregate
-│   ├── SessionSummary                   Indexed conversation metadata
-│   ├── PreferencesSnapshot              Theme, font size, sidebar, shortcuts
-│   ├── ShellAgentItem / ShellSessionItem Sidebar list items
-│   └── Notifications/                   Notification request / decision / settings models
-│
-├── Data/                               SQLite persistence
-│   ├── AppDatabase                      Schema init (WAL, FK, idempotent CREATE IF NOT EXISTS)
-│   ├── AppStorage                       Local filesystem directory setup
-│   ├── AgentRepository                  Agent CRUD
-│   ├── SessionRepository                Session CRUD
-│   ├── ConversationRepository           Message / attachment rows, incremental upsert
-│   ├── PreferencesRepository            Preferences persistence
-│   ├── IdentityStore                    Ed25519 key pair (private seed DPAPI-protected)
-│   └── AppJsonContext                   System.Text.Json source-gen context
-│
-├── Services/                           Business logic
-│   ├── AppServices                      Process-wide singleton locator
-│   ├── ConversationCache                LRU cache of the last few idle conversations
+├── Services/                           Needs a window, the SDK, or DI wiring
+│   ├── ServiceRegistration              Generic Host registrations (AddAppServices)
+│   ├── AppServices                      Typed accessor over App.Services for code-behind
 │   ├── ConnectionTester                 /health probe + relay resolution
 │   ├── AgentInfoService                 /info fetch & change detection
 │   ├── AgentPresenceService             In-memory online status cache
 │   ├── ThemeService                     Light/dark theme apply, raw Color lookup
+│   ├── UriLauncher / ClipboardService   Mockable OS wrappers
+│   ├── LayoutKeys                       Keyboard-layout translation (P/Invokes MapVirtualKeyW)
 │   ├── Runtime/                         App-level turn lifecycle (owns sockets and runs)
 │   │   ├── AgentSessionManager          Send → run → project → persist, page-independent
-│   │   ├── AgentConnectionRegistry      Per-conversation WebSockets, idle eviction
-│   │   ├── ChatTurnProjection           The single stream-event → ChatMessage mapping
-│   │   └── ToolActivityProjector        tool_call / tool_result → timeline aggregation
-│   ├── Attachments/                     Picker, drop, validation, encoding, image cache
-│   └── Notifications/                   Windows + in-app toasts, dedup, policy, routing
+│   │   ├── AgentTurnExecutor            Drives one turn over a connection
+│   │   └── IAgentSessionManager         The contract pages depend on
+│   ├── Attachments/                     Picker, drop, incoming image cache
+│   └── Notifications/                   Windows + in-app toasts, activation routing
 │
-├── Controls/                           Reusable UI components
-│   ├── ShellSidebar                     Agent list + session list navigation
-│   ├── ChatComposer                     Input, attachment picker / drop target, mic
-│   ├── ToolActivityView                 Collapsible tool execution timeline
-│   ├── SettingsOverlay                  Modal settings surface (theme, shortcuts, identity)
-│   └── AddAgentForm                     Inline agent creation form
+├── Controls/                           Grouped by surface (see Controls/README.md).
+│   │                                    All keep the flat …WinUIClient.Controls namespace.
+│   ├── Chat/                            ChatComposer (+ .Speech), ToolActivityView, OfflineNoticeBar
+│   ├── Agents/                          AddAgentForm, AgentAvatar
+│   ├── Settings/                        SettingsOverlay + panes, shortcut editing, HotkeyInput
+│   ├── Shell/                           ShellSidebar (+ .Events), InAppNotificationHost, AboutOverlay
+│   └── Primitives/                      MarkdownTextBlock, HighlightedTextBlock, IconText,
+│                                        DisclosureAnimation (no view-model/feature-model refs)
 │
-├── Common/                             Shared utilities
-│   ├── ObservableObject                 Bridge over CommunityToolkit.Mvvm's ObservableObject
-│   ├── ChatMessageTemplateSelector      One DataTemplate per bubble kind
-│   ├── LocalPathToImageSourceConverter  Cached path → size-capped BitmapImage
-│   ├── BoolToVisibilityConverter        XAML value converters
-│   └── ChatRoleConverters               Role-based alignment & color converters
-│
+├── Models/                             Sidebar row items only — the rest live in Core
+├── Rendering/                          WinUiMarkdownRenderer (Markdown → WinUI inlines)
+├── Common/                             Template selector + XAML value converters
 ├── Styles/                             Colors.xaml + Brushes.xaml (single color source of truth)
+├── Strings/en-US/                      .resw resources (localization scaffolded, not finished)
 └── Assets/                             App icons & splash images
+
+ConnectOnion.WinUIClient.Core/          Referenced by the app and by every test project
+├── Data/                               All SQLite persistence lives here, not in the app
+│   ├── AppDatabase / SchemaMigrator     Connection, baseline schema, versioned migrations
+│   ├── AppStorage                       Local filesystem directory setup
+│   ├── AgentRepository / SessionRepository
+│   ├── ConversationRepository           Message/attachment rows, incremental upsert
+│   │   └── ConversationRepository.Mapping.cs  Row↔object SQL plumbing
+│   ├── PreferencesRepository / UsageRepository
+│   ├── IdentityStore                    Ed25519 key pair (private seed DPAPI-protected)
+│   └── AppJsonContext                   System.Text.Json source-gen context
+├── Models/                             AgentConfig, ChatMessage, ChatAttachment, ToolActivity,
+│                                        SessionSummary, PreferencesSnapshot, KeyChord, …
+├── Services/
+│   ├── ConversationCache                LRU cache of the last few idle conversations
+│   ├── SessionSelection                 The one testable "which session?" rule
+│   ├── KeyboardShortcutCatalog/Service  Shortcut source of truth + override resolution
+│   ├── Runtime/
+│   │   ├── ChatTurnProjection           The single stream-event → ChatMessage mapping
+│   │   │   └── ChatTurnProjection.Events.cs  Its per-event-type dispatch table
+│   │   ├── ToolActivityProjector        tool_call / tool_result → timeline aggregation
+│   │   ├── UsageProjector               Finished run → token-usage ledger rows
+│   │   └── AgentConnectionRegistry      Per-conversation WebSockets, idle eviction
+│   ├── Attachments/                     Validation, encoding, attachment-only prompt
+│   └── Notifications/                   Dedup, policy, text shaping (no UI, no OS calls)
+├── ViewModels/                         The WinUI-free view models
+└── Common/                             ObservableObject base, NameInitial
 ```
 
 ## Architecture

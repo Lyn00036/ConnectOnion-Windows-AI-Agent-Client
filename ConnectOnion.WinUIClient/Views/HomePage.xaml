@@ -91,12 +91,18 @@
                                                    FontWeight="SemiBold"
                                                    TextTrimming="CharacterEllipsis"
                                                    VerticalAlignment="Center" />
+                                        <!-- Live ships no Size12 glyph — scale a Size16 down to 12. -->
                                         <ic:FluentIcon Icon="Live"
                                                        IconVariant="Regular"
-                                                       IconSize="Size12"
+                                                       IconSize="Size16"
+                                                       RenderTransformOrigin="0.5,0.5"
                                                        Foreground="{ThemeResource SuccessBrush}"
                                                        VerticalAlignment="Center"
-                                                       Visibility="{x:Bind IsOnline, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                                                       Visibility="{x:Bind IsOnline, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                                            <ic:FluentIcon.RenderTransform>
+                                                <ScaleTransform ScaleX="0.75" ScaleY="0.75" />
+                                            </ic:FluentIcon.RenderTransform>
+                                        </ic:FluentIcon>
                                     </StackPanel>
                                     <TextBlock Text="{x:Bind ShortAddress}"
                                                FontSize="12"

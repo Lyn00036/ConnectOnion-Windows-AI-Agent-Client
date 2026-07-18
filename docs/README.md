@@ -15,6 +15,11 @@
   (solution layout, protocol/WinUI split, persistence model, XAML gotchas). It stays at the repo root
   because tooling looks for it there. **If a document in this folder disagrees with `CLAUDE.md`,
   `CLAUDE.md` is right.**
+- **[`../AGENTS.md`](../AGENTS.md)** — the same document, for Codex. It is kept byte-identical to
+  `CLAUDE.md` apart from the title and the opening line. **Edit both or neither**; two architecture
+  documents that disagree is worse than one that is slightly out of date.
+- **`ConnectOnion.WinUIClient/Shell/README.md`** and **`ConnectOnion.WinUIClient/Controls/README.md`**
+  — folder-local conventions, including why those folders deliberately do not match their namespaces.
 - **[`../README.md`](../README.md)** — build, run, and getting-started instructions.
 - `agent/` and `frontend/` — the vendored ConnectOnion agent examples and the legacy Electron client.
   **Both were deleted in `197a88d`**; the repo is C#-only now. Read them out of git history if you

@@ -23,9 +23,18 @@ public sealed class NotificationCoordinator
     private readonly NotificationPolicy _policy;
     private readonly Action<string, Exception>? _onError;
 
+    // Guards the three collections below. Held only across their mutations — never across a
+    // channel Show or a policy decision, both of which can reach into UI code and would turn
+    // this into a lock ordering problem with the dispatcher.
     private readonly object _gate = new();
     private readonly DedupCache _dedup = new(256);
+    /// <summary>Agent id → armed grace timer for a disconnect that has not yet been reported.
+    /// Presence of a key means "counting down"; a reconnect inside the window disposes it and
+    /// the user never hears about the blip.</summary>
     private readonly Dictionary<string, IDisposable> _pendingConnection = new(StringComparer.Ordinal);
+    /// <summary>Agents the user has already been told are down. This — not the dedup cache — is
+    /// what limits an outage to one notification, because an outage can outlive 256 other
+    /// events and would otherwise re-fire once its key aged out.</summary>
     private readonly HashSet<string> _notifiedDown = new(StringComparer.Ordinal);
 
     /// <summary>How long a disconnect must persist before we notify. Short blips
@@ -68,6 +77,8 @@ public sealed class NotificationCoordinator
             NotificationLog.Info($"Decision: channel={decision.Channel} foreground={_presence.IsForeground} type={request.Type} conv={request.ConversationId}");
             if (decision.Channel == NotificationChannel.None) return;
 
+            // The policy may rewrite the body — it is what strips the message preview when the
+            // user has previews off — so its version wins wherever it supplied one.
             var shaped = request with { Body = decision.Body ?? request.Body };
             var channel = decision.Channel == NotificationChannel.System ? _system : _inApp;
             channel.Show(shaped, decision.PlaySound);
@@ -164,6 +175,10 @@ public sealed class NotificationCoordinator
         }
     }
 
+    /// <summary>The grace timer fired without a reconnect, so the outage is real. Both checks
+    /// below are races the scheduler can lose: a reconnect that landed while the callback was
+    /// already queued clears the pending entry, and a duplicate timer would find the agent
+    /// already marked down.</summary>
     private void OnGraceElapsed(string agentId, string agentName)
     {
         lock (_gate)
@@ -178,9 +193,16 @@ public sealed class NotificationCoordinator
             Body: $"{agentName} is offline. Trying to reconnect…",
             Type: NotificationType.ConnectionLost,
             AgentId: agentId,
+            // Deliberately unique: dedup must not swallow this one. Suppression for repeat
+            // outages is _notifiedDown's job above, and it has already run by the time we
+            // get here — a stable key would only add a second, weaker filter on top.
             DedupKey: $"conn:{agentId}:{Guid.NewGuid():N}"));
     }
 
+    /// <summary>Folds a tool's arguments into the approval dedup key, so re-asking for the same
+    /// tool with *different* arguments still notifies. Only ever compared against keys from the
+    /// same run of the app, which is what makes .NET's per-process-randomized string hash
+    /// acceptable here — do not persist or transmit this value.</summary>
     private static string Hash(string? s)
         => string.IsNullOrEmpty(s) ? "0" : ((uint)s.GetHashCode()).ToString(System.Globalization.CultureInfo.InvariantCulture);
 }

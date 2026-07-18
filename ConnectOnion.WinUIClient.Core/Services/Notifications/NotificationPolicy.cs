@@ -50,7 +50,12 @@ public sealed class NotificationPolicy
         NotificationType.TaskCompleted => s.NotifyTaskCompletion,
         NotificationType.ApprovalRequired => s.NotifyApprovalRequests,
         NotificationType.ConnectionLost => s.NotifyConnectionProblems,
+        // Errors ride on the connection-problems switch rather than getting their own: in
+        // practice nearly every error the app raises is a transport failure, and a second
+        // near-identical toggle would only make the settings page harder to read.
         NotificationType.Error => s.NotifyConnectionProblems,
+        // Unknown/future types default to *shown*. A notification nobody asked to silence is
+        // recoverable; one silently dropped because an enum member was added is not.
         _ => true,
     };
 

@@ -17,6 +17,20 @@ using Microsoft.UI.Dispatching;
 
 namespace ConnectOnion.WinUIClient.Controls;
 
+/// <summary>
+/// The agent/session tree down the left of the shell, plus the pinned-conversation section and
+/// the online count.
+///
+/// Unlike the app's other surfaces this control has no view model — it owns its collections and
+/// reaches storage through <c>AppServices</c> directly, because WinUI constructs it from XAML.
+/// It also raises navigation as an event rather than performing it: the sidebar knows *what*
+/// the user picked, and <c>MainWindow</c> owns the frame that acts on it.
+///
+/// The whole tree is rebuilt from storage on every <see cref="RefreshAsync"/> — there is no
+/// incremental update path. That keeps it simple and correct at the cost of losing transient UI
+/// state, which is exactly why expansion state is remembered separately (see
+/// <see cref="_expandedAgentIds"/>).
+/// </summary>
 public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
 {
     public ObservableCollection<ShellAgentItem> ShellAgents { get; } = new();
@@ -28,9 +42,15 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
 
     private readonly AgentPresenceService _presence = AppServices.Presence;
     private readonly DispatcherQueue? _dispatcher = DispatcherQueue.GetForCurrentThread();
+    /// <summary>Which agents the user has expanded. Held here rather than on the items because
+    /// <see cref="RefreshAsync"/> discards and rebuilds every item — without this, any refresh
+    /// (a rename, a new conversation, a presence sweep) would collapse the whole tree.</summary>
     private readonly HashSet<string> _expandedAgentIds = new(StringComparer.Ordinal);
     private Type? _currentPageType;
     private int _onlineAgentCount;
+    /// <summary>False until the first refresh completes. Distinguishes "the user has collapsed
+    /// every agent" from "we have not observed any expansion state yet" — the first refresh
+    /// falls back to expanding the selected agent, later ones honour the empty set.</summary>
     private bool _hasExpansionState;
     private bool _isPinnedExpanded = true;
 
@@ -88,15 +108,21 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     public void SetCurrentPage(Type? pageType)
         => _currentPageType = pageType;
 
+    /// <summary>Rebuilds the entire tree from storage. Called after anything that could change
+    /// what the sidebar shows — agent added/renamed/deleted, conversation created/pinned/removed,
+    /// navigation. Cheap enough to be unconditional at this scale (tens of rows).</summary>
     public async System.Threading.Tasks.Task RefreshAsync()
     {
         var agentsState = await AppServices.Agents.LoadAsync();
         var sessionsState = await AppServices.Sessions.LoadAsync();
 
+        // Must run *before* the Clear below, while the old items still hold their expansion.
         RememberExpandedAgentsFromUi();
 
         PinnedSessions.Clear();
         ShellAgents.Clear();
+        // A lookup, not a per-session scan: pinned rows show their owning agent's name, and the
+        // pinned list spans every agent.
         var agentNames = agentsState.Agents.ToDictionary(agent => agent.Id, agent => agent.Name, StringComparer.Ordinal);
         foreach (var session in sessionsState.Sessions
                      .Where(session => session.IsPinned)
@@ -112,6 +138,9 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
                 Id = agent.Id,
                 Name = agent.Name,
                 IsSelected = IsAgentSelected(agent.Id, agentsState.SelectedAgentId),
+                // First build: open the selected agent so the app doesn't start fully collapsed.
+                // Afterwards the user's own expansion state is authoritative, including "all
+                // collapsed" — which is why the flag exists rather than testing for an empty set.
                 IsExpanded = _hasExpansionState
                     ? _expandedAgentIds.Contains(agent.Id)
                     : agent.Id == agentsState.SelectedAgentId,
@@ -130,6 +159,9 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
 
         OnPropertyChanged(nameof(HasPinnedSessions));
         UpdateOnlineAgentCount();
+        // Fire-and-forget presence probes: the rows are already on screen with whatever the
+        // service last knew, and each probe raises PresenceChanged to update its own dot when it
+        // lands. Awaiting them would hold the whole sidebar behind the slowest network call.
         foreach (var agent in agentsState.Agents)
         {
             _ = _presence.EnsureCheckedAsync(agent);
@@ -138,9 +170,13 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         _hasExpansionState = true;
     }
 
+    /// <summary>Ctrl+N / "New chat". Returns false when there is no agent to chat with at all,
+    /// which is the caller's cue to send the user to the add-agent flow instead.</summary>
     public async System.Threading.Tasks.Task<bool> StartNewChatAsync()
     {
         var agentsState = await AppServices.Agents.LoadAsync();
+        // Prefer the selected agent, else any agent: a new-chat shortcut pressed with nothing
+        // selected should still do something sensible rather than silently no-op.
         var agent = agentsState.Agents.FirstOrDefault(entry => entry.Id == agentsState.SelectedAgentId)
             ?? agentsState.Agents.FirstOrDefault();
         if (agent is null) return false;
@@ -148,9 +184,14 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         agentsState.SelectedAgentId = agent.Id;
         await AppServices.Agents.SaveAsync(agentsState);
 
+        // Order matters: create the session, mark its agent expanded so the refresh renders it
+        // open, rebuild the tree, and only then navigate — so the chat page opens onto a
+        // conversation the sidebar is already showing as selected.
         await CreateSessionAsync(agent.Id);
         FocusAgentInSidebar(agent.Id);
         await RefreshAsync();
+        // forceReload because the target may already be the current page: a plain Navigate to
+        // the page you are on is a no-op, and the new conversation would never load.
         RequestNavigation(typeof(ChatPage), forceReload: true);
         return true;
     }
@@ -195,6 +236,10 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
             IsSelected = IsSessionSelected(session.Id, activeSessionId),
         };
 
+    /// <summary>Whether an agent row renders as selected. Selection is page-dependent: an agent
+    /// is only "current" while the user is on a page that is actually about an agent, so
+    /// Settings or Home leaves the tree with nothing highlighted rather than pointing at
+    /// whichever agent happened to be selected last.</summary>
     private bool IsAgentSelected(string agentId, string? selectedAgentId)
         => _currentPageType == typeof(ChatPage)
             || _currentPageType == typeof(AgentDetailPage)
@@ -205,8 +250,11 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     private bool IsSessionSelected(string sessionId, string? activeSessionId)
         => _currentPageType == typeof(ChatPage) && sessionId == activeSessionId;
 
+    /// <summary>Captures the live expansion state before a rebuild discards the items.</summary>
     private void RememberExpandedAgentsFromUi()
     {
+        // An empty tree carries no information — this is the pre-first-refresh case, and
+        // clearing here would wipe a focus another method just set (see FocusAgentInSidebar).
         if (ShellAgents.Count == 0) return;
 
         _expandedAgentIds.Clear();
@@ -217,6 +265,10 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         _hasExpansionState = true;
     }
 
+    /// <summary>Collapses everything except one agent. Used when navigating *to* an agent, so
+    /// the tree focuses on where the user just went instead of accumulating open branches.
+    /// Deliberately destructive — this is the one place expansion state is overridden rather
+    /// than preserved.</summary>
     private void FocusAgentInSidebar(string agentId)
     {
         _expandedAgentIds.Clear();
@@ -224,6 +276,11 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         _hasExpansionState = true;
     }
 
+    /// <summary>Guarantees the agent has an active conversation, reusing the current one if it
+    /// already belongs to this agent, else its most recent, else creating one.
+    /// <para>NOTE: this rule is a third copy of the same logic — see
+    /// <c>SessionSelection.FindExisting</c> (the testable one) and
+    /// <c>HomePage.EnsureSessionAsync</c>. They should all call the shared helper.</para></summary>
     private async System.Threading.Tasks.Task<string> EnsureSessionAsync(string agentId)
     {
         var sessionsState = await AppServices.Sessions.LoadAsync();
@@ -271,6 +328,13 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         RequestNavigation(typeof(ChatPage), forceReload: true);
     }
 
+    /// <summary>Opens a conversation, moving agent selection with it (a pinned row can belong to
+    /// an agent other than the current one).</summary>
+    /// <param name="preserveSidebarState">True for clicks in the pinned section: the tree keeps
+    /// whatever was expanded instead of collapsing onto this conversation's agent. Pinned rows
+    /// are a jump-list, and reorganizing the tree below — possibly for a different agent
+    /// entirely — moves content out from under a user whose attention is at the top of the
+    /// sidebar. The tree is still rebuilt either way, so selection highlighting stays correct.</param>
     private async System.Threading.Tasks.Task SelectSessionAsync(string sessionId, bool preserveSidebarState = false)
     {
         var sessionsState = await AppServices.Sessions.LoadAsync();
@@ -284,11 +348,12 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         agentsState.SelectedAgentId = session.AgentId;
         await AppServices.Agents.SaveAsync(agentsState);
 
-        if (!preserveSidebarState)
-        {
-            FocusAgentInSidebar(session.AgentId);
-            await RefreshAsync();
-        }
+        // Only the *focus* is conditional. RefreshAsync always runs, because it is what moves
+        // the selection highlight onto the newly-opened conversation; skipping it would leave
+        // the sidebar pointing at the previous one. RefreshAsync preserves whatever is expanded
+        // (RememberExpandedAgentsFromUi), so without the focus call the tree is left untouched.
+        if (!preserveSidebarState) FocusAgentInSidebar(session.AgentId);
+        await RefreshAsync();
         RequestNavigation(typeof(ChatPage), forceReload: true);
     }
 

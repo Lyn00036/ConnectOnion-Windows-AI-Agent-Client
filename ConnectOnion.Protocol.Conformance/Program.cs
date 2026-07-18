@@ -13,12 +13,22 @@ using ConnectOnion.Protocol;
 // fails, every signed CONNECT/ONBOARD would be silently rejected by the agent,
 // so this must pass before any transport code is trusted.
 
+// A fixed, published test vector — deliberately NOT a random seed. Both sides must derive the
+// same address from the same input for the comparison to mean anything, and a hardcoded seed
+// also makes a regression reproducible from the failure output alone. It is a test constant
+// with no value attached; never reuse it as a real identity.
 const string seedHex = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 var seed = Convert.FromHexString(seedHex);
 var identity = AgentIdentity.FromSeed(seed);
 
-// Same payload as ref-sign.js (order irrelevant — both sides sort keys).
+// Same payload as ref-sign.js (order irrelevant — both sides sort keys). Every field here is
+// pulling its weight as a test case, so don't "tidy" them:
+//   - the keys are listed out of alphabetical order, which is what proves the sorting;
+//   - "abc+DEF/123" carries '+' and '/', exactly the characters System.Text.Json's default
+//     encoder escapes and JS's JSON.stringify does not — this is the case that catches a
+//     regression in the UnsafeRelaxedJsonEscaping setting;
+//   - the two longs exercise number formatting, where a float-ish rendering would diverge.
 var payload = new List<KeyValuePair<string, object?>>
 {
     new("to", identity.Address),
@@ -42,6 +52,8 @@ Console.WriteLine($"signature   | {signature[..32]}…");
 Console.WriteLine($"  node      | {reference.Signature[..32]}…");
 Console.WriteLine();
 
+// `&=` rather than `&&=`: every check runs and reports even after one fails, so a single run
+// shows the full picture instead of stopping at the first divergence.
 var ok = true;
 ok &= Check("address", identity.Address, reference.Address);
 ok &= Check("canonical", canonical, reference.Canonical);
@@ -74,6 +86,9 @@ static Reference RunNodeReference(string seedHex)
     };
     using var process = Process.Start(psi)
         ?? throw new InvalidOperationException("Could not start node. Is Node.js on PATH?");
+    // Both streams are drained before WaitForExit. Waiting first would deadlock as soon as the
+    // reference script wrote more than a pipe buffer's worth: node blocks on the full pipe,
+    // we block on node.
     var stdout = process.StandardOutput.ReadToEnd();
     var stderr = process.StandardError.ReadToEnd();
     process.WaitForExit();

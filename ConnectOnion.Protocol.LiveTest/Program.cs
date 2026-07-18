@@ -5,7 +5,16 @@ using ConnectOnion.Protocol;
 
 // Live end-to-end test against a deployed ConnectOnion agent (Direct URL path).
 // Usage: dotnet run -- <directUrl> <address> "<prompt>"
+//
+// Deliberately outside the .sln and outside CI: it needs a real agent listening on the far end,
+// so it can fail for reasons that have nothing to do with this repo. Run it by hand when
+// changing the transport, and treat a failure as "investigate", not "the build is broken".
+//
+// Every interactive turn below is auto-answered so the run completes unattended. That is the
+// opposite of what the desktop client does — the point here is to exercise the frames, not the
+// decisions — so this file is not a model for how to handle approvals.
 
+// The defaults are a known dev agent. Overriding all three via argv is the normal use.
 var directUrl = args.Length > 0 ? args[0] : "http://124.156.170.117/browser";
 var address = args.Length > 1 ? args[1]
     : "0xf83dfaec8890059e0bc247e78449000a4d81e808ad1d45042cfcbf28406713cb";
@@ -15,6 +24,10 @@ Console.WriteLine($"Direct URL : {directUrl}");
 Console.WriteLine($"Address    : {address}");
 Console.WriteLine($"Prompt     : {prompt}");
 
+// A throwaway identity per run: this is a smoke test, not a returning client, and generating
+// one avoids touching (or needing) the desktop app's stored seed. Note the consequence — the
+// target agent sees a brand-new address every run, so it must accept unknown clients, which is
+// what the invite code below is for.
 var identity = AgentIdentity.Generate();
 Console.WriteLine($"Client id  : {identity.ShortAddress}");
 Console.WriteLine(new string('-', 60));

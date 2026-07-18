@@ -61,6 +61,12 @@ public sealed partial class UsageViewModel : Common.ObservableObject
     public bool ShowContent => !IsLoading && Rows.Count > 0;
 
     // ---- Totals across every model in the window ----
+    //
+    // Summed in memory rather than with a second aggregate query: Rows is already the complete
+    // set for the window (one row per model, so tens at most), and deriving the totals from the
+    // same data the table shows makes it impossible for the header and the rows to disagree.
+    // These are computed properties with no change notification of their own — RaiseTotals is
+    // what tells the UI they moved.
 
     public long TotalTokens => Rows.Sum(r => r.TotalTokens);
     public long TotalInputTokens => Rows.Sum(r => r.InputTokens);
@@ -77,6 +83,8 @@ public sealed partial class UsageViewModel : Common.ObservableObject
         IsLoading = true;
         try
         {
+            // ConfigureAwait(true) throughout: everything after these awaits touches the
+            // ObservableCollection and the bound properties, which must happen on the UI thread.
             var summaries = await _usage.GetByModelAsync(Range.SinceUnixMs()).ConfigureAwait(true);
             var first = await _usage.GetFirstRecordedAsync().ConfigureAwait(true);
 
@@ -93,6 +101,8 @@ public sealed partial class UsageViewModel : Common.ObservableObject
         }
         finally
         {
+            // In a finally so a failed read still clears the spinner and recomputes the header
+            // — otherwise a transient database error would leave the panel loading forever.
             IsLoading = false;
             RaiseTotals();
         }
@@ -106,6 +116,10 @@ public sealed partial class UsageViewModel : Common.ObservableObject
         await LoadAsync().ConfigureAwait(true);
     }
 
+    /// <summary>Notifies every property derived from <see cref="Rows"/>. Needed because mutating
+    /// an <c>ObservableCollection</c> raises collection-changed, not property-changed for things
+    /// computed from it — without this the header would keep last window's numbers.
+    /// Adding a computed total above means adding it here too.</summary>
     private void RaiseTotals()
     {
         OnPropertyChanged(nameof(TotalTokens));
@@ -135,6 +149,8 @@ public sealed class UsageRowViewModel
         CachedTokens = summary.CachedTokens;
         TotalTokens = summary.TotalTokens;
         CacheHitRatio = summary.CacheHitRatio;
+        // Guarded against 0: an empty or all-zero window would otherwise divide by zero and
+        // render every bar as NaN width.
         SharePercent = maxTotalTokens <= 0 ? 0 : 100.0 * summary.TotalTokens / maxTotalTokens;
     }
 

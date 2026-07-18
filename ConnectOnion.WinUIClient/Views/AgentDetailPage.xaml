@@ -49,7 +49,10 @@
                                VerticalAlignment="Center" />
                 </StackPanel>
 
+                <!-- Hidden rather than showing a placeholder when the agent's /info omits
+                     "model": this label reads as a statement of fact about the agent. -->
                 <TextBlock Text="{x:Bind Vm.DisplayModel, Mode=OneWay}"
+                           Visibility="{x:Bind Vm.HasDisplayModel, Mode=OneWay, Converter={StaticResource BoolToVis}}"
                            FontSize="12"
                            Foreground="{ThemeResource TextTertiaryBrush}"
                            HorizontalAlignment="Center" />

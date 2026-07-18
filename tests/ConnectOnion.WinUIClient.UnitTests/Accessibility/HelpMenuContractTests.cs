@@ -21,13 +21,29 @@ public sealed class HelpMenuContractTests
     [Fact]
     public void HelpMenuCode_DocsCommand_UsesCanonicalUrlAndIndependentHandlers()
     {
-        var root = FindRepositoryRoot();
-        var code = File.ReadAllText(Path.Combine(root, "ConnectOnion.WinUIClient", "MainWindow.HelpMenu.cs"));
+        var code = File.ReadAllText(FindProjectFile("MainWindow.HelpMenu.cs"));
 
         Assert.Contains("https://docs.connectonion.com/", code, StringComparison.Ordinal);
         Assert.Matches(new Regex(@"ConnectOnionDocs_Click[\s\S]*?UriLauncher\.LaunchAsync\(new Uri\(DocsUrl\)\)", RegexOptions.CultureInvariant), code);
         Assert.Contains("AboutConnectOnion_Click", code, StringComparison.Ordinal);
         Assert.Contains("ShowAboutOverlay", code, StringComparison.Ordinal);
+    }
+
+    /// <summary>Locates a source file inside the app project by name, wherever it currently sits.
+    /// Searched rather than addressed by a fixed path so that reorganising the project folders
+    /// does not fail a test that is asserting on file <i>contents</i> — the previous hard-coded
+    /// path broke the moment the MainWindow partials moved into <c>Shell/</c>. A duplicate name
+    /// fails loudly instead of silently picking one.</summary>
+    private static string FindProjectFile(string fileName)
+    {
+        var matches = Directory.GetFiles(
+            Path.Combine(FindRepositoryRoot(), "ConnectOnion.WinUIClient"),
+            fileName,
+            SearchOption.AllDirectories);
+
+        Assert.True(matches.Length == 1,
+            $"Expected exactly one '{fileName}' in the app project, found {matches.Length}.");
+        return matches[0];
     }
 
     private static string FindRepositoryRoot()

@@ -47,6 +47,9 @@ public static class ConversationCache
         }
     }
 
+    /// <summary>Caches a conversation, evicting down to <see cref="MaxEntries"/>. Overwrites an
+    /// existing entry rather than merging — the caller always holds the full, freshly loaded
+    /// message list, so a partial update is never what is wanted here.</summary>
     public static void Store(string sessionId, Entry entry)
     {
         lock (Gate)
@@ -54,6 +57,8 @@ public static class ConversationCache
             Entries[sessionId] = entry;
             Touch(sessionId);
 
+            // A loop, not a single removal: MaxEntries could be lowered, and evicting to the
+            // limit is the invariant worth stating rather than "remove one per insert".
             while (Entries.Count > MaxEntries && Recency.Last is { } victim)
             {
                 Entries.Remove(victim.Value);
@@ -74,10 +79,16 @@ public static class ConversationCache
         }
     }
 
+    /// <summary>Moves a session to the front of the recency list. <c>Nodes</c> exists purely to
+    /// make this O(1) — without the node handle, promoting an entry would mean an O(n) scan of
+    /// the list on every cache read.</summary>
     private static void Touch(string sessionId)
     {
         if (Nodes.TryGetValue(sessionId, out var node))
         {
+            // The same node instance is re-inserted, which is what keeps the handle in Nodes
+            // valid. Re-adding by value instead would leave Nodes pointing at a detached node
+            // and quietly break every later Remove.
             Recency.Remove(node);
             Recency.AddFirst(node);
             return;

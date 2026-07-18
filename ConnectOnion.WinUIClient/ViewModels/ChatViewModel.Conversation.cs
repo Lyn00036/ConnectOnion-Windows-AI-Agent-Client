@@ -1,0 +1,148 @@
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Linq;
+using System.Net.Http;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+using System.Threading;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using ConnectOnion.Protocol;
+using ConnectOnion.Protocol.Runtime;
+using ConnectOnion.WinUIClient.Common;
+using ConnectOnion.WinUIClient.Models;
+using ConnectOnion.WinUIClient.Services;
+using ConnectOnion.WinUIClient.Services.Attachments;
+using ConnectOnion.WinUIClient.Services.Notifications;
+using ConnectOnion.WinUIClient.Services.Runtime;
+using ConnectOnion.WinUIClient.Data;
+using Microsoft.Extensions.Logging;
+using Microsoft.UI.Dispatching;
+
+namespace ConnectOnion.WinUIClient.ViewModels;
+
+/// <summary>
+/// <see cref="ChatViewModel"/>: operations that change <i>which</i> conversation the page is on —
+/// starting a new one, branching an existing one at a message, and retrying a turn by branching.
+/// Each one re-points the run subscription, so they are grouped away from the single-conversation
+/// lifecycle in the main file.
+/// </summary>
+public sealed partial class ChatViewModel
+{
+    public async Task NewConversationAsync()
+    {
+        if (_agent is null || IsProcessing) return;
+
+        // Supersede any load still in flight, so a slow one can't land its history on top of the
+        // conversation we are about to create.
+        _loadGeneration++;
+
+        // Re-point the subscription at the new conversation.
+        _runSubscription?.Dispose();
+        _runSubscription = null;
+        _liveProjection = null;
+        _liveRunId = null;
+        _appliedEventCount = 0;
+        _historyLoadedRunId = null;
+        CanRetry = false;
+
+        CanStop = false;
+        IsStopping = false;
+
+        _session = SessionSummary.NewConversation(_agent.Id, _sessionsState.Sessions);
+        // A new conversation starts at the default mode rather than inheriting the last one: the
+        // modes that skip approvals are exactly the ones nobody should acquire by accident.
+        _sessionsState.Sessions.Add(_session);
+        _sessionsState.ActiveSessionId = _session.Id;
+        CurrentMode = _session.Mode;
+        await _sessions.SaveAsync(_sessionsState);
+
+        Messages.Clear();
+        ResetIdCounter();
+        _createdAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        HeaderText = $"{_agent.Name} - {_session.Title}";
+        RaiseHeaderProperties();
+
+        _runSubscription = _runManager.Subscribe(
+            _session.Id, snapshot => _dispatcher.TryEnqueue(() => ApplyRunSnapshot(snapshot)));
+    }
+
+    /// <summary>
+    /// Creates a real local branch at <paramref name="source"/>. Messages before the selected
+    /// user turn are copied into a new conversation, then <paramref name="replacement"/> is sent
+    /// as its first divergent turn. The original conversation remains untouched in the sidebar.
+    /// </summary>
+    public async Task<bool> BranchFromMessageAsync(ChatMessage source, string replacement)
+    {
+        replacement = replacement?.Trim() ?? "";
+        if (_agent is null || _session is null || IsProcessing || !source.CanEdit || replacement.Length == 0)
+        {
+            return false;
+        }
+
+        var sourceIndex = Messages.IndexOf(source);
+        if (sourceIndex < 0) return false;
+
+        // Preserve the original page state before switching the active conversation.
+        StoreSessionCache();
+        var prefix = Messages.Take(sourceIndex).ToList();
+        var inheritedMode = CurrentMode;
+
+        _loadGeneration++;
+        _runSubscription?.Dispose();
+        _runSubscription = null;
+        _liveProjection = null;
+        _liveRunId = null;
+        _appliedEventCount = 0;
+        _historyLoadedRunId = null;
+        CanRetry = false;
+        CanStop = false;
+        IsStopping = false;
+
+        _session = SessionSummary.NewConversation(_agent.Id, _sessionsState.Sessions);
+        _session.Mode = inheritedMode;
+        _sessionsState.Sessions.Add(_session);
+        _sessionsState.ActiveSessionId = _session.Id;
+        CurrentMode = _session.Mode;
+        await _sessions.SaveAsync(_sessionsState);
+
+        if (prefix.Count > 0)
+        {
+            await _conversations.UpsertMessagesAsync(_session.Id, prefix);
+        }
+
+        Messages.Clear();
+        foreach (var message in prefix) Messages.Add(message);
+        ResetIdCounter();
+        _createdAt = prefix.Count > 0
+            ? prefix[0].CreatedAtUnixMs
+            : DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        HeaderText = $"{_agent.Name} - {_session.Title}";
+        RaiseHeaderProperties();
+
+        _runSubscription = _runManager.Subscribe(
+            _session.Id, snapshot => _dispatcher.TryEnqueue(() => ApplyRunSnapshot(snapshot)));
+
+        await SendAsync(replacement);
+        return true;
+    }
+
+    /// <summary>Retries the user turn that produced an agent response by branching from the
+    /// nearest preceding user message. Event cards between the pair do not affect the lookup.</summary>
+    public Task<bool> RetryFromAgentMessageAsync(ChatMessage response)
+    {
+        var responseIndex = Messages.IndexOf(response);
+        if (responseIndex < 0) return Task.FromResult(false);
+
+        for (var i = responseIndex - 1; i >= 0; i--)
+        {
+            if (Messages[i] is { IsUser: true } source)
+            {
+                return BranchFromMessageAsync(source, source.Content);
+            }
+        }
+
+        return Task.FromResult(false);
+    }
+}

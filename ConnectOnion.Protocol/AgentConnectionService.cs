@@ -394,6 +394,8 @@ public sealed class AgentConnectionService : IAsyncDisposable
     // Port of signOnboard(): a signed { timestamp, invite_code } envelope.
     private async Task SubmitOnboardAsync(string inviteCode, CancellationToken ct)
     {
+        // The human answered; hand the silence budget back to the agent.
+        ResumeWatchdogAfterHumanResponse();
         var payload = new List<KeyValuePair<string, object?>>
         {
             new("timestamp", DateTimeOffset.UtcNow.ToUnixTimeSeconds()),
@@ -563,6 +565,8 @@ public sealed class AgentConnectionService : IAsyncDisposable
             }
 
             case "ERROR":
+                // Whatever the agent was parked on is over — don't leave the watchdog suspended.
+                _awaitingHumanResponse = false;
                 var message = msg.GetString("message") ?? msg.GetString("error") ?? "Unknown error";
                 var error = new InvalidOperationException($"Agent error: {message}");
                 _connectTcs?.TrySetException(error);
@@ -602,6 +606,11 @@ public sealed class AgentConnectionService : IAsyncDisposable
                 }
                 else
                 {
+                    // Same deal as ask_user: the socket is now parked on a human typing an
+                    // invite code, which routinely takes longer than the 60s silence timeout.
+                    // Without this the watchdog kills the connection mid-onboarding and the
+                    // user sees "offline / trying to reconnect" instead of their own prompt.
+                    _awaitingHumanResponse = true;
                     OnboardRequired?.Invoke();
                 }
                 return;

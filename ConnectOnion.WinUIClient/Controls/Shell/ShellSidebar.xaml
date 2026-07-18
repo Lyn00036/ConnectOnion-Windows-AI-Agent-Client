@@ -145,9 +145,11 @@
                                         CornerRadius="2"
                                         Background="{ThemeResource SidebarSelectedAccentBrush}"
                                         Visibility="{Binding IsSelected, Converter={StaticResource BoolToVis}}" />
+                                <!-- PinnedSession_Click, not Session_Click: opening from the
+                                     pinned list must not collapse the agent tree below. -->
                                 <Button Grid.Column="0"
                                         Style="{StaticResource ShellNavButtonStyle}"
-                                        Click="Session_Click"
+                                        Click="PinnedSession_Click"
                                         Tag="{Binding Id}"
                                         ToolTipService.ToolTip="{Binding Title}">
                                     <Grid ColumnSpacing="8">
