@@ -28,7 +28,7 @@ public sealed class StringToVisibilityConverter : IValueConverter
 }
 
 /// <summary>
-/// Colors the status dot by presence — dark online, neutral offline, muted
+/// Colors the status dot by presence — green online, neutral offline, muted
 /// otherwise. Color is a secondary signal here: every presence dot this feeds
 /// is paired with a text label (see <c>PresenceLabel</c>/<c>StatusText</c> in
 /// the view models), so presence is never conveyed by color alone.
@@ -54,8 +54,8 @@ public sealed class PresenceToBrushConverter : IValueConverter
 }
 
 /// <summary>
-/// Colors an event's status dot/badge: medium running, dark done, darker error.
-/// Running deliberately does NOT use BrandPrimaryBrush — Success is the brand accent,
+/// Colors an event's status dot/badge: medium running, green done, darker error.
+/// Running deliberately does NOT use BrandPrimaryBrush — Success is the brand green,
 /// so the two would render identically and the dot would stop meaning anything.
 /// See StatusRunningColor in Styles/Colors.xaml.
 /// </summary>
