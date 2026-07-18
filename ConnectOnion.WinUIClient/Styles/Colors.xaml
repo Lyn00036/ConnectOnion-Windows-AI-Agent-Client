@@ -1,48 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
     Semantic color tokens (raw Color values only — see Brushes.xaml for the
-    SolidColorBrush layer pages actually bind to). The palette is four colors:
-    black, white, green, yellow. Everything below is one of those or a neutral
-    step between the first two.
+    SolidColorBrush layer pages actually bind to). The palette is three colors:
+    black, white, gray. Everything below is a step on that neutral scale.
 
     Naming: <Concept>Color, grouped by role (Brand / Surface / Text / Border /
     Status / Search / Chat / Sidebar), not by literal hue. Dark theme is a
     distinct, hand-tuned palette (neutral near-black, never pure #000) — not an
     inverted copy of Light.
 
-    How the four colors divide up, and why. This split is load-bearing; the
-    obvious "simplification" of it regresses contrast:
+    How the three colors divide up:
 
-    1. GREEN is the actionable color — buttons, links, focus rings, the sidebar
-       selection rail, online/success. It is the only brand hue that can be made
-       dark enough to carry white text (#1B7A4B is 5.3:1 on white) while still
-       reading unmistakably green.
+    1. GRAY is the actionable/attention color — buttons, links, focus rings, the
+       sidebar selection rail, success/warning/danger status. Darker shades
+       carry white text; lighter shades carry dark text.
 
-    2. YELLOW is the attention color, and it is deliberately NOT used for
-       actions. Brand yellow (~#F2C230) sits at 1.7:1 on white — invisible as a
-       focus ring or a selection rail, both of which need 3:1 as non-text. So
-       yellow appears only where it can be a FILL behind dark text, which is
-       exactly the highlighter idiom: search matches, and the warning /
-       approval-required states. Note WarningColor is consumed as an icon and
-       label FOREGROUND (see ToolStatusToBrushConverter, InAppNotificationHost),
-       not a fill, so it has to be the darkened amber #9A6B00 (4.7:1) rather
-       than the bright yellow — the bright value is reserved for the search
-       fills, where the text sitting on it is dark.
+    2. BLACK is the ground for text. All text colors are neutral grays stepped
+       from near-black to lighter gray for tertiary/disabled.
 
-    3. BLACK / WHITE are the ground and the text. White is the chat and card
-       surface; the app ground is a hair off-white so a white card reads as
-       lifted rather than flush.
-
-    4. InfoColor is a NEUTRAL, not a fifth hue. Its only consumer is the
-       "checking" presence dot, and neutral is the honest reading of a pending
-       state — a blue there would import a color the brand doesn't have.
+    3. WHITE is the chat and card surface; the app ground is a hair off-white
+       so a white card reads as lifted rather than flush.
 
     BrandPrimary vs BrandAccent: Primary owns anything text-bearing (it is what
-    AccentFillColorDefaultBrush resolves to); Accent is the brighter green for
-    decoration only. TextOnBrand inverts per theme: dark's BrandPrimary is the
-    bright green (a dark green reads as sludge against near-black), and white on
-    that is 2.4:1, so dark pairs it with ink instead at 8.9:1. Light stays
-    white-on-dark-green. Forcing both to white fails AA in dark.
+    AccentFillColorDefaultBrush resolves to); Accent is the lighter gray for
+    decoration only. TextOnBrand inverts per theme: light's BrandPrimary is
+    dark gray with white text; dark's BrandPrimary is light gray with near-black
+    text.
 -->
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -52,14 +35,14 @@
 
         <ResourceDictionary x:Key="Light">
 
-            <!-- Brand — green. See the header note on Primary vs Accent. -->
-            <Color x:Key="BrandPrimaryColor">#FF1B7A4B</Color>
-            <Color x:Key="BrandPrimaryHoverColor">#FF166840</Color>
-            <Color x:Key="BrandPrimaryPressedColor">#FF114F31</Color>
-            <Color x:Key="BrandPrimarySubtleColor">#FFD7EFE1</Color>
-            <Color x:Key="BrandAccentColor">#FF22A05F</Color>
-            <Color x:Key="BrandAccentHoverColor">#FF1E8F55</Color>
-            <Color x:Key="BrandAccentPressedColor">#FF1B7A4B</Color>
+            <!-- Brand — dark gray, monochrome. -->
+            <Color x:Key="BrandPrimaryColor">#FF333333</Color>
+            <Color x:Key="BrandPrimaryHoverColor">#FF444444</Color>
+            <Color x:Key="BrandPrimaryPressedColor">#FF1A1A1A</Color>
+            <Color x:Key="BrandPrimarySubtleColor">#FFEBEBEB</Color>
+            <Color x:Key="BrandAccentColor">#FF555555</Color>
+            <Color x:Key="BrandAccentHoverColor">#FF666666</Color>
+            <Color x:Key="BrandAccentPressedColor">#FF333333</Color>
             <Color x:Key="BrandOnPrimaryColor">#FFFFFFFF</Color>
 
             <!-- Background / Surface — off-white ground, pure white for lifted cards. -->
@@ -70,7 +53,7 @@
             <Color x:Key="SurfaceElevatedColor">#FFFFFFFF</Color>
             <Color x:Key="SurfaceHoverColor">#FFF0F0EF</Color>
             <Color x:Key="SurfacePressedColor">#FFE4E4E3</Color>
-            <Color x:Key="SurfaceSelectedColor">#FFE4F0E9</Color>
+            <Color x:Key="SurfaceSelectedColor">#FFEBEBEB</Color>
 
             <!-- Text — neutral, no hue cast. -->
             <Color x:Key="TextPrimaryColor">#FF1A1A1A</Color>
@@ -78,36 +61,32 @@
             <Color x:Key="TextTertiaryColor">#FF8A8A88</Color>
             <Color x:Key="TextDisabledColor">#FFB5B5B3</Color>
             <Color x:Key="TextOnBrandColor">#FFFFFFFF</Color>
-            <Color x:Key="TextLinkColor">#FF166840</Color>
-            <Color x:Key="TextLinkHoverColor">#FF114F31</Color>
+            <Color x:Key="TextLinkColor">#FF333333</Color>
+            <Color x:Key="TextLinkHoverColor">#FF1A1A1A</Color>
 
             <!-- Border -->
             <Color x:Key="BorderSubtleColor">#FFEDEDEC</Color>
             <Color x:Key="BorderDefaultColor">#FFE0E0DF</Color>
             <Color x:Key="BorderStrongColor">#FFBFBFBE</Color>
             <Color x:Key="DividerColor">#FFE8E8E7</Color>
-            <Color x:Key="FocusBorderColor">#FF1B7A4B</Color>
+            <Color x:Key="FocusBorderColor">#FF555555</Color>
 
-            <!-- Status. Success shares the brand green on purpose — an online dot and
-                 a primary button meaning the same "good/go" is cohesion, not a clash.
-                 Warning is the darkened amber (see header): it is a foreground. -->
-            <Color x:Key="SuccessColor">#FF1B7A4B</Color>
-            <Color x:Key="WarningColor">#FF9A6B00</Color>
-            <Color x:Key="DangerColor">#FFC1272D</Color>
+            <!-- Status. Success, Warning, Danger, Info are stepped gray tones that
+                 provide a scale from "good" to "error" while staying monochrome. -->
+            <Color x:Key="SuccessColor">#FF333333</Color>
+            <Color x:Key="WarningColor">#FF555555</Color>
+            <Color x:Key="DangerColor">#FF222222</Color>
             <Color x:Key="InfoColor">#FF6E6E6C</Color>
 
             <!-- In-flight status (the event dot / step glyph while a turn is running).
-                 It needs its own token precisely because Success now IS the brand green:
-                 pointing "running" at BrandPrimary would make running and done the same
-                 colour and stop the dot conveying anything. Amber→green→red reads as a
-                 progression. Kept separate from Warning rather than reused: Warning already
-                 doubles as "warned" and "waiting for permission", and a third meaning would
-                 make it useless. Dot/glyph only — non-text, so the 3:1 bar applies (3.3:1). -->
-            <Color x:Key="StatusRunningColor">#FFB8860B</Color>
+                 Distinct from Success to avoid rendering running and done the same
+                 color. Dot/glyph only — non-text, so the 3:1 bar applies (3.3:1). -->
+            <Color x:Key="StatusRunningColor">#FF666666</Color>
 
-            <!-- Search — yellow's home: a fill with dark text on it. -->
-            <Color x:Key="SearchMatchBackgroundColor">#FFFFE45C</Color>
-            <Color x:Key="SearchCurrentBackgroundColor">#FFFFC933</Color>
+            <!-- Search — gray fills with dark text on them (Light), or dark fills with
+                 light text (Dark). -->
+            <Color x:Key="SearchMatchBackgroundColor">#FFE0E0E0</Color>
+            <Color x:Key="SearchCurrentBackgroundColor">#FFC0C0C0</Color>
             <Color x:Key="SearchMatchTextColor">#FF1A1A1A</Color>
 
             <!-- Chat — the agent bubble matches the chat ground rather than
@@ -120,7 +99,7 @@
             <Color x:Key="ChatInputBackgroundColor">#FFFFFFFF</Color>
             <Color x:Key="CodeBackgroundColor">#FFF4F4F3</Color>
             <Color x:Key="InlineCodeBackgroundColor">#FFECECEB</Color>
-            <Color x:Key="CodeTextColor">#FF166840</Color>
+            <Color x:Key="CodeTextColor">#FF333333</Color>
 
             <!-- Composer -->
             <Color x:Key="ComposerStopButtonBackgroundColor">#FF2E2E2E</Color>
@@ -132,8 +111,8 @@
             <Color x:Key="SidebarBackgroundColor">#FFF7F7F6</Color>
             <Color x:Key="SidebarItemHoverColor">#FFF0F0EF</Color>
             <Color x:Key="SidebarItemPressedColor">#FFE8E8E7</Color>
-            <Color x:Key="SidebarItemSelectedColor">#FFEDF3EF</Color>
-            <Color x:Key="SidebarSelectedAccentColor">#FF1B7A4B</Color>
+            <Color x:Key="SidebarItemSelectedColor">#FFEBEBEB</Color>
+            <Color x:Key="SidebarSelectedAccentColor">#FF333333</Color>
 
             <!-- Settings modal -->
             <Color x:Key="SettingsBackdropColor">#99141414</Color>
@@ -151,17 +130,16 @@
 
         <ResourceDictionary x:Key="Dark">
 
-            <!-- Brand — Primary is the bright green here (see the header note): a
-                 dark green goes to sludge against near-black, so dark inverts which
-                 of the two carries text and pairs it with ink below. -->
-            <Color x:Key="BrandPrimaryColor">#FF3DBE7A</Color>
-            <Color x:Key="BrandPrimaryHoverColor">#FF4FCE8A</Color>
-            <Color x:Key="BrandPrimaryPressedColor">#FF33A468</Color>
-            <Color x:Key="BrandPrimarySubtleColor">#FF17301F</Color>
-            <Color x:Key="BrandAccentColor">#FF4FCE8A</Color>
-            <Color x:Key="BrandAccentHoverColor">#FF63DA9B</Color>
-            <Color x:Key="BrandAccentPressedColor">#FF3DBE7A</Color>
-            <Color x:Key="BrandOnPrimaryColor">#FF0E1A13</Color>
+            <!-- Brand — light gray, monochrome. On dark ground, the primary/bright
+                 role is played by a lighter gray with near-black text on top. -->
+            <Color x:Key="BrandPrimaryColor">#FFA0A0A0</Color>
+            <Color x:Key="BrandPrimaryHoverColor">#FFBBBBBB</Color>
+            <Color x:Key="BrandPrimaryPressedColor">#FF808080</Color>
+            <Color x:Key="BrandPrimarySubtleColor">#FF2A2A2A</Color>
+            <Color x:Key="BrandAccentColor">#FF999999</Color>
+            <Color x:Key="BrandAccentHoverColor">#FFBBBBBB</Color>
+            <Color x:Key="BrandAccentPressedColor">#FFA0A0A0</Color>
+            <Color x:Key="BrandOnPrimaryColor">#FF1A1A1A</Color>
 
             <!-- Background / Surface — neutral near-black, never pure #000. -->
             <Color x:Key="AppBackgroundColor">#FF121212</Color>
@@ -171,39 +149,37 @@
             <Color x:Key="SurfaceElevatedColor">#FF1E1E1E</Color>
             <Color x:Key="SurfaceHoverColor">#FF272727</Color>
             <Color x:Key="SurfacePressedColor">#FF333333</Color>
-            <Color x:Key="SurfaceSelectedColor">#FF1E3529</Color>
+            <Color x:Key="SurfaceSelectedColor">#FF2A2A2A</Color>
 
             <!-- Text -->
             <Color x:Key="TextPrimaryColor">#FFF5F5F4</Color>
             <Color x:Key="TextSecondaryColor">#FFA8A8A6</Color>
             <Color x:Key="TextTertiaryColor">#FF82827F</Color>
             <Color x:Key="TextDisabledColor">#FF5C5C5A</Color>
-            <Color x:Key="TextOnBrandColor">#FF0E1A13</Color>
-            <Color x:Key="TextLinkColor">#FF4FCE8A</Color>
-            <Color x:Key="TextLinkHoverColor">#FF63DA9B</Color>
+            <Color x:Key="TextOnBrandColor">#FF1A1A1A</Color>
+            <Color x:Key="TextLinkColor">#FFA0A0A0</Color>
+            <Color x:Key="TextLinkHoverColor">#FFBBBBBB</Color>
 
             <!-- Border -->
             <Color x:Key="BorderSubtleColor">#FF262626</Color>
             <Color x:Key="BorderDefaultColor">#FF333333</Color>
             <Color x:Key="BorderStrongColor">#FF4D4D4D</Color>
             <Color x:Key="DividerColor">#FF2B2B2B</Color>
-            <Color x:Key="FocusBorderColor">#FF4FCE8A</Color>
+            <Color x:Key="FocusBorderColor">#FF999999</Color>
 
-            <!-- Status. Dark can afford the true yellow for Warning: as a foreground
-                 on near-black it clears AA (#E5B93C is 9.6:1), which is exactly the
-                 constraint that forces light's amber. -->
-            <Color x:Key="SuccessColor">#FF3DBE7A</Color>
-            <Color x:Key="WarningColor">#FFE5B93C</Color>
-            <Color x:Key="DangerColor">#FFE8756E</Color>
+            <!-- Status. Gray tones stepped from "good" to "error". -->
+            <Color x:Key="SuccessColor">#FFA0A0A0</Color>
+            <Color x:Key="WarningColor">#FFBBBBBB</Color>
+            <Color x:Key="DangerColor">#FF666666</Color>
             <Color x:Key="InfoColor">#FFA8A8A6</Color>
 
             <!-- In-flight status (see the light dictionary). Close to Warning's value here
                  but deliberately its own token so the two can diverge. -->
-            <Color x:Key="StatusRunningColor">#FFD9A83A</Color>
+            <Color x:Key="StatusRunningColor">#FF888888</Color>
 
             <!-- Search -->
-            <Color x:Key="SearchMatchBackgroundColor">#FF7A6614</Color>
-            <Color x:Key="SearchCurrentBackgroundColor">#FFA8891C</Color>
+            <Color x:Key="SearchMatchBackgroundColor">#FF3A3A3A</Color>
+            <Color x:Key="SearchCurrentBackgroundColor">#FF4A4A4A</Color>
             <Color x:Key="SearchMatchTextColor">#FFF5F5F4</Color>
 
             <!-- Chat (see the light dictionary on why agent == chat ground) -->
@@ -214,7 +190,7 @@
             <Color x:Key="ChatInputBackgroundColor">#FF1C1C1C</Color>
             <Color x:Key="CodeBackgroundColor">#FF0C0C0C</Color>
             <Color x:Key="InlineCodeBackgroundColor">#FF2A2A2A</Color>
-            <Color x:Key="CodeTextColor">#FF7FD9A6</Color>
+            <Color x:Key="CodeTextColor">#FFBBBBBB</Color>
 
             <!-- Composer (see the light dictionary) -->
             <Color x:Key="ComposerStopButtonBackgroundColor">#FF4A4A4A</Color>
@@ -226,8 +202,8 @@
             <Color x:Key="SidebarBackgroundColor">#FF151515</Color>
             <Color x:Key="SidebarItemHoverColor">#FF202020</Color>
             <Color x:Key="SidebarItemPressedColor">#FF292929</Color>
-            <Color x:Key="SidebarItemSelectedColor">#FF19281F</Color>
-            <Color x:Key="SidebarSelectedAccentColor">#FF3DBE7A</Color>
+            <Color x:Key="SidebarItemSelectedColor">#FF2A2A2A</Color>
+            <Color x:Key="SidebarSelectedAccentColor">#FFA0A0A0</Color>
 
             <!-- Settings modal -->
             <Color x:Key="SettingsBackdropColor">#A60A0A0A</Color>
