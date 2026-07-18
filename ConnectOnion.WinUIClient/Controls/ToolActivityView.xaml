@@ -6,7 +6,13 @@
     xmlns:ic="using:FluentIcons.WinUI"
     xmlns:models="using:ConnectOnion.WinUIClient.Models">
 
-    <Grid MaxWidth="760"
+    <UserControl.Resources>
+        <!-- Hover feedback comes through foreground color and icon visibility
+             (handled in code-behind), never background painting. -->
+    </UserControl.Resources>
+
+    <Grid MaxWidth="{StaticResource ChatColumnWidth}"
+          HorizontalAlignment="Stretch"
           Visibility="{x:Bind Activity.IsVisible, Mode=OneWay, Converter={StaticResource BoolToVis}}">
         <Grid.ChildrenTransitions>
             <TransitionCollection>
@@ -14,17 +20,18 @@
             </TransitionCollection>
         </Grid.ChildrenTransitions>
 
-        <!-- Claude-style activity disclosure: a quiet summary row above a connected
-             timeline. The transcript ground stays visible so process UI never competes
-             with the assistant's actual answer. -->
         <StackPanel Spacing="5">
+            <!-- Header row -->
             <Button MinHeight="30"
                     Padding="0,4"
                     Background="Transparent"
                     BorderThickness="0"
                     HorizontalAlignment="Stretch"
                     HorizontalContentAlignment="Stretch"
+                    Style="{StaticResource TransparentButtonStyle}"
                     Click="Header_Click"
+                    PointerEntered="Header_PointerEntered"
+                    PointerExited="Header_PointerExited"
                     AutomationProperties.Name="{x:Bind Activity.AccessibilityName, Mode=OneWay}">
                 <Grid ColumnSpacing="8">
                     <Grid.ColumnDefinitions>
@@ -34,7 +41,8 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
-                    <TextBlock Text="Tool activity"
+                    <TextBlock x:Name="HeaderTitle"
+                               Text="Tool activity"
                                FontSize="14"
                                Foreground="{ThemeResource TextSecondaryBrush}"
                                VerticalAlignment="Center" />
@@ -44,22 +52,23 @@
                                Foreground="{ThemeResource TextTertiaryBrush}"
                                TextTrimming="CharacterEllipsis"
                                VerticalAlignment="Center" />
-                    <TextBlock Grid.Column="2"
+                    <TextBlock x:Name="HeaderDuration"
+                               Grid.Column="2"
                                Text="{x:Bind Activity.DurationLabel, Mode=OneWay}"
                                Margin="8,0,0,0"
                                FontSize="11"
                                Foreground="{ThemeResource TextTertiaryBrush}"
                                VerticalAlignment="Center" />
-                    <Grid Grid.Column="3"
+                    <Grid x:Name="HeaderChevron"
+                          Grid.Column="3"
                           Width="20"
                           Height="20"
-                          Margin="2,0,1,0"
-                          VerticalAlignment="Center">
+                          Margin="4,0,0,0"
+                          VerticalAlignment="Center"
+                          Opacity="0">
                         <ic:FluentIcon Icon="ChevronUp"
                                        IconVariant="Regular"
                                        IconSize="Size12"
-                                       Width="16"
-                                       Height="16"
                                        HorizontalAlignment="Center"
                                        VerticalAlignment="Center"
                                        Foreground="{ThemeResource TextTertiaryBrush}"
@@ -67,8 +76,6 @@
                         <ic:FluentIcon Icon="ChevronDown"
                                        IconVariant="Regular"
                                        IconSize="Size12"
-                                       Width="16"
-                                       Height="16"
                                        HorizontalAlignment="Center"
                                        VerticalAlignment="Center"
                                        Foreground="{ThemeResource TextTertiaryBrush}"
@@ -77,113 +84,117 @@
                 </Grid>
             </Button>
 
+            <!-- Timeline panel -->
             <Grid Margin="9,0,0,0"
                   Visibility="{x:Bind Activity.IsTimelineVisible, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                <!-- The line sits behind each status marker, giving all tool calls one
-                     continuous turn-level timeline instead of a stack of unrelated cards. -->
                 <Border Width="1"
                         Background="{ThemeResource BorderDefaultBrush}"
                         HorizontalAlignment="Left"
                         Margin="10,10,0,12" />
 
                 <StackPanel>
-                    <ScrollViewer MaxHeight="330"
-                                  VerticalScrollBarVisibility="Auto"
-                                  HorizontalScrollBarVisibility="Disabled">
-                        <ItemsControl ItemsSource="{x:Bind Activity.Steps, Mode=OneWay}"
-                                      Margin="0,2,4,0">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="models:ToolStepViewModel">
-                                <Grid Margin="0,2,0,10"
-                                      ColumnSpacing="10">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="21" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
+                    <ItemsControl ItemsSource="{x:Bind Activity.Steps, Mode=OneWay}"
+                                  Margin="0,2,4,0">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="models:ToolStepViewModel">
+                            <Grid x:Name="StepItemRoot"
+                                  Margin="0,2,0,10"
+                                  ColumnSpacing="10"
+                                  PointerEntered="StepItem_PointerEntered"
+                                  PointerExited="StepItem_PointerExited">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="21" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
 
-                                    <!-- Surface-colored backing masks the vertical rule inside
-                                         the marker, matching Claude's clock/globe nodes. -->
-                                    <Border Width="21"
-                                            Height="21"
-                                            CornerRadius="10.5"
-                                            Background="{ThemeResource ChatBackgroundBrush}"
-                                            VerticalAlignment="Top">
-                                        <TextBlock Text="{x:Bind StatusGlyph, Mode=OneWay}"
-                                                   FontSize="12"
-                                                   FontWeight="SemiBold"
-                                                   TextAlignment="Center"
-                                                   HorizontalAlignment="Center"
-                                                   VerticalAlignment="Center"
-                                                   Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource ToolStatusToBrush}}" />
-                                    </Border>
+                                <Border Width="21"
+                                        Height="21"
+                                        CornerRadius="10.5"
+                                        Background="{ThemeResource ChatBackgroundBrush}"
+                                        VerticalAlignment="Top">
+                                    <TextBlock Text="{x:Bind StatusGlyph, Mode=OneWay}"
+                                               FontSize="12"
+                                               FontWeight="SemiBold"
+                                               TextAlignment="Center"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource ToolStatusToBrush}}" />
+                                </Border>
 
-                                    <StackPanel Grid.Column="1"
-                                                Spacing="5">
-                                        <Button MinHeight="0"
-                                                Padding="0,1,2,3"
-                                                Background="Transparent"
-                                                BorderThickness="0"
-                                                CornerRadius="4"
-                                                HorizontalAlignment="Stretch"
-                                                HorizontalContentAlignment="Stretch"
-                                                Click="Step_Click"
-                                                Tag="{x:Bind}"
-                                                AutomationProperties.Name="{x:Bind AccessibilityName, Mode=OneWay}">
-                                            <Grid ColumnSpacing="8">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="1"
+                                            Spacing="5">
+                                    <!-- Step header -->
+                                    <Button MinHeight="0"
+                                            Padding="0,1,0,3"
+                                            Background="Transparent"
+                                            BorderThickness="0"
+                                            CornerRadius="4"
+                                            HorizontalAlignment="Stretch"
+                                            HorizontalContentAlignment="Stretch"
+                                            Style="{StaticResource TransparentButtonStyle}"
+                                            Click="Step_Click"
+                                            Tag="{x:Bind}"
+                                            AutomationProperties.Name="{x:Bind AccessibilityName, Mode=OneWay}">
+                                        <Grid ColumnSpacing="6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
 
-                                                <StackPanel Spacing="2">
-                                                    <TextBlock Text="{x:Bind DisplayName, Mode=OneWay}"
-                                                               FontSize="13"
-                                                               FontWeight="SemiBold"
-                                                               Foreground="{ThemeResource TextPrimaryBrush}"
-                                                               TextTrimming="CharacterEllipsis" />
-                                                    <TextBlock Text="{x:Bind TimelineText, Mode=OneWay}"
-                                                               FontSize="12"
-                                                               Foreground="{ThemeResource TextSecondaryBrush}"
-                                                               TextWrapping="WrapWholeWords"
-                                                               MaxLines="2"
-                                                               Visibility="{x:Bind HasTimelineText, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-                                                </StackPanel>
-                                                <TextBlock Grid.Column="1"
-                                                           Text="{x:Bind DurationLabel, Mode=OneWay}"
-                                                           FontSize="11"
-                                                           Foreground="{ThemeResource TextTertiaryBrush}"
-                                                           VerticalAlignment="Top"
-                                                           Margin="0,2,0,0" />
-                                                <Grid Grid.Column="2"
-                                                      Width="20"
-                                                      Height="20"
-                                                      Margin="2,0,1,0"
-                                                      VerticalAlignment="Top">
-                                                    <ic:FluentIcon Icon="ChevronUp"
-                                                                   IconVariant="Regular"
-                                                                   IconSize="Size12"
-                                                                   Width="16"
-                                                                   Height="16"
-                                                                   HorizontalAlignment="Center"
-                                                                   VerticalAlignment="Center"
-                                                                   Foreground="{ThemeResource TextTertiaryBrush}"
-                                                                   Visibility="{x:Bind IsExpanded, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-                                                    <ic:FluentIcon Icon="ChevronDown"
-                                                                   IconVariant="Regular"
-                                                                   IconSize="Size12"
-                                                                   Width="16"
-                                                                   Height="16"
-                                                                   HorizontalAlignment="Center"
-                                                                   VerticalAlignment="Center"
-                                                                   Foreground="{ThemeResource TextTertiaryBrush}"
-                                                                   Visibility="{x:Bind IsExpanded, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
-                                                </Grid>
+                                            <StackPanel Spacing="2">
+                                                <TextBlock x:Name="StepNameText"
+                                                           Text="{x:Bind DisplayName, Mode=OneWay}"
+                                                           FontSize="13"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{ThemeResource TextSecondaryBrush}"
+                                                           TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Text="{x:Bind TimelineText, Mode=OneWay}"
+                                                           FontSize="12"
+                                                           Foreground="{ThemeResource TextSecondaryBrush}"
+                                                           TextWrapping="WrapWholeWords"
+                                                           MaxLines="2"
+                                                           Visibility="{x:Bind HasTimelineText, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                                            </StackPanel>
+
+                                            <TextBlock Grid.Column="1"
+                                                       Text="{x:Bind DurationLabel, Mode=OneWay}"
+                                                       FontSize="11"
+                                                       Foreground="{ThemeResource TextTertiaryBrush}"
+                                                       VerticalAlignment="Top"
+                                                       Margin="12,2,0,0" />
+
+                                            <Grid x:Name="StepChevron"
+                                                  Grid.Column="2"
+                                                  Width="20"
+                                                  Height="20"
+                                                  Margin="4,1,0,0"
+                                                  VerticalAlignment="Top"
+                                                  Opacity="0">
+                                                <ic:FluentIcon Icon="ChevronUp"
+                                                               IconVariant="Regular"
+                                                               IconSize="Size12"
+                                                               HorizontalAlignment="Center"
+                                                               VerticalAlignment="Center"
+                                                               Foreground="{ThemeResource TextTertiaryBrush}"
+                                                               Visibility="{x:Bind IsExpanded, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                                                <ic:FluentIcon Icon="ChevronDown"
+                                                               IconVariant="Regular"
+                                                               IconSize="Size12"
+                                                               HorizontalAlignment="Center"
+                                                               VerticalAlignment="Center"
+                                                               Foreground="{ThemeResource TextTertiaryBrush}"
+                                                               Visibility="{x:Bind IsExpanded, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
                                             </Grid>
-                                        </Button>
+                                        </Grid>
+                                    </Button>
 
-                                        <StackPanel Spacing="7"
-                                                    Visibility="{x:Bind IsExpanded, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                                    <!-- Per-step expanded content -->
+                                    <ScrollViewer MaxHeight="330"
+                                                  VerticalScrollBarVisibility="Auto"
+                                                  HorizontalScrollBarVisibility="Disabled"
+                                                  Visibility="{x:Bind IsExpanded, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                                        <StackPanel Spacing="7">
                                             <Border Background="{ThemeResource SurfaceSecondaryBrush}"
                                                     CornerRadius="7"
                                                     Padding="10,8"
@@ -242,13 +253,14 @@
                                                 </StackPanel>
                                             </Border>
                                         </StackPanel>
-                                    </StackPanel>
-                                </Grid>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </ScrollViewer>
+                                    </ScrollViewer>
+                                </StackPanel>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                    </ItemsControl>
 
+                    <!-- Completion marker -->
                     <Grid ColumnSpacing="10" Margin="0,0,4,0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="21" />
