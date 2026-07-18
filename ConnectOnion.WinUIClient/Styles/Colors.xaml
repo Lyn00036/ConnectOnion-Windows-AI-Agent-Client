@@ -84,11 +84,17 @@
                  color. Dot/glyph only — non-text, so the 3:1 bar applies (3.3:1). -->
             <Color x:Key="StatusRunningColor">#FF666666</Color>
 
-            <!-- Search — gray fills with dark text on them (Light), or dark fills with
-                 light text (Dark). -->
-            <Color x:Key="SearchMatchBackgroundColor">#FFE0E0E0</Color>
-            <Color x:Key="SearchCurrentBackgroundColor">#FFC0C0C0</Color>
+            <!-- Search — the two hues allowed off the neutral scale alongside Success
+                 green. A plain match is highlighter YELLOW (bright in both themes so a
+                 hit stands out on either ground) with dark text; the one match the user
+                 is parked on is an ochre RED with light text, so "current" reads
+                 distinctly from "also matched". The two fills now sit at opposite ends
+                 of the light/dark range, so the current match carries its own text token
+                 (SearchCurrentText) instead of sharing SearchMatchText. -->
+            <Color x:Key="SearchMatchBackgroundColor">#FFFFE066</Color>
+            <Color x:Key="SearchCurrentBackgroundColor">#FFA83E32</Color>
             <Color x:Key="SearchMatchTextColor">#FF1A1A1A</Color>
+            <Color x:Key="SearchCurrentTextColor">#FFFFFFFF</Color>
 
             <!-- Chat — the agent bubble matches the chat ground rather than
                  contrasting with it: the agent's turn is the page, and only the
@@ -179,10 +185,13 @@
                  but deliberately its own token so the two can diverge. -->
             <Color x:Key="StatusRunningColor">#FF888888</Color>
 
-            <!-- Search -->
-            <Color x:Key="SearchMatchBackgroundColor">#FF3A3A3A</Color>
-            <Color x:Key="SearchCurrentBackgroundColor">#FF4A4A4A</Color>
-            <Color x:Key="SearchMatchTextColor">#FFF5F5F4</Color>
+            <!-- Search (see the light dictionary). Yellow stays bright and current stays
+                 an ochre red — both legible on near-black — with dark text on the yellow
+                 and light text on the red. -->
+            <Color x:Key="SearchMatchBackgroundColor">#FFE6BE3D</Color>
+            <Color x:Key="SearchCurrentBackgroundColor">#FFBB4A3C</Color>
+            <Color x:Key="SearchMatchTextColor">#FF1A1A1A</Color>
+            <Color x:Key="SearchCurrentTextColor">#FFF5F5F4</Color>
 
             <!-- Chat (see the light dictionary on why agent == chat ground) -->
             <Color x:Key="ChatBackgroundColor">#FF121212</Color>

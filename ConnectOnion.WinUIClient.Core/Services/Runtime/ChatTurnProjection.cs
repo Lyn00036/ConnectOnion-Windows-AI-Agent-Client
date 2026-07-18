@@ -40,6 +40,11 @@ public sealed class ChatTurnProjection
     private ToolActivityProjector? _toolActivity;
     private ChatMessage? _streamedFinalReply;
     private readonly List<ChatMessage> _thinkingActivities = new();
+    // Inbound agent images are buffered as they stream in and only projected once the turn's
+    // final output has been appended — the reference behaviour is that a received image belongs
+    // *after* the agent's answer, not floating above the tool activity / summary / reply that
+    // arrive later in the same turn. Flushed by AppendCompletedTurn / CompleteToolActivity.
+    private readonly List<string> _pendingAgentImages = new();
     private bool _wasInterrupted;
 
     public ChatTurnProjection(IChatProjectionTarget target) => _target = target;
@@ -203,29 +208,11 @@ public sealed class ChatTurnProjection
 
             case "agent_image":
             {
-                if (!AttachmentWireEvents.TryGetAgentImageDataUrl(WireMessage.Wrap(root), out var dataUrl))
-                    break;
-
-                var lastAgent = Messages.LastOrDefault(m => m.Role == ChatRole.Agent);
-                ChatMessage messageTarget;
-                if (lastAgent is not null)
-                {
-                    messageTarget = lastAgent;
-                }
-                else
-                {
-                    messageTarget = new ChatMessage { Id = NextId(), Role = ChatRole.Agent, AgentName = AgentName };
-                    Add(messageTarget);
-                }
-
-                var attachment = new ChatAttachment
-                {
-                    Kind = AttachmentKind.Image,
-                    FileName = "image",
-                    Status = AttachmentStatus.Encoding,
-                };
-                messageTarget.Attachments.Add(attachment);
-                _target.ResolveAgentImage(dataUrl, attachment);
+                // Don't render the image yet — buffer it and hang it on the final output when the
+                // turn completes (see FlushPendingImages). Rendering here would drop the image in
+                // above the tool activity, usage summary, and final reply that stream in after it.
+                if (AttachmentWireEvents.TryGetAgentImageDataUrl(WireMessage.Wrap(root), out var dataUrl))
+                    _pendingAgentImages.Add(dataUrl);
                 break;
             }
 
@@ -412,6 +399,8 @@ public sealed class ChatTurnProjection
         {
             AppendFinalReply(reply);
         }
+
+        FlushPendingImages();
     }
 
     /// <summary>One summary bubble before the final output: model + duration/tokens/context/tools.</summary>
@@ -444,6 +433,41 @@ public sealed class ChatTurnProjection
         CompleteThinkingActivities(status == ToolActivityStatus.Failed
             ? EventStatus.Error
             : EventStatus.Done);
+        // A turn that failed or was cancelled may still have received images before it stopped;
+        // don't lose them — flush onto whatever output exists so far.
+        FlushPendingImages();
+    }
+
+    /// <summary>
+    /// Projects the images buffered from this turn's <c>agent_image</c> events, attaching them to
+    /// the final agent bubble (the reply) if that is the last message, or to a fresh agent bubble
+    /// otherwise — so a received image always lands after the turn's final output, never above it.
+    /// </summary>
+    private void FlushPendingImages()
+    {
+        if (_pendingAgentImages.Count == 0) return;
+
+        var target = Messages.Count > 0 && Messages[^1].Role == ChatRole.Agent
+            ? Messages[^1]
+            : null;
+        if (target is null)
+        {
+            target = new ChatMessage { Id = NextId(), Role = ChatRole.Agent, AgentName = AgentName };
+            Add(target);
+        }
+
+        foreach (var dataUrl in _pendingAgentImages)
+        {
+            var attachment = new ChatAttachment
+            {
+                Kind = AttachmentKind.Image,
+                FileName = "image",
+                Status = AttachmentStatus.Encoding,
+            };
+            target.Attachments.Add(attachment);
+            _target.ResolveAgentImage(dataUrl, attachment);
+        }
+        _pendingAgentImages.Clear();
     }
 
     private void CompleteThinkingActivities(EventStatus status)

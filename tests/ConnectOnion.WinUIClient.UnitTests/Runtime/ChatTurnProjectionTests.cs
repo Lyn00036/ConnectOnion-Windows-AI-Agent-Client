@@ -170,15 +170,63 @@ public sealed class ChatTurnProjectionTests
         Assert.Equal("by agent", bubble.EventMeta);
     }
 
+    [Fact]
+    public void AgentImage_IsHeldUntilTurnCompletes_ThenAttachesToFinalReply()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+
+        // The image arrives mid-turn, before the assistant reply and the usage summary.
+        projection.Apply(Event("agent_image", "{\"type\":\"agent_image\",\"image\":\"data:image/png;base64,AAAA\"}"));
+
+        // Nothing rendered yet: it must wait for the agent's final output.
+        Assert.Empty(target.Messages);
+        Assert.Empty(target.ResolvedImages);
+
+        projection.Apply(Event("assistant", "{\"content\":\"here you go\"}"));
+        projection.AppendCompletedTurn("here you go");
+
+        // Order: usage summary, then final reply carrying the image — never above the reply.
+        Assert.Equal(2, target.Messages.Count);
+        Assert.True(target.Messages[0].IsEvent);
+        var reply = target.Messages[1];
+        Assert.True(reply.IsAgent);
+        Assert.Equal("here you go", reply.Content);
+        Assert.Single(reply.Attachments);
+        Assert.Equal(AttachmentKind.Image, reply.Attachments[0].Kind);
+        Assert.Single(target.ResolvedImages);
+    }
+
+    [Fact]
+    public void AgentImage_WithNoTextReply_GetsItsOwnBubbleAfterTheSummary()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+
+        projection.Apply(Event("agent_image", "{\"type\":\"agent_image\",\"image\":\"data:image/png;base64,AAAA\"}"));
+        projection.AppendCompletedTurn("");
+
+        // Summary first, then a fresh agent bubble holding the image — still after the output.
+        Assert.Equal(2, target.Messages.Count);
+        Assert.True(target.Messages[0].IsEvent);
+        Assert.True(target.Messages[1].IsAgent);
+        Assert.Single(target.Messages[1].Attachments);
+    }
+
     private static AgentStreamEvent Event(string type, string json) => new(type, type, null, json);
 
     private sealed class FakeTarget : IChatProjectionTarget
     {
         private long _nextId = 1;
         public IList<ChatMessage> Messages { get; } = new List<ChatMessage>();
+        public List<string> ResolvedImages { get; } = new();
         public string? AgentName => "Test Agent";
         public long NextId() => _nextId++;
         public void Add(ChatMessage message) => Messages.Add(message);
-        public void ResolveAgentImage(string dataUrl, ChatAttachment attachment) { }
+        public void ResolveAgentImage(string dataUrl, ChatAttachment attachment)
+        {
+            ResolvedImages.Add(dataUrl);
+            attachment.Status = AttachmentStatus.Sent;
+        }
     }
 }

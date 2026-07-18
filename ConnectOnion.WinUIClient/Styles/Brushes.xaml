@@ -81,6 +81,7 @@
             <SolidColorBrush x:Key="SearchMatchBackgroundBrush" Color="{ThemeResource SearchMatchBackgroundColor}" />
             <SolidColorBrush x:Key="SearchCurrentBackgroundBrush" Color="{ThemeResource SearchCurrentBackgroundColor}" />
             <SolidColorBrush x:Key="SearchMatchTextBrush" Color="{ThemeResource SearchMatchTextColor}" />
+            <SolidColorBrush x:Key="SearchCurrentTextBrush" Color="{ThemeResource SearchCurrentTextColor}" />
 
             <!-- Chat -->
             <SolidColorBrush x:Key="ChatBackgroundBrush" Color="{ThemeResource ChatBackgroundColor}" />
@@ -233,6 +234,7 @@
             <SolidColorBrush x:Key="SearchMatchBackgroundBrush" Color="{ThemeResource SearchMatchBackgroundColor}" />
             <SolidColorBrush x:Key="SearchCurrentBackgroundBrush" Color="{ThemeResource SearchCurrentBackgroundColor}" />
             <SolidColorBrush x:Key="SearchMatchTextBrush" Color="{ThemeResource SearchMatchTextColor}" />
+            <SolidColorBrush x:Key="SearchCurrentTextBrush" Color="{ThemeResource SearchCurrentTextColor}" />
 
             <!-- Chat -->
             <SolidColorBrush x:Key="ChatBackgroundBrush" Color="{ThemeResource ChatBackgroundColor}" />

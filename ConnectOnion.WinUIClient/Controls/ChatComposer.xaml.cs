@@ -104,7 +104,7 @@ public sealed partial class ChatComposer : UserControl, IDisposable
     /// <summary>Attachments picked but not yet sent. Cleared (for the ones actually sent) on submit.</summary>
     public ObservableCollection<PendingAttachment> PendingAttachments { get; } = new();
 
-    private readonly CancellationTokenSource _lifetimeCts = new();
+    private CancellationTokenSource _lifetimeCts = new();
     private int _disposed;
 
     public ChatComposer()
@@ -114,9 +114,18 @@ public sealed partial class ChatComposer : UserControl, IDisposable
         WaveformCanvas.Draw += WaveformCanvas_Draw;
         _recordingElapsedTimer.Tick += RecordingElapsedTimer_Tick;
         ActualThemeChanged += Composer_ActualThemeChanged;
+        Loaded += Composer_Loaded;
         Unloaded += Composer_Unloaded;
         PendingAttachments.CollectionChanged += PendingAttachments_CollectionChanged;
         RefreshSendButtonState();
+    }
+
+    /// <summary>The page caches this composer (NavigationCacheMode.Required), so the same
+    /// instance survives unload/reload cycles. Recreate the CTS on each Loaded so operations
+    /// started after a re-entry have a valid token — Dispose permanently breaks it.</summary>
+    private void Composer_Loaded(object sender, RoutedEventArgs e)
+    {
+        _lifetimeCts = new CancellationTokenSource();
     }
 
     private void Composer_ActualThemeChanged(FrameworkElement sender, object args)
@@ -258,10 +267,13 @@ public sealed partial class ChatComposer : UserControl, IDisposable
 
     private async void Composer_Unloaded(object sender, RoutedEventArgs e)
     {
+        // Cancel, don't Dispose: the page uses NavigationCacheMode.Required so this
+        // composer is reused on re-entry, and Dispose would destroy _lifetimeCts
+        // permanently — every operation using its Token (file picker, drag-drop,
+        // attachment encoding) would throw ObjectDisposedException and silently fail.
         _lifetimeCts.Cancel();
         WaveformCanvas.RemoveFromVisualTree();
         await StopSpeechRecognitionAsync();
-        Dispose();
     }
 
     public void Dispose()
@@ -269,6 +281,7 @@ public sealed partial class ChatComposer : UserControl, IDisposable
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
         Unloaded -= Composer_Unloaded;
+        Loaded -= Composer_Loaded;
         ActualThemeChanged -= Composer_ActualThemeChanged;
         PendingAttachments.CollectionChanged -= PendingAttachments_CollectionChanged;
         WaveformCanvas.Draw -= WaveformCanvas_Draw;

@@ -419,11 +419,12 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
     /// <summary>
     /// The slice of the conversation a finished turn's projection actually needs, plus the id its
     /// first new bubble takes. The projection only ever appends bubbles or edits ones it created
-    /// itself, with one exception: an <c>agent_image</c> event hangs its attachment on the last
-    /// agent bubble, and the final reply is deduped against that same bubble. So seeding the list
-    /// with that one row reproduces the old full-history behaviour exactly, while the persist that
-    /// follows writes only the rows in this window — a turn no longer costs a full read of the
-    /// conversation and a full rewrite of every row in it.
+    /// itself, with one exception: buffered <c>agent_image</c> events are flushed onto the last
+    /// agent bubble at turn's end (see <c>ChatTurnProjection.FlushPendingImages</c>), which — for a
+    /// turn that produced no output of its own — is this seed row. Seeding the list with that one
+    /// row mirrors what the live list's tail holds, so the headless persist and the live view
+    /// project identically, while the persist that follows writes only the rows in this window — a
+    /// turn no longer costs a full read of the conversation and a full rewrite of every row in it.
     /// </summary>
     private async Task<(List<ChatMessage> Window, long NextId)> LoadTurnWindowAsync(string conversationId)
     {

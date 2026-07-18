@@ -252,7 +252,10 @@ public sealed class HighlightedTextBlock : UserControl
                 // the default 14px UI font — visibly larger than 13px prose, and proportional in
                 // the middle of a monospace code block.
                 FontSize = fontSize,
-                Foreground = (Brush)Application.Current.Resources["SearchMatchTextBrush"],
+                // The current match is an ochre-red fill wanting light text; a plain match
+                // is a yellow fill wanting dark text — two different foregrounds, not one.
+                Foreground = (Brush)Application.Current.Resources[
+                    isActive ? "SearchCurrentTextBrush" : "SearchMatchTextBrush"],
                 FontWeight = isActive ? FontWeights.Bold : FontWeights.Normal,
             };
             if (fontFamily is not null) matchText.FontFamily = fontFamily;
