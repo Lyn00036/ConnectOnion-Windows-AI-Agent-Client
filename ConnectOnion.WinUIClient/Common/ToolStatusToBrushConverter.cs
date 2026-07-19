@@ -29,10 +29,16 @@ public sealed class ToolStatusToBrushConverter : IValueConverter
         var dangerOnly = parameter as string is { } p && p.StartsWith("danger-only", StringComparison.Ordinal)
             ? p.Split(':') is [_, var neutral] ? neutral : "TextSecondaryBrush"
             : null;
+        // "muted-success": keeps the warning amber and the failure red, but lets a successful step
+        // sit in the neutral grey. Succeeding is what a tool is *supposed* to do, so colouring it
+        // spends the reader's attention on the rows that need none — the same argument as
+        // "danger-only" above, one notch weaker, because a warning here is still worth a glance.
+        var mutedSuccess = string.Equals(parameter as string, "muted-success", StringComparison.Ordinal);
         var key = value switch
         {
             ToolActivityStatus.Failed or ToolStepStatus.Failed => "DangerBrush",
             _ when dangerOnly is not null => dangerOnly,
+            ToolActivityStatus.Success or ToolStepStatus.Success when mutedSuccess => "TextSecondaryBrush",
             ToolActivityStatus.Success or ToolStepStatus.Success => "SuccessBrush",
             ToolActivityStatus.PartialSuccess or ToolStepStatus.Warning => "WarningBrush",
             ToolActivityStatus.WaitingForConfirmation or ToolActivityStatus.WaitingForPermission => "WarningBrush",
