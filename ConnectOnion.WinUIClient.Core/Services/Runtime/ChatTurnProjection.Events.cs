@@ -202,6 +202,72 @@ public sealed partial class ChatTurnProjection
                 break;
             }
 
+            // Client-originated connection lifecycle. Published by AgentSessionManager, not the
+            // host — the socket is down when the first of these fires, so nothing could have
+            // sent it. They share one row keyed "reconnect": the attempts overwrite each other
+            // rather than stacking five rows, and the outcome settles the same row.
+            case "reconnecting":
+            {
+                var attempt = Num("attempt") ?? 1;
+                var max = Num("max_attempts") ?? 5;
+                if (FindEvent("reconnect", "activity") is { } open)
+                {
+                    open.EventTitle = $"Reconnecting ({attempt:0}/{max:0})";
+                    open.Status = EventStatus.Running;
+                }
+                else
+                {
+                    var item = NewActivity("reconnect", $"Reconnecting ({attempt:0}/{max:0})", EventStatus.Running);
+                    item.EventDetail = Str("reason");
+                    Add(item);
+                }
+                break;
+            }
+
+            case "reconnected":
+            {
+                var resumed = Flag("resumed") == true;
+                if (FindEvent("reconnect", "activity") is { } open)
+                {
+                    // "Reconnected" alone would be misleading when the turn did not survive:
+                    // the socket is back either way, but only a host still running the agent
+                    // means the reply is still coming.
+                    open.EventTitle = resumed ? "Reconnected - resuming" : "Reconnected";
+                    open.EventDetail = resumed ? null : "The agent was no longer running this turn.";
+                    open.Status = EventStatus.Done;
+                }
+                break;
+            }
+
+            // A proposed file write, sent by DiffWriter purely so the UI can show the diff. It
+            // does NOT block and carries no options — the approve/reject choice arrives right
+            // behind it as an ordinary ask_user (`_ask_approval` in diff_writer.py), which the
+            // ask_user card already renders. So this card is read-only on purpose: putting
+            // buttons here would answer a frame nothing is waiting on, and then the real
+            // ask_user would block forever.
+            case "diff_preview":
+            {
+                var path = Str("path") ?? "(unknown path)";
+                var card = new ChatMessage
+                {
+                    Id = NextId(),
+                    Role = ChatRole.Event,
+                    EventKind = "diff_preview",
+                    EventTitle = path,
+                    // The unified-diff body. Empty means the writer found nothing to change —
+                    // worth saying out loud, because a silent empty card reads as a failure.
+                    EventDetail = Str("preview") is { Length: > 0 } p ? p : "(no changes)",
+                    // file_exists distinguishes "new file" (all additions) from "modified".
+                    EventEyebrow = Flag("file_exists") == true ? "MODIFY" : "CREATE",
+                    Status = EventStatus.Done,
+                };
+                // Note the `truncated` flag is deliberately NOT surfaced as a separate badge:
+                // _truncate_preview already appends a literal "\n...(truncated)" line to the
+                // preview body it sends, so a badge would state the same fact twice.
+                Add(card);
+                break;
+            }
+
             case "assistant":
             {
                 var content = Str("content");

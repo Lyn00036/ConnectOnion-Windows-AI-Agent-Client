@@ -34,11 +34,11 @@ public sealed partial class ToolActivityViewModel : Common.ObservableObject
     {
         Status = ToolActivityStatus.Running;
         DisplayMode = ToolDisplayMode.Compact;
-        // Collapsed by default. The card's header already says what is running and how far along
-        // it is, so the timeline is detail the user opens when they want it — auto-expanding it
-        // pushed the agent's actual reply down the page on every tool-using turn.
-        // Three things still force it open, and they are exceptions on purpose: a blocked tool,
-        // a turn waiting on the user's approval, and a failed run (see ToolActivityProjector).
+        // Starts collapsed; ToolActivityProjector.ApplyAutoExpansion opens it as soon as a tool
+        // actually starts on a live view and folds it again when the run finishes. The seed
+        // matters for the headless paths (persistence, migration) that never call the projector's
+        // live rules — those must write the card closed, so reopening an old conversation does
+        // not replay every past run at full height.
         IsExpanded = false;
         Summary = "Running tools…";
         StartedAt = DateTimeOffset.UtcNow;
@@ -151,7 +151,23 @@ public sealed partial class ToolActivityViewModel : Common.ObservableObject
     [JsonIgnore] public double DurationSeconds => Math.Max(0, ((CompletedAt ?? DateTimeOffset.UtcNow) - StartedAt).TotalSeconds);
     [JsonIgnore] public string DurationLabel => DurationSeconds < 1 ? $"{DurationSeconds * 1000:0} ms" : $"{DurationSeconds:0.0} s";
 
-    public void ToggleExpanded() => IsExpanded = !IsExpanded;
+    /// <summary>
+    /// True once the user has opened or closed this card by hand. Auto-expansion stops applying
+    /// from that moment for the life of the card.
+    /// <para>This is what makes "expand while running" safe. Without it, a user who folds a noisy
+    /// card mid-turn has it thrown back open by the very next <c>tool_call</c> — the card fights
+    /// them once per tool, which is exactly why auto-expanding on call was removed before.
+    /// Not persisted: it is a property of this viewing session, not of the turn.</para>
+    /// </summary>
+    [JsonIgnore]
+    public bool HasUserExpansionOverride { get; private set; }
+
+    public void ToggleExpanded()
+    {
+        HasUserExpansionOverride = true;
+        IsExpanded = !IsExpanded;
+    }
+
     public void RefreshPresentation() => OnPresentationChanged();
 
     private void OnPresentationChanged()

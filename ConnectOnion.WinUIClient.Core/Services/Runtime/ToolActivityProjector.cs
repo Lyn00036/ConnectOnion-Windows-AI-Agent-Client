@@ -67,27 +67,40 @@ public sealed class ToolActivityProjector
     }
 
     /// <summary>
-    /// The card's one auto-expansion rule: stay collapsed unless it needs the user, and there is
-    /// a user there to need. Two things qualify — something broke, or the turn is blocked waiting
-    /// on a decision — because both are moments where the detail is the point. Running steps and
-    /// a clean finish stay folded, since the card's job is to keep a turn's tool timeline out of
-    /// the way until it is asked for.
+    /// The card's auto-expansion rule: <b>open while the tools are running, folded once they are
+    /// done</b>. A turn in progress is when the timeline is worth watching; a finished one has a
+    /// header that already says what happened, and leaving it open pushes the agent's actual
+    /// reply down the page on every tool-using turn.
+    ///
+    /// Two states keep the card open past completion, and both are cases where the detail is the
+    /// whole point: something failed, or the turn is blocked waiting on a decision.
     ///
     /// Gated on <paramref name="_isLiveView"/> so the headless persistence pass writes the card
-    /// collapsed: reopening an old conversation should not replay every past failure and every
-    /// long-since-answered approval at full height.
+    /// collapsed: reopening an old conversation should not replay every past run at full height.
     ///
-    /// <see cref="ToolActivityViewModel.IsDetailed"/> still wins: that is an explicit "always
-    /// show me detail" setting, not an automatic behaviour.
+    /// Two things outrank it. <see cref="ToolActivityViewModel.IsDetailed"/> is an explicit
+    /// "always show me detail" setting. And
+    /// <see cref="ToolActivityViewModel.HasUserExpansionOverride"/> means the user has already
+    /// said what they want for this card — after that, auto-expansion stops touching it, so
+    /// folding a noisy card mid-turn is not undone by the next tool that starts.
     /// </summary>
     private void ApplyAutoExpansion()
     {
+        if (Activity.IsDetailed)
+        {
+            Activity.IsExpanded = true;
+            return;
+        }
+        if (Activity.HasUserExpansionOverride) return;
+
         var failed = Activity.Status == ToolActivityStatus.Failed
             || Activity.Steps.Any(step => step.Status == ToolStepStatus.Failed);
         var awaitingUser = Activity.Status
             is ToolActivityStatus.WaitingForConfirmation
             or ToolActivityStatus.WaitingForPermission;
-        Activity.IsExpanded = Activity.IsDetailed || (_isLiveView && (failed || awaitingUser));
+        var running = Activity.Status == ToolActivityStatus.Running;
+
+        Activity.IsExpanded = _isLiveView && (running || failed || awaitingUser);
     }
 
     /// <summary>Projects a <c>tool_call</c> frame into a new running step (or returns the
@@ -119,9 +132,10 @@ public sealed class ToolActivityProjector
         Activity.Steps.Add(step);
         Activity.Status = ToolActivityStatus.Running;
         Activity.Summary = RunningSummary(step);
-        // Deliberately does not touch IsExpanded. A tool starting is the ordinary case and the
-        // header already reports it; forcing the card open here also fought the user, since a
-        // card collapsed mid-turn sprang back open on the very next tool_call.
+        // Opens the card so a running turn shows its timeline. Safe to do per call only because
+        // ApplyAutoExpansion bails on HasUserExpansionOverride: without that guard this line is
+        // the old bug where a card the user folded mid-turn sprang back open on the next tool.
+        ApplyAutoExpansion();
         return step;
     }
 

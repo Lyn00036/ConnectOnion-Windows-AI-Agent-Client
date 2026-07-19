@@ -108,9 +108,10 @@ public sealed partial class ChatMessage : Common.ObservableObject
     [JsonPropertyName("eventDetail")]
     public partial string? EventDetail { get; set; }
 
-    /// <summary>Which event template renders this bubble: "activity", "tool", "ask_user", "approval", "plan_review" (empty = not an event).</summary>
+    /// <summary>Which event template renders this bubble: "activity", "tool", "ask_user", "approval", "plan_review", "diff_preview" (empty = not an event).</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsActivityEvent))]
+    [NotifyPropertyChangedFor(nameof(IsDiffPreviewEvent))]
     [NotifyPropertyChangedFor(nameof(IsToolEvent))]
     [NotifyPropertyChangedFor(nameof(IsToolActivityEvent))]
     [NotifyPropertyChangedFor(nameof(IsAskUserEvent))]
@@ -385,6 +386,11 @@ public sealed partial class ChatMessage : Common.ObservableObject
     /// <summary>A <c>plan_review</c> turn: plan content + approve/request-changes buttons.</summary>
     [JsonIgnore]
     public bool IsPlanReviewEvent => EventKind == "plan_review";
+
+    /// <summary>A read-only proposed file change. Not an interactive event: DiffWriter sends
+    /// diff_preview for display only and asks for approval through a separate ask_user, so this
+    /// card never carries buttons. See the diff_preview arm of ChatTurnProjection.Events.</summary>
+    public bool IsDiffPreviewEvent => EventKind == "diff_preview";
 
     /// <summary>
     /// True while an ask_user/approval/plan_review turn is still waiting on the
