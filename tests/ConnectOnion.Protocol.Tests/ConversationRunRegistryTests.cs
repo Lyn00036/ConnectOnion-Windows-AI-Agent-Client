@@ -387,6 +387,61 @@ public sealed class ConversationRunRegistryTests
         Assert.Empty(registry.GetActiveRuns());
     }
 
+    /// <summary>
+    /// A turn interrupted by app shutdown must be distinguishable from one the user stopped.
+    /// Nothing told the host to stop, so its agent is very likely still running the turn —
+    /// possibly blocked on an approval — and persistence relies on this code to leave the turn
+    /// resumable rather than settling it as finished.
+    /// </summary>
+    [Fact]
+    public async Task Shutdown_MarksInterruptedRunsWithTheShutdownCode_NotCancelled()
+    {
+        var persistence = new FakePersistence();
+        var registry = new ConversationRunRegistry(persistence);
+        var started = new TaskCompletionSource();
+
+        registry.StartRun(NewRequest(), new FakeExecutor(async (_, sink) =>
+        {
+            sink.SetRunning();
+            started.SetResult();
+            await Task.Delay(Timeout.Infinite, sink.CancellationToken);
+            return "x";
+        }));
+
+        await started.Task;
+        await registry.ShutdownAsync(TimeSpan.FromSeconds(5));
+
+        var snapshot = registry.GetActiveRun("conv");
+        Assert.NotNull(snapshot);
+        Assert.Equal(ConversationRunStatus.Cancelled, snapshot!.Status);
+        Assert.Equal(RunErrorCodes.Shutdown, snapshot.ErrorCode);
+    }
+
+    /// <summary>The counterpart: an ordinary cancel outside shutdown keeps the plain code, so a
+    /// user pressing Stop never leaves a turn that the next app launch tries to rejoin.</summary>
+    [Fact]
+    public async Task CancelRun_OutsideShutdown_UsesTheCancelledCode()
+    {
+        var persistence = new FakePersistence();
+        var registry = new ConversationRunRegistry(persistence);
+        var started = new TaskCompletionSource();
+
+        var run = registry.StartRun(NewRequest(), new FakeExecutor(async (_, sink) =>
+        {
+            sink.SetRunning();
+            started.SetResult();
+            await Task.Delay(Timeout.Infinite, sink.CancellationToken);
+            return "x";
+        }));
+
+        await started.Task;
+        await registry.CancelRunAsync("conv", run.RunId);
+
+        var snapshot = registry.GetActiveRun("conv");
+        Assert.Equal(ConversationRunStatus.Cancelled, snapshot!.Status);
+        Assert.Equal(RunErrorCodes.Cancelled, snapshot.ErrorCode);
+    }
+
     // ---- Memory: what a finished turn is allowed to leave behind ----
 
     [Fact]

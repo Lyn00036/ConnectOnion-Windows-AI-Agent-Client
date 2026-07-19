@@ -33,23 +33,71 @@ public sealed class ToolActivityExpansionTests
         Assert.False(activity.IsTimelineVisible);
     }
 
+    /// <summary>The headline behaviour: a running turn shows its timeline, a finished one folds
+    /// it away so the agent's actual reply is not pushed down the page.</summary>
     [Fact]
-    public void RunningTools_DoNotForceTheCardOpen()
+    public void RunningTools_OpenTheCard_AndCompletionFoldsItAgain()
     {
         var activity = new ToolActivityViewModel();
-        var projector = new ToolActivityProjector(activity);
+        var projector = new ToolActivityProjector(activity, isLiveView: true);
 
         projector.ApplyCall(Event("{\"tool_id\":\"one\",\"name\":\"read_file\",\"args\":{\"path\":\"a.txt\"}}"));
+        Assert.True(activity.IsExpanded);
+
+        projector.Complete();
+        Assert.False(activity.IsExpanded);
+    }
+
+    /// <summary>
+    /// The guard that makes expand-while-running liveable. Folding a noisy card mid-turn has to
+    /// stick — without the override, the next tool_call throws it back open and the card fights
+    /// the user once per tool.
+    /// </summary>
+    [Fact]
+    public void UserCollapseMidRun_IsNotUndoneByTheNextTool()
+    {
+        var activity = new ToolActivityViewModel();
+        var projector = new ToolActivityProjector(activity, isLiveView: true);
+
+        projector.ApplyCall(Event("{\"tool_id\":\"one\",\"name\":\"read_file\",\"args\":{}}"));
+        Assert.True(activity.IsExpanded);
+
+        activity.ToggleExpanded();
         Assert.False(activity.IsExpanded);
 
-        // A second call must not spring the card back open either — that is what made a
-        // mid-turn collapse fail to stick.
-        activity.IsExpanded = true;
-        activity.ToggleExpanded();
         projector.ApplyCall(Event("{\"tool_id\":\"two\",\"name\":\"search_web\",\"args\":{\"query\":\"x\"}}"));
 
         Assert.False(activity.IsExpanded);
         Assert.Equal(2, activity.Steps.Count);   // still recorded, just not shown
+    }
+
+    /// <summary>The reverse override: a user who opens a card keeps it open past completion.</summary>
+    [Fact]
+    public void UserExpandedCard_StaysOpenAfterCompletion()
+    {
+        var activity = new ToolActivityViewModel();
+        var projector = new ToolActivityProjector(activity, isLiveView: true);
+        projector.ApplyCall(Event("{\"tool_id\":\"one\",\"name\":\"read_file\",\"args\":{}}"));
+
+        activity.ToggleExpanded();   // closed
+        activity.ToggleExpanded();   // and deliberately reopened
+
+        projector.Complete();
+
+        Assert.True(activity.IsExpanded);
+    }
+
+    /// <summary>Persisted history must never be written expanded, or reopening an old
+    /// conversation replays every past run at full height.</summary>
+    [Fact]
+    public void RunningTools_StayCollapsedOnTheHeadlessPass()
+    {
+        var activity = new ToolActivityViewModel();
+        var projector = new ToolActivityProjector(activity);   // isLiveView: false
+
+        projector.ApplyCall(Event("{\"tool_id\":\"one\",\"name\":\"read_file\",\"args\":{}}"));
+
+        Assert.False(activity.IsExpanded);
     }
 
     [Fact]
