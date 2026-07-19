@@ -184,15 +184,16 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         agentsState.SelectedAgentId = agent.Id;
         await AppServices.Agents.SaveAsync(agentsState);
 
-        // Order matters: create the session, mark its agent expanded so the refresh renders it
-        // open, rebuild the tree, and only then navigate — so the chat page opens onto a
-        // conversation the sidebar is already showing as selected.
-        await CreateSessionAsync(agent.Id);
+        // No session is created here. AgentDetailPage is the start-a-chat surface and creates one
+        // when the user actually sends their first message, so a shortcut pressed by accident
+        // leaves nothing behind — the sidebar used to collect an empty conversation per stray
+        // Ctrl+N. Same path the agent row's "+" takes (ShellSidebar.Events.AddChat_Click), so the
+        // two entry points into "new chat" behave identically.
         FocusAgentInSidebar(agent.Id);
         await RefreshAsync();
-        // forceReload because the target may already be the current page: a plain Navigate to
-        // the page you are on is a no-op, and the new conversation would never load.
-        RequestNavigation(typeof(ChatPage), forceReload: true);
+        // forceReload because the target may already be the current page: a plain Navigate to the
+        // page you are on is a no-op, and the composer would keep whatever was on it.
+        RequestNavigation(typeof(AgentDetailPage), forceReload: true);
         return true;
     }
 
@@ -298,12 +299,6 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
             return recent.Id;
         }
 
-        return await CreateAndActivateSessionAsync(sessionsState, agentId);
-    }
-
-    private async System.Threading.Tasks.Task<string> CreateSessionAsync(string agentId)
-    {
-        var sessionsState = await AppServices.Sessions.LoadAsync();
         return await CreateAndActivateSessionAsync(sessionsState, agentId);
     }
 

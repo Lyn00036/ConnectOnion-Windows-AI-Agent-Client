@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
+using ConnectOnion.WinUIClient.Services.Runtime;
 using ConnectOnion.WinUIClient.Data;
 
 namespace ConnectOnion.WinUIClient.ViewModels;
@@ -26,11 +27,16 @@ public sealed class SessionsViewModel : ObservableObject
 
     private readonly SessionRepository _repo;
     private readonly ConversationRepository _conversations;
+    private readonly AgentSessionManager _runManager;
 
-    public SessionsViewModel(SessionRepository sessions, ConversationRepository conversations)
+    public SessionsViewModel(
+        SessionRepository sessions,
+        ConversationRepository conversations,
+        AgentSessionManager runManager)
     {
         _repo = sessions;
         _conversations = conversations;
+        _runManager = runManager;
     }
 
     public ObservableCollection<SessionSummary> Sessions { get; } = new();
@@ -120,6 +126,10 @@ public sealed class SessionsViewModel : ObservableObject
         // conversation from memory while the deletes are in flight.
         Sessions.Remove(session);
         ConversationCache.Invalidate(session.Id);
+        // Cache eviction alone leaves the app-level runtime state behind — the conversation's
+        // live WebSocket above all. The sidebar's own delete has always done this; this page's
+        // delete had not, so deleting from here leaked a socket per conversation.
+        await _runManager.ReleaseConversationAsync(session.Id);
         await _conversations.DeleteMessagesAsync(session.Id);
         await _conversations.DeleteExecutionsAndTracesAsync(session.Id);
         if (ReferenceEquals(_selected, session))
@@ -141,6 +151,7 @@ public sealed class SessionsViewModel : ObservableObject
         {
             Sessions.Remove(session);
             ConversationCache.Invalidate(session.Id);
+            await _runManager.ReleaseConversationAsync(session.Id);
             await _conversations.DeleteMessagesAsync(session.Id);
             await _conversations.DeleteExecutionsAndTracesAsync(session.Id);
         }

@@ -25,9 +25,16 @@ namespace ConnectOnion.Protocol.Runtime;
 /// </summary>
 public sealed class ConversationRunRegistry
 {
+    /// <summary>How long a failed turn stays retryable. Long enough that a user who steps away
+    /// mid-failure still finds the button live when they come back; short enough that an
+    /// abandoned failed turn's attachments do not sit in memory all day. Expiry is lazy — there
+    /// is no timer; the map is swept whenever it is written to or read.</summary>
+    private static readonly TimeSpan RetryableTtl = TimeSpan.FromMinutes(30);
+
     private readonly IRunPersistence _persistence;
     private readonly IRunLogger _logger;
     private readonly Action<Exception>? _onError;
+    private readonly Func<DateTimeOffset> _clock;
 
     // All four are keyed by conversation id and outlive any page.
     /// <summary>Runs currently executing. An entry existing here *is* the "conversation is
@@ -37,8 +44,11 @@ public sealed class ConversationRunRegistry
     /// a page opened moments later can still see how the turn ended instead of finding nothing.</summary>
     private readonly ConcurrentDictionary<string, ConversationRunSnapshot> _lastSnapshots = new();
     /// <summary>Requests from failed runs, held so the UI can offer a retry without the caller
-    /// having to reconstruct the original turn. Cleared when a new run starts.</summary>
-    private readonly ConcurrentDictionary<string, TurnRequest> _retryable = new();
+    /// having to reconstruct the original turn. Cleared when a new run starts, and expired out
+    /// after <see cref="RetryableTtl"/> — a <see cref="TurnRequest"/> carries the turn's images
+    /// and files as base64 data URLs, so an entry that is never retried would otherwise pin the
+    /// whole payload for the life of the process.</summary>
+    private readonly ConcurrentDictionary<string, RetryableRequest> _retryable = new();
     private readonly ConcurrentDictionary<string, Subscription> _subscriptions = new();
 
     // volatile: set on the shutdown path and read by StartRun on arbitrary threads, with no
@@ -48,11 +58,14 @@ public sealed class ConversationRunRegistry
     public ConversationRunRegistry(
         IRunPersistence persistence,
         IRunLogger? logger = null,
-        Action<Exception>? onError = null)
+        Action<Exception>? onError = null,
+        Func<DateTimeOffset>? clock = null)
     {
         _persistence = persistence ?? throw new ArgumentNullException(nameof(persistence));
         _logger = logger ?? NullRunLogger.Instance;
         _onError = onError;
+        // Injectable purely so the retry-expiry test does not have to wait out a real TTL.
+        _clock = clock ?? (() => DateTimeOffset.UtcNow);
     }
 
     /// <summary>
@@ -111,6 +124,14 @@ public sealed class ConversationRunRegistry
         }
         return _lastSnapshots.TryGetValue(conversationId, out var last) ? last : null;
     }
+
+    /// <summary>Whether a run is <i>currently executing</i> for this conversation.
+    /// <para>Deliberately distinct from <see cref="GetActiveRun"/>, which falls back to the last
+    /// terminal snapshot and therefore keeps returning non-null forever once a conversation has
+    /// run even once. Callers asking "is this conversation busy right now?" — resource reclamation
+    /// above all — must use this; a caller that wants "what is the current or most recent run"
+    /// wants <see cref="GetActiveRun"/> and its fallback.</para></summary>
+    public bool IsRunActive(string conversationId) => _active.ContainsKey(conversationId);
 
     /// <summary>Snapshots of every currently-executing run across all conversations.</summary>
     public IReadOnlyList<ConversationRunSnapshot> GetActiveRuns()
@@ -183,15 +204,34 @@ public sealed class ConversationRunRegistry
     /// </summary>
     public ConversationRunSnapshot? RetryRun(string conversationId, ITurnExecutor executor)
     {
-        if (!_retryable.TryGetValue(conversationId, out var original)) return null;
+        PruneExpiredRetryables();
+        if (!_retryable.TryGetValue(conversationId, out var entry)) return null;
         if (_active.ContainsKey(conversationId)) return null;
 
-        var retry = original with
+        var retry = entry.Request with
         {
             RunId = Guid.NewGuid().ToString(),
             AssistantMessageId = Guid.NewGuid().ToString(),
         };
         return StartRun(retry, executor);
+    }
+
+    /// <summary>
+    /// Drops everything this registry remembers about a conversation — its last snapshot, its
+    /// retryable request, and its subscription slot. Call when the conversation is deleted.
+    /// <para>Without this the three maps are keyed by conversation id and never shrink: a user
+    /// who works through and deletes many conversations leaves behind one terminal snapshot
+    /// (holding the full reply text) each, for the life of the process.</para>
+    /// <para>Does <b>not</b> cancel an active run — cancellation is the caller's decision and it
+    /// has its own bounded-wait path (<see cref="CancelRunAsync"/>). Forgetting a conversation
+    /// whose run is still executing is harmless: the run finishes and re-populates its snapshot,
+    /// which is then simply never read.</para>
+    /// </summary>
+    public void Forget(string conversationId)
+    {
+        _lastSnapshots.TryRemove(conversationId, out _);
+        _retryable.TryRemove(conversationId, out _);
+        _subscriptions.TryRemove(conversationId, out _);
     }
 
     /// <summary>
@@ -273,8 +313,31 @@ public sealed class ConversationRunRegistry
         catch (Exception ex) { _onError?.Invoke(ex); }
 
         Finalize(run, status, null, code, message);
-        if (status == ConversationRunStatus.Failed) _retryable[run.ConversationId] = run.Request;
+        if (status == ConversationRunStatus.Failed)
+        {
+            _retryable[run.ConversationId] = new RetryableRequest(run.Request, _clock());
+            // Sweep here rather than on a timer: failures are rare and this map is tiny, so the
+            // scan is free, and it means an app that fails once and then sits idle still lets go
+            // of every *other* conversation's stale payload.
+            PruneExpiredRetryables();
+        }
     }
+
+    /// <summary>Drops retryable requests past their TTL. Cheap enough to run on every write and
+    /// every retry attempt — the map holds at most one entry per conversation that has failed.</summary>
+    private void PruneExpiredRetryables()
+    {
+        var now = _clock();
+        foreach (var (conversationId, entry) in _retryable)
+        {
+            if (now - entry.StoredAt < RetryableTtl) continue;
+            // Key-and-value overload so a fresher failure recorded since this loop started is
+            // not evicted by an expiry decision made about the entry it replaced.
+            _retryable.TryRemove(new KeyValuePair<string, RetryableRequest>(conversationId, entry));
+        }
+    }
+
+    private sealed record RetryableRequest(TurnRequest Request, DateTimeOffset StoredAt);
 
     private ConversationRunSnapshot SnapshotFor(
         ConversationRun run, ConversationRunStatus status, string? code = null, string? message = null)

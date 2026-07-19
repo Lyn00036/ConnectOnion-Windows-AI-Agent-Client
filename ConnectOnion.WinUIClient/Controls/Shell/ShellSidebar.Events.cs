@@ -11,7 +11,7 @@ namespace ConnectOnion.WinUIClient.Controls;
 // User-interaction entry points for the sidebar: row hover/focus handlers and the
 // routed Click handlers for add-chat / add-agent / pin / delete / settings. Each
 // delegates to the state/refresh logic in ShellSidebar.xaml.cs (RefreshAsync,
-// SelectSessionAsync, CreateSessionAsync, ConfirmDeleteAsync, RequestNavigation);
+// SelectSessionAsync, ConfirmDeleteAsync, RequestNavigation);
 // split out so the main file holds the data/presence model, not the wiring.
 public sealed partial class ShellSidebar
 {
@@ -31,6 +31,14 @@ public sealed partial class ShellSidebar
         }
     }
 
+    /// <summary>
+    /// Opens the agent's start-a-chat surface instead of creating a conversation outright.
+    ///
+    /// The session is created by <see cref="Views.AgentDetailPage"/> when the user actually sends
+    /// their first message, so a click here that the user then thinks better of leaves nothing
+    /// behind. Creating the row up front put an empty conversation in the sidebar for every
+    /// stray click, and those had to be deleted by hand.
+    /// </summary>
     private async void AddChat_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.Tag is not string agentId) return;
@@ -38,10 +46,9 @@ public sealed partial class ShellSidebar
         var agentsState = await AppServices.Agents.LoadAsync();
         agentsState.SelectedAgentId = agentId;
         await AppServices.Agents.SaveAsync(agentsState);
-        await CreateSessionAsync(agentId);
         FocusAgentInSidebar(agentId);
         await RefreshAsync();
-        RequestNavigation(typeof(ChatPage), forceReload: true);
+        RequestNavigation(typeof(Views.AgentDetailPage), forceReload: true);
     }
 
     private async void DeleteAgent_Click(object sender, RoutedEventArgs e)

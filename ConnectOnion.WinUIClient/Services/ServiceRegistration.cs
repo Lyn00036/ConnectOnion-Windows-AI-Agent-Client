@@ -1,6 +1,7 @@
 using System;
 using System.Net.Http;
 using ConnectOnion.WinUIClient.Data;
+using ConnectOnion.WinUIClient.Services.Attachments;
 using ConnectOnion.WinUIClient.Services.Notifications;
 using ConnectOnion.WinUIClient.Services.Runtime;
 using ConnectOnion.WinUIClient.ViewModels;
@@ -92,6 +93,7 @@ public static class ServiceRegistration
         // ---- Startup wiring (runs when the host starts) ----
         services.AddHostedService<NotificationStartupService>();
         services.AddHostedService<KeyboardShortcutStartupService>();
+        services.AddHostedService<ImageCacheMaintenanceService>();
 
         // ---- View models (transient: one per page/dialog, resolved in each view's ctor) ----
         services.AddTransient<ChatViewModel>();
