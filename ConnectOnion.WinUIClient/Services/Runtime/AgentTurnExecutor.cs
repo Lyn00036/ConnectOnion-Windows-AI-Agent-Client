@@ -22,6 +22,7 @@ public sealed class AgentTurnExecutor : ITurnExecutor
     private readonly AgentConnectionService _connection;
     private readonly Action<ApprovalRequest>? _onApproval;
     private readonly Action<string>? _onInteractive;
+    private readonly bool _resumeExisting;
 
     /// <param name="onApproval">App-level hook fired when the agent requests approval, so the
     /// notification is raised once (in the tray, across windows) rather than per open page.</param>
@@ -30,14 +31,20 @@ public sealed class AgentTurnExecutor : ITurnExecutor
     /// it decides what Stop can actually do: an agent parked on an approval can be halted for
     /// real, one parked on a question can only be told to stop, and one mid-LLM-call can only be
     /// asked nicely.</param>
+    /// <param name="resumeExisting">Attach to a turn the host is already running instead of
+    /// sending an INPUT. Used by the resume-on-open probe after an app restart: every event
+    /// handler below is wired identically, so the replayed turn projects into exactly the same
+    /// cards a live one does — only the frame that starts it differs.</param>
     public AgentTurnExecutor(
         AgentConnectionService connection,
         Action<ApprovalRequest>? onApproval = null,
-        Action<string>? onInteractive = null)
+        Action<string>? onInteractive = null,
+        bool resumeExisting = false)
     {
         _connection = connection;
         _onApproval = onApproval;
         _onInteractive = onInteractive;
+        _resumeExisting = resumeExisting;
     }
 
     public async Task<string> ExecuteAsync(TurnRequest request, IRunSink sink)
@@ -81,10 +88,15 @@ public sealed class AgentTurnExecutor : ITurnExecutor
         try
         {
             sink.SetConnecting();
-            var reply = await _connection.SendInputAsync(
-                request.Prompt, request.SessionId, request.Images, request.Files, request.Mode,
-                sink.CancellationToken)
-                .ConfigureAwait(false);
+            // Resuming deliberately sends nothing: the agent is mid-turn and an INPUT here would
+            // reach the host as a RUNTIME_INPUT — an extra prompt the user never typed.
+            var reply = _resumeExisting
+                ? await _connection.ResumeRunningSessionAsync(request.SessionId!, sink.CancellationToken)
+                    .ConfigureAwait(false)
+                : await _connection.SendInputAsync(
+                    request.Prompt, request.SessionId, request.Images, request.Files, request.Mode,
+                    sink.CancellationToken)
+                    .ConfigureAwait(false);
             if (!string.IsNullOrEmpty(reply)) sink.UpdatePartial(reply);
             return reply;
         }

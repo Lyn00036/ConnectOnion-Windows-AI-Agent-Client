@@ -59,6 +59,12 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
     // reads this to pick its tier: only an "approval" can be turned into a real halt.
     private readonly ConcurrentDictionary<string, string> _pendingInteractive = new();
 
+    // Conversations whose connection already has its reconnect/divergence handlers attached.
+    // GetOrCreate hands back the same long-lived service on every send, so without this guard
+    // each turn would add another copy of every handler and the UI would show one "Reconnecting"
+    // row per turn the conversation had ever run.
+    private readonly ConcurrentDictionary<string, byte> _wiredConnections = new();
+
     // Run id for each conversation whose graceful-stop frame has been sent. This is app-level
     // state so switching pages cannot re-enable Stop and send a duplicate frame.
     private readonly ConcurrentDictionary<string, string> _interruptRequestedRuns = new();
@@ -190,6 +196,7 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         await _conversations.InsertExecutionAsync(runId, conversationId, null, prompt, "running").ConfigureAwait(false);
 
         var connection = _connections.GetOrCreate(conversationId, agent);
+        AttachConnectionHandlers(conversationId, agent, connection);
         _runs.StartRun(request, NewExecutor(agent, conversationId, connection));
 
         return new SendMessageResult(
@@ -226,6 +233,223 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         return true;
     }
 
+    /// <summary>
+    /// Rejoins a turn this conversation started before the app was last closed, if the host is
+    /// still running it. Called when a conversation is opened; a no-op for a settled one.
+    ///
+    /// <para><b>Why this exists.</b> Everything a turn renders — agent bubbles, tool cards, a
+    /// pending approval — is written to SQLite in one batch when the turn reaches a terminal
+    /// state. A process killed mid-turn therefore leaves only the user's message and an
+    /// <c>executions</c> row still marked <c>running</c>, while the host may well still have an
+    /// agent blocked on <c>io.receive()</c> waiting for that approval. Without this probe the
+    /// conversation reopens looking merely truncated and the agent waits forever.</para>
+    ///
+    /// <para>Resuming re-runs the turn through the ordinary run pipeline, so the host's replayed
+    /// events project into the usual cards and the usual terminal persist writes the whole turn
+    /// to SQLite — including the approval card, now answerable again.</para>
+    ///
+    /// <para>Returns the resumed run, or null if there was nothing to resume. A conversation
+    /// whose agent is gone has its stale execution row settled here so the probe does not fire
+    /// again on every subsequent open.</para>
+    /// </summary>
+    public async Task<ConversationRunSnapshot?> TryResumeUnfinishedTurnAsync(
+        string conversationId, AgentConfig agent)
+    {
+        // An active run already owns this conversation — either a live turn or a resume that a
+        // previous open already started. Probing again would race a second socket onto it.
+        if (_runs.IsRunActive(conversationId)) return null;
+
+        var unfinished = await _conversations.GetUnfinishedExecutionAsync(conversationId).ConfigureAwait(false);
+        if (unfinished is not { } execution) return null;
+
+        _agentsById[agent.Id] = agent;
+        var connection = _connections.GetOrCreate(conversationId, agent);
+        AttachConnectionHandlers(conversationId, agent, connection);
+
+        // Reuse the original run id so the resumed turn finalizes the execution row it belongs
+        // to rather than opening a second one beside it.
+        var request = new TurnRequest(
+            RunId: execution.ExecutionId,
+            ConversationId: conversationId,
+            AgentId: agent.Id,
+            UserMessageId: Guid.NewGuid().ToString(),
+            AssistantMessageId: Guid.NewGuid().ToString(),
+            Prompt: execution.Prompt,
+            SessionId: conversationId);
+
+        try
+        {
+            return _runs.StartRun(
+                request,
+                new AgentTurnExecutor(
+                    connection,
+                    r => NotifyApproval(agent, conversationId, r),
+                    kind => _pendingInteractive[conversationId] = kind,
+                    resumeExisting: true));
+        }
+        catch (InvalidOperationException)
+        {
+            // StartRun's one-run-per-conversation claim lost a race with a send. Harmless.
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Recovers a turn the host <i>finished</i> while the app was closed.
+    ///
+    /// <para>The resume probe cannot rejoin such a turn — the host reports the session idle
+    /// rather than running, which is what raised <see cref="SessionNotRunningException"/> — but
+    /// the reply is not lost: the same CONNECT came back with <c>server_newer</c> and the host's
+    /// whole session flattened into <c>chat_items</c>. Without this the reply is dropped and the
+    /// conversation reopens looking like the agent never answered, which is the common case of
+    /// closing the app on a turn that then completes a few seconds later.</para>
+    ///
+    /// <para>Two guards keep the append safe. The tail is anchored on the user message the
+    /// <c>executions</c> row remembers (see
+    /// <see cref="ChatItemsProjection.ParseTailAfterPrompt"/>), and the local transcript must
+    /// still <i>end</i> at that exact message — proving nothing of the turn was persisted and
+    /// that appending duplicates nothing. Either guard failing means we leave history alone.</para>
+    ///
+    /// <para>Returns whether anything was recovered.</para>
+    /// </summary>
+    private async Task<bool> TryRecoverFinishedTurnAsync(ConversationRunSnapshot snapshot)
+    {
+        try
+        {
+            var conversationId = snapshot.ConversationId;
+            var chatItemsJson = _connections.Get(conversationId)?.LastConnectedState?.ChatItemsJson;
+            if (string.IsNullOrEmpty(chatItemsJson)) return false;
+
+            // Still 'running' at this point — this method runs before the row is settled.
+            var unfinished = await _conversations.GetUnfinishedExecutionAsync(conversationId)
+                .ConfigureAwait(false);
+            if (unfinished is not { } execution) return false;
+
+            var last = await _conversations.LoadLastMessageAsync(conversationId).ConfigureAwait(false);
+            if (last is null
+                || last.Role != ChatRole.User
+                || !string.Equals(last.Content, execution.Prompt, StringComparison.Ordinal))
+            {
+                // The transcript does not end where the turn began, so we cannot tell what is
+                // already there. Leaving a reply out beats writing it twice.
+                LogRecoverSkipped(_logger, conversationId, null);
+                return false;
+            }
+
+            var agentName = _agentsById.TryGetValue(snapshot.AgentId, out var a) ? a.Name : null;
+            var nextId = await _conversations.GetNextMessageIdAsync(conversationId).ConfigureAwait(false);
+            var tail = ChatItemsProjection.ParseTailAfterPrompt(
+                chatItemsJson, execution.Prompt, agentName, nextId);
+            if (tail.Count == 0) return false;
+
+            await _conversations.UpsertMessagesAsync(conversationId, tail).ConfigureAwait(false);
+            LogRecoveredTurn(_logger, tail.Count, conversationId, null);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            // Recovery is best-effort; never let it break the run pipeline.
+            LogRunFailure(_logger, ex);
+            return false;
+        }
+    }
+
+    private static readonly Action<ILogger, string, Exception?> LogRecoverSkipped =
+        LoggerMessage.Define<string>(LogLevel.Information, new EventId(4, "RecoverSkipped"),
+            "Conversation {ConversationId} does not end at the unfinished turn's prompt; left history alone");
+
+    private static readonly Action<ILogger, int, string, Exception?> LogRecoveredTurn =
+        LoggerMessage.Define<int, string>(LogLevel.Information, new EventId(5, "RecoveredTurn"),
+            "Recovered {Count} items for a turn the host finished while closed, in conversation {ConversationId}");
+
+    /// <summary>
+    /// Attaches the per-connection handlers that outlive a single turn: reconnect progress and
+    /// the host's session-divergence signal. Idempotent — the registry hands back the same
+    /// service for every turn in a conversation, so this must attach exactly once.
+    /// </summary>
+    private void AttachConnectionHandlers(
+        string conversationId, AgentConfig agent, AgentConnectionService connection)
+    {
+        if (!_wiredConnections.TryAdd(conversationId, 0)) return;
+
+        // Reconnect progress is published into the run's event buffer rather than raised as its
+        // own UI concept, so it flows through the same path as every other event: it shows up
+        // as an activity row in the transcript, it is replayed to a page that attaches
+        // mid-outage, and it needs no extra plumbing per page.
+        connection.Reconnecting += e => _runs.PublishLocalEvent(conversationId, new AgentStreamEvent(
+            "reconnecting",
+            $"Reconnecting (attempt {e.Attempt}/{ReconnectPolicy.MaxAttempts})",
+            null,
+            JsonSerializer.Serialize(new Dictionary<string, object?>
+            {
+                ["type"] = "reconnecting",
+                ["attempt"] = e.Attempt,
+                ["max_attempts"] = ReconnectPolicy.MaxAttempts,
+                ["reason"] = e.Error.Message,
+            })));
+
+        connection.Reconnected += state => _runs.PublishLocalEvent(conversationId, new AgentStreamEvent(
+            "reconnected",
+            "Reconnected",
+            null,
+            JsonSerializer.Serialize(new Dictionary<string, object?>
+            {
+                ["type"] = "reconnected",
+                ["status"] = state.Status,
+                // The distinction the user cares about: "running" means their turn survived and
+                // the missed events are being replayed, anything else means it did not.
+                ["resumed"] = state.IsRunning,
+            })));
+
+        connection.SessionDiverged += state => _ = OnSessionDivergedAsync(conversationId, agent, state);
+    }
+
+    /// <summary>
+    /// Handles a <c>server_newer</c> CONNECTED: the host's copy of this conversation was ahead
+    /// of ours and it handed back the authoritative one.
+    ///
+    /// <para><b>The import only runs when we have nothing of our own.</b> The host's
+    /// <c>chat_items</c> is a flattened projection of its session — positional ids, no
+    /// attachments, no cached image paths, no resolved interactive outcomes, no tool-card state
+    /// (see <see cref="ChatItemsProjection"/>). Adopting it over a populated conversation would
+    /// trade richer local history for poorer remote history and renumber every row, breaking the
+    /// <c>(conversation_id, id)</c> key the repository allocates from <c>MAX(id)+1</c>. So an
+    /// empty local conversation — a fresh install, a reset database, a second device — takes the
+    /// server's history, and a populated one keeps its own and logs the divergence.</para>
+    /// </summary>
+    private async Task OnSessionDivergedAsync(
+        string conversationId, AgentConfig agent, ConnectedState state)
+    {
+        try
+        {
+            var existing = await _conversations.GetNextMessageIdAsync(conversationId).ConfigureAwait(false);
+            if (existing > 1)
+            {
+                LogSessionDivergedKept(_logger, conversationId, null);
+                return;
+            }
+
+            var imported = ChatItemsProjection.Parse(state.ChatItemsJson, agent.Name);
+            if (imported.Count == 0) return;
+
+            await _conversations.UpsertMessagesAsync(conversationId, imported).ConfigureAwait(false);
+            LogSessionDivergedImported(_logger, imported.Count, conversationId, null);
+        }
+        catch (Exception ex)
+        {
+            // Never let a reconciliation failure take down the connection that triggered it.
+            LogRunFailure(_logger, ex);
+        }
+    }
+
+    private static readonly Action<ILogger, string, Exception?> LogSessionDivergedKept =
+        LoggerMessage.Define<string>(LogLevel.Information, new EventId(2, "SessionDivergedKept"),
+            "Host reported a newer session for conversation {ConversationId}; kept richer local history");
+
+    private static readonly Action<ILogger, int, string, Exception?> LogSessionDivergedImported =
+        LoggerMessage.Define<int, string>(LogLevel.Information, new EventId(3, "SessionDivergedImported"),
+            "Imported {Count} chat items from the host into empty conversation {ConversationId}");
+
     private AgentTurnExecutor NewExecutor(
         AgentConfig agent, string conversationId, AgentConnectionService connection)
         => new(
@@ -251,6 +475,7 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         _pendingInteractive.TryRemove(conversationId, out _);
         _interruptRequestedRuns.TryRemove(conversationId, out _);
         var connection = _connections.GetOrCreate(conversationId, agent);
+        AttachConnectionHandlers(conversationId, agent, connection);
         return _runs.RetryRun(conversationId, NewExecutor(agent, conversationId, connection));
     }
 
@@ -417,8 +642,59 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         }
     }
 
+    /// <summary>
+    /// A resume probe that found no agent still running the turn. Not a failure in any sense the
+    /// user should see: the socket was fine, the turn simply ended (or died on the host) while
+    /// the app was closed. <see cref="ConversationRunRegistry"/> stamps the exception's type name
+    /// as the run's error code, which is what makes this recognizable downstream.
+    /// </summary>
+    internal static bool IsAbandonedResume(ConversationRunSnapshot snapshot)
+        => snapshot.ErrorCode == nameof(SessionNotRunningException);
+
+    /// <summary>
+    /// The app closed on top of a running turn. The host was never told to stop, so its agent is
+    /// probably still executing this turn — which makes it a candidate for the resume probe on
+    /// the next open, not a finished turn to write down.
+    /// </summary>
+    internal static bool IsShutdownInterrupted(ConversationRunSnapshot snapshot)
+        => snapshot.ErrorCode == RunErrorCodes.Shutdown;
+
     public async Task PersistFailedAsync(ConversationRunSnapshot snapshot)
     {
+        // Persist nothing and settle nothing: leaving the executions row at 'running' is exactly
+        // what makes the next open probe the host and rejoin the turn.
+        //
+        // Writing the partial turn here would actively break that. The resumed turn is replayed
+        // from the *start* of the host's buffer (a restarted client has no last_msg_id, so
+        // rewind_to(null) replays everything), so any bubble written now would be projected a
+        // second time on resume and the conversation would show the turn twice. Worse,
+        // ResolveInteractiveCards would seal the still-pending approval as "No selection",
+        // turning the one card the user came back to answer into dead history.
+        //
+        // The cost is that a turn nobody ever resumes loses its partial output and its token
+        // usage — it was never persisted mid-turn anyway, and the abandoned path settles the row.
+        if (IsShutdownInterrupted(snapshot))
+        {
+            _pendingInteractive.TryRemove(snapshot.ConversationId, out _);
+            _interruptRequestedRuns.TryRemove(snapshot.ConversationId, out _);
+            return;
+        }
+
+        // Nothing was replayed and nothing is coming. Settle the execution row so the probe
+        // stops firing on every future open, and write no bubbles — the turn's own output was
+        // never persisted, and inventing an error row for it would put a failure in the
+        // transcript that never happened.
+        if (IsAbandonedResume(snapshot))
+        {
+            _pendingInteractive.TryRemove(snapshot.ConversationId, out _);
+            var recovered = await TryRecoverFinishedTurnAsync(snapshot).ConfigureAwait(false);
+            await _conversations.FinalizeExecutionAsync(
+                snapshot.RunId, snapshot.ConversationId, "",
+                recovered ? "done" : "abandoned", 0).ConfigureAwait(false);
+            await _connections.TrimIdleAsync(_runs.IsRunActive).ConfigureAwait(false);
+            return;
+        }
+
         var agentName = _agentsById.TryGetValue(snapshot.AgentId, out var a) ? a.Name : null;
         _pendingInteractive.TryRemove(snapshot.ConversationId, out _);
         _interruptRequestedRuns.TryRemove(snapshot.ConversationId, out _);

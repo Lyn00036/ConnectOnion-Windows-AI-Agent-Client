@@ -318,6 +318,41 @@ public sealed partial class ConversationRepository
     /// reply is deduped against it — so loading just this row is what lets a turn be persisted
     /// without reading the whole conversation back first.
     /// </summary>
+    /// <summary>
+    /// The newest message in the conversation regardless of role, without its attachments.
+    /// <para>Used as the alignment check when recovering a turn the host finished while the app
+    /// was closed: the recovery is only safe if the local transcript still ends exactly at the
+    /// user message that started the turn, which is what proves nothing of that turn was
+    /// persisted and no rows would be duplicated by appending its tail.</para>
+    /// </summary>
+    public async Task<ChatMessage?> LoadLastMessageAsync(string conversationId)
+    {
+        try
+        {
+            await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT id, role, content, agent_name,
+                       event_kind, event_key, event_eyebrow, event_title,
+                       event_detail, event_meta, event_args, event_result,
+                       event_status, is_onboarding, created_at
+                FROM messages
+                WHERE conversation_id = $conversation_id
+                ORDER BY id DESC
+                LIMIT 1;
+                """;
+            AppDatabase.Add(command, "$conversation_id", conversationId);
+
+            await using var reader = await command.ExecuteReaderAsync().ConfigureAwait(false);
+            return await reader.ReadAsync().ConfigureAwait(false) ? RowToMessage(reader) : null;
+        }
+        catch (Exception ex)
+        {
+            LogFailure(nameof(LoadLastMessageAsync), conversationId, ex);
+            return null;
+        }
+    }
+
     public async Task<ChatMessage?> LoadLastAgentMessageAsync(string conversationId)
     {
         try
@@ -534,6 +569,54 @@ public sealed partial class ConversationRepository
         catch (Exception ex)
         {
             LogFailure(nameof(InsertExecutionAsync), conversationId, ex);
+        }
+    }
+
+    /// <summary>An execution row that was started but never finalized.</summary>
+    public readonly record struct UnfinishedExecution(string ExecutionId, string Prompt, string? RemoteSessionId);
+
+    /// <summary>
+    /// The most recent turn in this conversation that was started and never reached a terminal
+    /// state, or null if the conversation is settled.
+    ///
+    /// <para>This is the only durable trace a turn leaves before it finishes. The row is written
+    /// with <c>status = 'running'</c> as the INPUT goes out and only rewritten by
+    /// <see cref="FinalizeExecutionAsync"/>, while the turn's bubbles and trace events are
+    /// written in one batch at the end — so a process killed mid-turn leaves exactly this row
+    /// plus the user's own message, and nothing else. That makes it the marker for "the host may
+    /// still be running this", which is what the resume-on-open probe keys off.</para>
+    ///
+    /// <para>Ordered by <c>created_at DESC</c> and limited to one: a conversation can only have
+    /// one turn in flight, so an older unfinished row is debris from a previous crash and
+    /// resuming it would attach to a session the host retired long ago.</para>
+    /// </summary>
+    public async Task<UnfinishedExecution?> GetUnfinishedExecutionAsync(string conversationId)
+    {
+        try
+        {
+            await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
+            await using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                SELECT id, prompt, remote_session_id
+                FROM executions
+                WHERE conversation_id = $conv AND status = 'running'
+                ORDER BY created_at DESC
+                LIMIT 1;
+                """;
+            AppDatabase.Add(cmd, "$conv", conversationId);
+
+            await using var reader = await cmd.ExecuteReaderAsync().ConfigureAwait(false);
+            if (!await reader.ReadAsync().ConfigureAwait(false)) return null;
+
+            return new UnfinishedExecution(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.IsDBNull(2) ? null : reader.GetString(2));
+        }
+        catch (Exception ex)
+        {
+            LogFailure(nameof(GetUnfinishedExecutionAsync), conversationId, ex);
+            return null;
         }
     }
 
