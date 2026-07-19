@@ -66,7 +66,7 @@ public sealed class ChatTurnProjectionTests
     }
 
     [Fact]
-    public void Apply_Thinking_RemainsCollapsedAndLoadingUntilReplyArrives()
+    public void Apply_Thinking_StaysLoadingUntilReplyArrives()
     {
         var target = new FakeTarget();
         var projection = new ChatTurnProjection(target);
@@ -75,14 +75,139 @@ public sealed class ChatTurnProjectionTests
 
         var thinking = Assert.Single(target.Messages);
         Assert.True(thinking.IsThinkingRunning);
-        Assert.False(thinking.IsActivityExpanded);
         Assert.Equal("Thinking...", thinking.ActivityHeaderTitle);
+        Assert.Equal("Checking the request.", thinking.ActivityTimelineText);
 
         projection.Apply(Event("assistant", "{\"content\":\"Final reply\"}"));
 
         Assert.False(thinking.IsThinkingRunning);
         Assert.Equal(EventStatus.Done, thinking.Status);
         Assert.Equal("Thought process", thinking.ActivityHeaderTitle);
+        Assert.False(thinking.HasMultipleThoughts);
+    }
+
+    [Fact]
+    public void Apply_ConsecutiveThinking_GroupsIntoOneFoldableCard()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+
+        projection.Apply(Event("thinking", "{\"content\":\"First, check the address.\"}"));
+        projection.Apply(Event("thinking", "{\"content\":\"Then draft the subject.\"}"));
+        projection.Apply(Event("thinking", "{\"content\":\"Then send it.\"}"));
+
+        var thinking = Assert.Single(target.Messages);
+        Assert.True(thinking.HasMultipleThoughts);
+        Assert.False(thinking.IsSingleActivityEntry);
+        Assert.Equal(3, thinking.ThoughtSteps.Count);
+        Assert.Equal("Thinking...", thinking.ActivityHeaderTitle);
+        Assert.Equal("3 steps", thinking.ThoughtStepsSummary);
+    }
+
+    [Fact]
+    public void Apply_ThinkingSeparatedByAToolCall_StaysTwoCards()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+
+        projection.Apply(Event("thinking", "{\"content\":\"Look up the recipient.\"}"));
+        projection.Apply(Event("tool_call", "{\"id\":\"t1\",\"name\":\"lookup\"}"));
+        projection.Apply(Event("thinking", "{\"content\":\"Now compose the mail.\"}"));
+
+        // Thoughts either side of a tool call are reasoning about different things — merging them
+        // would claim the agent planned it all before calling anything.
+        var thoughts = target.Messages.Where(m => m.IsThinkingEvent).ToList();
+        Assert.Equal(2, thoughts.Count);
+        Assert.All(thoughts, t => Assert.Single(t.ThoughtSteps));
+    }
+
+    [Fact]
+    public void Apply_ReplayedAskUser_DoesNotRaiseASecondCard()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+        const string frame = "{\"id\":\"q1\",\"text\":\"Pick one\",\"options\":[\"A\",\"B\"]}";
+
+        projection.Apply(Event("ask_user", frame));
+        // What a reconnect does: the host replays frames the client never acknowledged.
+        projection.Apply(Event("ask_user", frame));
+
+        var card = Assert.Single(target.Messages, m => m.EventKind == "ask_user");
+        Assert.Equal(2, card.AskUserOptionEntries.Count);
+    }
+
+    [Fact]
+    public void Apply_LlmCall_OpensThinkingIndicator_AndLlmResultTakesItAway()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+
+        projection.Apply(Event("llm_call", "{\"model\":\"deepseek-v4-pro\",\"iteration\":1}"));
+
+        var thinking = Assert.Single(target.Messages);
+        Assert.True(thinking.IsThinkingRunning);
+
+        // No reasoning text on an llm_call, so the row must not print the internal "Thinking"
+        // marker as though the agent had said it — the spinner and the live counter are the row.
+        Assert.False(thinking.HasThoughtText);
+        Assert.Equal("", thinking.ActivityTimelineText);
+
+        projection.Apply(Event("llm_result", "{\"model\":\"deepseek-v4-pro\",\"duration_ms\":2000}"));
+
+        // The wait is over, so the row goes. No "thought for" epitaph is left behind: the turn's
+        // total time is on the usage line.
+        Assert.Empty(target.Messages);
+    }
+
+    [Fact]
+    public void Apply_ManyLlmIterations_NeverStackIndicatorRows()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+
+        // An agentic turn: think, call a tool, think again, and again.
+        projection.Apply(Event("llm_call", "{\"model\":\"m\",\"iteration\":1}"));
+        projection.Apply(Event("llm_result", "{\"duration_ms\":2400}"));
+        projection.Apply(Event("tool_call", "{\"tool_id\":\"t1\",\"name\":\"read_file\"}"));
+        projection.Apply(Event("llm_call", "{\"model\":\"m\",\"iteration\":2}"));
+        projection.Apply(Event("llm_result", "{\"duration_ms\":6600}"));
+        projection.Apply(Event("llm_call", "{\"model\":\"m\",\"iteration\":3}"));
+
+        // Eight round trips used to leave eight spent rows. At most one is ever on screen, and
+        // only while a call is actually out.
+        var thinking = Assert.Single(target.Messages, m => m.IsThinkingEvent);
+        Assert.True(thinking.IsThinkingRunning);
+
+        projection.Apply(Event("llm_result", "{\"duration_ms\":5100}"));
+
+        Assert.DoesNotContain(target.Messages, m => m.IsThinkingEvent);
+    }
+
+    [Fact]
+    public void Apply_LlmCallWithoutResult_RemovesTheIndicatorAtTurnEnd()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+
+        projection.Apply(Event("llm_call", "{\"model\":\"m\",\"iteration\":1}"));
+        projection.CompleteToolActivity(ToolActivityStatus.Failed, "boom");
+
+        // A run that dies mid-call never gets llm_result; the spinner must not turn forever.
+        Assert.DoesNotContain(target.Messages, m => m.IsThinkingEvent);
+    }
+
+    [Fact]
+    public void Apply_ThinkingText_SuppressesTheBareLlmIndicator()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+
+        projection.Apply(Event("thinking", "{\"content\":\"Checking the request.\"}"));
+        projection.Apply(Event("llm_call", "{\"model\":\"m\",\"iteration\":1}"));
+
+        // A host that sends both must not stack an empty spinner on top of the real thought.
+        var thinking = Assert.Single(target.Messages);
+        Assert.Equal("Checking the request.", thinking.ActivityTimelineText);
     }
 
     [Fact]
@@ -237,6 +362,7 @@ public sealed class ChatTurnProjectionTests
         public IList<ChatMessage> Messages { get; } = new List<ChatMessage>();
         public List<string> ResolvedImages { get; } = new();
         public string? AgentName => "Test Agent";
+        public bool IsLiveView { get; set; }
         public long NextId() => _nextId++;
         public void Add(ChatMessage message) => Messages.Add(message);
         public void ResolveAgentImage(string dataUrl, ChatAttachment attachment)

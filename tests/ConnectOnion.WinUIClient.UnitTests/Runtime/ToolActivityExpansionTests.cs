@@ -65,25 +65,48 @@ public sealed class ToolActivityExpansionTests
     }
 
     [Fact]
-    public void BlockedTool_ForcesTheCardOpen()
+    public void BlockedTool_OpensTheCard_OnlyOnALiveView()
     {
-        var activity = new ToolActivityViewModel();
-        var projector = new ToolActivityProjector(activity);
+        var live = new ToolActivityViewModel();
+        new ToolActivityProjector(live, isLiveView: true)
+            .AddBlocked(Event("{\"tool\":\"run_command\",\"message\":\"blocked by policy\"}"));
+        Assert.True(live.IsExpanded);
 
-        projector.AddBlocked(Event("{\"tool\":\"run_command\",\"message\":\"blocked by policy\"}"));
-
-        Assert.True(activity.IsExpanded);
+        // The persistence pass writes the same card collapsed — reopening the conversation later
+        // must not replay the failure at full height.
+        var persisted = new ToolActivityViewModel();
+        new ToolActivityProjector(persisted)
+            .AddBlocked(Event("{\"tool\":\"run_command\",\"message\":\"blocked by policy\"}"));
+        Assert.False(persisted.IsExpanded);
     }
 
     [Fact]
-    public void WaitingOnTheUser_ForcesTheCardOpen()
+    public void WaitingOnTheUser_OpensTheCard_OnlyOnALiveView()
+    {
+        // The turn cannot proceed until the user acts, and what the tool was about to do is what
+        // the decision hinges on — so an approval opens the card the same way a failure does.
+        var live = new ToolActivityViewModel();
+        new ToolActivityProjector(live, isLiveView: true).WaitForConfirmation();
+        Assert.True(live.IsExpanded);
+
+        var persisted = new ToolActivityViewModel();
+        new ToolActivityProjector(persisted).WaitForConfirmation();
+        Assert.False(persisted.IsExpanded);
+    }
+
+    [Fact]
+    public void AnsweredApproval_CollapsesAgainOnASuccessfulCompletion()
     {
         var activity = new ToolActivityViewModel();
-        var projector = new ToolActivityProjector(activity);
-
+        var projector = new ToolActivityProjector(activity, isLiveView: true);
+        projector.ApplyCall(Event("{\"tool_id\":\"one\",\"name\":\"send_email\",\"args\":{}}"));
         projector.WaitForConfirmation();
-
         Assert.True(activity.IsExpanded);
+
+        projector.Complete();
+
+        // The decision is made and the tool succeeded; the card has nothing left to demand.
+        Assert.False(activity.IsExpanded);
     }
 
     [Fact]
@@ -93,6 +116,39 @@ public sealed class ToolActivityExpansionTests
 
         Assert.True(activity.IsExpanded);
     }
+
+    [Fact]
+    public void CollapsedErrorLine_TakesTheLastFailedStep_AndHidesWhenExpanded()
+    {
+        var activity = new ToolActivityViewModel();
+        var projector = new ToolActivityProjector(activity);
+        projector.ApplyCall(Event("{\"tool_id\":\"one\",\"name\":\"send_email\",\"args\":{}}"));
+        projector.ApplyResult(Result(
+            "{\"tool_id\":\"one\",\"status\":\"error\",\"result\":\"smtp refused: 550 relay denied\\nat send()\"}"));
+
+        // First line only — a traceback's remaining lines are one click away in the step's block.
+        Assert.Equal("smtp refused: 550 relay denied", activity.LastErrorMessage);
+        Assert.True(activity.ShowCollapsedError);
+
+        activity.IsExpanded = true;
+
+        Assert.False(activity.ShowCollapsedError);
+    }
+
+    [Fact]
+    public void CollapsedErrorLine_IsAbsentWhenNothingFailed()
+    {
+        var activity = new ToolActivityViewModel();
+        var projector = new ToolActivityProjector(activity);
+        projector.ApplyCall(Event("{\"tool_id\":\"one\",\"name\":\"read_file\",\"args\":{}}"));
+        projector.ApplyResult(Result("{\"tool_id\":\"one\",\"status\":\"success\",\"result\":\"42 rows\"}"));
+
+        Assert.Null(activity.LastErrorMessage);
+        Assert.False(activity.ShowCollapsedError);
+    }
+
+    private static ConnectOnion.Protocol.AgentStreamEvent Result(string json)
+        => new("tool_result", "tool_result", null, json);
 
     [Fact]
     public void FailedStep_ShowsOneDetailBlockLabelledError()
@@ -127,10 +183,37 @@ public sealed class ToolActivityExpansionTests
         => new("tool_call", "tool_call", null, json);
 
     [Fact]
+    public void FailedRun_OnAPersistencePass_StaysCollapsed()
+    {
+        var activity = new ToolActivityViewModel();
+
+        new ToolActivityProjector(activity).Complete(ToolActivityStatus.Failed, "Server closed connection");
+
+        Assert.False(activity.IsExpanded);
+    }
+
+    [Fact]
+    public void FailedStep_OnALiveView_OpensTheCard()
+    {
+        var activity = new ToolActivityViewModel();
+        var projector = new ToolActivityProjector(activity, isLiveView: true);
+        projector.ApplyCall(Event("{\"tool_id\":\"one\",\"name\":\"send_email\",\"args\":{}}"));
+        projector.ApplyResult(new ConnectOnion.Protocol.AgentStreamEvent(
+            "tool_result", "tool_result", null,
+            "{\"tool_id\":\"one\",\"name\":\"send_email\",\"status\":\"error\",\"error\":\"smtp refused\"}"));
+
+        projector.Complete();
+
+        // Complete() rolls a single bad step up to PartialSuccess, not Failed — the expansion
+        // rule has to look at the steps, or a failed tool would silently stay folded.
+        Assert.True(activity.IsExpanded);
+    }
+
+    [Fact]
     public void FailedRun_StartsExpandedButStaysCollapsible()
     {
         var activity = new ToolActivityViewModel();
-        var projector = new ToolActivityProjector(activity);
+        var projector = new ToolActivityProjector(activity, isLiveView: true);
 
         // A dropped socket ("Server closed connection") completes the turn as Failed.
         projector.Complete(ToolActivityStatus.Failed, "Server closed connection");

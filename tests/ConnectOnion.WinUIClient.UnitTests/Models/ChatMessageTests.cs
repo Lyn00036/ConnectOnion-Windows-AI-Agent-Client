@@ -4,6 +4,62 @@ namespace ConnectOnion.WinUIClient.UnitTests.Models;
 
 public sealed class ChatMessageTests
 {
+    // The option cards are hand-drawn Buttons, so exclusivity is the model's job now rather than
+    // RadioButton's — which makes it worth pinning down.
+    [Fact]
+    public void AskUserOption_SingleSelect_KeepsExactlyOneChecked()
+    {
+        var message = OptionsMessage(multiSelect: false, "A", "B", "C");
+
+        message.AskUserOptionEntries[0].Toggle();
+        message.AskUserOptionEntries[2].Toggle();
+
+        Assert.Equal(new[] { false, false, true }, message.AskUserOptionEntries.Select(o => o.IsChecked));
+        Assert.Equal("C", message.SelectedOptionText);
+
+        // Clicking the selected option again is a no-op, the way a radio group behaves — it must
+        // not leave the turn with nothing chosen.
+        message.AskUserOptionEntries[2].Toggle();
+
+        Assert.Equal("C", message.SelectedOptionText);
+    }
+
+    [Fact]
+    public void AskUserOption_MultiSelect_TogglesIndependently()
+    {
+        var message = OptionsMessage(multiSelect: true, "A", "B", "C");
+
+        message.AskUserOptionEntries[0].Toggle();
+        message.AskUserOptionEntries[1].Toggle();
+        message.AskUserOptionEntries[0].Toggle();
+
+        Assert.Equal(new[] { false, true, false }, message.AskUserOptionEntries.Select(o => o.IsChecked));
+    }
+
+    [Fact]
+    public void AskUserOption_NothingChosen_HasNoSelectedText()
+    {
+        var message = OptionsMessage(multiSelect: false, "A", "B");
+
+        Assert.Null(message.SelectedOptionText);
+    }
+
+    private static ChatMessage OptionsMessage(bool multiSelect, params string[] options)
+    {
+        var message = new ChatMessage
+        {
+            Role = ChatRole.Event,
+            EventKind = "ask_user",
+            Status = EventStatus.Running,
+            AskUserMultiSelect = multiSelect,
+        };
+        foreach (var option in options)
+        {
+            message.AskUserOptionEntries.Add(new AskUserOptionEntry { Text = option, Owner = message });
+        }
+        return message;
+    }
+
     [Fact]
     public void InteractiveOutcome_RunningCard_ReturnsWaitingState()
     {
@@ -34,7 +90,7 @@ public sealed class ChatMessageTests
     {
         var message = InteractiveMessage(EventStatus.Done);
 
-        Assert.Equal("No selection", message.InteractiveOutcome);
+        Assert.Equal("Skipped", message.InteractiveOutcome);
         Assert.False(message.ShowAskUserFreeText);
     }
 
@@ -63,17 +119,15 @@ public sealed class ChatMessageTests
 
         Assert.Equal("Thought process", message.ActivityHeaderTitle);
         Assert.Equal("Checking the request before replying.", message.ActivityTimelineText);
-        Assert.Equal("Done", message.ActivityStatusLabel);
-        Assert.False(message.IsActivityExpanded);
+        Assert.False(message.IsActivityFailed);
 
-        message.ToggleActivityExpanded();
-
-        Assert.True(message.IsActivityExpanded);
-        Assert.Contains("Collapse", message.ActivityAccessibilityName);
+        // The card shows its one entry inline, so the spoken name must carry that text —
+        // there is no disclosure state left to announce.
+        Assert.Contains("Checking the request before replying.", message.ActivityAccessibilityName);
     }
 
     [Fact]
-    public void ThinkingActivity_WhileRunning_ShowsLoadingHeaderAndStaysCollapsed()
+    public void ThinkingActivity_WhileRunning_ShowsLoadingHeader()
     {
         var message = new ChatMessage
         {
@@ -85,7 +139,6 @@ public sealed class ChatMessageTests
 
         Assert.True(message.IsThinkingRunning);
         Assert.Equal("Thinking...", message.ActivityHeaderTitle);
-        Assert.False(message.IsActivityExpanded);
 
         message.Status = EventStatus.Done;
 

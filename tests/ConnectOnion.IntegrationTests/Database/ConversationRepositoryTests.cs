@@ -153,6 +153,38 @@ public sealed class ConversationRepositoryTests
     }
 
     [Fact]
+    public async Task DeleteMessageAsync_RemovesOnlyThatBubbleAndItsAttachments()
+    {
+        // What un-sending a queued message does: the row was written at submit time, so backing
+        // out has to take it — and nothing else — away again.
+        await _fixture.CreateSessionAsync("unsend");
+        await _repository.UpsertMessagesAsync("unsend", new[]
+        {
+            Message(1, "earlier", Attachment("keep-file")),
+            Message(2, "cancelled", Attachment("drop-file")),
+        });
+
+        await _repository.DeleteMessageAsync("unsend", 2);
+
+        var remaining = Assert.Single(await _repository.LoadMessagesAsync("unsend"));
+        Assert.Equal(1, remaining.Id);
+        Assert.Equal("keep-file", Assert.Single(remaining.Attachments).Id);
+    }
+
+    [Fact]
+    public async Task DeleteMessageAsync_MissingRow_IsANoOp()
+    {
+        // The cancel path races the run actually starting; losing that race must leave the
+        // conversation untouched rather than throwing.
+        await _fixture.CreateSessionAsync("unsend-missing");
+        await _repository.UpsertMessagesAsync("unsend-missing", new[] { Message(1, "kept") });
+
+        await _repository.DeleteMessageAsync("unsend-missing", 99);
+
+        Assert.Single(await _repository.LoadMessagesAsync("unsend-missing"));
+    }
+
+    [Fact]
     public async Task UpsertMessagesAsync_EventFields_RoundTripsPersistedSnapshot()
     {
         await _fixture.CreateSessionAsync("event-roundtrip");
@@ -162,9 +194,10 @@ public sealed class ConversationRepositoryTests
             Role = ChatRole.Event,
             Content = "content",
             AgentName = "Agent",
-            EventKind = "approval",
+            // Any kind but "approval" — those are filtered out of every read (see below).
+            EventKind = "plan_review",
             EventKey = "event-key",
-            EventEyebrow = "Approval needed",
+            EventEyebrow = "Plan review",
             EventTitle = "Run command",
             EventDetail = "description",
             EventMeta = "Approved once",
@@ -191,6 +224,101 @@ public sealed class ConversationRepositoryTests
         Assert.Equal(expected.EventResult, actual.EventResult);
         Assert.Equal(expected.Status, actual.Status);
         Assert.Equal(expected.IsOnboarding, actual.IsOnboarding);
+    }
+
+    [Fact]
+    public async Task Reads_ExcludeApprovalBubbles_EvenWhenARowExists()
+    {
+        // The persist path no longer writes these, but rows survive in databases created before
+        // that change — and a settled approval is not shown anywhere in the transcript, so the
+        // reads must not surface one whatever is on disk.
+        await _fixture.CreateSessionAsync("approval-hidden");
+        await _repository.UpsertMessagesAsync("approval-hidden", new[]
+        {
+            new ChatMessage { Id = 1, Role = ChatRole.User, Content = "send it" },
+            new ChatMessage
+            {
+                Id = 2,
+                Role = ChatRole.Event,
+                EventKind = "approval",
+                EventTitle = "send",
+                EventMeta = "Skipped",
+                Status = EventStatus.Error,
+            },
+            new ChatMessage { Id = 3, Role = ChatRole.Agent, Content = "done" },
+        });
+
+        var all = await _repository.LoadMessagesAsync("approval-hidden");
+        var page = await _repository.LoadMessagePageAsync("approval-hidden", limit: 10);
+
+        Assert.Equal(new long[] { 1, 3 }, all.Select(m => m.Id));
+        Assert.Equal(new long[] { 1, 3 }, page.Messages.Select(m => m.Id));
+    }
+
+    // ---- Paging (what the chat page opens with) ----
+
+    [Fact]
+    public async Task LoadMessagePageAsync_ReturnsNewestPage_InAscendingOrder()
+    {
+        await _fixture.CreateSessionAsync("paging");
+        await _repository.UpsertMessagesAsync("paging",
+            Enumerable.Range(1, 10).Select(i => Message(i, "message " + i)).ToArray());
+
+        var page = await _repository.LoadMessagePageAsync("paging", limit: 4);
+
+        // Newest four, but handed back oldest-first — the order the list renders in.
+        Assert.Equal(new[] { 7L, 8L, 9L, 10L }, page.Messages.Select(m => m.Id));
+        Assert.True(page.HasMore);
+    }
+
+    [Fact]
+    public async Task LoadMessagePageAsync_WalksBackwards_AndReportsWhenHistoryIsExhausted()
+    {
+        await _fixture.CreateSessionAsync("paging-back");
+        await _repository.UpsertMessagesAsync("paging-back",
+            Enumerable.Range(1, 10).Select(i => Message(i, "message " + i)).ToArray());
+
+        var older = await _repository.LoadMessagePageAsync("paging-back", limit: 4, beforeId: 7);
+        Assert.Equal(new[] { 3L, 4L, 5L, 6L }, older.Messages.Select(m => m.Id));
+        Assert.True(older.HasMore);
+
+        // The last page is short and must say so, rather than leaving the scroll-up affordance
+        // armed against a conversation that has nothing left to give.
+        var oldest = await _repository.LoadMessagePageAsync("paging-back", limit: 4, beforeId: 3);
+        Assert.Equal(new[] { 1L, 2L }, oldest.Messages.Select(m => m.Id));
+        Assert.False(oldest.HasMore);
+    }
+
+    [Fact]
+    public async Task LoadMessagePageAsync_PageExactlyExhaustsHistory_ReportsNoMore()
+    {
+        await _fixture.CreateSessionAsync("paging-exact");
+        await _repository.UpsertMessagesAsync("paging-exact",
+            Enumerable.Range(1, 4).Select(i => Message(i, "message " + i)).ToArray());
+
+        // The off-by-one that a limit+1 probe exists to get right: a page that lands exactly on
+        // the end of history must not claim there is another one.
+        var page = await _repository.LoadMessagePageAsync("paging-exact", limit: 4);
+
+        Assert.Equal(4, page.Messages.Count);
+        Assert.False(page.HasMore);
+    }
+
+    [Fact]
+    public async Task LoadMessagePageAsync_CarriesAttachments_ForThePagedRowsOnly()
+    {
+        await _fixture.CreateSessionAsync("paging-attachments");
+        await _repository.UpsertMessagesAsync("paging-attachments", new[]
+        {
+            Message(1, "old", Attachment("old-file")),
+            Message(2, "new", Attachment("new-file")),
+        });
+
+        var page = await _repository.LoadMessagePageAsync("paging-attachments", limit: 1);
+
+        var message = Assert.Single(page.Messages);
+        Assert.Equal(2, message.Id);
+        Assert.Equal("new-file", Assert.Single(message.Attachments).Id);
     }
 
     private static ChatMessage Message(long id, string content, params ChatAttachment[] attachments)

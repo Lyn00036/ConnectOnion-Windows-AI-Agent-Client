@@ -422,6 +422,81 @@ public sealed class ConversationRunRegistryTests
     }
 
     [Fact]
+    public async Task IsRunActive_GoesFalseOnceTerminal_EvenThoughGetActiveRunStillAnswers()
+    {
+        var persistence = new FakePersistence();
+        var registry = new ConversationRunRegistry(persistence);
+
+        registry.StartRun(NewRequest(), new FakeExecutor((_, _) => Task.FromResult("done")));
+        await WaitUntilAsync(() => registry.GetActiveRun("conv")?.IsTerminal == true);
+
+        // The distinction the socket-reclamation path depends on: GetActiveRun deliberately keeps
+        // answering with the last terminal snapshot, so it cannot be used to ask "busy right now?"
+        // — doing so reported every conversation that had ever run as busy, and the idle-socket
+        // trim silently reclaimed nothing for the life of the process.
+        Assert.NotNull(registry.GetActiveRun("conv"));
+        Assert.False(registry.IsRunActive("conv"));
+        Assert.False(registry.IsRunActive("never-run"));
+    }
+
+    [Fact]
+    public async Task Forget_DeletedConversation_LeavesNoSnapshotOrRetryableBehind()
+    {
+        var persistence = new FakePersistence();
+        var registry = new ConversationRunRegistry(persistence);
+
+        registry.StartRun(NewRequest(), new FakeExecutor((_, _) => throw new Exception("boom")));
+        await WaitUntilAsync(() => registry.GetActiveRun("conv")?.Status == ConversationRunStatus.Failed);
+
+        // Both maps are populated at this point: a terminal snapshot (holding the reply text) and
+        // a retryable request (holding the turn's attachments).
+        Assert.NotNull(registry.GetActiveRun("conv"));
+
+        registry.Forget("conv");
+
+        Assert.Null(registry.GetActiveRun("conv"));
+        Assert.Null(registry.RetryRun("conv", new FakeExecutor((_, _) => Task.FromResult("x"))));
+    }
+
+    [Fact]
+    public async Task Forget_DoesNotDisturbAnotherConversationsRun()
+    {
+        var persistence = new FakePersistence();
+        var registry = new ConversationRunRegistry(persistence);
+
+        registry.StartRun(NewRequest("keep"), new FakeExecutor((_, _) => Task.FromResult("kept")));
+        await WaitUntilAsync(() => registry.GetActiveRun("keep")?.IsTerminal == true);
+
+        registry.Forget("deleted");
+
+        Assert.NotNull(registry.GetActiveRun("keep"));
+    }
+
+    [Fact]
+    public async Task FailedRun_StopsBeingRetryable_OnceItsRequestHasExpired()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var persistence = new FakePersistence();
+        var registry = new ConversationRunRegistry(persistence, clock: () => now);
+
+        registry.StartRun(NewRequest(), new FakeExecutor((_, _) => throw new Exception("boom")));
+        await WaitUntilAsync(() => registry.GetActiveRun("conv")?.Status == ConversationRunStatus.Failed);
+
+        // A retry offered promptly still works...
+        Assert.NotNull(registry.RetryRun("conv", new FakeExecutor((_, _) => Task.FromResult("recovered"))));
+        await WaitUntilAsync(() => registry.GetActiveRun("conv")?.Status == ConversationRunStatus.Completed);
+
+        registry.StartRun(NewRequest(), new FakeExecutor((_, _) => throw new Exception("boom")));
+        await WaitUntilAsync(() => registry.GetActiveRun("conv")?.Status == ConversationRunStatus.Failed);
+
+        // ...but a failed turn nobody ever retried must not pin its request — and a TurnRequest
+        // carries the turn's images and files as base64, so that is a whole payload per abandoned
+        // conversation held for the process's life.
+        now = now.AddHours(1);
+        Assert.Null(registry.RetryRun("conv", new FakeExecutor((_, _) => Task.FromResult("recovered"))));
+    }
+
+    [Fact]
     public async Task AppendingEvents_DoesNotMutateSnapshotsAlreadyHandedOut()
     {
         var persistence = new FakePersistence();
