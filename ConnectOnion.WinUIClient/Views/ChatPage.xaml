@@ -413,11 +413,11 @@
                             PointerExited="MessageActions_PointerExited"
                             GotFocus="MessageActions_GotFocus"
                             LostFocus="MessageActions_LostFocus">
-                    <TextBlock Text="{x:Bind AgentName}"
-                               FontSize="12"
-                               FontWeight="SemiBold"
-                               Foreground="{ThemeResource TextSecondaryBrush}"
-                               Visibility="{x:Bind AgentName, Converter={StaticResource StringToVis}}" />
+                    <!-- No agent-name label above the reply. A conversation is with one agent,
+                         named in the header and the sidebar, so repeating it over every bubble
+                         labelled the obvious. ChatMessage.AgentName is still populated and still
+                         persisted — notifications title themselves with it, and the CONNECT
+                         history import needs it — this only drops the label. -->
                     <controls:MarkdownTextBlock Markdown="{x:Bind Content, Mode=OneWay}"
                                                 SearchQuery="{x:Bind FindQuery, Mode=OneWay}"
                                                 ActiveMatchIndex="{x:Bind ActiveFindMatchIndex, Mode=OneWay}"
@@ -789,11 +789,19 @@
                                      Fill="{x:Bind Status, Mode=OneWay, Converter={StaticResource InteractiveStatusToBrush}}" />
                             <ic:FluentIcon Grid.Column="2"
                                            Icon="QuestionCircle" IconVariant="Regular" IconSize="Size16"
+                                           RenderTransformOrigin="0.5,0.5"
                                            VerticalAlignment="Center"
-                                           Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource InteractiveStatusToBrush}}" />
+                                           Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource InteractiveStatusToBrush}}">
+                                <ic:FluentIcon.RenderTransform>
+                                    <ScaleTransform ScaleX="0.75" ScaleY="0.75" />
+                                </ic:FluentIcon.RenderTransform>
+                            </ic:FluentIcon>
+                            <!-- 14 to match the tool-activity card's header. Fixed rather than
+                                 inherited because it is chrome: a card title should not grow with
+                                 the message-size setting the way its content does. -->
                             <TextBlock Grid.Column="3"
                                        Text="{x:Bind EventEyebrow}"
-                                       FontSize="15"
+                                       FontSize="14"
                                        FontWeight="SemiBold"
                                        VerticalAlignment="Center"
                                        TextTrimming="CharacterEllipsis"
@@ -812,9 +820,12 @@
                     </Button>
 
                     <StackPanel Visibility="{x:Bind IsInteractiveExpanded, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                        <!-- No FontSize: the question is body text, so it inherits the ListView's
+                             MessageFontSize like every other bubble. Hardcoding it made this card
+                             deaf to the Small/Large setting — the rest of the transcript resized
+                             around a question that never moved. -->
                         <TextBlock Text="{x:Bind EventTitle}"
                                    Margin="0,0,0,14"
-                                   FontSize="15"
                                    TextWrapping="Wrap"
                                    IsTextSelectionEnabled="True"
                                    Foreground="{ThemeResource TextPrimaryBrush}" />
@@ -887,9 +898,10 @@
                                                          Fill="{ThemeResource AttentionBrush}"
                                                          Visibility="{x:Bind IsChecked, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                                             </Grid>
+                                            <!-- Inherits MessageFontSize, same as the question above:
+                                                 an option is something the user reads, not chrome. -->
                                             <TextBlock Grid.Column="1"
                                                        Text="{x:Bind Text}"
-                                                       FontSize="15"
                                                        VerticalAlignment="Center"
                                                        TextWrapping="Wrap"
                                                        Foreground="{ThemeResource TextPrimaryBrush}" />
@@ -931,13 +943,19 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
+                                <!-- FontSize is explicit here, unlike the TextBlocks above: a
+                                     TextBox's default style sets FontSize itself, and a style
+                                     setter beats inheritance, so omitting it would silently keep
+                                     the control default rather than follow the message size. 14
+                                     matches the transcript at the default setting; tracking
+                                     Small/Large would need a binding out of the DataTemplate. -->
                                 <TextBox x:Uid="ChatAnswer"
                                          PlaceholderText="Something else..."
                                          Text="{x:Bind AskUserFreeText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                          MinHeight="44"
                                          VerticalAlignment="Center"
                                          VerticalContentAlignment="Center"
-                                         FontSize="15"
+                                         FontSize="14"
                                          Background="Transparent"
                                          BorderThickness="0">
                                     <!-- Same treatment ChatComposer gives its input, and for the
@@ -1207,8 +1225,13 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <ic:FluentIcon Icon="ShieldTask" IconVariant="Regular" IconSize="Size16"
+                                           RenderTransformOrigin="0.5,0.5"
                                            VerticalAlignment="Center"
-                                           Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource InteractiveStatusToBrush}}" />
+                                           Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource InteractiveStatusToBrush}}">
+                                <ic:FluentIcon.RenderTransform>
+                                    <ScaleTransform ScaleX="0.75" ScaleY="0.75" />
+                                </ic:FluentIcon.RenderTransform>
+                            </ic:FluentIcon>
                             <TextBlock Grid.Column="1"
                                        Text="{x:Bind EventTitle}"
                                        Style="{StaticResource InteractiveCollapsedTitleStyle}" />
@@ -1249,8 +1272,13 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <ic:FluentIcon Icon="ClipboardTask" IconVariant="Regular" IconSize="Size16"
+                                               RenderTransformOrigin="0.5,0.5"
                                                VerticalAlignment="Center"
-                                               Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource InteractiveStatusToBrush}}" />
+                                               Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource InteractiveStatusToBrush}}">
+                                    <ic:FluentIcon.RenderTransform>
+                                        <ScaleTransform ScaleX="0.75" ScaleY="0.75" />
+                                    </ic:FluentIcon.RenderTransform>
+                                </ic:FluentIcon>
                                 <TextBlock Grid.Column="1"
                                            Text="{x:Bind EventEyebrow}"
                                            Style="{StaticResource InteractiveEyebrowStyle}"
@@ -1326,8 +1354,13 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <ic:FluentIcon Icon="DocumentEdit" IconVariant="Regular" IconSize="Size16"
+                                           RenderTransformOrigin="0.5,0.5"
                                            VerticalAlignment="Center"
-                                           Foreground="{ThemeResource TextSecondaryBrush}" />
+                                           Foreground="{ThemeResource TextSecondaryBrush}">
+                                <ic:FluentIcon.RenderTransform>
+                                    <ScaleTransform ScaleX="0.75" ScaleY="0.75" />
+                                </ic:FluentIcon.RenderTransform>
+                            </ic:FluentIcon>
                             <TextBlock Grid.Column="1"
                                        Text="{x:Bind EventEyebrow}"
                                        Style="{StaticResource InteractiveEyebrowStyle}" />
