@@ -65,7 +65,38 @@ public sealed partial class ConversationRepository
                 m.EventTitle = "Tool execution history could not be restored";
             }
         }
+        // A grouped thought card stores its steps in the same payload column, for the same reason.
+        // Rows written before grouping existed (and single-step cards) carry no payload, so the
+        // one thought in event_detail is the whole card — seed from that instead.
+        if (m.IsThinkingEvent)
+        {
+            var steps = TryReadThoughtSteps(m.EventArgs);
+            if (steps is not null)
+            {
+                foreach (var step in steps) m.ThoughtSteps.Add(step);
+            }
+            else if (!string.IsNullOrEmpty(m.EventDetail))
+            {
+                m.ThoughtSteps.Add(m.EventDetail);
+            }
+        }
         return m;
+    }
+
+    private static IReadOnlyList<string>? TryReadThoughtSteps(string? payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload)) return null;
+        try
+        {
+            return JsonSerializer.Deserialize<List<string>>(payload);
+        }
+        catch (Exception ex)
+        {
+            // Same bargain as the tool-activity payload above: one unreadable blob must not cost
+            // the user the conversation. The caller falls back to the event_detail single step.
+            Debug.WriteLine($"[db] thought steps payload could not be restored: {ex}");
+            return null;
+        }
     }
 
     // The write commands below are built once per transaction and rebound per row. Microsoft.Data
@@ -173,7 +204,9 @@ public sealed partial class ConversationRepository
         // double duty as a generic payload and as this specific aggregate's storage.
         var eventArgs = m.IsToolActivityEvent
             ? JsonSerializer.Serialize(m.ToolActivity)
-            : m.EventArgs;
+            : m.IsThinkingEvent && m.ThoughtSteps.Count > 0
+                ? JsonSerializer.Serialize(m.ThoughtSteps)
+                : m.EventArgs;
 
         // Empty strings are stored as NULL throughout. ChatMessage seeds its string properties
         // to "" (a partial property can't carry an initializer — see the MVVM notes in

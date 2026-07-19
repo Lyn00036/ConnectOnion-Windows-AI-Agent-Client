@@ -29,8 +29,7 @@
   <data name="SettingsMicrophone.Header" xml:space="preserve"><value>Microphone</value></data>
   <data name="ChatInviteCode.PlaceholderText" xml:space="preserve"><value>Invite code</value></data>
   <data name="ChatSubmitInvite.Content" xml:space="preserve"><value>Submit</value></data>
-  <data name="ChatAnswer.PlaceholderText" xml:space="preserve"><value>Type your answer</value></data>
-  <data name="ChatSubmitAnswer.Content" xml:space="preserve"><value>Submit</value></data>
+  <data name="ChatAnswer.PlaceholderText" xml:space="preserve"><value>Something else...</value></data>
   <data name="ChatRetry.Text" xml:space="preserve"><value>Retry</value></data>
   <data name="ComposerInput.PlaceholderText" xml:space="preserve"><value>Do anything</value></data>
   <data name="MenuNewChat.Text" xml:space="preserve"><value>New Chat</value></data>
@@ -71,11 +70,17 @@
   <data name="OfflineTitle.Text" xml:space="preserve"><value>Agent is offline</value></data>
   <data name="OfflineRecheck.Text" xml:space="preserve"><value>Recheck</value></data>
   <data name="ChatImageLoadFailure.Text" xml:space="preserve"><value>Image could not be loaded.</value></data>
-  <data name="ChatArguments.Header" xml:space="preserve"><value>Arguments</value></data>
-  <data name="ChatApproveOnce.Content" xml:space="preserve"><value>Approve once</value></data>
-  <data name="ChatApproveSession.Content" xml:space="preserve"><value>Approve for session</value></data>
-  <data name="ChatReject.Content" xml:space="preserve"><value>Reject</value></data>
-  <data name="ChatSkip.Content" xml:space="preserve"><value>Skip step</value></data>
+  <data name="ChatActivityFailed.Text" xml:space="preserve"><value>Failed</value></data>
+  <data name="ChatCustomAnswerDivider.Text" xml:space="preserve"><value>OR PROVIDE CUSTOM ANSWER</value></data>
+  <data name="ChatSkipQuestion.Content" xml:space="preserve"><value>Skip this question</value></data>
+  <data name="ChatApproveOnce.Text" xml:space="preserve"><value>Allow once</value></data>
+  <data name="ChatApproveSessionHint.Text" xml:space="preserve"><value>for this session</value></data>
+  <data name="ChatReject.Text" xml:space="preserve"><value>Reject</value></data>
+  <data name="ChatRejectHint.Text" xml:space="preserve"><value>this tool</value></data>
+  <data name="ChatApprovalStop.Text" xml:space="preserve"><value>Stop</value></data>
+  <data name="ChatApprovalStopHint.Text" xml:space="preserve"><value>all &amp; redirect</value></data>
+  <data name="ChatApprovalExplain.Text" xml:space="preserve"><value>Explain</value></data>
+  <data name="ChatApprovalExplainHint.Text" xml:space="preserve"><value>why?</value></data>
   <data name="ChatPlanFeedback.PlaceholderText" xml:space="preserve"><value>Optional feedback or requested changes</value></data>
   <data name="ChatApprovePlan.Content" xml:space="preserve"><value>Approve plan</value></data>
   <data name="ChatRequestChanges.Content" xml:space="preserve"><value>Request changes</value></data>

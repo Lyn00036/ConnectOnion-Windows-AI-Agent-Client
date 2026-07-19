@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="ConnectOnion.WinUIClient.Controls.ThinkingIndicator"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:canvas="using:Microsoft.Graphics.Canvas.UI.Xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Width="18"
+    Height="18"
+    IsTabStop="False"
+    AutomationProperties.AccessibilityView="Raw">
+
+    <!-- Fixed 18x18 and AccessibilityView="Raw": the size is fixed so starting and stopping the
+         animation never re-measures the row and shifts the "Thinking..." text sideways, and the
+         icon is raw because it is decoration — the state is already spoken by that text, and a
+         screen reader announcing a spinner as well would say the same thing twice.
+
+         The canvas starts paused and only ticks while IsActive is true and the control is
+         loaded — see the lifetime notes in ThinkingIndicator.xaml.cs. -->
+    <!-- The Grid holds the 18x18 slot independently of the canvas, so pausing or collapsing the
+         animation never re-measures the row and never shifts the text beside it. -->
+    <Grid>
+        <!-- ClearColor is set from code (ApplyThemeColor), not here: it tracks the theme's
+             background token and has to be re-read when the theme flips. -->
+        <canvas:CanvasAnimatedControl x:Name="Canvas"
+                                      HorizontalAlignment="Stretch"
+                                      VerticalAlignment="Stretch"
+                                      IsTabStop="False" />
+    </Grid>
+</UserControl>

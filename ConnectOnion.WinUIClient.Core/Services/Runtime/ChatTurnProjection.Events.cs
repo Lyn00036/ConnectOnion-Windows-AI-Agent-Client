@@ -41,6 +41,12 @@ public sealed partial class ChatTurnProjection
                 ? v.ValueKind == JsonValueKind.True ? true
                     : v.ValueKind == JsonValueKind.False ? false : (bool?)null
                 : null;
+        // Consecutive thoughts fold into one card, and anything else ends that run. Grouping by
+        // adjacency rather than per turn is deliberate: thoughts either side of a tool call are
+        // reasoning about different things, and merging them would reorder the narrative into a
+        // single block that claims the agent thought it all up front.
+        if (e.Type != "thinking") _currentThinking = null;
+
         switch (e.Type)
         {
             // Local-only lifecycle markers. They intentionally render no separate bubble; the
@@ -64,12 +70,18 @@ public sealed partial class ChatTurnProjection
                 _toolActivity?.ApplyResult(e);
                 break;
 
+            // llm_call/llm_result are what actually bracket the agent's thinking on this host —
+            // there is no `thinking` frame in its trace stream, so nothing else opens a spinner.
+            // The `thinking` arm below is kept for hosts that do emit reasoning text; when both
+            // arrive, the text card wins and no bare indicator is added on top of it.
             case "llm_call":
                 if (Str("model") is { } callModel) _turnModel = callModel;
+                if (!_sawThinkingText) StartLlmThinking();
                 break;
 
             case "llm_result":
             {
+                SettleLlmThinking();
                 if (Str("model") is { } resultModel) _turnModel = resultModel;
 
                 // Accumulating (+=), not assigning: one turn makes an LLM call per agent
@@ -86,17 +98,24 @@ public sealed partial class ChatTurnProjection
 
             case "thinking":
             {
-                var thinking = new ChatMessage
+                // Real reasoning text supersedes the bare llm_call spinner for the rest of the
+                // turn — a host that sends both must not stack an empty indicator on top.
+                _sawThinkingText = true;
+                SettleLlmThinking();
+                if (_currentThinking is null)
                 {
-                    Id = NextId(),
-                    Role = ChatRole.Event,
-                    EventKind = "activity",
-                    EventTitle = "Thinking",
-                    EventDetail = Str("content"),
-                    Status = EventStatus.Running,
-                };
-                _thinkingActivities.Add(thinking);
-                Add(thinking);
+                    _currentThinking = new ChatMessage
+                    {
+                        Id = NextId(),
+                        Role = ChatRole.Event,
+                        EventKind = "activity",
+                        EventTitle = "Thinking",
+                        Status = EventStatus.Running,
+                    };
+                    _thinkingActivities.Add(_currentThinking);
+                    Add(_currentThinking);
+                }
+                _currentThinking.AddThought(Str("content"));
                 break;
             }
 
@@ -258,6 +277,14 @@ public sealed partial class ChatTurnProjection
             case "ask_user":
             {
                 var request = AgentInteractiveParsers.ParseAskUser(WireMessage.Wrap(root));
+                // Deduped by the request's own id, the same way the intent/eval arms above are.
+                // The host replays frames the client never acknowledged (CONNECT carries
+                // last_msg_id), and every replay re-raises AskUserRequested — so a reconnect
+                // during an unanswered question would otherwise stack a second card carrying a
+                // second copy of the options. The buffered events are replayed into the persist
+                // projection as well, so the duplicate outlives the session that caused it.
+                if (FindEvent(request.Id, "ask_user") is not null) break;
+
                 var message = new ChatMessage
                 {
                     Id = NextId(),
@@ -271,8 +298,11 @@ public sealed partial class ChatTurnProjection
                 message.AskUserMultiSelect = request.MultiSelect;
                 foreach (var option in request.Options)
                 {
-                    message.AskUserOptions.Add(option);
-                    if (request.MultiSelect) message.AskUserOptionEntries.Add(new AskUserOptionEntry { Text = option });
+                    // Entries back both modes. Single-select used to bind a RadioButtons control
+                    // straight to the raw strings, which meant the option card's chrome was
+                    // whatever the default RadioButton template happened to render. Going through
+                    // entries lets one hand-built card serve both, so the two modes cannot drift.
+                    message.AskUserOptionEntries.Add(new AskUserOptionEntry { Text = option, Owner = message });
                 }
                 foreach (var field in request.Fields)
                 {

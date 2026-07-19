@@ -172,6 +172,8 @@ public sealed partial class ChatPage
         }
     }
 
+    /// <summary>Folds a grouped thought-process card. Only reachable on a card with more than one
+    /// step — a single thought renders inline with no header to click.</summary>
     private async void ActivityHeader_Click(object sender, RoutedEventArgs e)
     {
         if (sender is Button header && header.Tag is ChatMessage message)

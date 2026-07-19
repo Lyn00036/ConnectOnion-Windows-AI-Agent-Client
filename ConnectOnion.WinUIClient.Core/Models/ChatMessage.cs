@@ -31,6 +31,7 @@ public enum EventStatus
 public sealed partial class ChatMessage : Common.ObservableObject
 {
     private bool? _interactiveExpandOverride;
+    private bool _approvalExplainOpen;
 
     public ChatMessage()
     {
@@ -39,10 +40,10 @@ public sealed partial class ChatMessage : Common.ObservableObject
         EventKind = "";
         EventEyebrow = "";
         OnboardInviteCode = "";
-        IsActivityExpanded = true;
         FindQuery = "";
         ActiveFindMatchIndex = -1;
         AskUserFreeText = "";
+        ThinkingElapsedLabel = "";
         PlanFeedback = "";
         EditDraft = "";
         CreatedAtUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -91,12 +92,19 @@ public sealed partial class ChatMessage : Common.ObservableObject
     [NotifyPropertyChangedFor(nameof(ActivityTimelineText))]
     [NotifyPropertyChangedFor(nameof(ActivityAccessibilityName))]
     [NotifyPropertyChangedFor(nameof(TurnUsageSummary))]
+    [NotifyPropertyChangedFor(nameof(ApprovalTrustLabel))]
+    [NotifyPropertyChangedFor(nameof(ApprovalTrustAccessibilityName))]
     [JsonPropertyName("eventTitle")]
     public partial string EventTitle { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasEventDetail))]
     [NotifyPropertyChangedFor(nameof(ActivityTimelineText))]
+    [NotifyPropertyChangedFor(nameof(ActivityAccessibilityName))]
+    [NotifyPropertyChangedFor(nameof(HasThoughtText))]
+    [NotifyPropertyChangedFor(nameof(IsThinkingSingleThought))]
+    [NotifyPropertyChangedFor(nameof(IsPlainSingleActivity))]
+    [NotifyPropertyChangedFor(nameof(ApprovalAllowOnceAccessibilityName))]
     [JsonPropertyName("eventDetail")]
     public partial string? EventDetail { get; set; }
 
@@ -118,12 +126,14 @@ public sealed partial class ChatMessage : Common.ObservableObject
     [NotifyPropertyChangedFor(nameof(StatusBadge))]
     [NotifyPropertyChangedFor(nameof(IsAwaitingResponse))]
     [NotifyPropertyChangedFor(nameof(ShowAskUserFreeText))]
+    [NotifyPropertyChangedFor(nameof(ShowAskUserOptions))]
+    [NotifyPropertyChangedFor(nameof(ShowAskUserCustomAnswer))]
     [NotifyPropertyChangedFor(nameof(IsInteractiveExpanded))]
     [NotifyPropertyChangedFor(nameof(IsInteractiveCollapsed))]
     [NotifyPropertyChangedFor(nameof(InteractiveOutcome))]
+    [NotifyPropertyChangedFor(nameof(InteractiveStatusLabel))]
     [NotifyPropertyChangedFor(nameof(InteractiveAccessibilityName))]
-    [NotifyPropertyChangedFor(nameof(ActivityStatusGlyph))]
-    [NotifyPropertyChangedFor(nameof(ActivityStatusLabel))]
+    [NotifyPropertyChangedFor(nameof(IsActivityFailed))]
     [NotifyPropertyChangedFor(nameof(ActivityHeaderTitle))]
     [NotifyPropertyChangedFor(nameof(IsThinkingRunning))]
     [NotifyPropertyChangedFor(nameof(ActivityAccessibilityName))]
@@ -136,27 +146,6 @@ public sealed partial class ChatMessage : Common.ObservableObject
     // so IsInteractiveExpanded re-reads the cleared override.
     partial void OnStatusChanged(EventStatus value) => _interactiveExpandOverride = null;
 
-    // A thought process is supporting context, so it starts folded whether it was just streamed
-    // or reconstructed from persistence. Handle both property assignment orders used by object
-    // initializers/deserializers: either EventKind or EventTitle may arrive first.
-    partial void OnEventTitleChanged(string value)
-    {
-        if (EventKind == "activity"
-            && string.Equals(value, "Thinking", StringComparison.OrdinalIgnoreCase))
-        {
-            IsActivityExpanded = false;
-        }
-    }
-
-    partial void OnEventKindChanged(string value)
-    {
-        if (value == "activity"
-            && string.Equals(EventTitle, "Thinking", StringComparison.OrdinalIgnoreCase))
-        {
-            IsActivityExpanded = false;
-        }
-    }
-
     /// <summary>Small uppercase label shown before the title on tool cards.</summary>
     [ObservableProperty]
     [JsonPropertyName("eventEyebrow")]
@@ -168,6 +157,7 @@ public sealed partial class ChatMessage : Common.ObservableObject
     [NotifyPropertyChangedFor(nameof(HasActivityTimelineMeta))]
     [NotifyPropertyChangedFor(nameof(TurnUsageSummary))]
     [NotifyPropertyChangedFor(nameof(InteractiveOutcome))]
+    [NotifyPropertyChangedFor(nameof(InteractiveStatusLabel))]
     [NotifyPropertyChangedFor(nameof(InteractiveAccessibilityName))]
     [JsonPropertyName("eventMeta")]
     public partial string? EventMeta { get; set; }
@@ -271,9 +261,17 @@ public sealed partial class ChatMessage : Common.ObservableObject
         ? IsThinkingRunning ? "Thinking..." : "Thought process"
         : IsTurnUsageEvent ? "Turn usage" : "Activity";
 
+    /// <remarks>
+    /// A thinking card falls back to <c>""</c>, never to <see cref="EventTitle"/>. The card an
+    /// <c>llm_call</c> opens has no reasoning text at all — the host sends none — and EventTitle
+    /// there is the internal marker "Thinking", so falling back to it printed the literal word
+    /// "Thinking" as though the agent had thought it, and left that line sitting under the card
+    /// after the call finished. An empty string pairs with <see cref="HasThoughtText"/>, which is
+    /// what keeps the body out of the tree entirely in that case.
+    /// </remarks>
     [JsonIgnore]
     public string ActivityTimelineText => IsThinkingEvent
-        ? string.IsNullOrWhiteSpace(EventDetail) ? EventTitle : EventDetail
+        ? EventDetail ?? ""
         : IsTurnUsageEvent
             ? string.IsNullOrWhiteSpace(EventTitle) ? "Model" : EventTitle
             : string.IsNullOrWhiteSpace(EventDetail)
@@ -283,27 +281,91 @@ public sealed partial class ChatMessage : Common.ObservableObject
     [JsonIgnore]
     public bool HasActivityTimelineMeta => !string.IsNullOrWhiteSpace(EventMeta);
 
+    /// <summary>
+    /// The consecutive thoughts this card groups. The projection folds a run of <c>thinking</c>
+    /// frames into one card, so a card carries one step or many; <see cref="HasMultipleThoughts"/>
+    /// is what the template switches on. Non-thinking activities leave it empty and render from
+    /// <see cref="ActivityTimelineText"/>.
+    /// </summary>
     [JsonIgnore]
-    public string ActivityStatusGlyph => Status switch
-    {
-        EventStatus.Running => "◌",
-        EventStatus.Error => "✕",
-        _ => "✓",
-    };
+    public ObservableCollection<string> ThoughtSteps { get; } = new();
+
+    /// <summary>
+    /// A lone thought is shown inline — folding a single line away behind a disclosure header
+    /// costs a click to read one sentence and wraps it in more scaffold than content. A run of
+    /// them is a different problem: several paragraphs of the agent's reasoning would bury the
+    /// answer, so those collapse into one summarized card the user opens on purpose.
+    /// </summary>
+    [JsonIgnore]
+    public bool HasMultipleThoughts => IsThinkingEvent && ThoughtSteps.Count > 1;
 
     [JsonIgnore]
-    public string ActivityStatusLabel => Status switch
-    {
-        EventStatus.Running => "Working...",
-        EventStatus.Error => "Failed",
-        _ => "Done",
-    };
+    public bool IsSingleActivityEntry => !HasMultipleThoughts;
+
+    /// <summary>
+    /// Seconds elapsed since the model started working ("3s"), ticked once a second while the row
+    /// is live and blank otherwise. It is a plain settable property rather than something computed
+    /// from a start time because nothing re-reads a computed property on a schedule — the value
+    /// has to be pushed for the UI to move. <see cref="ChatViewModel"/> owns the timer that
+    /// pushes it.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasThinkingElapsed))]
+    [JsonIgnore]
+    public partial string ThinkingElapsedLabel { get; set; }
 
     [JsonIgnore]
-    public string ActivityAccessibilityName
-        => $"{ActivityHeaderTitle}. {ActivityStatusLabel}. {(IsActivityExpanded ? "Collapse" : "Expand")}";
+    public bool HasThinkingElapsed => !string.IsNullOrEmpty(ThinkingElapsedLabel);
+
+    /// <summary>Whether this card actually holds reasoning text. False for the bare indicator an
+    /// <c>llm_call</c> opens, which reports only that the model is working.</summary>
+    [JsonIgnore]
+    public bool HasThoughtText => !string.IsNullOrWhiteSpace(ActivityTimelineText);
+
+    /// <summary>One thought, rendered as an italic aside behind a grey rule.</summary>
+    [JsonIgnore]
+    public bool IsThinkingSingleThought => IsThinkingEvent && IsSingleActivityEntry && HasThoughtText;
+
+    /// <summary>A single non-thinking activity (intent/eval/compact): plain text, no rule — it
+    /// states a fact about the run rather than quoting the agent.</summary>
+    [JsonIgnore]
+    public bool IsPlainSingleActivity => !IsThinkingEvent && IsSingleActivityEntry && HasThoughtText;
+
+    /// <summary>Trailing summary on a grouped card's header, sitting beside the title exactly as
+    /// <c>ToolActivityViewModel.Summary</c> does. The step count is the whole reason the card is
+    /// folded, so it is what the collapsed row advertises.</summary>
+    [JsonIgnore]
+    public string ThoughtStepsSummary => $"{ThoughtSteps.Count} steps";
+
+    /// <summary>
+    /// The only status worth its own line is failure: a finished activity is evidenced by its own
+    /// content, and a running one by the spinner.
+    /// </summary>
+    [JsonIgnore]
+    public bool IsActivityFailed => Status == EventStatus.Error;
+
+    [JsonIgnore]
+    public string ActivityAccessibilityName => HasMultipleThoughts
+        ? $"{ActivityHeaderTitle}. {ThoughtStepsSummary}. {(IsActivityExpanded ? "Collapse" : "Expand")}"
+        : $"{ActivityHeaderTitle}. {ActivityTimelineText}";
 
     public void ToggleActivityExpanded() => IsActivityExpanded = !IsActivityExpanded;
+
+    /// <summary>Appends a thought to this card and keeps <see cref="EventDetail"/> in step, so the
+    /// single-step rendering and the persisted row stay driven by one value.</summary>
+    public void AddThought(string? content)
+    {
+        ThoughtSteps.Add(content ?? "");
+        if (ThoughtSteps.Count == 1) EventDetail = content;
+        OnPropertyChanged(nameof(ThoughtSteps));
+        OnPropertyChanged(nameof(HasMultipleThoughts));
+        OnPropertyChanged(nameof(IsSingleActivityEntry));
+        OnPropertyChanged(nameof(HasThoughtText));
+        OnPropertyChanged(nameof(IsThinkingSingleThought));
+        OnPropertyChanged(nameof(IsPlainSingleActivity));
+        OnPropertyChanged(nameof(ThoughtStepsSummary));
+        OnPropertyChanged(nameof(ActivityAccessibilityName));
+    }
 
     /// <summary>Tool card with a status badge and collapsible arguments/result.</summary>
     [JsonIgnore]
@@ -353,12 +415,20 @@ public sealed partial class ChatMessage : Common.ObservableObject
     public bool IsInteractiveCollapsed => !IsInteractiveExpanded;
 
     /// <summary>The one-line result shown on a collapsed card: the recorded answer ("Approved
-    /// once", "Rejected", "Changes requested", "Answered: …"), <c>"No selection"</c> for a card
-    /// a run sealed unanswered, or the pending state while it still awaits the user.</summary>
+    /// once", "Rejected", "Changes requested", "Answered: …"), <c>"Skipped"</c> for a card a run
+    /// ended without an answer to, or the pending state while it still awaits the user.</summary>
     [JsonIgnore]
     public string InteractiveOutcome => IsAwaitingResponse
         ? "Waiting for you"
-        : string.IsNullOrWhiteSpace(EventMeta) ? "No selection" : EventMeta;
+        : string.IsNullOrWhiteSpace(EventMeta) ? "Skipped" : EventMeta;
+
+    /// <summary>The small-caps status chip on an interactive card's header: "PENDING" while it
+    /// still wants an answer, otherwise the recorded outcome. Uppercased here rather than by a
+    /// XAML text transform so the same string is what a screen reader gets.</summary>
+    [JsonIgnore]
+    public string InteractiveStatusLabel => IsAwaitingResponse
+        ? "PENDING"
+        : InteractiveOutcome.ToUpperInvariant();
 
     /// <summary>Spoken name for the collapse toggle, so the state is not conveyed by chevron alone.</summary>
     [JsonIgnore]
@@ -371,6 +441,36 @@ public sealed partial class ChatMessage : Common.ObservableObject
         OnPropertyChanged(nameof(IsInteractiveExpanded));
         OnPropertyChanged(nameof(IsInteractiveCollapsed));
         OnPropertyChanged(nameof(InteractiveAccessibilityName));
+    }
+
+    /// <summary>Label for the approval card's "trust this tool for the session" action. The tool
+    /// name is <see cref="EventTitle"/> on an approval card, so this reads "Trust send".</summary>
+    [JsonIgnore]
+    public string ApprovalTrustLabel => $"Trust {EventTitle}";
+
+    /// <summary>
+    /// Whether the approval card's "Explain why?" panel is open. It is purely local disclosure —
+    /// it reveals the arguments the agent already sent with the request and never answers the
+    /// approval, so a user can inspect what a tool would actually do without spending their
+    /// decision to find out. Not persisted: a resolved card has nothing left to inspect.
+    /// </summary>
+    [JsonIgnore]
+    public bool IsApprovalExplainOpen => _approvalExplainOpen;
+
+    // The approval menu rows split their meaning across a bold verb and a muted consequence, which
+    // a screen reader would otherwise announce as two unrelated fragments — so each row names
+    // itself in full.
+    [JsonIgnore]
+    public string ApprovalAllowOnceAccessibilityName
+        => string.IsNullOrWhiteSpace(EventDetail) ? "Allow once" : $"Allow once. {EventDetail}";
+
+    [JsonIgnore]
+    public string ApprovalTrustAccessibilityName => $"{ApprovalTrustLabel} for this session";
+
+    public void ToggleApprovalExplain()
+    {
+        _approvalExplainOpen = !_approvalExplainOpen;
+        OnPropertyChanged(nameof(IsApprovalExplainOpen));
     }
 
     [JsonIgnore]
@@ -431,11 +531,8 @@ public sealed partial class ChatMessage : Common.ObservableObject
     // Status) with no live controls, which is correct: the server-side
     // io.receive() wait that this answers no longer exists after a restart.
 
-    /// <summary>Single-select options for an ask_user turn (bound to inline RadioButtons).</summary>
-    [JsonIgnore]
-    public ObservableCollection<string> AskUserOptions { get; } = new();
-
-    /// <summary>Multi-select options for an ask_user turn (bound to inline CheckBoxes).</summary>
+    /// <summary>The turn's options, in either mode — the card that renders them is the same, and
+    /// <see cref="AskUserMultiSelect"/> only decides what clicking one does.</summary>
     [JsonIgnore]
     public ObservableCollection<AskUserOptionEntry> AskUserOptionEntries { get; } = new();
 
@@ -445,10 +542,6 @@ public sealed partial class ChatMessage : Common.ObservableObject
 
     [JsonIgnore]
     public bool AskUserMultiSelect { get; set; }
-
-    [ObservableProperty]
-    [JsonIgnore]
-    public partial string? SelectedAskUserOption { get; set; }
 
     [ObservableProperty]
     [JsonIgnore]
@@ -462,11 +555,31 @@ public sealed partial class ChatMessage : Common.ObservableObject
     [JsonIgnore]
     public bool HasAskUserFields => AskUserFields.Count > 0;
 
+    /// <summary>Whether the turn offers a list to pick from. Both modes render the same card and
+    /// differ only in the glyph and in what a click does, so one flag covers them.</summary>
     [JsonIgnore]
-    public bool HasAskUserOptions => !AskUserMultiSelect && AskUserOptions.Count > 0;
+    public bool HasAskUserOptions => AskUserOptionEntries.Count > 0;
 
+    /// <summary>Gated on the turn still being open: once it is answered or skipped, the options
+    /// are a record, not a control. Expanding a settled card must not offer buttons that resolve
+    /// nothing — the socket wait they replied to is gone.</summary>
     [JsonIgnore]
-    public bool HasAskUserMultiOptions => AskUserMultiSelect && AskUserOptionEntries.Count > 0;
+    public bool ShowAskUserOptions => IsAwaitingResponse && HasAskUserOptions;
+
+    /// <summary>The option the user picked in a single-select turn, or null. Derived from the
+    /// entries rather than stored, so there is one source of truth for what is selected.</summary>
+    [JsonIgnore]
+    public string? SelectedOptionText
+    {
+        get
+        {
+            foreach (var entry in AskUserOptionEntries)
+            {
+                if (entry.IsChecked) return entry.Text;
+            }
+            return null;
+        }
+    }
 
     /// <summary>The free-text answer box only makes sense while still awaiting a response and
     /// when the turn has no structured fields. Gating on <see cref="IsAwaitingResponse"/> too
@@ -474,4 +587,11 @@ public sealed partial class ChatMessage : Common.ObservableObject
     /// options/fields aren't persisted, so <see cref="HasAskUserFields"/> reads false).</summary>
     [JsonIgnore]
     public bool ShowAskUserFreeText => IsAwaitingResponse && !HasAskUserFields;
+
+    /// <summary>The "or provide custom answer" divider only earns its place when there is
+    /// something to be an alternative *to* — with no options on offer, the box is simply the
+    /// answer and a divider announcing it is noise.</summary>
+    [JsonIgnore]
+    public bool ShowAskUserCustomAnswer
+        => ShowAskUserFreeText && HasAskUserOptions;
 }

@@ -40,6 +40,21 @@ public sealed partial class ChatTurnProjection
     private ToolActivityProjector? _toolActivity;
     private ChatMessage? _streamedFinalReply;
     private readonly List<ChatMessage> _thinkingActivities = new();
+    // The card the current run of consecutive `thinking` frames is accumulating into; cleared by
+    // the first frame of any other type (see ApplyParsed).
+    private ChatMessage? _currentThinking;
+    // The turn's single spinner row, opened by the first llm_call. Distinct from _currentThinking:
+    // that one holds reasoning text the agent sent, this one holds nothing and exists only so a
+    // long LLM call does not look like a hung app.
+    //
+    // One row for the whole turn, reused across iterations. An agentic turn makes an llm_call per
+    // iteration — fifteen tools is eight or more round trips — and a row each left a column of
+    // "Thought for 2.4 s / 6.6 s / 5.1 s …" that says nothing an aggregate does not.
+    private ChatMessage? _llmThinking;
+    // Set once this turn has produced a thinking card with real reasoning text. A turn-level
+    // latch rather than a "_currentThinking is open" check, because ApplyParsed clears that field
+    // on every non-thinking frame — including the llm_call we are deciding about.
+    private bool _sawThinkingText;
     // Inbound agent images are buffered as they stream in and only projected once the turn's
     // final output has been appended — the reference behaviour is that a received image belongs
     // *after* the agent's answer, not floating above the tool activity / summary / reply that
@@ -224,10 +239,59 @@ public sealed partial class ChatTurnProjection
     /// an already-settled one keeps the status it was settled with.</summary>
     private void CompleteThinkingActivities(EventStatus status)
     {
+        SettleLlmThinking();
         foreach (var thinking in _thinkingActivities)
         {
-            if (thinking.Status == EventStatus.Running) thinking.Status = status;
+            if (thinking.Status != EventStatus.Running) continue;
+            thinking.Status = status;
+            thinking.ThinkingElapsedLabel = "";
         }
+    }
+
+    /// <summary>
+    /// Settles the "Thinking..." row an <c>llm_call</c> opened, stamping how long the call took.
+    /// The duration is the row's whole reason to survive: <c>llm_call</c> carries only a model and
+    /// an iteration number, so without it a finished row says nothing the transcript does not
+    /// already show. With it, "Thought for 2.0 s" is the one fact about the pause the user just
+    /// sat through.
+    ///
+    /// <paramref name="durationMs"/> is the agent's own measurement when <c>llm_result</c>
+    /// supplies one; otherwise it is wall-clock since the row appeared, which also covers the run
+    /// that fails or is stopped mid-call and never gets a result frame at all.
+    /// </summary>
+    /// <summary>Opens the spinner row for one <c>llm_call</c>, if one is not already up.</summary>
+    private void StartLlmThinking()
+    {
+        if (_llmThinking is not null) return;
+        _llmThinking = new ChatMessage
+        {
+            Id = NextId(),
+            Role = ChatRole.Event,
+            EventKind = "activity",
+            EventTitle = "Thinking",
+            Status = EventStatus.Running,
+        };
+        _thinkingActivities.Add(_llmThinking);
+        Add(_llmThinking);
+    }
+
+    /// <summary>
+    /// Takes the spinner row away once the call comes back. It is removed, not settled with a
+    /// duration: the elapsed seconds are the live counter's job while the model is working, and
+    /// once it has finished the pause is over and there is nothing left to report — the turn's
+    /// total time is already on the usage line. Removing also means a turn with a dozen
+    /// iterations never stacks up a dozen spent rows.
+    ///
+    /// Called on <c>llm_result</c>, on the first <c>thinking</c> frame (real reasoning text
+    /// supersedes the bare indicator), and at turn end — a run that dies mid-call never gets its
+    /// result frame and must not leave a spinner turning forever.
+    /// </summary>
+    private void SettleLlmThinking()
+    {
+        if (_llmThinking is null) return;
+        Messages.Remove(_llmThinking);
+        _thinkingActivities.Remove(_llmThinking);
+        _llmThinking = null;
     }
 
     /// <summary>The turn's one tool-activity card, created on first use. Lazily, because most
@@ -253,7 +317,7 @@ public sealed partial class ChatTurnProjection
             Status = EventStatus.Running,
             ToolActivity = activity,
         });
-        _toolActivity = new ToolActivityProjector(activity);
+        _toolActivity = new ToolActivityProjector(activity, _target.IsLiveView);
         return _toolActivity;
     }
 
@@ -337,6 +401,15 @@ public interface IChatProjectionTarget
 {
     IList<ChatMessage> Messages { get; }
     string? AgentName { get; }
+
+    /// <summary>
+    /// True when this projection is driving a chat page the user is actually looking at, false
+    /// when it is the headless persistence pass. The only thing it gates is auto-expansion of a
+    /// failed tool card: springing a card open is a way of interrupting someone, which only makes
+    /// sense if they are there to be interrupted. Persisted history opens collapsed regardless, so
+    /// reopening an old conversation does not replay every past failure at full height.
+    /// </summary>
+    bool IsLiveView { get; }
     long NextId();
     void Add(ChatMessage message);
 
