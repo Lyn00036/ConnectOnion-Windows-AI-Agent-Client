@@ -30,6 +30,23 @@ namespace ConnectOnion.WinUIClient.ViewModels;
 /// </summary>
 public sealed partial class ChatViewModel
 {
+    /// <summary>
+    /// Raised when this page swaps to a <i>different</i> conversation without navigating — which
+    /// is what every operation in this file does. The page answers it by re-reporting which
+    /// conversation it is showing to <c>WindowPresenceService</c>.
+    ///
+    /// <para><b>Why it has to exist.</b> Presence is reported from <c>ChatPage.OnLoaded</c>, and
+    /// these operations re-point the page in place: no navigation, so no second OnLoaded, so the
+    /// presence service went on naming the conversation the user had just branched <i>away</i>
+    /// from. The notification policy then asked "is the user viewing this conversation?" about the
+    /// new one, got false, and toasted the chat that was on screen — which is exactly what Retry
+    /// and Edit did, because they branch and then immediately send.</para>
+    ///
+    /// <para>The view model raises it rather than reporting presence itself: resolving the host
+    /// window goes through <c>XamlRoot</c>, which is the page's business, not this type's.</para>
+    /// </summary>
+    public event Action? ConversationChanged;
+
     public async Task NewConversationAsync()
     {
         if (_agent is null || IsProcessing) return;
@@ -67,6 +84,7 @@ public sealed partial class ChatViewModel
         RaiseHeaderProperties();
 
         _runSubscription = SubscribeToRun(_session.Id);
+        ConversationChanged?.Invoke();
     }
 
     /// <summary>
@@ -135,6 +153,10 @@ public sealed partial class ChatViewModel
         RaiseHeaderProperties();
 
         _runSubscription = SubscribeToRun(_session.Id);
+        // Before the send, not after it: the turn this kicks off can raise an approval notification
+        // while it runs, and the reply lands at the end of it. Reporting afterwards would leave the
+        // whole turn notifying against the conversation we just left.
+        ConversationChanged?.Invoke();
 
         await SendAsync(replacement);
         return true;

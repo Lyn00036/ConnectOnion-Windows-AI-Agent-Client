@@ -68,6 +68,7 @@ public sealed partial class ChatPage : Page, IFindHost, IReloadablePage
         // Permanent, like the two above: this is the single reused instance (the constructor never
         // runs again), so one hook is correct and OnUnloaded deliberately leaves it attached.
         Vm.SendCancelled += Vm_SendCancelled;
+        Vm.ConversationChanged += Vm_ConversationChanged;
         _findDebounceTimer.Tick += FindDebounceTimer_Tick;
         ChatRoot.KeyDown += ChatRoot_KeyDown;
         Loaded += OnLoaded;
@@ -288,6 +289,19 @@ public sealed partial class ChatPage : Page, IFindHost, IReloadablePage
     /// <summary>Puts a taken-back message back on the composer.</summary>
     private async void Vm_SendCancelled(string text, IReadOnlyList<PendingAttachment> attachments)
         => await Composer.RestoreDraftAsync(text, attachments);
+
+    /// <summary>
+    /// The page is now showing a different conversation than the one it loaded (New / Edit /
+    /// Retry all branch in place, without navigating), so re-report presence against the new id.
+    /// Without this the policy keeps matching against the conversation we left, and a turn the
+    /// user is watching notifies as though they were somewhere else.
+    /// </summary>
+    private void Vm_ConversationChanged()
+    {
+        // Only meaningful while attached: ReportViewing resolves the host window through XamlRoot,
+        // and a detached page has none. OnLoaded reports again anyway when it comes back.
+        if (IsLoaded) ReportViewing(active: true);
+    }
 
     private async void Composer_ModeChangeRequested(object? sender, string mode)
         => await Vm.SetModeAsync(mode);
