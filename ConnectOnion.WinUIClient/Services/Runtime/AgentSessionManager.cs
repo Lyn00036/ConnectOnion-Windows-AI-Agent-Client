@@ -63,9 +63,21 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
     // state so switching pages cannot re-enable Stop and send a duplicate frame.
     private readonly ConcurrentDictionary<string, string> _interruptRequestedRuns = new();
 
-    /// <summary>Shown for an interactive turn that history reload finds was never answered
-    /// (the WebSocket wait it replied to is gone, so it can never be resolved now).</summary>
-    private const string NoSelectionMeta = "No selection";
+    /// <summary>
+    /// Recorded for an ask_user/plan_review turn that ended without an answer. "Skipped", not
+    /// "No selection": the turn moved on without the user's input, which is what skipping is —
+    /// and it names an outcome rather than an absence, so reloaded history reads as something
+    /// that happened instead of something missing.
+    /// </summary>
+    private const string SkippedMeta = "Skipped";
+
+    /// <summary>
+    /// An unanswered <b>approval</b> is recorded as a rejection, not as "no selection". The agent
+    /// only ever proceeds on an explicit yes, so a turn that ended without one is a turn where the
+    /// tool did not run — "Rejected" is what actually happened, and it is the safe reading to
+    /// leave in history besides.
+    /// </summary>
+    private const string UnansweredApprovalMeta = "Rejected";
 
     /// <summary>A resolved interactive answer: the meta text to show (e.g. "Answered: yes",
     /// "Approved once", "Rejected") and the status it resolves the card to.</summary>
@@ -180,7 +192,38 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         var connection = _connections.GetOrCreate(conversationId, agent);
         _runs.StartRun(request, NewExecutor(agent, conversationId, connection));
 
-        return new SendMessageResult(runId, request.UserMessageId, request.AssistantMessageId);
+        return new SendMessageResult(
+            runId, request.UserMessageId, request.AssistantMessageId, userMessage.Id);
+    }
+
+    /// <summary>
+    /// Backs a send out completely: cancels the run, then erases the user bubble and the execution
+    /// row that <see cref="SendMessageAsync"/> wrote before it started.
+    ///
+    /// <para><b>Only safe before the INPUT frame goes out.</b> The run reaches
+    /// <see cref="ConversationRunStatus.Running"/> from the connection's <c>InputSent</c> event, so
+    /// <c>Running</c> means the agent already has the message — erasing it then would leave the
+    /// local transcript disagreeing with the session the host is still executing. The caller is
+    /// responsible for that check; this method re-checks it and refuses, because the window is
+    /// narrow and a caller racing it would otherwise delete a live turn's prompt.</para>
+    ///
+    /// Returns false if the run had already started sending, in which case nothing was touched.
+    /// </summary>
+    public async Task<bool> CancelSendAsync(string conversationId, string runId, long persistedMessageId)
+    {
+        var run = _runs.GetActiveRun(conversationId);
+        if (run is null || run.RunId != runId) return false;
+        if (run.Status is not (ConversationRunStatus.Queued or ConversationRunStatus.Connecting)) return false;
+
+        await _runs.CancelRunAsync(conversationId, runId).ConfigureAwait(false);
+
+        _interactiveAnswers.TryRemove(conversationId, out _);
+        _pendingInteractive.TryRemove(conversationId, out _);
+        _interruptRequestedRuns.TryRemove(conversationId, out _);
+
+        await _conversations.DeleteMessageAsync(conversationId, persistedMessageId).ConfigureAwait(false);
+        await _conversations.DeleteExecutionAsync(runId).ConfigureAwait(false);
+        return true;
     }
 
     private AgentTurnExecutor NewExecutor(
@@ -294,6 +337,10 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         _interactiveAnswers.TryRemove(conversationId, out _);
         _pendingInteractive.TryRemove(conversationId, out _);
         _interruptRequestedRuns.TryRemove(conversationId, out _);
+        // After the cancel above, so a run unwinding into its terminal snapshot cannot re-add the
+        // entry we are dropping. The registry's own maps are keyed by conversation too, and a
+        // deleted conversation must not leave its last reply sitting in one of them.
+        _runs.Forget(conversationId);
         await _connections.RemoveAsync(conversationId).ConfigureAwait(false);
     }
 
@@ -355,7 +402,9 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
 
         // A completed turn is a natural point to release sockets for other conversations that
         // have gone idle, so a long session never accumulates live WebSockets without bound.
-        await _connections.TrimIdleAsync(cid => _runs.GetActiveRun(cid) is not null).ConfigureAwait(false);
+        // IsRunActive, not GetActiveRun: the latter falls back to the last terminal snapshot, so
+        // it reports every conversation that has ever run as busy and trimmed nothing at all.
+        await _connections.TrimIdleAsync(_runs.IsRunActive).ConfigureAwait(false);
 
         // Completion notification is now an app-level concern (fires even in the tray with no
         // page open); the coordinator suppresses it when a window already shows this chat.
@@ -413,7 +462,7 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         await _conversations.FinalizeExecutionAsync(
             snapshot.RunId, snapshot.ConversationId, snapshot.ErrorMessage ?? "", "error", 0).ConfigureAwait(false);
 
-        await _connections.TrimIdleAsync(cid => _runs.GetActiveRun(cid) is not null).ConfigureAwait(false);
+        await _connections.TrimIdleAsync(_runs.IsRunActive).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -485,7 +534,7 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
     /// same conversation (they already carry their own meta/status). This is what makes the
     /// chosen result — or "no selection" — survive into reloaded history.
     /// </summary>
-    private void ResolveInteractiveCards(string conversationId, IReadOnlyList<ChatMessage> history)
+    private void ResolveInteractiveCards(string conversationId, List<ChatMessage> history)
     {
         _interactiveAnswers.TryRemove(conversationId, out var answers);
 
@@ -504,12 +553,29 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
                 m.EventMeta = answer.Meta;
                 m.Status = answer.Status;
             }
+            else if (m.EventKind == "approval")
+            {
+                m.EventMeta = UnansweredApprovalMeta;
+                m.Status = EventStatus.Error;
+            }
             else
             {
-                m.EventMeta = NoSelectionMeta;
+                m.EventMeta = SkippedMeta;
                 m.Status = EventStatus.Done;
             }
+
         }
+
+        // A settled approval leaves the transcript entirely. The decision it was asking for has
+        // been made, and what came of it is already on screen twice over — the tool-activity card
+        // shows the step as Skipped/failed/done, and the agent's own reply speaks to it. Keeping a
+        // third row that only restates the outcome (and, before this, dragged the whole request
+        // payload into SQLite with it) was noise in every reloaded conversation.
+        //
+        // The stamping above still runs first: RecordInteractiveAnswer's queue is consumed in
+        // creation order, so dropping the cards without dequeuing their answers would mis-align
+        // every later ask_user/plan_review in the same turn.
+        history.RemoveAll(m => m.Role == ChatRole.Event && m.EventKind == "approval");
     }
 
     /// <summary>Projection target backed by a plain list, used by the headless persistence
@@ -535,6 +601,8 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
 
         public IList<ChatMessage> Messages => _messages;
         public string? AgentName { get; }
+        // Nobody is watching this pass; persisted cards are written collapsed.
+        public bool IsLiveView => false;
         public long NextId() => _nextId++;
         public void Add(ChatMessage message) => _messages.Add(message);
 

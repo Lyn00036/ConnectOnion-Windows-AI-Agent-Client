@@ -71,7 +71,10 @@ public sealed partial class ChatViewModel
             // the connection, and starts the run; the reply arrives back through our
             // subscription (ApplyRunSnapshot), not by awaiting here. The mode goes with every
             // send because the host does not keep ours between turns.
-            await _runManager.SendMessageAsync(_agent, _session.Id, text, attachments, CurrentMode);
+            var result = await _runManager.SendMessageAsync(_agent, _session.Id, text, attachments, CurrentMode);
+            // Held so the send can be taken back while it is still queued — see CancelSendAsync.
+            // Dropped the moment the run starts sending, because from then on it cannot be undone.
+            _pendingSend = new PendingSend(result, text, attachments ?? Array.Empty<PendingAttachment>(), userMessage);
         }
         catch (InvalidOperationException)
         {
@@ -84,6 +87,57 @@ public sealed partial class ChatViewModel
             CanStop = false;
             StatusText = $"Send failed: {UserFacingError(ex)}";
         }
+    }
+
+    /// <summary>The message currently in flight, retained only while it can still be taken back.</summary>
+    private sealed record PendingSend(
+        SendMessageResult Result,
+        string Text,
+        IReadOnlyList<PendingAttachment> Attachments,
+        ChatMessage Bubble);
+
+    private PendingSend? _pendingSend;
+
+    /// <summary>
+    /// Raised when a send is cancelled before it left, carrying what was on the composer so the
+    /// page can put it back. The view model does not touch the composer itself — that is a
+    /// control, and this type is meant to stay WinUI-free of it.
+    /// </summary>
+    public event Action<string, IReadOnlyList<PendingAttachment>>? SendCancelled;
+
+    /// <summary>
+    /// True while the message has been submitted but not yet handed to the agent, which is the
+    /// only window in which it can be un-sent. The run reaches Running off the connection's
+    /// InputSent event, so anything short of Running means the INPUT frame has not gone out.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool CanCancelSend { get; private set; }
+
+    /// <summary>
+    /// Takes back a message that has not reached the agent: cancels the run, erases the bubble and
+    /// the rows written for it, and hands the text and attachments back to the composer.
+    ///
+    /// Silently does nothing if the window has closed in the meantime — the manager re-checks the
+    /// run's status and refuses, and this is a race the user can lose by a millisecond, so losing
+    /// it must simply leave the send running rather than half-undo it.
+    /// </summary>
+    public async Task CancelSendAsync()
+    {
+        if (_session is null || _pendingSend is not { } pending) return;
+
+        _pendingSend = null;
+        CanCancelSend = false;
+
+        var cancelled = await _runManager.CancelSendAsync(
+            _session.Id, pending.Result.RunId, pending.Result.PersistedMessageId);
+        if (!cancelled) return;
+
+        Messages.Remove(pending.Bubble);
+        IsProcessing = false;
+        CanStop = false;
+        IsStopping = false;
+        StatusText = "";
+        SendCancelled?.Invoke(pending.Text, pending.Attachments);
     }
 
     /// <summary>Sends one graceful-stop request and keeps rendering until OUTPUT/ERROR.
@@ -180,6 +234,12 @@ public sealed partial class ChatViewModel
         IsProcessing = !snapshot.IsTerminal;
         CanStop = !snapshot.IsTerminal && snapshot.Status == ConversationRunStatus.Running;
         IsStopping = HasPendingStop(snapshot);
+        // Queued/Connecting is exactly "submitted but the INPUT frame has not gone out", which is
+        // the only state an un-send is honest in. Clearing _pendingSend as soon as that passes
+        // means a later Stop can never mistake a running turn for a cancellable one.
+        CanCancelSend = _pendingSend is not null && !snapshot.IsTerminal
+            && snapshot.Status is ConversationRunStatus.Queued or ConversationRunStatus.Connecting;
+        if (!CanCancelSend) _pendingSend = null;
         StatusText = IsStopping ? "Stopping..." : StatusTextFor(snapshot);
 
         if (!snapshot.IsTerminal) return;
@@ -205,8 +265,10 @@ public sealed partial class ChatViewModel
                 AgentName = _agent?.Name,
                 Content = $"[connection error] {snapshot.ErrorMessage}",
             });
-            // The error is shown as a bubble plus the Retry bar; suppress the redundant
-            // "Send failed" status banner set above so the two don't stack.
+            // The error is shown as a bubble plus the Retry bar, so the status line stays out of
+            // it. StatusTextFor already returns "" for Failed; this clears the one case it can't
+            // — a stop that was still pending when the run died, which would otherwise leave
+            // "Stopping..." sitting under a finished turn.
             StatusText = "";
             CanRetry = true;
             if (_agent is not null)
@@ -221,11 +283,32 @@ public sealed partial class ChatViewModel
             CanRetry = false;
         }
 
+        // The turn is over, so nothing can answer an approval any more. Answering removes its own
+        // card (SubmitApprovalAsync); this covers every other way a turn can end — Stop, a dropped
+        // socket, a cancelled run — where the card would otherwise sit there offering buttons that
+        // resolve nothing. It also keeps the live list agreeing with what was persisted, which for
+        // an approval is nothing at all.
+        RemoveApprovalBubbles();
+        StopThinkingTicker();
+
         _liveProjection = null;
         _liveRunId = null;
         _appliedEventCount = 0;
         _historyLoadedRunId = null;
         StoreSessionCache();
+    }
+
+    /// <summary>Drops every approval bubble from the live list. Backwards, because removing from
+    /// an <see cref="System.Collections.ObjectModel.ObservableCollection{T}"/> shifts the tail.</summary>
+    private void RemoveApprovalBubbles()
+    {
+        for (var i = Messages.Count - 1; i >= 0; i--)
+        {
+            if (Messages[i].Role == ChatRole.Event && Messages[i].EventKind == "approval")
+            {
+                Messages.RemoveAt(i);
+            }
+        }
     }
 
     private static bool HasPendingStop(ConversationRunSnapshot snapshot)
@@ -267,13 +350,23 @@ public sealed partial class ChatViewModel
         _ = _sessions.UpdateSessionAsync(_session);
     }
 
+    /// <summary>
+    /// The status line reports only what the transcript cannot show for itself. Once events start
+    /// arriving, the transcript *is* the narration — a thought lands as a thought-process card, a
+    /// tool as an activity card, an approval as its own card — so echoing the last event's
+    /// description here said the same thing twice, in a weaker form (a bare tool name, and only
+    /// ever the most recent one). Same reasoning retires the Failed text: that path already adds
+    /// an error bubble and raises the Retry bar, which is why the caller below blanks this too.
+    ///
+    /// What is left is the connection lifecycle, which has no bubble anywhere: queued, connecting,
+    /// and the gap between a started run and its first event, where nothing else says the app
+    /// heard the user.
+    /// </summary>
     private static string StatusTextFor(ConversationRunSnapshot snapshot) => snapshot.Status switch
     {
         ConversationRunStatus.Queued => "Working...",
         ConversationRunStatus.Connecting => "Connecting...",
-        ConversationRunStatus.Running => snapshot.Events.Count > 0
-            ? snapshot.Events[^1].Description : "Working...",
-        ConversationRunStatus.Failed => $"Send failed: {snapshot.ErrorMessage}",
+        ConversationRunStatus.Running when snapshot.Events.Count == 0 => "Working...",
         _ => "",
     };
     /// <summary>Forces the app-owned socket for this conversation to reconnect to its session.</summary>

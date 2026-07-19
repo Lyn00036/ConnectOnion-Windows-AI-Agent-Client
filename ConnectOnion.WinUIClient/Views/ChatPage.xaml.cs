@@ -35,8 +35,12 @@ public sealed partial class ChatPage : Page, IFindHost, IReloadablePage
     /// <summary>Width of the centred conversation column; see the ChatColumnWidth resource in App.xaml.</summary>
     private static double ChatColumnMaxWidth => (double)Application.Current.Resources["ChatColumnWidth"];
 
-    /// <summary>Persisted scroll positions keyed by session id, survives page recreation.</summary>
+    /// <summary>Persisted scroll positions keyed by session id, survives page recreation.
+    /// Bounded — see <see cref="SaveScrollPosition"/> for why an unrestored entry would
+    /// otherwise stay forever.</summary>
     private static readonly ConcurrentDictionary<string, double> ScrollPositions = new();
+    private static readonly ConcurrentQueue<string> ScrollPositionOrder = new();
+    private const int MaxRememberedScrollPositions = 64;
 
     public ChatViewModel Vm { get; } = App.GetService<ChatViewModel>();
     private ScrollViewer? _messageScrollViewer;
@@ -61,6 +65,9 @@ public sealed partial class ChatPage : Page, IFindHost, IReloadablePage
 
         Vm.Messages.CollectionChanged += Messages_CollectionChanged;
         Vm.PropertyChanged += Vm_PropertyChanged;
+        // Permanent, like the two above: this is the single reused instance (the constructor never
+        // runs again), so one hook is correct and OnUnloaded deliberately leaves it attached.
+        Vm.SendCancelled += Vm_SendCancelled;
         _findDebounceTimer.Tick += FindDebounceTimer_Tick;
         ChatRoot.KeyDown += ChatRoot_KeyDown;
         Loaded += OnLoaded;
@@ -77,6 +84,9 @@ public sealed partial class ChatPage : Page, IFindHost, IReloadablePage
         SaveScrollPosition();
 
         _findDebounceTimer.Stop();
+        // The elapsed-seconds ticker lives on the view model, which outlives this handler (the
+        // page is cached and reused), so it has to be disarmed explicitly here too.
+        Vm.StopThinkingTicker();
 
         // The page is cached and reused (NavigationCacheMode.Required above), so only the
         // per-view work is torn down here: drop the live run subscription so a backgrounded page
@@ -166,13 +176,27 @@ public sealed partial class ChatPage : Page, IFindHost, IReloadablePage
     }
 
     /// <summary>Remembers where the *outgoing* conversation was scrolled to, so coming back to
-    /// it lands in the same place. Keyed by session id, consumed (and removed) on restore.</summary>
+    /// it lands in the same place. Keyed by session id, consumed (and removed) on restore.
+    /// <para>Entries are only removed on restore, and a conversation the user leaves and never
+    /// returns to is never restored — so the map is FIFO-capped rather than left to grow one
+    /// entry per conversation visited. Losing the oldest offset just means that conversation
+    /// opens at the bottom, which is where a chat opens by default anyway.</para></summary>
     private void SaveScrollPosition()
     {
         try
         {
-            if (Vm.SessionId is { } sid && _messageScrollViewer is not null)
+            if (Vm.SessionId is not { } sid || _messageScrollViewer is null) return;
+
+            if (ScrollPositions.TryAdd(sid, _messageScrollViewer.VerticalOffset))
+                ScrollPositionOrder.Enqueue(sid);
+            else
                 ScrollPositions[sid] = _messageScrollViewer.VerticalOffset;
+
+            while (ScrollPositionOrder.Count > MaxRememberedScrollPositions
+                && ScrollPositionOrder.TryDequeue(out var oldest))
+            {
+                ScrollPositions.TryRemove(oldest, out _);
+            }
         }
         catch { /* Best-effort scroll persistence. */ }
     }
@@ -245,8 +269,25 @@ public sealed partial class ChatPage : Page, IFindHost, IReloadablePage
     private async void Composer_SubmitRequested(object? sender, ComposerSubmission submission)
         => await SendAsync(submission.Text, submission.Attachments);
 
+    /// <summary>
+    /// One button, two meanings. While the message is still queued it has not reached the agent,
+    /// so Stop takes it back outright; once the agent has it, Stop is the cooperative request the
+    /// agent may decline. The composer only reports the press — deciding which of the two applies
+    /// is the page's job, because only the run's state can answer it.
+    /// </summary>
     private async void Composer_StopRequested(object? sender, System.EventArgs e)
-        => await Vm.StopAsync();
+    {
+        if (Vm.CanCancelSend)
+        {
+            await Vm.CancelSendAsync();
+            return;
+        }
+        await Vm.StopAsync();
+    }
+
+    /// <summary>Puts a taken-back message back on the composer.</summary>
+    private async void Vm_SendCancelled(string text, IReadOnlyList<PendingAttachment> attachments)
+        => await Composer.RestoreDraftAsync(text, attachments);
 
     private async void Composer_ModeChangeRequested(object? sender, string mode)
         => await Vm.SetModeAsync(mode);

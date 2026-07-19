@@ -104,9 +104,11 @@ public sealed partial class ChatViewModel
         }
         else
         {
+            // Typed text wins over a picked option: if the user went to the trouble of writing
+            // something, that is the more specific answer.
             answer = !string.IsNullOrWhiteSpace(message.AskUserFreeText)
                 ? message.AskUserFreeText.Trim()
-                : message.SelectedAskUserOption ?? "";
+                : message.SelectedOptionText ?? "";
         }
 
         if (string.IsNullOrEmpty(answer)) return;
@@ -116,6 +118,45 @@ public sealed partial class ChatViewModel
         RecordInteractiveAnswer(message);
         StatusText = "";
         await (CurrentConnection?.RespondAskUserAsync(answer) ?? Task.CompletedTask);
+    }
+
+    /// <summary>
+    /// The text a skip puts on the wire. There is no skip primitive in the protocol —
+    /// <c>ASK_USER_RESPONSE</c> carries a single free-text <c>answer</c> — so this string is read
+    /// by the agent's model, and every clause in it is load-bearing:
+    ///
+    /// <list type="bullet">
+    /// <item>Third person, stating what happened rather than commanding, so it reads as the state
+    /// of the turn instead of as the user issuing an instruction.</item>
+    /// <item>"will not answer" closes the door; without it the model can treat the skip as a
+    /// deferral and wait for something that is never coming.</item>
+    /// <item>"Proceed without this information" rather than anything about judgement — the latter
+    /// invites the model to invent the answer it was asking for.</item>
+    /// <item>"do not ask this question again", scoped to <i>this</i> question. Unscoped, it reads
+    /// as a ban on asking anything, which would suppress legitimate later questions. The clause
+    /// exists because re-asking a skipped question in different words is a real failure mode.</item>
+    /// </list>
+    ///
+    /// It is a prompt, not a guarantee: whether the agent honours it is up to its model.
+    /// </summary>
+    private const string SkipAnswer =
+        "User skipped this question and will not answer. "
+        + "Proceed without this information; do not ask this question again.";
+
+    /// <summary>
+    /// Declines an ask_user turn. This still <i>sends</i> — the agent is parked on
+    /// <c>io.receive()</c> and only moves when something arrives, so a skip that merely dismissed
+    /// the card would hang the turn forever.
+    /// </summary>
+    public async Task SkipAskUserAsync(ChatMessage message)
+    {
+        if (message.Status != EventStatus.Running) return;
+
+        message.EventMeta = "Skipped";
+        message.Status = EventStatus.Done;
+        RecordInteractiveAnswer(message);
+        StatusText = "";
+        await (CurrentConnection?.RespondAskUserAsync(SkipAnswer) ?? Task.CompletedTask);
     }
 
     /// <summary>
@@ -135,7 +176,14 @@ public sealed partial class ChatViewModel
             ? (scope == "session" ? "Approved for session" : "Approved once")
             : rejectMode == ApprovalRejectModes.Soft ? "Skipped" : "Rejected";
         message.Status = approved ? EventStatus.Done : EventStatus.Error;
+        // Record before removing: the answer queue is what the app-level persist replays onto the
+        // cards it re-projects, and it is consumed in creation order.
         RecordInteractiveAnswer(message);
+        // Then the card goes. An answered approval has nothing left to offer — the tool-activity
+        // step below it reports what actually happened (Skipped, failed, done) and the agent's
+        // reply speaks to it, so a row restating the decision is the third telling of it. The
+        // persist path drops it too, so the live list and reloaded history agree.
+        Messages.Remove(message);
         StatusText = "";
         await (CurrentConnection?.RespondApprovalAsync(approved, scope, rejectMode) ?? Task.CompletedTask);
     }

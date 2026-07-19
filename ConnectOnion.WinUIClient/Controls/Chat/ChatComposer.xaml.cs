@@ -2,6 +2,8 @@ using System;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -205,6 +207,52 @@ public sealed partial class ChatComposer : UserControl, IDisposable
 
     public void FocusInput()
         => InputBox.Focus(FocusState.Programmatic);
+
+    /// <summary>
+    /// Puts a submitted message back on the composer after the send was cancelled before it
+    /// reached the agent.
+    ///
+    /// <para>Attachments are re-encoded rather than re-attached as they were: the send path nulls
+    /// each <see cref="PendingAttachment.DataUrl"/> the moment the payload is handed to the wire
+    /// lists (so a megabyte of base64 does not linger on a draft), which leaves the drafts holding
+    /// metadata and a local path only. Reading the file again is what makes them sendable a second
+    /// time. Anything whose file has since gone is dropped rather than restored as a chip that
+    /// would fail on submit.</para>
+    ///
+    /// <para>Appends to whatever is already there instead of replacing it — the user may well have
+    /// started typing again in the moment between submitting and cancelling, and that text is
+    /// theirs, not ours to discard.</para>
+    /// </summary>
+    public async Task RestoreDraftAsync(string text, IReadOnlyList<PendingAttachment> attachments)
+    {
+        if (!string.IsNullOrEmpty(text))
+        {
+            InputBox.Text = InputBox.Text.Length == 0 ? text : text + "\n" + InputBox.Text;
+            InputBox.SelectionStart = InputBox.Text.Length;
+        }
+
+        foreach (var attachment in attachments)
+        {
+            if (string.IsNullOrEmpty(attachment.LocalPath) || !File.Exists(attachment.LocalPath)) continue;
+            try
+            {
+                attachment.DataUrl = await AttachmentEncoder
+                    .EncodeToDataUrlAsync(attachment.LocalPath, attachment.MimeType, _lifetimeCts.Token)
+                    .ConfigureAwait(true);
+                attachment.Status = AttachmentStatus.Ready;
+                PendingAttachments.Add(attachment);
+            }
+            catch (Exception ex)
+            {
+                // A file that has moved or become unreadable simply does not come back. Restoring
+                // it as a chip that cannot be sent would be worse than losing it quietly here.
+                Debug.WriteLine($"[composer] could not restore attachment {attachment.FileName}: {ex}");
+            }
+        }
+
+        RefreshSendButtonState();
+        FocusInput();
+    }
 
     private static void OnCanSubmitChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         => ((ChatComposer)d).RefreshSendButtonState();

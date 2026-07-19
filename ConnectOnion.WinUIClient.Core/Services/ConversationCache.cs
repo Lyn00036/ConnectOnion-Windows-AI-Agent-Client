@@ -18,11 +18,19 @@ public static class ConversationCache
 {
     private const int MaxEntries = 4;
 
+    /// <param name="Messages">The conversation's loaded window — not necessarily its whole
+    /// history, since the chat page opens conversations a page at a time.</param>
+    /// <param name="HasMoreHistory">Whether older bubbles exist above <paramref name="Messages"/>.
+    /// Cached with the window because it is a property of the window, not of the conversation:
+    /// serving a partial list back with this recomputed as false would strand the reader at the
+    /// top of it with no way to pull the rest. Defaults to false so a caller holding a complete
+    /// history needs no extra argument.</param>
     public sealed record Entry(
         AgentConfig Agent,
         SessionSummary Session,
         List<ChatMessage> Messages,
-        long CreatedAt);
+        long CreatedAt,
+        bool HasMoreHistory = false);
 
     private static readonly Dictionary<string, LinkedListNode<string>> Nodes = new();
     private static readonly Dictionary<string, Entry> Entries = new();

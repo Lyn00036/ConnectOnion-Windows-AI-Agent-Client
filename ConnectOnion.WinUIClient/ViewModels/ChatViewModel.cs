@@ -19,6 +19,7 @@ using ConnectOnion.WinUIClient.Services.Runtime;
 using ConnectOnion.WinUIClient.Data;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
+using Microsoft.UI.Xaml;
 
 namespace ConnectOnion.WinUIClient.ViewModels;
 
@@ -63,6 +64,28 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
 
     public ObservableCollection<ChatMessage> Messages { get; } = new();
 
+    /// <summary>How much history a conversation opens with. Comfortably more than a viewport
+    /// holds, so the common case never needs a second read, while a conversation with thousands
+    /// of bubbles no longer materializes all of them (and no longer parks all of them in the
+    /// four-entry <see cref="ConversationCache"/>) just to show its tail.</summary>
+    private const int InitialHistoryPageSize = 150;
+
+    /// <summary>How much each scroll-up pull adds. Smaller than the opening page: this one runs
+    /// while the user is looking at the list, so it trades a little more paging for a shorter
+    /// pause and a smaller scroll-position correction.</summary>
+    private const int OlderHistoryPageSize = 100;
+
+    /// <summary>True when older bubbles exist above the loaded window — drives the chat page's
+    /// scroll-up load. False for a conversation whose whole history is already in
+    /// <see cref="Messages"/>.</summary>
+    [ObservableProperty]
+    public partial bool HasMoreHistory { get; private set; }
+
+    /// <summary>True while an older page is being fetched, so the page can show a spinner and,
+    /// more importantly, not fire a second overlapping pull while this one is in flight.</summary>
+    [ObservableProperty]
+    public partial bool IsLoadingOlderHistory { get; private set; }
+
     private readonly PreferencesRepository _preferences;
     private readonly AgentRepository _agents;
     private readonly SessionRepository _sessions;
@@ -100,6 +123,55 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         MessageFontSize = 14;
         EnterToSend = true;
         CurrentMode = AgentModes.Safe;
+
+        // Ticks the "Thinking... 3s" counter. A DispatcherTimer (not a threading one) because it
+        // writes straight into bound properties, and this type is resolved on the UI thread from
+        // the page's constructor. It only runs while a thinking row is actually live — see
+        // TickThinkingElapsed, which stops it as soon as there is nothing left to count.
+        _thinkingTicker.Interval = TimeSpan.FromSeconds(1);
+        _thinkingTicker.Tick += (_, _) => TickThinkingElapsed();
+    }
+
+    private readonly DispatcherTimer _thinkingTicker = new();
+
+    /// <summary>
+    /// Pushes elapsed seconds onto every live thinking row, and stops the timer once none are
+    /// left. Driven from a timer rather than computed on read because nothing re-evaluates a
+    /// computed property on a schedule — the value has to be pushed for the number to move.
+    /// </summary>
+    private void TickThinkingElapsed()
+    {
+        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var anyRunning = false;
+        foreach (var message in Messages)
+        {
+            if (!message.IsThinkingRunning) continue;
+            anyRunning = true;
+            var seconds = Math.Max(0, (now - message.CreatedAtUnixMs) / 1000);
+            message.ThinkingElapsedLabel = $"{seconds}s";
+        }
+        if (!anyRunning) StopThinkingTicker();
+    }
+
+    /// <summary>Starts the elapsed-seconds ticker if a thinking row needs it. Idempotent.</summary>
+    private void EnsureThinkingTicker()
+    {
+        if (!_thinkingTicker.IsEnabled) _thinkingTicker.Start();
+    }
+
+    /// <summary>
+    /// Disarms the ticker. Called when a run reaches a terminal state and again from
+    /// <c>ChatPage.OnUnloaded</c> — a DispatcherTimer left armed keeps firing after the page is
+    /// gone, and the dispatcher goes on pumping past Window.Closed (see the shutdown notes in
+    /// CLAUDE.md), so leaving one running is how a teardown-time access violation gets built.
+    /// </summary>
+    public void StopThinkingTicker()
+    {
+        _thinkingTicker.Stop();
+        foreach (var message in Messages)
+        {
+            if (message.HasThinkingElapsed) message.ThinkingElapsedLabel = "";
+        }
     }
 
     protected override AgentConfig? PresenceAgent => _agent;
@@ -345,22 +417,31 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
             Messages.Clear();
             foreach (var message in cached.Messages) Messages.Add(message);
             _createdAt = cached.CreatedAt;
+            // The cached list is itself a window, so its "is there more above" answer has to be
+            // cached with it — recomputing it as false would strand the user at the top of a
+            // partial history with no way to pull the rest.
+            HasMoreHistory = cached.HasMoreHistory;
             ResetIdCounter();
             return;
         }
 
-        var messages = ToolActivityMigration.UpgradeLegacyToolMessages(
-            await _conversations.LoadMessagesAsync(_session.Id, cancellationToken));
+        var page = await _conversations.LoadMessagePageAsync(
+            _session.Id, InitialHistoryPageSize, cancellationToken: cancellationToken);
+        var messages = ToolActivityMigration.UpgradeLegacyToolMessages(page.Messages);
         // A newer switch already owns the list — dropping this history is the whole point.
         if (generation != _loadGeneration) return;
 
         Messages.Clear();
+        HasMoreHistory = page.HasMore;
         _createdAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
         if (messages.Count > 0)
         {
             foreach (var message in messages) Messages.Add(message);
-            _createdAt = messages[0].Id > 0 ? messages[0].Id : _createdAt;
+            // Only meaningful when this page reaches the start of the conversation. With older
+            // bubbles still unloaded the first loaded id is just where the window happens to
+            // begin, so the wall-clock seed above is left in place instead.
+            if (!page.HasMore && messages[0].Id > 0) _createdAt = messages[0].Id;
         }
         ResetIdCounter();
 
@@ -376,6 +457,55 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
                 : null;
 
         if (!hasRun) StoreSessionCache();
+    }
+
+    /// <summary>
+    /// Prepends the next page of older bubbles, for the chat page's scroll-up pull. Returns the
+    /// number of bubbles added so the caller can correct the scroll offset by exactly the height
+    /// the new content introduced — without that the viewport jumps to wherever the anchor item
+    /// ends up after the insert.
+    /// </summary>
+    /// <remarks>
+    /// Prepending (rather than reloading a bigger window) is what keeps the user's position and
+    /// the already-realized containers intact. It also means an in-flight run streaming into the
+    /// bottom of the list is untouched by a pull at the top.
+    /// </remarks>
+    public async Task<int> LoadOlderHistoryAsync(CancellationToken cancellationToken = default)
+    {
+        if (_session is null || !HasMoreHistory || IsLoadingOlderHistory) return 0;
+        if (Messages.Count == 0) return 0;
+
+        var oldestLoadedId = Messages[0].Id;
+        var generation = _loadGeneration;
+        IsLoadingOlderHistory = true;
+        try
+        {
+            var page = await _conversations.LoadMessagePageAsync(
+                _session.Id, OlderHistoryPageSize, beforeId: oldestLoadedId, cancellationToken)
+                .ConfigureAwait(true);
+
+            // Switching conversations mid-pull must not splice one conversation's history into
+            // another's list. The generation check is the same guard the initial load uses.
+            if (generation != _loadGeneration || _session is null) return 0;
+
+            var older = ToolActivityMigration.UpgradeLegacyToolMessages(page.Messages);
+            // Insert in reverse so each goes to index 0 and the batch lands in its original order.
+            for (var i = older.Count - 1; i >= 0; i--) Messages.Insert(0, older[i]);
+
+            HasMoreHistory = page.HasMore;
+            if (!page.HasMore && Messages.Count > 0 && Messages[0].Id > 0) _createdAt = Messages[0].Id;
+
+            // Re-cache the widened window so returning to this conversation does not have to page
+            // back up again. Skipped while a run is active — that path must always reload the
+            // authoritative history (see RestoreConversationAsync).
+            if (_runManager.GetActiveRun(_session.Id) is null) StoreSessionCache();
+
+            return older.Count;
+        }
+        finally
+        {
+            IsLoadingOlderHistory = false;
+        }
     }
 
 
@@ -437,7 +567,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         if (_session is null || _agent is null) return;
         ConversationCache.Store(
             _session.Id,
-            new ConversationCache.Entry(_agent, _session, Messages.ToList(), _createdAt));
+            new ConversationCache.Entry(_agent, _session, Messages.ToList(), _createdAt, HasMoreHistory));
     }
 
 
@@ -445,8 +575,16 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
 
     IList<ChatMessage> IChatProjectionTarget.Messages => Messages;
     string? IChatProjectionTarget.AgentName => _agent?.Name;
+    // A page exists, so a failed tool card may open itself.
+    bool IChatProjectionTarget.IsLiveView => true;
     long IChatProjectionTarget.NextId() => NextId();
-    void IChatProjectionTarget.Add(ChatMessage message) => Messages.Add(message);
+    void IChatProjectionTarget.Add(ChatMessage message)
+    {
+        Messages.Add(message);
+        // A live thinking row is the only thing the elapsed ticker exists for, so arming it here
+        // is what keeps the timer off for every turn that never shows one.
+        if (message.IsThinkingRunning) EnsureThinkingTicker();
+    }
     void IChatProjectionTarget.ResolveAgentImage(string dataUrl, ChatAttachment attachment)
         => _ = ResolveAgentImageAsync(dataUrl, attachment);
 }

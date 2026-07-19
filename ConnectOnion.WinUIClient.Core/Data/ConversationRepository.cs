@@ -12,6 +12,12 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ConnectOnion.WinUIClient.Data;
 
+/// <summary>One page of conversation history, in ascending id (render) order.</summary>
+/// <param name="Messages">The page's bubbles.</param>
+/// <param name="HasMore">Whether older bubbles exist before <see cref="Messages"/>'s first —
+/// what the chat page's scroll-up affordance is gated on.</param>
+public sealed record MessagePage(IReadOnlyList<ChatMessage> Messages, bool HasMore);
+
 /// <summary>
 /// Row-level message persistence. Each chat bubble is a row in the
 /// <c>messages</c> table, keyed by <c>(conversation_id, id)</c>.
@@ -28,6 +34,13 @@ public sealed partial class ConversationRepository
     public ConversationRepository(ILogger<ConversationRepository>? logger = null)
         => _logger = logger ?? NullLogger<ConversationRepository>.Instance;
 
+    /// <remarks>
+    /// Approval bubbles are filtered out of every read. A settled approval is not shown anywhere
+    /// in the transcript — the tool-activity step and the agent's reply already report what came
+    /// of it — so the reads exclude them rather than relying on nothing having written one. That
+    /// also covers rows left in databases from before the persist path stopped storing them; the
+    /// old rows stay on disk (harmless, and no migration to get wrong) but never surface.
+    /// </remarks>
     public async Task<IReadOnlyList<ChatMessage>> LoadMessagesAsync(
         string conversationId,
         CancellationToken cancellationToken = default)
@@ -43,7 +56,7 @@ public sealed partial class ConversationRepository
                        event_detail, event_meta, event_args, event_result,
                        event_status, is_onboarding, created_at
                 FROM messages
-                WHERE conversation_id = $conversation_id
+                WHERE conversation_id = $conversation_id AND event_kind IS NOT 'approval'
                 ORDER BY id;
                 """;
             AppDatabase.Add(command, "$conversation_id", conversationId);
@@ -71,6 +84,102 @@ public sealed partial class ConversationRepository
             LogFailure(nameof(LoadMessagesAsync), conversationId, ex);
         }
         return messages;
+    }
+
+    /// <summary>
+    /// One page of a conversation's history, newest-first from <paramref name="beforeId"/>.
+    ///
+    /// <para>This is what the chat page opens with, instead of <see cref="LoadMessagesAsync"/>'s
+    /// unbounded read: a long conversation otherwise materializes every bubble it has ever had
+    /// into an <c>ObservableCollection</c> on open — and the conversation cache then holds up to
+    /// four of those at once.</para>
+    ///
+    /// <para>Pass <paramref name="beforeId"/> to walk backwards (the scroll-up path): only rows
+    /// with a smaller id are considered. The returned list is always in ascending id order — the
+    /// order the list renders in — regardless of which direction it was paged in.</para>
+    /// </summary>
+    /// <param name="limit">Maximum bubbles to return. One extra row is read internally to answer
+    /// <see cref="MessagePage.HasMore"/> without a second COUNT query.</param>
+    public async Task<MessagePage> LoadMessagePageAsync(
+        string conversationId,
+        int limit,
+        long? beforeId = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(limit);
+
+        var messages = new List<ChatMessage>();
+        var hasMore = false;
+        try
+        {
+            await using var connection = await AppDatabase.OpenAsync(cancellationToken).ConfigureAwait(false);
+            await using var command = connection.CreateCommand();
+            // DESC + LIMIT is what makes this cheap — it walks the (conversation_id, id) primary
+            // key backwards and stops, rather than reading the conversation and discarding it.
+            // The caller-facing order is restored by the reverse below.
+            command.CommandText = beforeId is null
+                ? """
+                    SELECT id, role, content, agent_name,
+                           event_kind, event_key, event_eyebrow, event_title,
+                           event_detail, event_meta, event_args, event_result,
+                           event_status, is_onboarding, created_at
+                    FROM messages
+                    WHERE conversation_id = $conversation_id AND event_kind IS NOT 'approval'
+                    ORDER BY id DESC
+                    LIMIT $limit;
+                    """
+                : """
+                    SELECT id, role, content, agent_name,
+                           event_kind, event_key, event_eyebrow, event_title,
+                           event_detail, event_meta, event_args, event_result,
+                           event_status, is_onboarding, created_at
+                    FROM messages
+                    WHERE conversation_id = $conversation_id AND id < $before_id
+                          AND event_kind IS NOT 'approval'
+                    ORDER BY id DESC
+                    LIMIT $limit;
+                    """;
+            AppDatabase.Add(command, "$conversation_id", conversationId);
+            // One more than asked for: if it comes back, there is an older page. Cheaper than a
+            // COUNT(*) over the conversation just to light up a "load more" affordance.
+            AppDatabase.Add(command, "$limit", limit + 1);
+            if (beforeId is { } before) AppDatabase.Add(command, "$before_id", before);
+
+            await using (var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
+            {
+                while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    messages.Add(RowToMessage(reader));
+                }
+            }
+
+            if (messages.Count > limit)
+            {
+                hasMore = true;
+                messages.RemoveAt(messages.Count - 1); // drop the probe row (oldest, DESC order)
+            }
+
+            messages.Reverse(); // DESC read → ascending render order
+
+            await LoadAttachmentsIntoAsync(connection, conversationId, messages, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            LogFailure(nameof(LoadMessagePageAsync), conversationId, ex);
+            // Whatever was read is kept (a partial history beats an empty page for a user staring
+            // at the screen), but sorted explicitly: the failure may have landed either side of
+            // the reverse above, and handing back descending bubbles would be worse than nothing.
+            messages.Sort(static (a, b) => a.Id.CompareTo(b.Id));
+            // Report no-more-history on failure: offering "load older" against a broken read
+            // would spin the affordance forever on a page that can never fill.
+            return new MessagePage(messages, HasMore: false);
+        }
+        return new MessagePage(messages, hasMore);
     }
 
     /// <summary>
@@ -131,6 +240,50 @@ public sealed partial class ConversationRepository
                 Status = ReadNullableString(reader, 8) == "failed" ? AttachmentStatus.Failed : AttachmentStatus.Sent,
             });
         }
+    }
+
+    /// <summary>
+    /// The bare file names of every cached attachment the database still references, across all
+    /// conversations. Feeds the image-cache orphan sweep: anything in the cache directory that is
+    /// not in this set belongs to a conversation that has since been deleted.
+    /// <para>File names rather than full paths on purpose — the same install can produce
+    /// different absolute roots (unpackaged writes to <c>%AppData%</c>, packaged to the MSIX
+    /// LocalState), and comparing full paths would classify every row written under the other
+    /// root as unreferenced and delete images that are very much still in use. The names are
+    /// content hashes, so they are unique on their own.</para>
+    /// <para>Returns <b>null</b> if the query fails — deliberately not an empty set, which is a
+    /// legitimate answer meaning "no conversation references any image" (the user deleted them
+    /// all) and would correctly make every cached file an orphan. A failed read must not be
+    /// mistaken for that; <c>ImageCachePruner</c> deletes nothing when it gets null.</para>
+    /// </summary>
+    public async Task<IReadOnlySet<string>?> GetReferencedCacheFileNamesAsync(CancellationToken ct = default)
+    {
+        // Windows file names are case-insensitive; a comparison that isn't would see a
+        // re-cased path as an orphan and delete a live image.
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            await using var connection = await AppDatabase.OpenAsync(ct).ConfigureAwait(false);
+            await using var command = connection.CreateCommand();
+            command.CommandText =
+                "SELECT DISTINCT local_cache_path FROM message_attachments WHERE local_cache_path IS NOT NULL;";
+            await using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
+            while (await reader.ReadAsync(ct).ConfigureAwait(false))
+            {
+                var path = reader.IsDBNull(0) ? null : reader.GetString(0);
+                if (string.IsNullOrWhiteSpace(path)) continue;
+                try { names.Add(Path.GetFileName(path)); }
+                catch (ArgumentException) { /* malformed stored path — nothing to protect */ }
+            }
+        }
+        catch (Exception ex)
+        {
+            LogFailure(nameof(GetReferencedCacheFileNamesAsync), "*", ex);
+            // Signal "unknown" rather than "nothing is referenced": the set read so far may be
+            // partial, and every row we failed to reach would look like an orphan.
+            return null;
+        }
+        return names;
     }
 
     /// <summary>
@@ -284,6 +437,60 @@ public sealed partial class ConversationRepository
         catch (Exception ex)
         {
             LogFailure(nameof(DeleteMessagesAsync), conversationId, ex);
+        }
+    }
+
+    /// <summary>
+    /// Drops one bubble and its attachments. Used to un-send a message the user cancelled before
+    /// it reached the agent — the row is written up front (so a page opening mid-turn sees it),
+    /// which means backing out has to remove it again.
+    ///
+    /// Same ordering rule as <see cref="DeleteMessagesAsync"/>: nothing cascades, so the
+    /// attachments go first.
+    /// </summary>
+    public async Task DeleteMessageAsync(string conversationId, long messageId)
+    {
+        try
+        {
+            await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                DELETE FROM message_attachments
+                    WHERE conversation_id = $conversation_id AND message_id = $message_id;
+                DELETE FROM messages
+                    WHERE conversation_id = $conversation_id AND id = $message_id;
+                """;
+            AppDatabase.Add(command, "$conversation_id", conversationId);
+            AppDatabase.Add(command, "$message_id", messageId);
+            await command.ExecuteNonQueryAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            LogFailure(nameof(DeleteMessageAsync), conversationId, ex);
+        }
+    }
+
+    /// <summary>
+    /// Drops a single execution and its trace rows — the counterpart to
+    /// <see cref="InsertExecutionAsync"/> for a run that was cancelled before it ever reached the
+    /// agent, so no record of it should survive. Traces first, for the reason above.
+    /// </summary>
+    public async Task DeleteExecutionAsync(string runId)
+    {
+        try
+        {
+            await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                DELETE FROM trace_events WHERE execution_id = $run_id;
+                DELETE FROM executions WHERE id = $run_id;
+                """;
+            AppDatabase.Add(command, "$run_id", runId);
+            await command.ExecuteNonQueryAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            LogFailure(nameof(DeleteExecutionAsync), runId, ex);
         }
     }
 

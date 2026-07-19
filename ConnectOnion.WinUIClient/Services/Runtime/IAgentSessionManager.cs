@@ -9,7 +9,11 @@ namespace ConnectOnion.WinUIClient.Services.Runtime;
 
 /// <summary>Result of submitting a message: the stable ids the caller uses to correlate
 /// its optimistic UI with the app-level run.</summary>
-public sealed record SendMessageResult(string RunId, string UserMessageId, string AssistantMessageId);
+/// <param name="PersistedMessageId">Row id of the user bubble written before the run started.
+/// Carried back so the caller can un-send: the row exists from the moment of submit (a page
+/// opening mid-turn has to see it), so backing out of a send has to delete it by id.</param>
+public sealed record SendMessageResult(
+    string RunId, string UserMessageId, string AssistantMessageId, long PersistedMessageId);
 
 /// <summary>Result of submitting a graceful stop for the active turn.</summary>
 public enum StopOutcome
