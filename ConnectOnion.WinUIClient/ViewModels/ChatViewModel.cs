@@ -62,6 +62,10 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     // interactive cards.
     private string? _historyLoadedRunId;
 
+    // Coalescing slot for run snapshots on their way to the UI thread. See SubscribeToRun.
+    private ConversationRunSnapshot? _pendingSnapshot;
+    private int _snapshotDrainQueued;
+
     public ObservableCollection<ChatMessage> Messages { get; } = new();
 
     /// <summary>How much history a conversation opens with. Comfortably more than a viewport
@@ -254,6 +258,63 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
 
     public bool HasStatusText => !string.IsNullOrWhiteSpace(StatusText);
 
+    /// <summary>
+    /// The conversation socket's current phase, shown under the composer. Derived rather than
+    /// stored on the connection: the three facts that decide it arrive from three places — run
+    /// snapshots (Connecting/Running), the reconnect markers the session manager publishes into
+    /// the run's event stream (Reconnecting), and presence plus the connection registry for the
+    /// idle baseline. <see cref="RefreshConnectionPhase"/> is the single place they are combined.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ConnectionPhaseText))]
+    public partial ConnectionPhase ConnectionPhase { get; private set; }
+
+    /// <summary>Attempt number behind a <see cref="Models.ConnectionPhase.Reconnecting"/> phase,
+    /// so the label can count down the tries left before the turn is given up on.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ConnectionPhaseText))]
+    public partial int ReconnectAttempt { get; private set; }
+
+    public string ConnectionPhaseText => ConnectionPhase switch
+    {
+        Models.ConnectionPhase.Connecting => "Connecting",
+        Models.ConnectionPhase.Connected => "Connected",
+        Models.ConnectionPhase.Running => "Running",
+        Models.ConnectionPhase.Waiting => "Waiting for you",
+        Models.ConnectionPhase.Reconnecting =>
+            $"Reconnecting {ReconnectAttempt}/{ReconnectPolicy.MaxAttempts}",
+        Models.ConnectionPhase.Offline => "Offline",
+        _ => "Idle",
+    };
+
+    /// <summary>
+    /// Recomputes the phase for a conversation with no turn in flight. Only ever produces the
+    /// three resting states — a live turn's phase is set from its snapshot instead, so this must
+    /// not be called while one is running or it would overwrite Running with Connected.
+    /// </summary>
+    private void RefreshConnectionPhase()
+    {
+        if (_session is null)
+        {
+            ConnectionPhase = ConnectionPhase.Idle;
+            return;
+        }
+
+        // Presence is the agent's reachability, checked over HTTP and independent of whether we
+        // hold a socket; it outranks the socket because a live-looking socket to an agent that
+        // has gone away is exactly the state a user must not be told is fine.
+        if (Presence == AgentPresence.Offline)
+        {
+            ConnectionPhase = ConnectionPhase.Offline;
+            return;
+        }
+
+        var connection = _runManager.Connections.Get(_session.Id);
+        ConnectionPhase = connection is { IsConnected: true }
+            ? ConnectionPhase.Connected
+            : ConnectionPhase.Idle;
+    }
+
     [ObservableProperty]
     public partial double MessageFontSize { get; private set; }
 
@@ -354,11 +415,90 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         // Attach to the app-level run for this conversation. The manager fires the current
         // snapshot immediately, so an in-flight turn is resumed (streaming continues) the
         // moment the page opens — the core "switch away and come back" fix.
-        _runSubscription = _runManager.Subscribe(
-            _session.Id, snapshot => _dispatcher.TryEnqueue(() => ApplyRunSnapshot(snapshot)));
+        _runSubscription = SubscribeToRun(_session.Id);
 
+        // Subscribe first, then probe: the resume publishes its first snapshot synchronously
+        // inside StartRun, and a probe that ran ahead of the subscription would deliver that
+        // snapshot to nobody — the page would sit on restored history while the turn streamed
+        // past it.
+        RefreshConnectionPhase();
+
+        _ = TryResumeUnfinishedTurnAsync();
         _ = ProbePresenceOnOpenAsync();
         _ = RefreshAcceptedInputsAsync();
+    }
+
+    /// <summary>
+    /// Subscribes to the app-level run and marshals its snapshots onto the UI thread,
+    /// <b>coalescing</b> them: at most one drain is queued at a time, and a snapshot arriving
+    /// while one is pending replaces it instead of queuing a second.
+    /// <para>The registry publishes a snapshot per stream event <i>and</i> per partial-content
+    /// update, so a streaming reply produces them far faster than the UI thread can apply one.
+    /// Enqueuing each separately let the dispatcher queue grow without bound for the length of
+    /// the turn, holding a closure and a snapshot per update — memory climbed for the whole
+    /// reply and only came back once the queue drained.</para>
+    /// <para>Dropping intermediate snapshots is safe, and is what the surrounding design was
+    /// built for: snapshots are cumulative rather than incremental, and
+    /// <see cref="ApplyRunSnapshot"/> replays from <see cref="_appliedEventCount"/>, so applying
+    /// only the newest one still projects every event exactly once. Terminal snapshots are the
+    /// exception — those are always queued, because a terminal transition arriving while an
+    /// earlier one is in the slot must not be swallowed by a run that starts immediately after.</para>
+    /// </summary>
+    private IDisposable SubscribeToRun(string conversationId)
+        => _runManager.Subscribe(conversationId, snapshot =>
+        {
+            Interlocked.Exchange(ref _pendingSnapshot, snapshot);
+            // Only the thread that flips 0 -> 1 owns the queued drain; everyone else has already
+            // handed its snapshot to that drain via the slot above.
+            if (snapshot.IsTerminal || Interlocked.CompareExchange(ref _snapshotDrainQueued, 1, 0) == 0)
+            {
+                _dispatcher.TryEnqueue(DrainPendingSnapshot);
+            }
+        });
+
+    private static readonly Action<ILogger, string, Exception?> LogResumeProbeFailed =
+        LoggerMessage.Define<string>(LogLevel.Warning, new EventId(10, "ResumeProbeFailed"),
+            "Resume probe failed for conversation {ConversationId}");
+
+    /// <summary>
+    /// Asks the manager to rejoin a turn this conversation started before the app was last
+    /// closed. Fire-and-forget: it opens a socket and waits on the host, and the page must not
+    /// block its load on either. Anything it finds arrives through the run subscription like any
+    /// other turn, so there is no result to handle here.
+    /// </summary>
+    private async Task TryResumeUnfinishedTurnAsync()
+    {
+        if (_agent is null || _session is null) return;
+
+        var conversationId = _session.Id;
+        try
+        {
+            await _runManager.TryResumeUnfinishedTurnAsync(conversationId, _agent);
+        }
+        catch (Exception ex)
+        {
+            // A conversation that cannot be resumed still opens normally — it just shows the
+            // history it has. Never surface this as a load failure.
+            LogResumeProbeFailed(_logger, conversationId, ex);
+        }
+    }
+
+    /// <summary>Applies whatever snapshot is currently in the slot. Runs on the UI thread.</summary>
+    private void DrainPendingSnapshot()
+    {
+        Interlocked.Exchange(ref _snapshotDrainQueued, 0);
+        var snapshot = Interlocked.Exchange(ref _pendingSnapshot, null);
+        // Null means a drain queued alongside a terminal snapshot already took it.
+        if (snapshot is null) return;
+
+        // A drain is queued on the dispatcher, so it can run after the page has switched
+        // conversations and disposed the subscription that produced it. Applying a snapshot from
+        // the conversation we just left would adopt its run id and project its events into the
+        // new list; the conversation id is the authoritative check. (The old per-snapshot enqueue
+        // had the same window and no guard.)
+        if (!string.Equals(snapshot.ConversationId, _session?.Id, StringComparison.Ordinal)) return;
+
+        ApplyRunSnapshot(snapshot);
     }
 
     private async Task RefreshAcceptedInputsAsync()
@@ -557,6 +697,11 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         OnPropertyChanged(nameof(CanSend));
         OnPropertyChanged(nameof(CanReconnect));
         OnPropertyChanged(nameof(ShowRetryBar));
+
+        // Presence going offline must reach the status line, but only between turns: a live turn
+        // owns the phase, and a presence probe that lands mid-stream must not relabel a working
+        // agent as offline.
+        if (!IsProcessing) RefreshConnectionPhase();
     }
 
     private static string UserFacingError(Exception ex)

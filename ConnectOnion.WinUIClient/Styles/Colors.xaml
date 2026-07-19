@@ -87,6 +87,23 @@
                  color. Dot/glyph only — non-text, so the 3:1 bar applies (3.3:1). -->
             <Color x:Key="StatusRunningColor">#FF666666</Color>
 
+            <!-- Attention — "the agent is blocked on you". The third hue allowed off the
+                 neutral scale, and it is scoped to exactly one thing: an interactive card
+                 (ask_user / approval / plan_review) that is still awaiting an answer. A
+                 running *tool* keeps StatusRunning gray, because the user has nothing to do
+                 about it; amber here means the turn cannot proceed until they act, which is
+                 what makes a pending card findable when scrolling back through a long run.
+                 4.6:1 on SurfacePrimary. -->
+            <Color x:Key="AttentionColor">#FFB26A00</Color>
+
+            <!-- Tinted washes for the interactive cards: a pending card's ground, and the
+                 hover fill under an affirmative / negative choice. Kept far lighter than
+                 their solid counterparts — these sit *behind* body text, so they must not
+                 move its contrast (each is >= 18:1 against TextPrimary). -->
+            <Color x:Key="AttentionSubtleColor">#FFFDF4E3</Color>
+            <Color x:Key="SuccessSubtleColor">#FFE9F5EE</Color>
+            <Color x:Key="DangerSubtleColor">#FFFBECEA</Color>
+
             <!-- Search — the two hues allowed off the neutral scale alongside Success
                  green. A plain match is highlighter YELLOW (bright in both themes so a
                  hit stands out on either ground) with dark text; the one match the user
@@ -208,6 +225,17 @@
             <!-- In-flight status (see the light dictionary). Close to Warning's value here
                  but deliberately its own token so the two can diverge. -->
             <Color x:Key="StatusRunningColor">#FF888888</Color>
+
+            <!-- Attention (see the light dictionary). Lifted to a warm sand — the light
+                 theme's #FFB26A00 is a mud on near-black. 8.4:1 there. -->
+            <Color x:Key="AttentionColor">#FFE0A44A</Color>
+
+            <!-- Tinted washes (see the light dictionary). On a dark ground a wash is a
+                 *lift*, not a tint, so these are the hue mixed into a near-black rather
+                 than into white — the same 5-6% deviation from the surface, inverted. -->
+            <Color x:Key="AttentionSubtleColor">#FF2C2517</Color>
+            <Color x:Key="SuccessSubtleColor">#FF17281F</Color>
+            <Color x:Key="DangerSubtleColor">#FF2B1B19</Color>
 
             <!-- Search (see the light dictionary). Yellow stays bright and current stays
                  an ochre red — both legible on near-black — with dark text on the yellow

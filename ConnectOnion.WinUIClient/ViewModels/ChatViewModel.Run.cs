@@ -228,6 +228,7 @@ public sealed partial class ChatViewModel
         {
             _liveProjection!.Apply(events[i]);
             FollowAgentModeChange(events[i]);
+            FollowConnectionPhase(events[i]);
         }
         _appliedEventCount = events.Count;
 
@@ -242,6 +243,23 @@ public sealed partial class ChatViewModel
         if (!CanCancelSend) _pendingSend = null;
         StatusText = IsStopping ? "Stopping..." : StatusTextFor(snapshot);
 
+        // The snapshot owns the phase for a live turn, except while reconnecting: the run stays
+        // Running with a dead socket underneath it, and reporting that as Running would tell the
+        // user everything is fine in the one moment it is not.
+        if (!snapshot.IsTerminal && ConnectionPhase != ConnectionPhase.Reconnecting)
+        {
+            ConnectionPhase = snapshot.Status switch
+            {
+                ConversationRunStatus.Queued or ConversationRunStatus.Connecting
+                    => ConnectionPhase.Connecting,
+                // Waiting is set by the interactive events and must survive the snapshots that
+                // arrive while the card sits unanswered.
+                ConversationRunStatus.Running when ConnectionPhase == ConnectionPhase.Waiting
+                    => ConnectionPhase.Waiting,
+                _ => ConnectionPhase.Running,
+            };
+        }
+
         if (!snapshot.IsTerminal) return;
 
         // Terminal: mirror what the manager persisted so the live view matches the DB.
@@ -250,6 +268,20 @@ public sealed partial class ChatViewModel
             _liveProjection!.AppendCompletedTurn(snapshot.PartialContent);
             CanRetry = false;
             _ = PersistSessionMetadataAsync();
+        }
+        else if (AgentSessionManager.IsAbandonedResume(snapshot))
+        {
+            // A resume probe that found the host no longer running this turn. It settles quietly
+            // rather than posting a connection-error bubble for a connection that was never the
+            // problem.
+            _liveProjection?.CompleteToolActivity(ToolActivityStatus.Cancelled);
+            StatusText = "";
+            CanRetry = false;
+            // The manager may have just recovered the turn's reply out of the CONNECTED frame and
+            // written it to SQLite — it persists before publishing this terminal snapshot, so the
+            // rows are already committed. Reload so the page shows them instead of the truncated
+            // history it loaded moments ago. Cheap, and a no-op when nothing was recovered.
+            _ = ReloadAfterRecoveryAsync();
         }
         else if (snapshot.Status == ConversationRunStatus.Failed)
         {
@@ -295,6 +327,9 @@ public sealed partial class ChatViewModel
         _liveRunId = null;
         _appliedEventCount = 0;
         _historyLoadedRunId = null;
+        ReconnectAttempt = 0;
+        // The turn is over, so the phase goes back to whatever the resting socket is doing.
+        RefreshConnectionPhase();
         StoreSessionCache();
     }
 
@@ -331,6 +366,88 @@ public sealed partial class ChatViewModel
     /// and the new mode is persisted as the conversation's, because that is what the next turn
     /// would otherwise be re-asserting over the top of.
     /// </summary>
+    /// <summary>
+    /// Re-reads the conversation after an abandoned resume, so a reply the manager recovered from
+    /// the host's session appears without the user having to navigate away and back.
+    /// <para>Goes through the cache invalidation first: the conversation was cached as it looked
+    /// when it loaded (ending at the user's message), and a reload that hit that cache would show
+    /// the same truncated history it was meant to replace.</para>
+    /// </summary>
+    private async Task ReloadAfterRecoveryAsync()
+    {
+        if (_agent is null || _session is null) return;
+
+        ConversationCache.Invalidate(_session.Id);
+        var generation = _loadGeneration;
+        try
+        {
+            await RestoreConversationAsync(generation, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            LogResumeProbeFailed(_logger, _session.Id, ex);
+        }
+    }
+
+    /// <summary>
+    /// Tracks the transport phase from the reconnect markers the session manager publishes into
+    /// the run's event stream, and from the interactive turns that park the agent on a human.
+    /// <para>Reading these off the event stream rather than subscribing to the connection is
+    /// deliberate: the events are buffered and replayed, so a page opened mid-outage arrives at
+    /// the same phase as one that watched it happen, and there is no second subscription to tear
+    /// down when the conversation switches.</para>
+    /// </summary>
+    private void FollowConnectionPhase(AgentStreamEvent e)
+    {
+        switch (e.Type)
+        {
+            case "reconnecting":
+                ConnectionPhase = ConnectionPhase.Reconnecting;
+                ReconnectAttempt = ReadAttempt(e.RawJson);
+                break;
+
+            // The socket is back. Whether the turn survived is the "resumed" flag's business
+            // (and the transcript card says so); either way the transport is healthy again, and
+            // the snapshot that follows settles Running vs terminal.
+            case "reconnected":
+                ConnectionPhase = ConnectionPhase.Running;
+                ReconnectAttempt = 0;
+                break;
+
+            // The agent has handed the turn to the user and will not move until they answer.
+            case "ask_user":
+            case "approval_needed":
+            case "plan_review":
+                ConnectionPhase = ConnectionPhase.Waiting;
+                break;
+
+            // Any ordinary agent event means it is working again, so a Waiting phase left over
+            // from an answered card does not stick for the rest of the turn.
+            case "thinking":
+            case "llm_call":
+            case "tool_call":
+            case "assistant":
+                if (ConnectionPhase == ConnectionPhase.Waiting) ConnectionPhase = ConnectionPhase.Running;
+                break;
+        }
+    }
+
+    private static int ReadAttempt(string rawJson)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(rawJson);
+            return doc.RootElement.TryGetProperty("attempt", out var v)
+                && v.ValueKind == System.Text.Json.JsonValueKind.Number
+                    ? v.GetInt32()
+                    : 1;
+        }
+        catch
+        {
+            return 1;
+        }
+    }
+
     private void FollowAgentModeChange(AgentStreamEvent e)
     {
         if (e.Type != "mode_changed" || _session is null) return;

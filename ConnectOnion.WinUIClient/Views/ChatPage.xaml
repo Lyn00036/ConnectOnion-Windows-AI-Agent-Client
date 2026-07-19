@@ -778,14 +778,19 @@
                                            Text="&#xE76C;"
                                            Visibility="{x:Bind IsInteractiveCollapsed, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                             </Grid>
+                            <!-- Dot, icon and status label all take the interactive status
+                                 color, so a card still waiting on the user reads amber end to
+                                 end and a resolved one goes green (or red). Three elements
+                                 rather than one because the row is scanned at three widths:
+                                 the dot survives any truncation, the label carries the word. -->
                             <Ellipse Grid.Column="1"
                                      Width="7" Height="7"
                                      VerticalAlignment="Center"
-                                     Fill="{x:Bind Status, Mode=OneWay, Converter={StaticResource EventStatusToBrush}}" />
+                                     Fill="{x:Bind Status, Mode=OneWay, Converter={StaticResource InteractiveStatusToBrush}}" />
                             <ic:FluentIcon Grid.Column="2"
                                            Icon="QuestionCircle" IconVariant="Regular" IconSize="Size16"
                                            VerticalAlignment="Center"
-                                           Foreground="{ThemeResource TextSecondaryBrush}" />
+                                           Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource InteractiveStatusToBrush}}" />
                             <TextBlock Grid.Column="3"
                                        Text="{x:Bind EventEyebrow}"
                                        FontSize="15"
@@ -793,12 +798,16 @@
                                        VerticalAlignment="Center"
                                        TextTrimming="CharacterEllipsis"
                                        Foreground="{ThemeResource TextPrimaryBrush}" />
-                            <TextBlock Grid.Column="4"
-                                       Text="{x:Bind InteractiveStatusLabel, Mode=OneWay}"
-                                       FontSize="11"
-                                       FontWeight="SemiBold"
-                                       VerticalAlignment="Center"
-                                       Foreground="{ThemeResource TextTertiaryBrush}" />
+                            <Border Grid.Column="4"
+                                    CornerRadius="4"
+                                    Padding="7,2"
+                                    VerticalAlignment="Center"
+                                    Background="{x:Bind Status, Mode=OneWay, Converter={StaticResource InteractiveStatusToBrush}, ConverterParameter=surface}">
+                                <TextBlock Text="{x:Bind InteractiveStatusLabel, Mode=OneWay}"
+                                           FontSize="11"
+                                           FontWeight="SemiBold"
+                                           Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource InteractiveStatusToBrush}}" />
+                            </Border>
                         </Grid>
                     </Button>
 
@@ -842,10 +851,19 @@
                                       Visibility="{x:Bind ShowAskUserOptions, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="models:AskUserOptionEntry">
+                                    <!-- Selection is carried by the whole card — accent border
+                                         and a tinted ground — not by the 11px dot alone, which
+                                         is easy to miss in a list of five. The dot stays as the
+                                         precise marker; the tint is what makes "one of these is
+                                         picked" true at a glance. Both re-evaluate on IsChecked,
+                                         and the hover/pressed visual states still win while the
+                                         pointer is down, so a selected card stays responsive. -->
                                     <Button Style="{StaticResource AskUserOptionStyle}"
                                             Margin="0,0,0,8"
                                             Tag="{x:Bind}"
                                             Click="AskUserOption_Click"
+                                            Background="{x:Bind IsChecked, Mode=OneWay, Converter={StaticResource BoolToResourceBrush}, ConverterParameter=AttentionSubtleBrush|SurfaceElevatedBrush}"
+                                            BorderBrush="{x:Bind IsChecked, Mode=OneWay, Converter={StaticResource BoolToResourceBrush}, ConverterParameter=AttentionBrush|BorderDefaultBrush}"
                                             AutomationProperties.Name="{x:Bind Text}">
                                         <!-- VerticalAlignment="Center" on the content grid, not
                                              just on its children: the grid stretches to the
@@ -861,12 +879,12 @@
                                                 <Ellipse Width="19" Height="19"
                                                          HorizontalAlignment="Center"
                                                          VerticalAlignment="Center"
-                                                         Stroke="{ThemeResource BorderStrongBrush}"
+                                                         Stroke="{x:Bind IsChecked, Mode=OneWay, Converter={StaticResource BoolToResourceBrush}, ConverterParameter=AttentionBrush|BorderStrongBrush}"
                                                          StrokeThickness="1.5" />
                                                 <Ellipse Width="11" Height="11"
                                                          HorizontalAlignment="Center"
                                                          VerticalAlignment="Center"
-                                                         Fill="{ThemeResource TextPrimaryBrush}"
+                                                         Fill="{ThemeResource AttentionBrush}"
                                                          Visibility="{x:Bind IsChecked, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                                             </Grid>
                                             <TextBlock Grid.Column="1"
@@ -943,18 +961,24 @@
                                         <SolidColorBrush x:Key="TextControlBackgroundDisabled" Color="Transparent" />
                                     </TextBox.Resources>
                                 </TextBox>
+                                <!-- Filled, like the composer's send button: this box is the
+                                     agent's blocking question, so the action that answers it
+                                     is the primary action on screen and should not look like
+                                     the quiet "Skip" underneath it. -->
                                 <Button Grid.Column="1"
                                         Width="44" Height="44"
                                         Padding="0"
                                         CornerRadius="8"
                                         VerticalAlignment="Center"
+                                        Background="{ThemeResource ComposerPrimaryButtonBackgroundBrush}"
+                                        BorderThickness="0"
                                         Tag="{x:Bind}"
                                         Click="AskUserSubmit_Click"
                                         AutomationProperties.AutomationId="AskUserSubmitButton"
                                         AutomationProperties.Name="Send answer"
                                         ToolTipService.ToolTip="Send answer">
                                     <ic:FluentIcon Icon="Send" IconVariant="Regular" IconSize="Size16"
-                                                   Foreground="{ThemeResource TextSecondaryBrush}" />
+                                                   Foreground="{ThemeResource ComposerPrimaryButtonForegroundBrush}" />
                                 </Button>
                             </Grid>
                         </Border>
@@ -1001,12 +1025,18 @@
                  dead controls is worse than no menu, and history reloaded from SQLite is all
                  resolved cards. -->
             <DataTemplate x:Key="ChatApprovalTemplate" x:DataType="models:ChatMessage">
+                <!-- The left bar is the card's whole status display — this template has no
+                     header while it waits, so there is nowhere else to put one. Amber while
+                     the agent is blocked on the decision, green or red once it is made. The
+                     ground stays the neutral elevated surface deliberately: a tint behind the
+                     decision menu turned the card into a banner and made the two affirmative
+                     rows' hover wash almost invisible against it. Bar only. -->
                 <Border MaxWidth="720"
                         HorizontalAlignment="Stretch"
                         Padding="0"
                         Background="{ThemeResource SurfaceElevatedBrush}"
-                        BorderBrush="{ThemeResource BorderStrongBrush}"
-                        BorderThickness="2,0,0,0">
+                        BorderBrush="{x:Bind Status, Mode=OneWay, Converter={StaticResource InteractiveStatusToBrush}}"
+                        BorderThickness="3,0,0,0">
                     <Grid>
                         <!-- Awaiting: the decision menu. -->
                         <StackPanel Visibility="{x:Bind IsAwaitingResponse, Mode=OneWay, Converter={StaticResource BoolToVis}}">
@@ -1028,10 +1058,17 @@
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
+                                    <!-- Only the icons take a hue, never the verb or the
+                                         consequence text: the row's meaning is carried by
+                                         its words, and coloring those would fight the weight
+                                         contrast the two TextBlocks exist to create. The icon
+                                         is enough to sort affirmative from negative before
+                                         reading. Both still ride the style's opacity lift, so
+                                         a resting row stays muted green rather than shouting. -->
                                     <ic:FluentIcon Icon="Checkmark" IconVariant="Regular" IconSize="Size16"
                                                    HorizontalAlignment="Center"
                                                    VerticalAlignment="Center"
-                                                   Foreground="{ThemeResource TextSecondaryBrush}" />
+                                                   Foreground="{ThemeResource SuccessBrush}" />
                                     <TextBlock x:Uid="ChatApproveOnce" Grid.Column="1"
                                                Text="Allow once"
                                                Style="{StaticResource ApprovalMenuVerbStyle}" />
@@ -1063,7 +1100,7 @@
                                     <ic:FluentIcon Icon="ShieldTask" IconVariant="Regular" IconSize="Size16"
                                                    HorizontalAlignment="Center"
                                                    VerticalAlignment="Center"
-                                                   Foreground="{ThemeResource TextSecondaryBrush}" />
+                                                   Foreground="{ThemeResource SuccessBrush}" />
                                     <TextBlock Grid.Column="1"
                                                Text="{x:Bind ApprovalTrustLabel, Mode=OneWay}"
                                                Style="{StaticResource ApprovalMenuVerbStyle}" />
@@ -1094,7 +1131,7 @@
                                     <StackPanel Orientation="Horizontal" Spacing="7" HorizontalAlignment="Center">
                                         <ic:FluentIcon Icon="Dismiss" IconVariant="Regular" IconSize="Size16"
                                                        VerticalAlignment="Center"
-                                                       Foreground="{ThemeResource TextSecondaryBrush}" />
+                                                       Foreground="{ThemeResource DangerBrush}" />
                                         <TextBlock x:Uid="ChatReject" Text="Reject" Style="{StaticResource ApprovalFooterVerbStyle}" />
                                         <TextBlock x:Uid="ChatRejectHint" Text="this tool" Style="{StaticResource ApprovalFooterHintStyle}" />
                                     </StackPanel>
@@ -1111,7 +1148,7 @@
                                     <StackPanel Orientation="Horizontal" Spacing="7" HorizontalAlignment="Center">
                                         <ic:FluentIcon Icon="RecordStop" IconVariant="Regular" IconSize="Size16"
                                                        VerticalAlignment="Center"
-                                                       Foreground="{ThemeResource TextSecondaryBrush}" />
+                                                       Foreground="{ThemeResource DangerBrush}" />
                                         <TextBlock x:Uid="ChatApprovalStop" Text="Stop" Style="{StaticResource ApprovalFooterVerbStyle}" />
                                         <TextBlock x:Uid="ChatApprovalStopHint" Text="all &amp; redirect" Style="{StaticResource ApprovalFooterHintStyle}" />
                                     </StackPanel>
@@ -1171,14 +1208,14 @@
                             </Grid.ColumnDefinitions>
                             <ic:FluentIcon Icon="ShieldTask" IconVariant="Regular" IconSize="Size16"
                                            VerticalAlignment="Center"
-                                           Foreground="{ThemeResource TextTertiaryBrush}" />
+                                           Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource InteractiveStatusToBrush}}" />
                             <TextBlock Grid.Column="1"
                                        Text="{x:Bind EventTitle}"
                                        Style="{StaticResource InteractiveCollapsedTitleStyle}" />
                             <TextBlock Grid.Column="2"
                                        Text="{x:Bind InteractiveOutcome, Mode=OneWay}"
                                        Style="{StaticResource InteractiveOutcomeStyle}"
-                                       Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource EventStatusToBrush}}" />
+                                       Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource InteractiveStatusToBrush}}" />
                         </Grid>
                     </Grid>
                 </Border>
@@ -1187,12 +1224,16 @@
             <!-- Plan-review card: collapsible header + rendered plan + optional feedback,
                  approve/request-changes buttons. -->
             <DataTemplate x:Key="ChatPlanReviewTemplate" x:DataType="models:ChatMessage">
+                <!-- Frame follows status like the approval card's left bar, but stays a 1px
+                     outline rather than gaining a wash: this card can hold a long rendered
+                     plan, and a tinted ground under that much markdown reads as a highlight
+                     on the content instead of a state on the card. -->
                 <Border MaxWidth="640"
                         HorizontalAlignment="Left"
                         CornerRadius="10"
                         Padding="14,11"
                         Background="{ThemeResource SurfaceElevatedBrush}"
-                        BorderBrush="{ThemeResource BorderDefaultBrush}"
+                        BorderBrush="{x:Bind Status, Mode=OneWay, Converter={StaticResource InteractiveStatusToBrush}}"
                         BorderThickness="1">
                     <StackPanel Spacing="8">
                         <Button Style="{StaticResource InteractiveCardHeaderStyle}"
@@ -1209,10 +1250,11 @@
                                 </Grid.ColumnDefinitions>
                                 <ic:FluentIcon Icon="ClipboardTask" IconVariant="Regular" IconSize="Size16"
                                                VerticalAlignment="Center"
-                                               Foreground="{ThemeResource TextTertiaryBrush}" />
+                                               Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource InteractiveStatusToBrush}}" />
                                 <TextBlock Grid.Column="1"
                                            Text="{x:Bind EventEyebrow}"
-                                           Style="{StaticResource InteractiveEyebrowStyle}" />
+                                           Style="{StaticResource InteractiveEyebrowStyle}"
+                                           Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource InteractiveStatusToBrush}}" />
                                 <TextBlock Grid.Column="2"
                                            Text="{x:Bind EventTitle}"
                                            Style="{StaticResource InteractiveCollapsedTitleStyle}"
@@ -1220,7 +1262,7 @@
                                 <TextBlock Grid.Column="3"
                                            Text="{x:Bind InteractiveOutcome, Mode=OneWay}"
                                            Style="{StaticResource InteractiveOutcomeStyle}"
-                                           Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource EventStatusToBrush}}"
+                                           Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource InteractiveStatusToBrush}}"
                                            Visibility="{x:Bind IsInteractiveCollapsed, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                                 <Grid Grid.Column="4" VerticalAlignment="Center">
                                     <TextBlock Style="{StaticResource InteractiveChevronStyle}"
@@ -1260,6 +1302,77 @@
                 </Border>
             </DataTemplate>
 
+            <!-- Proposed file change (diff_preview). Read-only by design: DiffWriter sends this
+                 for display and asks for approval through a separate ask_user that arrives right
+                 behind it, so the approve/reject buttons live on that card, not this one. Adding
+                 buttons here would answer a frame the agent is not waiting on and hang the real
+                 question. See the diff_preview arm of ChatTurnProjection.Events.cs.
+
+                 The body is monospaced and scrolls horizontally rather than wrapping — a wrapped
+                 diff line loses the column alignment that makes a diff readable at all. -->
+            <DataTemplate x:Key="ChatDiffPreviewTemplate" x:DataType="models:ChatMessage">
+                <Border MaxWidth="720"
+                        HorizontalAlignment="Stretch"
+                        CornerRadius="10"
+                        Background="{ThemeResource SurfaceElevatedBrush}"
+                        BorderBrush="{ThemeResource BorderDefaultBrush}"
+                        BorderThickness="1">
+                    <StackPanel>
+                        <Grid Padding="14,10" ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <ic:FluentIcon Icon="DocumentEdit" IconVariant="Regular" IconSize="Size16"
+                                           VerticalAlignment="Center"
+                                           Foreground="{ThemeResource TextSecondaryBrush}" />
+                            <TextBlock Grid.Column="1"
+                                       Text="{x:Bind EventEyebrow}"
+                                       Style="{StaticResource InteractiveEyebrowStyle}" />
+                            <TextBlock Grid.Column="2"
+                                       Text="{x:Bind EventTitle}"
+                                       FontFamily="Consolas"
+                                       FontSize="12"
+                                       VerticalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis"
+                                       ToolTipService.ToolTip="{x:Bind EventTitle}"
+                                       Foreground="{ThemeResource TextPrimaryBrush}" />
+                            <TextBlock Grid.Column="3"
+                                       Text="{x:Bind EventMeta, Mode=OneWay}"
+                                       FontSize="11"
+                                       VerticalAlignment="Center"
+                                       Foreground="{ThemeResource TextTertiaryBrush}"
+                                       Visibility="{x:Bind HasEventMeta, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                        </Grid>
+
+                        <Border Height="1" Background="{ThemeResource BorderSubtleBrush}" />
+
+                        <ScrollViewer MaxHeight="320"
+                                      HorizontalScrollBarVisibility="Auto"
+                                      HorizontalScrollMode="Auto"
+                                      VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{x:Bind EventDetail, Converter={StaticResource DiffTextToLines}}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="presentation:DiffLine">
+                                        <Border Background="{x:Bind Kind, Converter={StaticResource DiffKindToBrush}}"
+                                                Padding="14,1">
+                                            <TextBlock Text="{x:Bind Text}"
+                                                       FontFamily="Consolas"
+                                                       FontSize="12"
+                                                       IsTextSelectionEnabled="True"
+                                                       TextWrapping="NoWrap"
+                                                       Foreground="{x:Bind Kind, Converter={StaticResource DiffKindToBrush}, ConverterParameter=foreground}" />
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </StackPanel>
+                </Border>
+            </DataTemplate>
+
             <!-- Fallback for an event kind this build has no card for (a legacy "tool" row
                  migration left behind, or a tool_activity row whose payload failed to
                  deserialize). The old all-in-one template drew these as a blank row too. -->
@@ -1276,6 +1389,7 @@
                                                 AskUser="{StaticResource ChatAskUserTemplate}"
                                                 Approval="{StaticResource ChatApprovalTemplate}"
                                                 PlanReview="{StaticResource ChatPlanReviewTemplate}"
+                                                DiffPreview="{StaticResource ChatDiffPreviewTemplate}"
                                                 Empty="{StaticResource ChatEmptyTemplate}" />
         </Grid.Resources>
 
@@ -1429,15 +1543,35 @@
                                    ModeChangeRequested="Composer_ModeChangeRequested"
                                    SubmitRequested="Composer_SubmitRequested" />
 
-                        <!-- Simple centered title bar below the composer -->
-                        <TextBlock FontSize="10"
-                                   Foreground="{ThemeResource TextTertiaryBrush}"
-                                   HorizontalAlignment="Center"
-                                   Margin="0,4,0,12">
-                                <Run Text="{x:Bind Vm.SelectedAgentName, Mode=OneWay}" />
-                                <Run Text="· Session " />
-                                <Run Text="{x:Bind Vm.SessionShortId, Mode=OneWay}" />
-                        </TextBlock>
+            <!-- Identity and live socket phase, below the composer. One line rather than two:
+                 both answer "what am I talking to and is it there", and a separate connection
+                 banner would compete with the transient run status above the composer. -->
+            <StackPanel Orientation="Horizontal"
+                        Spacing="6"
+                        HorizontalAlignment="Center"
+                        Margin="0,4,0,12">
+                <TextBlock FontSize="10"
+                           VerticalAlignment="Center"
+                           Foreground="{ThemeResource TextTertiaryBrush}">
+                        <Run Text="{x:Bind Vm.SelectedAgentName, Mode=OneWay}" />
+                        <Run Text="· Session " />
+                        <Run Text="{x:Bind Vm.SessionShortId, Mode=OneWay}" />
+                </TextBlock>
+
+                <TextBlock Text="·"
+                           FontSize="10"
+                           VerticalAlignment="Center"
+                           Foreground="{ThemeResource TextTertiaryBrush}" />
+
+                <Ellipse Width="6" Height="6"
+                         VerticalAlignment="Center"
+                         Fill="{x:Bind Vm.ConnectionPhase, Mode=OneWay, Converter={StaticResource ConnectionPhaseToBrush}}" />
+                <TextBlock Text="{x:Bind Vm.ConnectionPhaseText, Mode=OneWay}"
+                           AutomationProperties.AutomationId="ConnectionPhaseLabel"
+                           FontSize="10"
+                           VerticalAlignment="Center"
+                           Foreground="{x:Bind Vm.ConnectionPhase, Mode=OneWay, Converter={StaticResource ConnectionPhaseToBrush}}" />
+            </StackPanel>
         </StackPanel>
 
         <!-- Empty state: shown after loading completes when no messages exist -->

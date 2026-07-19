@@ -78,6 +78,85 @@ public sealed class EventStatusToBrushConverter : IValueConverter
         => throw new NotSupportedException();
 }
 
+/// <summary>
+/// The status color for an <em>interactive</em> card (ask_user / approval / plan_review).
+/// Identical to <see cref="EventStatusToBrushConverter"/> except that Running maps to
+/// Attention amber rather than StatusRunning gray: for these three, "running" means the
+/// agent is blocked waiting on the user, which is the one in-flight state they can act on.
+/// Pass <c>surface</c> as the converter parameter for the tinted wash instead of the solid
+/// color — same three states, so a card's ground and its accent never disagree.
+/// </summary>
+public sealed class InteractiveStatusToBrushConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        var surface = string.Equals(parameter as string, "surface", StringComparison.OrdinalIgnoreCase);
+        var key = value is EventStatus status
+            ? status switch
+            {
+                EventStatus.Running => surface ? "AttentionSubtleBrush" : "AttentionBrush",
+                EventStatus.Error => surface ? "DangerSubtleBrush" : "DangerBrush",
+                _ => surface ? "SuccessSubtleBrush" : "SuccessBrush",
+            }
+            : surface ? "SurfaceElevatedBrush" : "TextTertiaryBrush";
+        return (Brush)Application.Current.Resources[key];
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+        => throw new NotSupportedException();
+}
+
+/// <summary>
+/// Picks one of two theme brushes from a bool, named in the converter parameter as
+/// <c>"TrueKey|FalseKey"</c>. Exists so a selected ask_user option can carry an accent
+/// border and fill without each of its four elements needing a converter of its own.
+/// Resources are read fresh on every call (never cached), so a live theme flip repaints.
+/// </summary>
+public sealed class BoolToResourceBrushConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        var keys = (parameter as string)?.Split('|');
+        if (keys is not { Length: 2 })
+        {
+            return (Brush)Application.Current.Resources["TextTertiaryBrush"];
+        }
+
+        return (Brush)Application.Current.Resources[value is true ? keys[0] : keys[1]];
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+        => throw new NotSupportedException();
+}
+
+/// <summary>
+/// Colors the connection dot under the composer. Only the two states the user can act on get a
+/// hue — Reconnecting amber ("something is wrong, it is being handled") and Offline red — while
+/// every healthy state stays on the neutral scale. A dot that is green whenever things are fine
+/// is a dot nobody reads, which defeats the point of having one for the moments they aren't.
+/// </summary>
+public sealed class ConnectionPhaseToBrushConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        var key = value is ConnectionPhase phase
+            ? phase switch
+            {
+                ConnectionPhase.Reconnecting => "AttentionBrush",
+                ConnectionPhase.Offline => "DangerBrush",
+                ConnectionPhase.Waiting => "AttentionBrush",
+                ConnectionPhase.Running or ConnectionPhase.Connecting => "StatusRunningBrush",
+                ConnectionPhase.Connected => "TextSecondaryBrush",
+                _ => "TextTertiaryBrush",
+            }
+            : "TextTertiaryBrush";
+        return (Brush)Application.Current.Resources[key];
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+        => throw new NotSupportedException();
+}
+
 /// <summary>Subtle fill for chat bubbles.</summary>
 public sealed class RoleToBrushConverter : IValueConverter
 {

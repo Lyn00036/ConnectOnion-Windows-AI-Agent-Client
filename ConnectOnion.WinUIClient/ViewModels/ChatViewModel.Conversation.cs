@@ -66,8 +66,7 @@ public sealed partial class ChatViewModel
         HeaderText = $"{_agent.Name} - {_session.Title}";
         RaiseHeaderProperties();
 
-        _runSubscription = _runManager.Subscribe(
-            _session.Id, snapshot => _dispatcher.TryEnqueue(() => ApplyRunSnapshot(snapshot)));
+        _runSubscription = SubscribeToRun(_session.Id);
     }
 
     /// <summary>
@@ -135,8 +134,7 @@ public sealed partial class ChatViewModel
         HeaderText = $"{_agent.Name} - {_session.Title}";
         RaiseHeaderProperties();
 
-        _runSubscription = _runManager.Subscribe(
-            _session.Id, snapshot => _dispatcher.TryEnqueue(() => ApplyRunSnapshot(snapshot)));
+        _runSubscription = SubscribeToRun(_session.Id);
 
         await SendAsync(replacement);
         return true;

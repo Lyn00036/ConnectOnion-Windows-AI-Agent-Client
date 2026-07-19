@@ -27,6 +27,7 @@ public sealed partial class ChatMessageTemplateSelector : DataTemplateSelector
     public DataTemplate? AskUser { get; set; }
     public DataTemplate? Approval { get; set; }
     public DataTemplate? PlanReview { get; set; }
+    public DataTemplate? DiffPreview { get; set; }
 
     /// <summary>Renders nothing. Covers event kinds this build has no card for — a legacy
     /// <c>"tool"</c> row that migration left behind, or a <c>tool_activity</c> row whose payload
@@ -48,6 +49,7 @@ public sealed partial class ChatMessageTemplateSelector : DataTemplateSelector
         if (message.IsAskUserEvent) return AskUser;
         if (message.IsApprovalEvent) return Approval;
         if (message.IsPlanReviewEvent) return PlanReview;
+        if (message.IsDiffPreviewEvent) return DiffPreview;
 
         return Empty;
     }

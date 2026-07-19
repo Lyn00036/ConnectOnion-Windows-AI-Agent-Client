@@ -76,6 +76,10 @@
             <SolidColorBrush x:Key="DangerBrush" Color="{ThemeResource DangerColor}" />
             <SolidColorBrush x:Key="InfoBrush" Color="{ThemeResource InfoColor}" />
             <SolidColorBrush x:Key="StatusRunningBrush" Color="{ThemeResource StatusRunningColor}" />
+            <SolidColorBrush x:Key="AttentionBrush" Color="{ThemeResource AttentionColor}" />
+            <SolidColorBrush x:Key="AttentionSubtleBrush" Color="{ThemeResource AttentionSubtleColor}" />
+            <SolidColorBrush x:Key="SuccessSubtleBrush" Color="{ThemeResource SuccessSubtleColor}" />
+            <SolidColorBrush x:Key="DangerSubtleBrush" Color="{ThemeResource DangerSubtleColor}" />
 
             <!-- Search -->
             <SolidColorBrush x:Key="SearchMatchBackgroundBrush" Color="{ThemeResource SearchMatchBackgroundColor}" />
@@ -240,6 +244,10 @@
             <SolidColorBrush x:Key="DangerBrush" Color="{ThemeResource DangerColor}" />
             <SolidColorBrush x:Key="InfoBrush" Color="{ThemeResource InfoColor}" />
             <SolidColorBrush x:Key="StatusRunningBrush" Color="{ThemeResource StatusRunningColor}" />
+            <SolidColorBrush x:Key="AttentionBrush" Color="{ThemeResource AttentionColor}" />
+            <SolidColorBrush x:Key="AttentionSubtleBrush" Color="{ThemeResource AttentionSubtleColor}" />
+            <SolidColorBrush x:Key="SuccessSubtleBrush" Color="{ThemeResource SuccessSubtleColor}" />
+            <SolidColorBrush x:Key="DangerSubtleBrush" Color="{ThemeResource DangerSubtleColor}" />
 
             <!-- Search -->
             <SolidColorBrush x:Key="SearchMatchBackgroundBrush" Color="{ThemeResource SearchMatchBackgroundColor}" />

@@ -24,6 +24,11 @@
             <presentation:StringToVisibilityConverter x:Key="StringToVis" />
             <presentation:PresenceToBrushConverter x:Key="PresenceToBrush" />
             <presentation:EventStatusToBrushConverter x:Key="EventStatusToBrush" />
+            <presentation:InteractiveStatusToBrushConverter x:Key="InteractiveStatusToBrush" />
+            <presentation:BoolToResourceBrushConverter x:Key="BoolToResourceBrush" />
+            <presentation:ConnectionPhaseToBrushConverter x:Key="ConnectionPhaseToBrush" />
+            <presentation:DiffTextToLinesConverter x:Key="DiffTextToLines" />
+            <presentation:DiffKindToBrushConverter x:Key="DiffKindToBrush" />
             <presentation:ToolStatusToBrushConverter x:Key="ToolStatusToBrush" />
             <presentation:LocalPathToImageSourceConverter x:Key="PathToImage" />
             <presentation:RowStateToBackgroundConverter x:Key="RowStateToBackground" />
