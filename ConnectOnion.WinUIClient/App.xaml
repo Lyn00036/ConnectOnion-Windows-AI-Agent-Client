@@ -30,6 +30,9 @@
             <presentation:DiffTextToLinesConverter x:Key="DiffTextToLines" />
             <presentation:DiffKindToBrushConverter x:Key="DiffKindToBrush" />
             <presentation:ToolStatusToBrushConverter x:Key="ToolStatusToBrush" />
+            <presentation:ToolIconConverter x:Key="ToolIcon" />
+            <presentation:ToolStatusToIconConverter x:Key="ToolStatusToIcon" />
+            <presentation:BoolToThicknessConverter x:Key="BoolToThickness" />
             <presentation:LocalPathToImageSourceConverter x:Key="PathToImage" />
             <presentation:RowStateToBackgroundConverter x:Key="RowStateToBackground" />
         </ResourceDictionary>

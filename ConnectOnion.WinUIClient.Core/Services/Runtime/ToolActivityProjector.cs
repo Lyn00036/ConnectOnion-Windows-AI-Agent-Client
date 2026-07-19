@@ -238,7 +238,7 @@ public sealed class ToolActivityProjector
         var hasFailed = Activity.Steps.Any(step => step.Status == ToolStepStatus.Failed);
         var hasWarning = Activity.Steps.Any(step => step.Status == ToolStepStatus.Warning);
         Activity.Status = terminalStatus ?? (hasFailed ? ToolActivityStatus.PartialSuccess : hasWarning ? ToolActivityStatus.PartialSuccess : ToolActivityStatus.Success);
-        Activity.CompletedAt = DateTimeOffset.UtcNow;
+        AnchorSpanOnSteps();
         Activity.ErrorSummary = error is null ? Activity.ErrorSummary : FriendlyProblem(error);
         var count = Activity.Steps.Count;
         Activity.Summary = Activity.Status switch
@@ -251,6 +251,43 @@ public sealed class ToolActivityProjector
         ApplyAutoExpansion();
 
         Activity.RefreshPresentation();
+    }
+
+    /// <summary>
+    /// Re-anchors the card's <see cref="ToolActivityViewModel.StartedAt"/>/<c>CompletedAt</c> on
+    /// the steps' own timestamps, which is what makes the header's duration mean anything.
+    ///
+    /// <para><b>The activity cannot time itself.</b> <c>StartedAt</c> is stamped in the view
+    /// model's constructor, so it measures how long the <i>projection object</i> has existed — and
+    /// the headless persist path builds a fresh one at save time, replays the whole turn into it
+    /// in a tight loop, and completes it a millisecond later. Every reopened conversation
+    /// therefore reported its tool work as "· 2 ms" no matter how long it really took.</para>
+    ///
+    /// <para>The steps carry the real times: each one is stamped from its frame's own <c>ts</c>
+    /// (falling back to the clock when a host omits it), so the span from the first call to the
+    /// last result survives being replayed hours later. It also makes the live card and the
+    /// persisted one agree, which the wall-clock version never did.</para>
+    ///
+    /// <para>With no steps there is nothing to measure and the clock is the only answer — that
+    /// card shows no duration in its summary anyway.</para>
+    /// </summary>
+    private void AnchorSpanOnSteps()
+    {
+        if (Activity.Steps.Count == 0)
+        {
+            Activity.CompletedAt = DateTimeOffset.UtcNow;
+            return;
+        }
+
+        var first = Activity.Steps.Min(step => step.StartedAt);
+        var last = Activity.Steps.Max(step => step.CompletedAt ?? step.StartedAt);
+
+        Activity.StartedAt = first;
+        // Never let the span run backwards: a host whose clock disagrees with ours, or a step
+        // stamped from `ts` beside one that fell back to the local clock, can order these two
+        // either way — and DurationSeconds floors at zero, so an inverted pair would silently
+        // read as "0 ms" rather than as the bad data it is.
+        Activity.CompletedAt = last < first ? first : last;
     }
 
     /// <summary>Human label for a tool. The table covers the tools the reference agents ship
@@ -333,14 +370,24 @@ public sealed class ToolActivityProjector
 
     /// <summary>Reads the frame's <c>ts</c>. Agents send either seconds or milliseconds with no
     /// marker, so the magnitude decides: 1e12 is year 33658 in seconds and 2001 in
-    /// milliseconds, which makes it an unambiguous split for any timestamp this app will see.</summary>
+    /// milliseconds, which makes it an unambiguous split for any timestamp this app will see.
+    ///
+    /// <para>Both branches go through <c>FromUnixTimeMilliseconds</c> because a seconds-valued
+    /// <c>ts</c> is a <i>fractional</i> double — the host sends 1784467095.5 — and casting that
+    /// straight to long threw the fraction away, quantising every derived duration to a whole
+    /// second. Scaling to milliseconds first keeps it, which is the difference between a card
+    /// reading "7.2 s" and "7.0 s".</para></summary>
     private static DateTimeOffset? Timestamp(JsonElement root)
     {
         var ts = Number(root, "ts");
         if (ts is null) return null;
         // Out-of-range values throw rather than clamping; a nonsense timestamp falls back to
         // the local clock at the call site instead of taking the turn down.
-        try { return ts > 1_000_000_000_000 ? DateTimeOffset.FromUnixTimeMilliseconds((long)ts.Value) : DateTimeOffset.FromUnixTimeSeconds((long)ts.Value); }
+        try
+        {
+            return DateTimeOffset.FromUnixTimeMilliseconds(
+                (long)(ts > 1_000_000_000_000 ? ts.Value : ts.Value * 1000));
+        }
         catch { return null; }
     }
 

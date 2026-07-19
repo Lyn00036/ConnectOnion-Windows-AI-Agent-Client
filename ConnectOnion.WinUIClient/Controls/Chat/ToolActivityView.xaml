@@ -27,8 +27,11 @@
              gaps live on the children's own margins instead, which a collapsed element does not
              contribute. -->
         <StackPanel>
-            <!-- Header row -->
+            <!-- Header row. Gone when the turn ran exactly one tool: the step below says
+                 everything this row would have summarised, and the disclosure it carries has
+                 nothing left to disclose. -->
             <Button MinHeight="30"
+                    Visibility="{x:Bind Activity.ShowCardChrome, Mode=OneWay, Converter={StaticResource BoolToVis}}"
                     Padding="0,4"
                     Background="Transparent"
                     BorderThickness="0"
@@ -73,29 +76,30 @@
                                    Foreground="{x:Bind Activity.Status, Mode=OneWay, Converter={StaticResource ToolStatusToBrush}, ConverterParameter='danger-only:TextTertiaryBrush'}"
                                    TextTrimming="CharacterEllipsis"
                                    VerticalAlignment="Center" />
-                        <!-- 16px, not 20: the box only centres the 12px glyph, and the extra
-                             padding read as a gap between the text and the icon. It is not a
-                             hit target of its own — the whole header row is the button. -->
-                        <Grid x:Name="HeaderChevron"
-                              Width="16"
-                              Height="16"
-                              VerticalAlignment="Center"
-                              Opacity="0">
-                            <ic:FluentIcon Icon="ChevronUp"
-                                           IconVariant="Regular"
-                                           IconSize="Size12"
-                                           HorizontalAlignment="Center"
-                                           VerticalAlignment="Center"
-                                           Foreground="{ThemeResource TextTertiaryBrush}"
-                                           Visibility="{x:Bind Activity.IsExpanded, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-                            <ic:FluentIcon Icon="ChevronDown"
-                                           IconVariant="Regular"
-                                           IconSize="Size12"
-                                           HorizontalAlignment="Center"
-                                           VerticalAlignment="Center"
-                                           Foreground="{ThemeResource TextTertiaryBrush}"
-                                           Visibility="{x:Bind Activity.IsExpanded, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
-                        </Grid>
+                        <!-- One rotated ChevronDown, exactly as the sidebar's agent rows do it
+                             (ShellAgentItem.ChevronAngle): down when open, turned to point right
+                             when closed. It used to be a Up/Down pair swapped by Visibility, which
+                             turned the wrong way — up/down instead of the sidebar's down/right —
+                             for the same disclosure gesture.
+
+                             No fixed-size wrapper either. The pair sat in a 16x16 Grid, but a 12px
+                             icon is a 12px *font*, and a TextBlock's line box at that size is
+                             ~16-17px tall — so the glyph overflowed the Grid and was clipped along
+                             the bottom. Sizing comes from the icon itself now, and nothing clips
+                             it. The rotation is a RenderTransform, which does not affect layout,
+                             so turning it cannot reintroduce the overflow. -->
+                        <ic:FluentIcon x:Name="HeaderChevron"
+                                       Icon="ChevronDown"
+                                       IconVariant="Regular"
+                                       IconSize="Size12"
+                                       VerticalAlignment="Center"
+                                       Opacity="0"
+                                       Foreground="{ThemeResource TextTertiaryBrush}"
+                                       RenderTransformOrigin="0.5,0.5">
+                            <ic:FluentIcon.RenderTransform>
+                                <RotateTransform Angle="{x:Bind Activity.ChevronAngle, Mode=OneWay}" />
+                            </ic:FluentIcon.RenderTransform>
+                        </ic:FluentIcon>
                     </StackPanel>
                 </Grid>
             </Button>
@@ -115,10 +119,17 @@
             <!-- Timeline panel. Named because Header_Click hands it to the disclosure animation
                  explicitly: DisclosureAnimation.FindContentAfter would take the header's first
                  sibling, which is the collapsed error line above. -->
+            <!-- The 9px indent sets the timeline in under its header. With no header — the single
+                 step case — there is nothing to sit under, and the inset would leave the row
+                 hanging a few pixels right of every other bubble in the transcript, so it goes to
+                 zero and the step starts on the chat column's left edge like any other message. -->
             <Grid x:Name="TimelinePanel"
-                  Margin="9,5,0,0"
+                  Margin="{x:Bind Activity.ShowCardChrome, Mode=OneWay, Converter={StaticResource BoolToThickness}, ConverterParameter='9,5,0,0|0,0,0,0'}"
                   Visibility="{x:Bind Activity.IsTimelineVisible, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                <!-- The connecting rule is what makes a list of steps read as a timeline. One
+                     step is not a timeline, so it draws no thread. -->
                 <Border Width="1"
+                        Visibility="{x:Bind Activity.ShowCardChrome, Mode=OneWay, Converter={StaticResource BoolToVis}}"
                         Background="{ThemeResource BorderDefaultBrush}"
                         HorizontalAlignment="Left"
                         Margin="10,10,0,12" />
@@ -138,18 +149,37 @@
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
 
+                                <!-- The timeline node identifies the tool, and its colour reports
+                                     how the step went: red failed, amber needs attention, grey
+                                     otherwise. Shape says what ran, colour says how it went — one
+                                     node answering both, rather than the ✓/✕ glyph that could only
+                                     answer the second. The glyph still reaches screen readers
+                                     through the step's AccessibilityName, built from StatusGlyph.
+
+                                     "muted-success", so a run of successful steps stays quiet grey
+                                     instead of a column of green: success is the expected outcome
+                                     and colour is worth more when it is reserved for the rows that
+                                     actually want attention. -->
                                 <Border Width="21"
                                         Height="21"
                                         CornerRadius="10.5"
                                         Background="{ThemeResource ChatBackgroundBrush}"
                                         VerticalAlignment="Top">
-                                    <TextBlock Text="{x:Bind StatusGlyph, Mode=OneWay}"
-                                               FontSize="12"
-                                               FontWeight="SemiBold"
-                                               TextAlignment="Center"
-                                               HorizontalAlignment="Center"
-                                               VerticalAlignment="Center"
-                                               Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource ToolStatusToBrush}}" />
+                                    <!-- Size16 scaled to 12 — the repo idiom, and mandatory here:
+                                         Globe, Database, Screenshot and WindowDevTools ship no
+                                         Size12 design and would render as a silent blank. The
+                                         16px layout slot still fits inside the 21px node. -->
+                                    <ic:FluentIcon Icon="{x:Bind IconKind, Converter={StaticResource ToolIcon}}"
+                                                   IconVariant="Regular"
+                                                   IconSize="Size16"
+                                                   RenderTransformOrigin="0.5,0.5"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource ToolStatusToBrush}, ConverterParameter=muted-success}">
+                                        <ic:FluentIcon.RenderTransform>
+                                            <ScaleTransform ScaleX="0.75" ScaleY="0.75" />
+                                        </ic:FluentIcon.RenderTransform>
+                                    </ic:FluentIcon>
                                 </Border>
 
                                 <StackPanel Grid.Column="1"
@@ -263,8 +293,11 @@
                     </ItemsControl.ItemTemplate>
                     </ItemsControl>
 
-                    <!-- Completion marker -->
-                    <Grid ColumnSpacing="10" Margin="0,0,4,0">
+                    <!-- Completion marker. Suppressed for a single step, whose own node already
+                         carries the outcome in exactly the same colour — a second "Done" row under
+                         a one-row card restates it. -->
+                    <Grid ColumnSpacing="10" Margin="0,0,4,0"
+                          Visibility="{x:Bind Activity.ShowCardChrome, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="21" />
                             <ColumnDefinition Width="*" />
@@ -273,12 +306,24 @@
                                 Height="21"
                                 CornerRadius="10.5"
                                 Background="{ThemeResource ChatBackgroundBrush}">
-                            <TextBlock Text="{x:Bind Activity.StatusGlyph, Mode=OneWay}"
-                                       FontSize="13"
-                                       TextAlignment="Center"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center"
-                                       Foreground="{x:Bind Activity.Status, Mode=OneWay, Converter={StaticResource ToolStatusToBrush}}" />
+                            <!-- A FluentIcon, not the literal StatusGlyph character. "⚠" (U+26A0)
+                                 has emoji presentation on Windows: it renders through Segoe UI
+                                 Emoji in that font's own orange and ignores Foreground outright,
+                                 so the warning triangle could never be themed, muted, or turned
+                                 red like every other status. FluentIcons glyphs carry no colour of
+                                 their own, so this one takes the brush. StatusGlyph itself stays —
+                                 it is what AccessibilityName reads out. -->
+                            <ic:FluentIcon Icon="{x:Bind Activity.Status, Mode=OneWay, Converter={StaticResource ToolStatusToIcon}}"
+                                           IconVariant="Regular"
+                                           IconSize="Size16"
+                                           RenderTransformOrigin="0.5,0.5"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           Foreground="{x:Bind Activity.Status, Mode=OneWay, Converter={StaticResource ToolStatusToBrush}}">
+                                <ic:FluentIcon.RenderTransform>
+                                    <ScaleTransform ScaleX="0.75" ScaleY="0.75" />
+                                </ic:FluentIcon.RenderTransform>
+                            </ic:FluentIcon>
                         </Border>
                         <!-- "Failed" turns red; "Done" and the waiting states stay prose-coloured,
                              so the one word meaning something broke is the one that stands out. -->

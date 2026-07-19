@@ -1,5 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.Linq;
 using System.Text.Json.Serialization;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -42,11 +43,36 @@ public sealed partial class ToolActivityViewModel : Common.ObservableObject
         IsExpanded = false;
         Summary = "Running tools…";
         StartedAt = DateTimeOffset.UtcNow;
+        _steps.CollectionChanged += OnStepsChanged;
     }
 
     public string TurnId { get; set; } = Guid.NewGuid().ToString("N");
 
-    public ObservableCollection<ToolStepViewModel> Steps { get; set; } = new();
+    private ObservableCollection<ToolStepViewModel> _steps = new();
+
+    /// <summary>
+    /// The turn's tool invocations, in order.
+    ///
+    /// <para>Hand-written rather than an auto-property because the card's <i>shape</i> now depends
+    /// on how many steps there are (see <see cref="IsSingleStep"/>), and a plain collection raises
+    /// nothing on the activity when an item is added. Both the initial collection and any
+    /// replacement — deserialization assigns a fresh one — are subscribed here, so the count-derived
+    /// properties stay live wherever the steps came from.</para>
+    /// </summary>
+    public ObservableCollection<ToolStepViewModel> Steps
+    {
+        get => _steps;
+        set
+        {
+            if (ReferenceEquals(_steps, value)) return;
+            _steps.CollectionChanged -= OnStepsChanged;
+            _steps = value ?? new();
+            _steps.CollectionChanged += OnStepsChanged;
+            OnPresentationChanged();
+        }
+    }
+
+    private void OnStepsChanged(object? sender, NotifyCollectionChangedEventArgs e) => OnPresentationChanged();
 
     [ObservableProperty]
     public partial ToolActivityStatus Status { get; set; }
@@ -66,7 +92,20 @@ public sealed partial class ToolActivityViewModel : Common.ObservableObject
     [NotifyPropertyChangedFor(nameof(IsTimelineVisible))]
     [NotifyPropertyChangedFor(nameof(AccessibilityName))]
     [NotifyPropertyChangedFor(nameof(ShowCollapsedError))]
+    [NotifyPropertyChangedFor(nameof(ChevronAngle))]
     public partial bool IsExpanded { get; set; }
+
+    /// <summary>
+    /// Rotation for the header's disclosure chevron, in degrees clockwise: 0 points it down when
+    /// open, 270 turns it to point right when closed.
+    ///
+    /// <para>One rotated <c>ChevronDown</c> rather than swapping a Up/Down pair, matching the
+    /// sidebar's agent rows (<c>ShellAgentItem.ChevronAngle</c>) — the same control in the same
+    /// app should turn the same way, and down/right is the disclosure convention the sidebar
+    /// already set. A plain double, so this stays WinUI-free; the view wraps it in a
+    /// RotateTransform.</para>
+    /// </summary>
+    [JsonIgnore] public double ChevronAngle => IsExpanded ? 0 : 270;
 
     [ObservableProperty]
     public partial string Summary { get; set; }
@@ -109,7 +148,9 @@ public sealed partial class ToolActivityViewModel : Common.ObservableObject
     /// shows the same text in full in its own Error block, and printing it twice made the top of
     /// an expanded card read as two different failures.</summary>
     [JsonIgnore]
-    public bool ShowCollapsedError => !IsExpanded && LastErrorMessage is not null;
+    /// <summary>Never shown for a single step: that step is already on screen, un-collapsed, with
+    /// the same message in its own Error block — the line exists to rescue a *folded* card.</summary>
+    public bool ShowCollapsedError => !IsExpanded && !IsSingleStep && LastErrorMessage is not null;
 
     private static string? FirstLine(string? text)
     {
@@ -121,10 +162,30 @@ public sealed partial class ToolActivityViewModel : Common.ObservableObject
 
     [JsonIgnore] public bool IsTerminal => Status is ToolActivityStatus.Success or ToolActivityStatus.PartialSuccess or ToolActivityStatus.Failed or ToolActivityStatus.Cancelled;
     [JsonIgnore] public bool IsVisible => DisplayMode != ToolDisplayMode.Hidden || !IsTerminal || Status is ToolActivityStatus.Failed or ToolActivityStatus.PartialSuccess or ToolActivityStatus.WaitingForConfirmation or ToolActivityStatus.WaitingForPermission || Steps.Any(step => step.IsHighRisk);
+    /// <summary>
+    /// Exactly one tool ran this turn, so the card drops its wrapper and shows that step on its
+    /// own — no "Tool activity" header, no completion row, no disclosure. A header summarising a
+    /// single row said less than the row ("Tool execution completed · 1 steps"), cost a click to
+    /// get past, and made the commonest turn shape the noisiest.
+    ///
+    /// <para>Count-derived, so it flips the moment a second tool starts and the card grows its
+    /// chrome back mid-turn — which is why <see cref="Steps"/> is subscribed rather than a plain
+    /// auto-property. Zero steps keeps the chrome: the card exists but has nothing to show yet,
+    /// and the header is the only thing saying so.</para>
+    /// </summary>
+    [JsonIgnore] public bool IsSingleStep => Steps.Count == 1;
+
+    /// <summary>The wrapper: header, collapsed error line and completion row. Present whenever the
+    /// card is summarising more than one thing.</summary>
+    [JsonIgnore] public bool ShowCardChrome => !IsSingleStep;
+
     // Only IsExpanded gates the timeline. Status and DisplayMode choose the *default* expansion
     // (see ToolActivityProjector), never override it — ORing "Failed" in here left the header
     // toggle dead for exactly the runs a user most wants to collapse.
-    [JsonIgnore] public bool IsTimelineVisible => IsVisible && IsExpanded;
+    //
+    // IsSingleStep is the one exception, and not really an override: with the header gone there is
+    // no disclosure control left, so a collapsed single-step card would be a permanently blank row.
+    [JsonIgnore] public bool IsTimelineVisible => IsVisible && (IsExpanded || IsSingleStep);
     [JsonIgnore] public bool IsDetailed => DisplayMode == ToolDisplayMode.Detailed;
     [JsonIgnore] public string StatusGlyph => Status switch
     {
@@ -174,6 +235,8 @@ public sealed partial class ToolActivityViewModel : Common.ObservableObject
     {
         OnPropertyChanged(nameof(IsTerminal));
         OnPropertyChanged(nameof(IsVisible));
+        OnPropertyChanged(nameof(IsSingleStep));
+        OnPropertyChanged(nameof(ShowCardChrome));
         OnPropertyChanged(nameof(IsTimelineVisible));
         OnPropertyChanged(nameof(IsDetailed));
         OnPropertyChanged(nameof(StatusGlyph));
@@ -250,6 +313,10 @@ public sealed partial class ToolStepViewModel : Common.ObservableObject
     public partial bool IsExpanded { get; set; }
 
     [JsonIgnore] public string StatusGlyph => Status switch { ToolStepStatus.Success => "✓", ToolStepStatus.Warning => "⚠", ToolStepStatus.Failed => "✕", ToolStepStatus.Cancelled => "⊘", ToolStepStatus.Pending => "·", _ => "◌" };
+    /// <summary>Which glyph identifies the tool this step ran. Derived from <see cref="ToolName"/>
+    /// rather than stored, so it costs no column, needs no migration, and conversations persisted
+    /// before icons existed draw them the moment they are reopened.</summary>
+    [JsonIgnore] public ToolIconKind IconKind => ToolIcons.ForTool(ToolName);
     [JsonIgnore] public bool HasDisplayTarget => !string.IsNullOrWhiteSpace(DisplayTarget);
     /// <summary>Still true (and still fed to <see cref="AccessibilityName"/>) even though the
     /// collapsed row no longer prints the summary — the result digest reads usefully to a screen

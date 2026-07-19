@@ -24,6 +24,85 @@ public sealed class ToolActivityExpansionTests
         Assert.True(activity.IsTimelineVisible);
     }
 
+    /// <summary>The header chevron is one rotated ChevronDown, matching the sidebar's agent rows
+    /// (ShellAgentItem.ChevronAngle) — down when open, pointing right when closed. Pinned because
+    /// the two are meant to stay the same gesture, and nothing but a test connects them.</summary>
+    [Fact]
+    public void ChevronAngle_MatchesTheSidebarsDownRightConvention()
+    {
+        var activity = new ToolActivityViewModel();
+        var changed = new List<string>();
+        activity.PropertyChanged += (_, e) => changed.Add(e.PropertyName ?? "");
+
+        Assert.False(activity.IsExpanded);
+        Assert.Equal(270, activity.ChevronAngle);   // closed → points right
+
+        activity.ToggleExpanded();
+
+        Assert.Equal(0, activity.ChevronAngle);     // open → points down
+        // The view binds the angle, so it only turns if the change is announced.
+        Assert.Contains(nameof(ToolActivityViewModel.ChevronAngle), changed);
+    }
+
+    /// <summary>
+    /// The header's duration is the span the *tools* covered, taken from their frames' own
+    /// timestamps — not how long the projection object has been alive.
+    ///
+    /// <para>This is the persist path in miniature: a card built now, replaying a turn that ran
+    /// earlier. Timing it by the card's own lifetime reported every reopened conversation as
+    /// "· 2 ms", because building and completing it happen microseconds apart.</para>
+    /// </summary>
+    [Fact]
+    public void HeaderDuration_ComesFromTheStepTimestamps_NotTheCardsLifetime()
+    {
+        var activity = new ToolActivityViewModel();
+        var projector = new ToolActivityProjector(activity);
+
+        // ts values 7.2s apart, exactly as a replayed turn's frames carry them.
+        projector.ApplyCall(Event("{\"tool_id\":\"one\",\"name\":\"remote_write_file\",\"ts\":1784467095.5}"));
+        projector.ApplyResult(Result("{\"tool_id\":\"one\",\"result\":\"ok\",\"ts\":1784467102.7}"));
+
+        projector.Complete();
+
+        Assert.Equal(7.2, activity.DurationSeconds, precision: 1);
+        Assert.Equal("7.2 s", activity.DurationLabel);
+        Assert.Contains("7.2 s", activity.Summary);
+    }
+
+    /// <summary>Several steps: the span runs from the earliest call to the latest result, not
+    /// just the last step's own duration.</summary>
+    [Fact]
+    public void HeaderDuration_SpansEveryStep()
+    {
+        var activity = new ToolActivityViewModel();
+        var projector = new ToolActivityProjector(activity);
+
+        projector.ApplyCall(Event("{\"tool_id\":\"one\",\"name\":\"read_file\",\"ts\":1784467000}"));
+        projector.ApplyResult(Result("{\"tool_id\":\"one\",\"result\":\"ok\",\"ts\":1784467002}"));
+        projector.ApplyCall(Event("{\"tool_id\":\"two\",\"name\":\"send_email\",\"ts\":1784467003}"));
+        projector.ApplyResult(Result("{\"tool_id\":\"two\",\"result\":\"sent\",\"ts\":1784467010}"));
+
+        projector.Complete();
+
+        Assert.Equal(10, activity.DurationSeconds, precision: 1);
+    }
+
+    /// <summary>A host whose clock disagrees with ours can stamp a result before its call. The
+    /// span clamps to zero rather than running backwards.</summary>
+    [Fact]
+    public void HeaderDuration_NeverRunsBackwards()
+    {
+        var activity = new ToolActivityViewModel();
+        var projector = new ToolActivityProjector(activity);
+
+        projector.ApplyCall(Event("{\"tool_id\":\"one\",\"name\":\"read_file\",\"ts\":1784467100}"));
+        projector.ApplyResult(Result("{\"tool_id\":\"one\",\"result\":\"ok\",\"ts\":1784467090}"));
+
+        projector.Complete();
+
+        Assert.Equal(0, activity.DurationSeconds);
+    }
+
     [Fact]
     public void NewActivity_StartsCollapsed()
     {
@@ -170,9 +249,13 @@ public sealed class ToolActivityExpansionTests
     {
         var activity = new ToolActivityViewModel();
         var projector = new ToolActivityProjector(activity);
-        projector.ApplyCall(Event("{\"tool_id\":\"one\",\"name\":\"send_email\",\"args\":{}}"));
+        // Two steps, so the card keeps its chrome — the collapsed line exists to rescue a folded
+        // card, and a single-step card is never folded (see the test below).
+        projector.ApplyCall(Event("{\"tool_id\":\"one\",\"name\":\"read_file\",\"args\":{}}"));
+        projector.ApplyResult(Result("{\"tool_id\":\"one\",\"status\":\"success\",\"result\":\"ok\"}"));
+        projector.ApplyCall(Event("{\"tool_id\":\"two\",\"name\":\"send_email\",\"args\":{}}"));
         projector.ApplyResult(Result(
-            "{\"tool_id\":\"one\",\"status\":\"error\",\"result\":\"smtp refused: 550 relay denied\\nat send()\"}"));
+            "{\"tool_id\":\"two\",\"status\":\"error\",\"result\":\"smtp refused: 550 relay denied\\nat send()\"}"));
 
         // First line only — a traceback's remaining lines are one click away in the step's block.
         Assert.Equal("smtp refused: 550 relay denied", activity.LastErrorMessage);
@@ -181,6 +264,73 @@ public sealed class ToolActivityExpansionTests
         activity.IsExpanded = true;
 
         Assert.False(activity.ShowCollapsedError);
+    }
+
+    /// <summary>
+    /// A turn that ran exactly one tool drops the card wrapper and shows the step alone: no
+    /// header to summarise a single row, no completion marker restating its outcome, and — since
+    /// there is no disclosure control left — a timeline that cannot be folded shut.
+    /// </summary>
+    [Fact]
+    public void SingleStep_DropsTheCardChrome_AndStaysVisible()
+    {
+        var activity = new ToolActivityViewModel();
+        var projector = new ToolActivityProjector(activity);
+
+        projector.ApplyCall(Event("{\"tool_id\":\"one\",\"name\":\"read_file\",\"args\":{}}"));
+
+        Assert.True(activity.IsSingleStep);
+        Assert.False(activity.ShowCardChrome);
+        // Collapsed on the headless pass, yet the one step still renders — otherwise the card
+        // would be a permanently blank row with nothing to click.
+        Assert.False(activity.IsExpanded);
+        Assert.True(activity.IsTimelineVisible);
+    }
+
+    /// <summary>A failed single step shows no collapsed error line: the step is already open and
+    /// prints the same message in its own Error block.</summary>
+    [Fact]
+    public void SingleStep_ShowsNoCollapsedErrorLine()
+    {
+        var activity = new ToolActivityViewModel();
+        var projector = new ToolActivityProjector(activity);
+        projector.ApplyCall(Event("{\"tool_id\":\"one\",\"name\":\"send_email\",\"args\":{}}"));
+        projector.ApplyResult(Result("{\"tool_id\":\"one\",\"status\":\"error\",\"result\":\"smtp refused\"}"));
+
+        Assert.Equal("smtp refused", activity.LastErrorMessage);
+        Assert.False(activity.ShowCollapsedError);
+    }
+
+    /// <summary>The chrome comes back mid-turn when a second tool starts — which only works
+    /// because the activity subscribes to its own Steps collection.</summary>
+    [Fact]
+    public void SecondStep_BringsTheChromeBack()
+    {
+        var activity = new ToolActivityViewModel();
+        var projector = new ToolActivityProjector(activity);
+        var changed = new List<string>();
+        activity.PropertyChanged += (_, e) => changed.Add(e.PropertyName ?? "");
+
+        projector.ApplyCall(Event("{\"tool_id\":\"one\",\"name\":\"read_file\",\"args\":{}}"));
+        Assert.False(activity.ShowCardChrome);
+
+        projector.ApplyCall(Event("{\"tool_id\":\"two\",\"name\":\"send_email\",\"args\":{}}"));
+
+        Assert.False(activity.IsSingleStep);
+        Assert.True(activity.ShowCardChrome);
+        // The view only re-reads it if the change was announced.
+        Assert.Contains(nameof(ToolActivityViewModel.ShowCardChrome), changed);
+    }
+
+    /// <summary>An empty card keeps its chrome: it has nothing to show yet, and the header is the
+    /// only thing saying so.</summary>
+    [Fact]
+    public void NoSteps_KeepsTheChrome()
+    {
+        var activity = new ToolActivityViewModel();
+
+        Assert.False(activity.IsSingleStep);
+        Assert.True(activity.ShowCardChrome);
     }
 
     [Fact]
