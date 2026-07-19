@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.WebSockets;
@@ -61,6 +62,17 @@ public sealed class AgentConnectionService : IAsyncDisposable
     private TaskCompletionSource<string>? _sessionStatusTcs;
     private CancellationTokenSource? _connectTimeoutCts;
 
+    // ---- Automatic reconnect ----
+    private readonly ReconnectPolicy _reconnectPolicy;
+    // Guards against a second reconnect loop: the attempts themselves fail sockets, and each
+    // failure re-enters HandleConnectionLoss. 0 = idle, 1 = a loop owns the reconnect.
+    private int _reconnectLoopActive;
+    private volatile bool _disposed;
+    /// <summary>Frames written while the socket was down, replayed in order once it is back.
+    /// This is what lets a user answer an ask_user during an outage — the answer waits for the
+    /// socket rather than vanishing into a failed send.</summary>
+    private readonly ConcurrentQueue<Dictionary<string, object?>> _outbound = new();
+
     public string? SessionId { get; private set; }
 
     /// <summary>
@@ -82,6 +94,9 @@ public sealed class AgentConnectionService : IAsyncDisposable
     /// <summary>The duration (ms) of the most recent execution, from the OUTPUT frame.</summary>
     public double LastExecutionDurationMs { get; private set; }
 
+    /// <summary>The host's most recent CONNECTED verdict, or null before the first handshake.</summary>
+    public ConnectedState? LastConnectedState { get; private set; }
+
     public bool IsConnected => _ws is { State: WebSocketState.Open } && _authenticated;
 
     /// <summary>
@@ -96,8 +111,25 @@ public sealed class AgentConnectionService : IAsyncDisposable
     /// <summary>Raised immediately after an INPUT frame is written to the live socket.</summary>
     public event Action? InputSent;
 
-    /// <summary>Raised when the connection drops unexpectedly.</summary>
+    /// <summary>Raised when the connection drops unexpectedly and is not coming back — either
+    /// reconnect is not applicable, or all <see cref="ReconnectPolicy.MaxAttempts"/> attempts
+    /// failed. A drop that the reconnect loop is still working on raises
+    /// <see cref="Reconnecting"/> instead, so a subscriber can trust this to mean "gone".</summary>
     public event Action<Exception>? ConnectionLost;
+
+    /// <summary>Raised before each reconnect attempt, with the attempt number and the wait
+    /// ahead of it. Purely informational — the socket is down for the duration.</summary>
+    public event Action<ReconnectingEvent>? Reconnecting;
+
+    /// <summary>Raised once the socket is authenticated again, carrying the host's verdict on
+    /// the session. <see cref="ConnectedState.IsRunning"/> means the host has already rewound
+    /// to our <c>last_msg_id</c> and is replaying the events we missed into the turn that is
+    /// still open — the caller must not re-send the prompt.</summary>
+    public event Action<ConnectedState>? Reconnected;
+
+    /// <summary>Raised when the host's session merge came back <c>server_newer</c>: its copy of
+    /// the conversation was ahead of ours and it has handed back the authoritative one.</summary>
+    public event Action<ConnectedState>? SessionDiverged;
 
     /// <summary>The agent is waiting for a human answer (ask_user).</summary>
     public event Action<AskUserRequest>? AskUserRequested;
@@ -132,8 +164,10 @@ public sealed class AgentConnectionService : IAsyncDisposable
         string relayUrl = EndpointResolver.DefaultRelay,
         TimeSpan? connectTimeout = null,
         TimeSpan? silenceTimeout = null,
-        TimeSpan? watchdogInterval = null)
+        TimeSpan? watchdogInterval = null,
+        ReconnectPolicy? reconnectPolicy = null)
     {
+        _reconnectPolicy = reconnectPolicy ?? new ReconnectPolicy();
         _address = address;
         _directUrl = string.IsNullOrWhiteSpace(directUrl) ? null : directUrl.TrimEnd('/');
         _identity = identity;
@@ -239,6 +273,56 @@ public sealed class AgentConnectionService : IAsyncDisposable
         await using (ct.Register(() => inputTcs.TrySetCanceled()))
         {
             return await inputTcs.Task.ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Attaches to a turn the host is <i>already running</i> and resolves with its OUTPUT,
+    /// without sending an INPUT. This is how a restarted client rejoins a turn it started
+    /// before it was closed.
+    ///
+    /// <para>The host does the replaying: CONNECT carries our session id, and because a
+    /// restarted client has no <see cref="LastProcessedEventId"/> (the id lives in memory, and
+    /// the turn's trace was never persisted — it is written in one batch at the end),
+    /// <c>rewind_to(null)</c> rewinds to the very start of its buffer and forwards the whole
+    /// turn again. Everything the agent has emitted, including a still-pending <c>ask_user</c>
+    /// or <c>approval_needed</c>, therefore arrives as ordinary stream events and projects into
+    /// the usual cards.</para>
+    ///
+    /// <para>Throws <see cref="SessionNotRunningException"/> if the host says the session is
+    /// anything other than <see cref="ConnectedStatuses.Running"/> — the agent finished or died
+    /// while we were away, and there is nothing to attach to.</para>
+    /// </summary>
+    public async Task<string> ResumeRunningSessionAsync(string sessionId, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(sessionId);
+
+        // Armed *before* the handshake, not after: the host calls resume_forwarding immediately
+        // behind CONNECTED, so a short turn can emit its OUTPUT before EnsureConnectedAsync has
+        // even returned. With the slot still null that frame would be dropped on the floor in
+        // HandleMessageAsync and this method would wait forever.
+        var resumeTcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _inputTcs = resumeTcs;
+
+        try
+        {
+            await EnsureConnectedAsync(sessionId, ct).ConfigureAwait(false);
+        }
+        catch
+        {
+            _inputTcs = null;
+            throw;
+        }
+
+        if (LastConnectedState?.IsRunning != true)
+        {
+            _inputTcs = null;
+            throw new SessionNotRunningException(LastConnectedState?.Status ?? ConnectedStatuses.New);
+        }
+
+        await using (ct.Register(() => resumeTcs.TrySetCanceled()))
+        {
+            return await resumeTcs.Task.ConfigureAwait(false);
         }
     }
 
@@ -419,7 +503,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
     public Task RespondAskUserAsync(string answer)
     {
         ResumeWatchdogAfterHumanResponse();
-        return SendJsonAsync(new Dictionary<string, object?>
+        return SendOrQueueAsync(new Dictionary<string, object?>
         {
             ["type"] = "ASK_USER_RESPONSE",
             ["answer"] = answer,
@@ -454,7 +538,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
             msg["mode"] = rejectMode;
             if (!string.IsNullOrEmpty(feedback)) msg["feedback"] = feedback;
         }
-        return SendJsonAsync(msg, CancellationToken.None);
+        return SendOrQueueAsync(msg, CancellationToken.None);
     }
 
     /// <summary>Sends the exact hard-rejection payload used to stop while the host is blocked
@@ -476,7 +560,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
     public Task RespondPlanReviewAsync(string message)
     {
         ResumeWatchdogAfterHumanResponse();
-        return SendJsonAsync(new Dictionary<string, object?>
+        return SendOrQueueAsync(new Dictionary<string, object?>
         {
             ["type"] = "PLAN_REVIEW_RESPONSE",
             ["message"] = message,
@@ -551,8 +635,15 @@ public sealed class AgentConnectionService : IAsyncDisposable
                 return;
 
             case "CONNECTED":
+            {
+                var state = ConnectedState.Parse(msg);
+                LastConnectedState = state;
+                // Raised before the connect promise resolves so a subscriber that reconciles
+                // history has done so by the time the caller's SendInputAsync continues.
+                if (state.ServerNewer) SessionDiverged?.Invoke(state);
                 _connectTcs?.TrySetResult(msg);
                 return;
+            }
 
             case "OUTPUT":
             {
@@ -586,6 +677,11 @@ public sealed class AgentConnectionService : IAsyncDisposable
             case "compact":
             case "tool_blocked":
             case "files_received":
+            // Informational only — DiffWriter sends it and moves straight on to a separate
+            // ask_user carrying the actual approve/reject options. It renders as a read-only
+            // diff card; answering *this* frame would send a response nothing is waiting on and
+            // leave the real ask_user blocked forever. See diff_writer.py `_send_preview`.
+            case "diff_preview":
             {
                 var eventId = msg.GetString("id");
                 if (!string.IsNullOrEmpty(eventId))
@@ -674,6 +770,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
         "thinking" => "Thinking…",
         "mode_changed" => $"Mode: {AgentModes.DisplayName(msg.GetString("mode"))}",
         "ask_user" => msg.GetString("text") ?? msg.GetString("question") ?? "Agent asked a question",
+        "diff_preview" => $"Proposed change: {msg.GetString("path")}",
         "ONBOARD_REQUIRED" => "Agent requires onboarding",
         _ => msg.Type,
     };
@@ -699,14 +796,122 @@ public sealed class AgentConnectionService : IAsyncDisposable
     {
         _authenticated = false;
         _awaitingHumanResponse = false;
-        _connectTcs?.TrySetException(ex);
-        _inputTcs?.TrySetException(ex);
         // A status query is a question about the *host*, so a dead socket answers it rather
         // than faulting it: with no connection we cannot know, and "not_found" is what the
         // caller already treats as "no information".
         _sessionStatusTcs?.TrySetResult(SessionStatuses.NotFound);
         _loopCts?.Cancel();
+
+        if (TryStartReconnect(ex)) return;
+
+        // Not recoverable: fail everything in flight, exactly as before.
+        _connectTcs?.TrySetException(ex);
+        _inputTcs?.TrySetException(ex);
         ConnectionLost?.Invoke(ex);
+    }
+
+    /// <summary>
+    /// Decides whether a drop is worth retrying and, if so, owns the retry loop.
+    /// <para>Reconnect only makes sense for an established session: without a
+    /// <see cref="SessionId"/> the host has nothing to resume us into, so a failed first
+    /// handshake stays a plain failure (and the caller's own connect timeout still applies).
+    /// A drop <i>during</i> the handshake is likewise left alone — retrying inside
+    /// <see cref="EnsureConnectedAsync"/> while it is still awaiting its own connect promise
+    /// would have two code paths driving the same socket.</para>
+    /// </summary>
+    private bool TryStartReconnect(Exception ex)
+    {
+        if (_disposed || string.IsNullOrEmpty(SessionId)) return false;
+        // A handshake in flight owns the socket; let it fail and let its caller decide.
+        if (_connectTcs is not null) return false;
+        // CompareExchange, not a bool check: each attempt's failure re-enters here from the
+        // receive loop, and a second loop would double the retry rate and the backoff schedule.
+        if (Interlocked.CompareExchange(ref _reconnectLoopActive, 1, 0) != 0) return true;
+
+        _ = Task.Run(() => ReconnectLoopAsync(ex));
+        return true;
+    }
+
+    private async Task ReconnectLoopAsync(Exception cause)
+    {
+        try
+        {
+            for (var attempt = 1; ReconnectPolicy.ShouldRetry(attempt); attempt++)
+            {
+                var delay = _reconnectPolicy.DelayFor(attempt);
+                Reconnecting?.Invoke(new ReconnectingEvent(attempt, delay, cause));
+                await Task.Delay(delay).ConfigureAwait(false);
+                if (_disposed) return;
+
+                try
+                {
+                    // Tear the dead socket down first: EnsureConnectedAsync would otherwise
+                    // overwrite _ws and leak the previous ClientWebSocket and its receive loop.
+                    await CloseSocketAsync().ConfigureAwait(false);
+                    await EnsureConnectedAsync(SessionId, CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    cause = ex;
+                    continue;
+                }
+
+                var state = LastConnectedState;
+                await DrainOutboundAsync().ConfigureAwait(false);
+                Reconnected?.Invoke(state ?? new ConnectedState(
+                    SessionId, ConnectedStatuses.Connected, false, null, null));
+
+                // The socket is back, but that only saves the *turn* if the host still has an
+                // agent running it. On "running" the host has already rewound to our
+                // last_msg_id and resumed forwarding, so the missed events — and eventually the
+                // OUTPUT — arrive on the open _inputTcs and the turn simply continues. On any
+                // other status nothing is going to answer it, so fail it now and let the user
+                // retry rather than leaving them watching a spinner for a turn that ended.
+                if (_inputTcs is { } pending && state?.IsRunning != true)
+                {
+                    pending.TrySetException(new InvalidOperationException(
+                        "Reconnected, but the agent is no longer running this turn."));
+                }
+                return;
+            }
+
+            // Out of attempts. Now it is a real loss.
+            var giveUp = new InvalidOperationException(
+                $"Reconnect failed after {ReconnectPolicy.MaxAttempts} attempts: {cause.Message}", cause);
+            _inputTcs?.TrySetException(giveUp);
+            ConnectionLost?.Invoke(giveUp);
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _reconnectLoopActive, 0);
+        }
+    }
+
+    /// <summary>Replays queued frames in order. A send that fails puts nothing back — the
+    /// socket is down again, which re-enters the reconnect loop, and a frame that has already
+    /// been half-written is not safe to repeat.</summary>
+    private async Task DrainOutboundAsync()
+    {
+        while (_outbound.TryDequeue(out var msg))
+        {
+            try { await SendJsonAsync(msg, CancellationToken.None).ConfigureAwait(false); }
+            catch { return; }
+        }
+    }
+
+    /// <summary>
+    /// Sends if the socket is up, otherwise queues for <see cref="DrainOutboundAsync"/>.
+    /// <para>Used by the three human-answer frames. An agent parked on <c>ask_user</c> is
+    /// blocked in <c>io.receive()</c> and stays that way across a reconnect — the host routes
+    /// a late answer to the waiting agent thread — so an answer typed during an outage is
+    /// still worth delivering. Dropping it would leave the agent blocked forever with no card
+    /// left on screen to answer it again.</para>
+    /// </summary>
+    private Task SendOrQueueAsync(Dictionary<string, object?> message, CancellationToken ct)
+    {
+        if (IsConnected) return SendJsonAsync(message, ct);
+        _outbound.Enqueue(message);
+        return Task.CompletedTask;
     }
 
     private async Task SendJsonAsync(Dictionary<string, object?> message, CancellationToken ct)
@@ -772,6 +977,9 @@ public sealed class AgentConnectionService : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        // Before closing, so the close cannot be mistaken for a drop worth reconnecting: the
+        // receive loop unwinding through HandleConnectionLoss checks this flag.
+        _disposed = true;
         await CloseSocketAsync().ConfigureAwait(false);
         _loopCts?.Dispose();
     }

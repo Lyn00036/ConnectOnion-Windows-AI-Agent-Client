@@ -23,6 +23,22 @@ namespace ConnectOnion.Protocol.Runtime;
 /// <item>No network/DB/UI work happens while holding a run's lock.</item>
 /// </list>
 /// </summary>
+/// <summary>Error codes a run can end with that callers branch on.</summary>
+public static class RunErrorCodes
+{
+    /// <summary>The user stopped the turn. It is over and nothing is coming.</summary>
+    public const string Cancelled = "cancelled";
+
+    /// <summary>
+    /// The app closed while the turn was running. Crucially <b>not</b> the same as
+    /// <see cref="Cancelled"/>: nothing told the host to stop, so its agent is very likely still
+    /// executing — possibly blocked on an approval nobody is there to answer. Persistence
+    /// therefore leaves such a turn's <c>executions</c> row open so the next open can rejoin it,
+    /// rather than writing a half-turn to history and settling it.
+    /// </summary>
+    public const string Shutdown = "shutdown";
+}
+
 public sealed class ConversationRunRegistry
 {
     /// <summary>How long a failed turn stays retryable. Long enough that a user who steps away
@@ -283,7 +299,15 @@ public sealed class ConversationRunRegistry
         // retryable — reporting it as a user cancellation would hide a real problem.
         catch (OperationCanceledException) when (run.Cts.IsCancellationRequested)
         {
-            await FinalizeFailureAsync(run, ConversationRunStatus.Cancelled, "cancelled", "The turn was cancelled.");
+            // A cancellation the *app shutdown* caused is reported under its own code, because
+            // it means something completely different from a user pressing Stop: the agent on
+            // the host is still running this turn, and only the client went away. Persistence
+            // uses the distinction to leave the turn resumable instead of settling it — see
+            // RunErrorCodes.Shutdown.
+            var (code, message) = _shuttingDown
+                ? (RunErrorCodes.Shutdown, "The app closed while this turn was running.")
+                : (RunErrorCodes.Cancelled, "The turn was cancelled.");
+            await FinalizeFailureAsync(run, ConversationRunStatus.Cancelled, code, message);
         }
         catch (Exception ex)
         {
