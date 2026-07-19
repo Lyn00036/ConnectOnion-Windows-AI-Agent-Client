@@ -65,6 +65,7 @@ public sealed partial class ToolActivityViewModel : Common.ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsTimelineVisible))]
     [NotifyPropertyChangedFor(nameof(AccessibilityName))]
+    [NotifyPropertyChangedFor(nameof(ShowCollapsedError))]
     public partial bool IsExpanded { get; set; }
 
     [ObservableProperty]
@@ -77,7 +78,46 @@ public sealed partial class ToolActivityViewModel : Common.ObservableObject
     public partial DateTimeOffset? CompletedAt { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(LastErrorMessage))]
+    [NotifyPropertyChangedFor(nameof(ShowCollapsedError))]
     public partial string? ErrorSummary { get; set; }
+
+    /// <summary>
+    /// What actually went wrong, for the one line the collapsed card shows under its header. The
+    /// last failed step wins over <see cref="ErrorSummary"/> because that field is only set when
+    /// a tool is blocked or the whole turn dies — a single failed step among several leaves it
+    /// null, and the header then says nothing more useful than "1 steps had issues".
+    ///
+    /// First line only: a tool error is routinely a multi-line traceback, and the rest of it is
+    /// one click away in the step's own Error block.
+    /// </summary>
+    [JsonIgnore]
+    public string? LastErrorMessage
+    {
+        get
+        {
+            for (var i = Steps.Count - 1; i >= 0; i--)
+            {
+                if (Steps[i].Status != ToolStepStatus.Failed) continue;
+                if (FirstLine(Steps[i].Error ?? Steps[i].Summary) is { } stepText) return stepText;
+            }
+            return FirstLine(ErrorSummary);
+        }
+    }
+
+    /// <summary>The error line belongs to the collapsed card only. Once open, the failed step
+    /// shows the same text in full in its own Error block, and printing it twice made the top of
+    /// an expanded card read as two different failures.</summary>
+    [JsonIgnore]
+    public bool ShowCollapsedError => !IsExpanded && LastErrorMessage is not null;
+
+    private static string? FirstLine(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        var line = text.AsSpan().Trim();
+        var end = line.IndexOfAny('\r', '\n');
+        return (end < 0 ? line : line[..end]).Trim().ToString() is { Length: > 0 } result ? result : null;
+    }
 
     [JsonIgnore] public bool IsTerminal => Status is ToolActivityStatus.Success or ToolActivityStatus.PartialSuccess or ToolActivityStatus.Failed or ToolActivityStatus.Cancelled;
     [JsonIgnore] public bool IsVisible => DisplayMode != ToolDisplayMode.Hidden || !IsTerminal || Status is ToolActivityStatus.Failed or ToolActivityStatus.PartialSuccess or ToolActivityStatus.WaitingForConfirmation or ToolActivityStatus.WaitingForPermission || Steps.Any(step => step.IsHighRisk);
@@ -124,6 +164,11 @@ public sealed partial class ToolActivityViewModel : Common.ObservableObject
         OnPropertyChanged(nameof(CompletionLabel));
         OnPropertyChanged(nameof(AccessibilityName));
         OnPropertyChanged(nameof(DurationLabel));
+        // Both read through Steps, which raises nothing on the activity when a step's own status
+        // flips. ApplyResult calls RefreshPresentation right after settling a step, so this is
+        // where a newly failed step reaches the collapsed error line.
+        OnPropertyChanged(nameof(LastErrorMessage));
+        OnPropertyChanged(nameof(ShowCollapsedError));
     }
 }
 
@@ -150,13 +195,12 @@ public sealed partial class ToolStepViewModel : Common.ObservableObject
     public partial string DisplayName { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(TimelineText))]
+    [NotifyPropertyChangedFor(nameof(HasDisplayTarget))]
     public partial string? DisplayTarget { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSummary))]
-    [NotifyPropertyChangedFor(nameof(TimelineText))]
-    [NotifyPropertyChangedFor(nameof(HasTimelineText))]
+    [NotifyPropertyChangedFor(nameof(AccessibilityName))]
     public partial string? Summary { get; set; }
 
     [ObservableProperty]
@@ -191,9 +235,10 @@ public sealed partial class ToolStepViewModel : Common.ObservableObject
 
     [JsonIgnore] public string StatusGlyph => Status switch { ToolStepStatus.Success => "✓", ToolStepStatus.Warning => "⚠", ToolStepStatus.Failed => "✕", ToolStepStatus.Cancelled => "⊘", ToolStepStatus.Pending => "·", _ => "◌" };
     [JsonIgnore] public bool HasDisplayTarget => !string.IsNullOrWhiteSpace(DisplayTarget);
+    /// <summary>Still true (and still fed to <see cref="AccessibilityName"/>) even though the
+    /// collapsed row no longer prints the summary — the result digest reads usefully to a screen
+    /// reader, which has no pointer to expand the step with.</summary>
     [JsonIgnore] public bool HasSummary => !string.IsNullOrWhiteSpace(Summary);
-    [JsonIgnore] public string TimelineText => string.Join(" · ", new[] { DisplayTarget, Summary }.Where(value => !string.IsNullOrWhiteSpace(value)));
-    [JsonIgnore] public bool HasTimelineText => !string.IsNullOrWhiteSpace(TimelineText);
     /// <summary>Currently bound by nothing: the step detail no longer renders an Input block
     /// (see <c>ToolActivityView.xaml</c>). Kept because <see cref="Arguments"/> is still
     /// captured and persisted, so restoring that block is a XAML-only change.</summary>

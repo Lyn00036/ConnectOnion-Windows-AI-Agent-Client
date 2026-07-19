@@ -21,11 +21,20 @@ public sealed class ToolStatusToBrushConverter : IValueConverter
         // Note the pairings are not one-to-one: PartialSuccess and both "waiting on a human"
         // states all read as warning, because to the user they mean the same thing — this
         // step didn't simply succeed.
+        // "danger-only": red for a failure, neutral for everything else. Used on text that is
+        // normally just prose — a completion label, a step's name — where the full palette would
+        // paint every successful row green and turn the card into a traffic light. An optional
+        // ":Key" suffix names the neutral brush, so a caller keeps whatever weight of grey it
+        // already had ("danger-only:TextTertiaryBrush") instead of being nudged a shade darker.
+        var dangerOnly = parameter as string is { } p && p.StartsWith("danger-only", StringComparison.Ordinal)
+            ? p.Split(':') is [_, var neutral] ? neutral : "TextSecondaryBrush"
+            : null;
         var key = value switch
         {
+            ToolActivityStatus.Failed or ToolStepStatus.Failed => "DangerBrush",
+            _ when dangerOnly is not null => dangerOnly,
             ToolActivityStatus.Success or ToolStepStatus.Success => "SuccessBrush",
             ToolActivityStatus.PartialSuccess or ToolStepStatus.Warning => "WarningBrush",
-            ToolActivityStatus.Failed or ToolStepStatus.Failed => "DangerBrush",
             ToolActivityStatus.WaitingForConfirmation or ToolActivityStatus.WaitingForPermission => "WarningBrush",
             _ => "TextSecondaryBrush",
         };

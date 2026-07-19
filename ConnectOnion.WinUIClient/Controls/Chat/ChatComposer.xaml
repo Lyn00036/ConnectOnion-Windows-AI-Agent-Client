@@ -169,7 +169,11 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
+                <!-- Top, against the app-wide implicit style's centring (ControlStyles.xaml):
+                     that centring is for single-line fields, and this one wraps and grows, so
+                     its text has to start at the top and run down. -->
                 <TextBox x:Name="InputBox"
+                         VerticalContentAlignment="Top"
                          AutomationProperties.AutomationId="MessageInput"
                          Grid.Row="0"
                          MinHeight="44"

@@ -4,6 +4,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:ic="using:FluentIcons.WinUI"
+    xmlns:controls="using:ConnectOnion.WinUIClient.Controls"
     xmlns:models="using:ConnectOnion.WinUIClient.Models">
 
     <UserControl.Resources>
@@ -20,7 +21,12 @@
             </TransitionCollection>
         </Grid.ChildrenTransitions>
 
-        <StackPanel Spacing="5">
+        <!-- No Spacing on this panel: StackPanel reserves it between child *slots*, including
+             collapsed ones, so a folded card paid 5px for the hidden timeline and another 5px
+             for the hidden error line — a blank strip under the header with nothing in it. The
+             gaps live on the children's own margins instead, which a collapsed element does not
+             contribute. -->
+        <StackPanel>
             <!-- Header row -->
             <Button MinHeight="30"
                     Padding="0,4"
@@ -59,10 +65,12 @@
                         <!-- MaxWidth is required for TextTrimming to do anything: the column is
                              Auto now, so without a cap a long summary would size the column to
                              its full width and never ellipsize. -->
+                        <!-- The collapsed card's only chance to say a tool broke, so the summary
+                             goes red too when it did ("Tool execution failed · …"). -->
                         <TextBlock Text="{x:Bind Activity.Summary, Mode=OneWay}"
                                    MaxWidth="560"
                                    FontSize="11"
-                                   Foreground="{ThemeResource TextTertiaryBrush}"
+                                   Foreground="{x:Bind Activity.Status, Mode=OneWay, Converter={StaticResource ToolStatusToBrush}, ConverterParameter='danger-only:TextTertiaryBrush'}"
                                    TextTrimming="CharacterEllipsis"
                                    VerticalAlignment="Center" />
                         <!-- 16px, not 20: the box only centres the 12px glyph, and the extra
@@ -92,8 +100,23 @@
                 </Grid>
             </Button>
 
-            <!-- Timeline panel -->
-            <Grid Margin="9,0,0,0"
+            <!-- Collapsed-only failure line. A folded card otherwise reports that something went
+                 wrong without saying what ("Tool execution completed · 1 steps had issues"), so
+                 the user has to open it to find out whether it mattered. Hidden once expanded —
+                 the failed step prints the same text in full down in its Error block. -->
+            <TextBlock Text="{x:Bind Activity.LastErrorMessage, Mode=OneWay}"
+                       Visibility="{x:Bind Activity.ShowCollapsedError, Mode=OneWay, Converter={StaticResource BoolToVis}}"
+                       Margin="0,1,0,3"
+                       FontSize="11"
+                       Foreground="{ThemeResource DangerBrush}"
+                       TextTrimming="CharacterEllipsis"
+                       IsTextSelectionEnabled="True" />
+
+            <!-- Timeline panel. Named because Header_Click hands it to the disclosure animation
+                 explicitly: DisclosureAnimation.FindContentAfter would take the header's first
+                 sibling, which is the collapsed error line above. -->
+            <Grid x:Name="TimelinePanel"
+                  Margin="9,5,0,0"
                   Visibility="{x:Bind Activity.IsTimelineVisible, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                 <Border Width="1"
                         Background="{ThemeResource BorderDefaultBrush}"
@@ -143,10 +166,14 @@
                                             Click="Step_Click"
                                             Tag="{x:Bind}"
                                             AutomationProperties.Name="{x:Bind AccessibilityName, Mode=OneWay}">
+                                        <!-- Two columns: name/target, then duration. A step used to
+                                             carry a hover-revealed chevron in a third column; the
+                                             row is still click-to-expand, and hover still lifts
+                                             the name to the primary foreground, but the icon
+                                             itself is gone. -->
                                         <Grid ColumnSpacing="6">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
 
@@ -155,14 +182,23 @@
                                                            Text="{x:Bind DisplayName, Mode=OneWay}"
                                                            FontSize="13"
                                                            FontWeight="SemiBold"
-                                                           Foreground="{ThemeResource TextSecondaryBrush}"
+                                                           Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource ToolStatusToBrush}, ConverterParameter=danger-only}"
                                                            TextTrimming="CharacterEllipsis" />
-                                                <TextBlock Text="{x:Bind TimelineText, Mode=OneWay}"
+                                                <!-- The step's *target* only ("a.txt"), not its
+                                                     result summary. A collapsed step says what
+                                                     the tool was pointed at; what came back is
+                                                     the Result block one click away, so printing
+                                                     a digest of it here was the same information
+                                                     twice at two levels of fidelity. Summary is
+                                                     still collected and still read out by
+                                                     AccessibilityName — this is a display choice,
+                                                     not a collection one. -->
+                                                <TextBlock Text="{x:Bind DisplayTarget, Mode=OneWay}"
                                                            FontSize="12"
                                                            Foreground="{ThemeResource TextSecondaryBrush}"
                                                            TextWrapping="WrapWholeWords"
                                                            MaxLines="2"
-                                                           Visibility="{x:Bind HasTimelineText, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                                                           Visibility="{x:Bind HasDisplayTarget, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                                             </StackPanel>
 
                                             <TextBlock Grid.Column="1"
@@ -172,28 +208,6 @@
                                                        VerticalAlignment="Top"
                                                        Margin="12,2,0,0" />
 
-                                            <Grid x:Name="StepChevron"
-                                                  Grid.Column="2"
-                                                  Width="20"
-                                                  Height="20"
-                                                  Margin="4,1,0,0"
-                                                  VerticalAlignment="Top"
-                                                  Opacity="0">
-                                                <ic:FluentIcon Icon="ChevronUp"
-                                                               IconVariant="Regular"
-                                                               IconSize="Size12"
-                                                               HorizontalAlignment="Center"
-                                                               VerticalAlignment="Center"
-                                                               Foreground="{ThemeResource TextTertiaryBrush}"
-                                                               Visibility="{x:Bind IsExpanded, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-                                                <ic:FluentIcon Icon="ChevronDown"
-                                                               IconVariant="Regular"
-                                                               IconSize="Size12"
-                                                               HorizontalAlignment="Center"
-                                                               VerticalAlignment="Center"
-                                                               Foreground="{ThemeResource TextTertiaryBrush}"
-                                                               Visibility="{x:Bind IsExpanded, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
-                                            </Grid>
                                         </Grid>
                                     </Button>
 
@@ -218,9 +232,13 @@
                                              switches the heading — the styling carries the
                                              success/failure distinction the second card used to. -->
                                         <StackPanel Spacing="7">
+                                            <!-- No status-coloured left rule. The step's own
+                                                 status glyph in the timeline gutter already says
+                                                 whether it succeeded, and the body's heading
+                                                 switches to "Error" when it did not — a second,
+                                                 full-height colour bar on every single step made
+                                                 a long tool card read as a stack of alerts. -->
                                             <Border Background="{ThemeResource SurfaceElevatedBrush}"
-                                                    BorderBrush="{x:Bind Status, Mode=OneWay, Converter={StaticResource ToolStatusToBrush}}"
-                                                    BorderThickness="2,0,0,0"
                                                     CornerRadius="4"
                                                     Padding="10,8"
                                                     Visibility="{x:Bind HasDetail, Mode=OneWay, Converter={StaticResource BoolToVis}}">
@@ -229,12 +247,12 @@
                                                                FontSize="11"
                                                                FontWeight="SemiBold"
                                                                Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource ToolStatusToBrush}}" />
-                                                    <TextBlock Text="{x:Bind DetailText, Mode=OneWay}"
-                                                               FontFamily="Consolas"
-                                                               FontSize="11"
-                                                               Foreground="{ThemeResource TextPrimaryBrush}"
-                                                               TextWrapping="Wrap"
-                                                               IsTextSelectionEnabled="True" />
+                                                    <!-- Content-aware: a JSON result is
+                                                         re-indented and syntax coloured, anything
+                                                         else renders exactly as the tool sent it.
+                                                         See ToolResultFormatter. -->
+                                                    <controls:ToolResultTextBlock
+                                                        Text="{x:Bind DetailText, Mode=OneWay}" />
                                                 </StackPanel>
                                             </Border>
                                         </StackPanel>
@@ -262,11 +280,13 @@
                                        VerticalAlignment="Center"
                                        Foreground="{x:Bind Activity.Status, Mode=OneWay, Converter={StaticResource ToolStatusToBrush}}" />
                         </Border>
+                        <!-- "Failed" turns red; "Done" and the waiting states stay prose-coloured,
+                             so the one word meaning something broke is the one that stands out. -->
                         <TextBlock Grid.Column="1"
                                    Text="{x:Bind Activity.CompletionLabel, Mode=OneWay}"
                                    FontSize="13"
                                    VerticalAlignment="Center"
-                                   Foreground="{ThemeResource TextSecondaryBrush}" />
+                                   Foreground="{x:Bind Activity.Status, Mode=OneWay, Converter={StaticResource ToolStatusToBrush}, ConverterParameter=danger-only}" />
                     </Grid>
                 </StackPanel>
             </Grid>

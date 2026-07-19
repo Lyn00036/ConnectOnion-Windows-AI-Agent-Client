@@ -93,6 +93,17 @@
             <SolidColorBrush x:Key="InlineCodeBackgroundBrush" Color="{ThemeResource InlineCodeBackgroundColor}" />
             <SolidColorBrush x:Key="CodeTextBrush" Color="{ThemeResource CodeTextColor}" />
 
+            <!-- Structured tool-result syntax accents. Read by name at render time (see
+                 ToolResultTextBlock) rather than bound, because the runs are built in code. -->
+            <SolidColorBrush x:Key="SyntaxKeyBrush" Color="{ThemeResource SyntaxKeyColor}" />
+            <SolidColorBrush x:Key="SyntaxStringBrush" Color="{ThemeResource SyntaxStringColor}" />
+            <SolidColorBrush x:Key="SyntaxNumberBrush" Color="{ThemeResource SyntaxNumberColor}" />
+            <SolidColorBrush x:Key="SyntaxKeywordBrush" Color="{ThemeResource SyntaxKeywordColor}" />
+            <SolidColorBrush x:Key="SyntaxPunctuationBrush" Color="{ThemeResource SyntaxPunctuationColor}" />
+            <SolidColorBrush x:Key="SyntaxCommandBrush" Color="{ThemeResource SyntaxCommandColor}" />
+            <SolidColorBrush x:Key="SyntaxLabelBrush" Color="{ThemeResource SyntaxLabelColor}" />
+            <SolidColorBrush x:Key="SyntaxFailureBrush" Color="{ThemeResource SyntaxFailureColor}" />
+
             <!-- Sidebar -->
             <SolidColorBrush x:Key="SidebarBackgroundBrush" Color="{ThemeResource SidebarBackgroundColor}" />
             <SolidColorBrush x:Key="SidebarItemHoverBrush" Color="{ThemeResource SidebarItemHoverColor}" />
@@ -245,6 +256,17 @@
             <SolidColorBrush x:Key="CodeBackgroundBrush" Color="{ThemeResource CodeBackgroundColor}" />
             <SolidColorBrush x:Key="InlineCodeBackgroundBrush" Color="{ThemeResource InlineCodeBackgroundColor}" />
             <SolidColorBrush x:Key="CodeTextBrush" Color="{ThemeResource CodeTextColor}" />
+
+            <!-- Structured tool-result syntax accents. Read by name at render time (see
+                 ToolResultTextBlock) rather than bound, because the runs are built in code. -->
+            <SolidColorBrush x:Key="SyntaxKeyBrush" Color="{ThemeResource SyntaxKeyColor}" />
+            <SolidColorBrush x:Key="SyntaxStringBrush" Color="{ThemeResource SyntaxStringColor}" />
+            <SolidColorBrush x:Key="SyntaxNumberBrush" Color="{ThemeResource SyntaxNumberColor}" />
+            <SolidColorBrush x:Key="SyntaxKeywordBrush" Color="{ThemeResource SyntaxKeywordColor}" />
+            <SolidColorBrush x:Key="SyntaxPunctuationBrush" Color="{ThemeResource SyntaxPunctuationColor}" />
+            <SolidColorBrush x:Key="SyntaxCommandBrush" Color="{ThemeResource SyntaxCommandColor}" />
+            <SolidColorBrush x:Key="SyntaxLabelBrush" Color="{ThemeResource SyntaxLabelColor}" />
+            <SolidColorBrush x:Key="SyntaxFailureBrush" Color="{ThemeResource SyntaxFailureColor}" />
 
             <!-- Sidebar -->
             <SolidColorBrush x:Key="SidebarBackgroundBrush" Color="{ThemeResource SidebarBackgroundColor}" />

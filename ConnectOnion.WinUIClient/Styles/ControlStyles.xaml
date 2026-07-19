@@ -3,6 +3,30 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
+    <!-- Kills WinUI's heavier bottom edge on text fields. The Fluent TextBox draws its border as
+         "1,1,1,2" at rest and again when focused, which reads as an underline sitting below the
+         text rather than as one box around it. Overriding the two Thickness keys fixes every
+         state at once (the focused state is a separate key, so setting BorderThickness on a style
+         alone would leave the line reappearing the moment the field is clicked) and reaches every
+         field in the app without a per-site style.
+
+         ChatComposer is unaffected either way: it already scopes both keys to 0 in its own
+         TextBox.Resources. -->
+    <Thickness x:Key="TextControlBorderThemeThickness">1</Thickness>
+    <Thickness x:Key="TextControlBorderThemeThicknessFocused">1</Thickness>
+
+    <!-- Implicit, so every field in the app gets it without being touched individually.
+         BasedOn is mandatory, not tidiness: an implicit WinUI style with no BasedOn replaces the
+         default style outright, template included, and the control renders as nothing.
+
+         Centring is what a single-line field wants — the default aligns to the top of the content
+         box, which shows up as text riding high in anything taller than the stock 32px. Multi-line
+         fields want the opposite, so ChatComposer opts out by naming DefaultTextBoxStyle
+         explicitly; a wrapped message must grow downwards from the top, not from the middle. -->
+    <Style TargetType="TextBox" BasedOn="{StaticResource DefaultTextBoxStyle}">
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
     <!-- Shared "card" container chrome: elevated surface, hairline border,
          rounded corners. Opt-in via Style="{StaticResource CardBorderStyle}".
          Per-site Padding/CornerRadius/Margin are set locally and win over the

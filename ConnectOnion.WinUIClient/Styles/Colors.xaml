@@ -71,12 +71,15 @@
             <Color x:Key="DividerColor">#FFE8E8E7</Color>
             <Color x:Key="FocusBorderColor">#FF555555</Color>
 
-            <!-- Status. Success is green (the only non-gray status token — it's the
-                 online presence dot and tool-step success badge). Warning, Danger,
-                 Info stay on the neutral gray scale. -->
+            <!-- Status. Success is green (online presence dot, tool-step success badge)
+                 and Danger is red (a failed tool step's ✕, its Error heading, and the
+                 "Failed" completion label). Those two earn a hue because they are the
+                 states a user scans a tool card for; Warning and Info stay on the
+                 neutral gray scale so the card does not become a traffic light.
+                 7.0:1 on SurfacePrimary — passes AA for the small text it carries. -->
             <Color x:Key="SuccessColor">#FF1B7A4B</Color>
             <Color x:Key="WarningColor">#FF555555</Color>
-            <Color x:Key="DangerColor">#FF222222</Color>
+            <Color x:Key="DangerColor">#FFB3261E</Color>
             <Color x:Key="InfoColor">#FF6E6E6C</Color>
 
             <!-- In-flight status (the event dot / step glyph while a turn is running).
@@ -107,6 +110,25 @@
             <Color x:Key="CodeBackgroundColor">#FFF4F4F3</Color>
             <Color x:Key="InlineCodeBackgroundColor">#FFECECEB</Color>
             <Color x:Key="CodeTextColor">#FF333333</Color>
+
+            <!-- Syntax accents for a structured (JSON) tool result. Deliberately a narrow,
+                 low-saturation set rather than a full editor theme: this is a read-only body in a
+                 chat card, so the colours only need to separate the four things a reader scans
+                 for — the key, the value, and whether that value is text or a literal. Keys take
+                 the brand hue so the structure reads as part of the app rather than as an
+                 imported code block; punctuation drops to tertiary so braces recede. -->
+            <Color x:Key="SyntaxKeyColor">#FF6D4AB8</Color>
+            <Color x:Key="SyntaxStringColor">#FF1F7A4D</Color>
+            <Color x:Key="SyntaxNumberColor">#FFB2591B</Color>
+            <Color x:Key="SyntaxKeywordColor">#FFA3306E</Color>
+            <Color x:Key="SyntaxPunctuationColor">#FF9A9A99</Color>
+            <!-- Console transcripts: the command line is the anchor a reader scans for, so it
+                 takes the strongest weight of the three; the section label is quieter than a
+                 command but still lifted off the body; a non-zero exit reuses the danger hue so
+                 it reads as a failure everywhere else in the app does. -->
+            <Color x:Key="SyntaxCommandColor">#FF1A1A1A</Color>
+            <Color x:Key="SyntaxLabelColor">#FF6E6E6D</Color>
+            <Color x:Key="SyntaxFailureColor">#FFC0392B</Color>
 
             <!-- Composer -->
             <Color x:Key="ComposerStopButtonBackgroundColor">#FF2E2E2E</Color>
@@ -174,11 +196,13 @@
             <Color x:Key="DividerColor">#FF2B2B2B</Color>
             <Color x:Key="FocusBorderColor">#FF999999</Color>
 
-            <!-- Status. Success is green (see the light dictionary); the rest stay
-                 on the neutral gray scale. -->
+            <!-- Status. Success green and Danger red (see the light dictionary); the rest
+                 stay on the neutral gray scale. Both are lifted well off their light-theme
+                 values — #FFB3261E is nearly unreadable on near-black, so Danger moves to a
+                 desaturated salmon that clears 5.9:1 there. -->
             <Color x:Key="SuccessColor">#FF3DBE7A</Color>
             <Color x:Key="WarningColor">#FFBBBBBB</Color>
-            <Color x:Key="DangerColor">#FF666666</Color>
+            <Color x:Key="DangerColor">#FFEF7A70</Color>
             <Color x:Key="InfoColor">#FFA8A8A6</Color>
 
             <!-- In-flight status (see the light dictionary). Close to Warning's value here
@@ -202,6 +226,20 @@
             <Color x:Key="CodeBackgroundColor">#FF0C0C0C</Color>
             <Color x:Key="InlineCodeBackgroundColor">#FF2A2A2A</Color>
             <Color x:Key="CodeTextColor">#FFBBBBBB</Color>
+
+            <!-- Syntax accents (see the light dictionary for the rationale). Lightened and
+                 desaturated relative to their light counterparts: the same hues at full strength
+                 vibrate against a near-black ground. -->
+            <Color x:Key="SyntaxKeyColor">#FFB9A0F0</Color>
+            <Color x:Key="SyntaxStringColor">#FF7FC9A0</Color>
+            <Color x:Key="SyntaxNumberColor">#FFE0A272</Color>
+            <Color x:Key="SyntaxKeywordColor">#FFE29CC4</Color>
+            <Color x:Key="SyntaxPunctuationColor">#FF6E6E6D</Color>
+            <!-- Console transcripts (see the light dictionary). The command inverts to the
+                 brightest value here, since "strongest" on a dark ground means lighter. -->
+            <Color x:Key="SyntaxCommandColor">#FFF0F0EF</Color>
+            <Color x:Key="SyntaxLabelColor">#FF8A8A89</Color>
+            <Color x:Key="SyntaxFailureColor">#FFE8837A</Color>
 
             <!-- Composer (see the light dictionary) -->
             <Color x:Key="ComposerStopButtonBackgroundColor">#FF4A4A4A</Color>

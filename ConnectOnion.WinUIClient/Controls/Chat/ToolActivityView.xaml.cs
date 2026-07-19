@@ -38,9 +38,13 @@ public sealed partial class ToolActivityView : UserControl
         var scroller = FindAncestorScrollViewer(this);
         var savedOffset = scroller?.VerticalOffset;
 
+        // TimelinePanel by name, not FindContentAfter: that helper takes the header's first
+        // sibling, and the collapsed-only error line now sits between the two. Animating it
+        // instead left it stranded at opacity 0 — a card toggled twice lost its error line for
+        // good — and the timeline stopped animating at all.
         await DisclosureAnimation.ToggleAsync(
             header,
-            DisclosureAnimation.FindContentAfter(header),
+            TimelinePanel,
             Activity.IsExpanded,
             Activity.ToggleExpanded);
 
@@ -85,13 +89,15 @@ public sealed partial class ToolActivityView : UserControl
             HeaderChevron.Opacity = 0;
     }
 
+    // A step's hover feedback is the name lifting to the primary foreground, and nothing else.
+    // The card header still reveals its chevron on hover; an individual step does not — it sits
+    // inside an already-opened card, where a per-row icon appearing under the pointer was more
+    // motion than the affordance was worth.
     private void StepItem_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
         if (sender is not FrameworkElement root) return;
         if (root.FindName("StepNameText") is TextBlock nameText)
             nameText.Foreground = ResolveBrush("TextPrimaryBrush");
-        if (root.FindName("StepChevron") is FrameworkElement chevron)
-            chevron.Opacity = 1;
     }
 
     private void StepItem_PointerExited(object sender, PointerRoutedEventArgs e)
@@ -99,8 +105,6 @@ public sealed partial class ToolActivityView : UserControl
         if (sender is not FrameworkElement root) return;
         if (root.FindName("StepNameText") is TextBlock nameText)
             nameText.Foreground = ResolveBrush("TextSecondaryBrush");
-        if (root.FindName("StepChevron") is FrameworkElement chevron)
-            chevron.Opacity = 0;
     }
 
     private static Brush ResolveBrush(string key)

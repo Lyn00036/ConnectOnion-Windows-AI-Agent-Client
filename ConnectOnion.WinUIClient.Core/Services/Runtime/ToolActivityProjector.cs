@@ -55,7 +55,40 @@ public sealed class ToolActivityProjector
 
     public ToolActivityViewModel Activity { get; }
 
-    public ToolActivityProjector(ToolActivityViewModel activity) => Activity = activity;
+    private readonly bool _isLiveView;
+
+    /// <param name="isLiveView">Whether a user is watching this card right now. Defaults to false
+    /// so the headless persistence pass and the legacy-row migration can construct a projector
+    /// without opting into interruption.</param>
+    public ToolActivityProjector(ToolActivityViewModel activity, bool isLiveView = false)
+    {
+        Activity = activity;
+        _isLiveView = isLiveView;
+    }
+
+    /// <summary>
+    /// The card's one auto-expansion rule: stay collapsed unless it needs the user, and there is
+    /// a user there to need. Two things qualify — something broke, or the turn is blocked waiting
+    /// on a decision — because both are moments where the detail is the point. Running steps and
+    /// a clean finish stay folded, since the card's job is to keep a turn's tool timeline out of
+    /// the way until it is asked for.
+    ///
+    /// Gated on <paramref name="_isLiveView"/> so the headless persistence pass writes the card
+    /// collapsed: reopening an old conversation should not replay every past failure and every
+    /// long-since-answered approval at full height.
+    ///
+    /// <see cref="ToolActivityViewModel.IsDetailed"/> still wins: that is an explicit "always
+    /// show me detail" setting, not an automatic behaviour.
+    /// </summary>
+    private void ApplyAutoExpansion()
+    {
+        var failed = Activity.Status == ToolActivityStatus.Failed
+            || Activity.Steps.Any(step => step.Status == ToolStepStatus.Failed);
+        var awaitingUser = Activity.Status
+            is ToolActivityStatus.WaitingForConfirmation
+            or ToolActivityStatus.WaitingForPermission;
+        Activity.IsExpanded = Activity.IsDetailed || (_isLiveView && (failed || awaitingUser));
+    }
 
     /// <summary>Projects a <c>tool_call</c> frame into a new running step (or returns the
     /// existing one if this frame has already been seen).</summary>
@@ -157,20 +190,18 @@ public sealed class ToolActivityProjector
         Activity.Status = ToolActivityStatus.Failed;
         Activity.ErrorSummary = step.Summary;
         Activity.Summary = $"Tool execution failed · view details";
-        // One of the three deliberate exceptions to the collapsed default: a refused action is
-        // exactly what a user needs to see without hunting for it.
-        Activity.IsExpanded = true;
+        ApplyAutoExpansion();
         return step;
     }
 
-    /// <summary>Parks the card while the agent waits on the user. Forces the card open — the
-    /// second exception to the collapsed default: the turn cannot proceed until the user acts,
-    /// so hiding what is being asked would stall them behind a closed card.</summary>
+    /// <summary>Parks the card while the agent waits on the user, and opens it on a live view:
+    /// the turn cannot proceed until they act, and what the tool was about to do is exactly what
+    /// the decision hinges on.</summary>
     public void WaitForConfirmation(bool permission = false)
     {
         Activity.Status = permission ? ToolActivityStatus.WaitingForPermission : ToolActivityStatus.WaitingForConfirmation;
         Activity.Summary = permission ? "Waiting for permission…" : "Waiting for your confirmation…";
-        Activity.IsExpanded = true;
+        ApplyAutoExpansion();
     }
 
     /// <summary>Seals the activity when the turn ends. Steps left running never get a result
@@ -203,9 +234,7 @@ public sealed class ToolActivityProjector
             ToolActivityStatus.PartialSuccess => $"Tool execution completed · {Activity.Steps.Count(step => step.Status is ToolStepStatus.Warning or ToolStepStatus.Failed)} steps had issues",
             _ => $"Tool execution completed · {count} steps · {Activity.DurationLabel}",
         };
-        // Collapse on the way out unless the user asked for detail or something broke: a
-        // finished, successful activity is noise once the reply is on screen.
-        Activity.IsExpanded = Activity.DisplayMode == ToolDisplayMode.Detailed || Activity.Status == ToolActivityStatus.Failed;
+        ApplyAutoExpansion();
 
         Activity.RefreshPresentation();
     }
