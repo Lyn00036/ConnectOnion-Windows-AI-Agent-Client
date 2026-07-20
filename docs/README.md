@@ -8,6 +8,8 @@
 | [WINUI3_NATIVE_MIGRATION.md](./WINUI3_NATIVE_MIGRATION.md) | How the Electron/React client was replaced by the native WinUI 3 app | **Historical** — the migration is complete; read `CLAUDE.md` for the current architecture |
 | [GIT_COMMIT_CONVENTION.md](./GIT_COMMIT_CONVENTION.md) | Conventional Commits types and scopes used in this repo | Living |
 | [OPTIMIZATION.md](./OPTIMIZATION.md) | Implemented architecture, performance, reliability, CI, localization, and diagnostics improvements | Living |
+| [PERFORMANCE.md](./PERFORMANCE.md) | Launch-time and memory benchmark: method, budgets, current baseline, and how to run `scripts/Measure-Performance.ps1` | Living — re-ratify budgets when a run sets a new baseline |
+| [CONCURRENCY.md](./CONCURRENCY.md) | Where threads come from, which primitive guards which shared state, and the sharp edges (including the post-`Closed` dispatcher race) | Living |
 
 ## What is *not* here
 

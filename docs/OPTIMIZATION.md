@@ -6,7 +6,8 @@ Last updated: 2026-07-16
 
 - **Dependency governance:** package versions live in `Directory.Packages.props`; restore enables transitive pinning and NuGet auditing. `Directory.Build.props` enables deterministic builds and the current recommended .NET analyzers.
 - **Layer boundary:** `ConnectOnion.WinUIClient.Core` owns WinUI-free models, SQLite repositories, notification policy, projections, and other testable services. The WinUI executable references Core, and ArchUnitNET tests prevent Core from taking a `Microsoft.UI` dependency or Data from depending on ViewModels.
-- **Lifecycle and diagnostics:** the generic host is started before the window, stopped once on window/tray exit, and drains the run manager with bounded timeouts. Serilog writes structured rolling logs to `%AppData%\ConnectOnion\logs` (10 MB per file, 14 retained files).
+- **Lifecycle and diagnostics:** the generic host is started before the window, stopped once on window/tray exit, and drains the run manager with bounded timeouts. Serilog writes structured rolling logs to `%AppData%\ConnectOnion\logs` (10 MB per file, 14 retained files). The teardown is instrumented end to end — exit funnel, page disarm outcome, minimize-to-tray, then each shutdown phase's duration — so a clean exit is distinguishable from a crash and from a minimize after the fact; see `docs/CONCURRENCY.md`.
+- **Shutdown races:** pages disarm timers in `Unloaded`, which is not guaranteed to fire on window close, so `Views.IShutdownDisarmable` lets `MainWindow.DetachWindowServices` disarm the live page synchronously before the async host shutdown the dispatcher keeps pumping through.
 - **Cancellation:** page unloading cancels conversation restore; cancellation tokens flow through view-model loading and SQLite reads/writes where supported.
 - **Rendering:** `MarkdownTextBlock` caches its Markdig syntax tree. Search-highlight and theme rerenders no longer parse the same message again.
 - **Resource lifecycle:** `ChatComposer` implements deterministic cleanup for speech recognition, AudioGraph nodes, Win2D stroke resources, timers, cancellation sources, and event subscriptions. Audio-meter startup observes cancellation after each asynchronous acquisition so page unload cannot leave a microphone graph behind.
@@ -34,11 +35,14 @@ $env:CONNECTONION_UI_TEST_EXE = (Resolve-Path 'ConnectOnion.WinUIClient/bin/x64/
 dotnet test tests/ConnectOnion.WinUIClient.UITests/ConnectOnion.WinUIClient.UITests.csproj
 ```
 
-For performance investigations, capture an ETW trace with Windows Performance Recorder while restoring a long conversation and scrolling/searching it. Compare UI-thread CPU, allocations, SQLite I/O, and working set against a fixed conversation fixture; do not accept timing results from a Debug build.
+For launch time and steady-state memory, run `scripts/Measure-Performance.ps1` — see
+`docs/PERFORMANCE.md` for the method, the budgets, and the current baseline.
+
+For deeper performance investigations, capture an ETW trace with Windows Performance Recorder while restoring a long conversation and scrolling/searching it. Compare UI-thread CPU, allocations, SQLite I/O, and working set against a fixed conversation fixture; do not accept timing results from a Debug build.
 
 ## Follow-up backlog
 
 - Migrate remaining secondary settings/help/identity labels and runtime-generated strings into `.resw`, then add a second locale as a localization validation build.
 - Add focused WinUI-host tests for converters, template selection, Markdown visual output, focus, drag/drop, tray, and notification activation.
 - Add reconnect, shutdown-drain, and cold-activation race integration coverage.
-- Establish measured budgets for cold start, 1,000-message restore, search latency, scrolling frame time, and steady-state memory before making further micro-optimizations.
+- Establish measured budgets for 1,000-message restore, search latency, and scrolling frame time. Cold start and steady-state memory are done — `scripts/Measure-Performance.ps1` measures them and `docs/PERFORMANCE.md` records the budgets and the current baseline.
