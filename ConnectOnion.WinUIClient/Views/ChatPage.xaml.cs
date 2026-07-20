@@ -30,7 +30,7 @@ using Windows.System;
 
 namespace ConnectOnion.WinUIClient.Views;
 
-public sealed partial class ChatPage : Page, IFindHost, IReloadablePage
+public sealed partial class ChatPage : Page, IFindHost, IReloadablePage, IShutdownDisarmable
 {
     /// <summary>Width of the centred conversation column; see the ChatColumnWidth resource in App.xaml.</summary>
     private static double ChatColumnMaxWidth => (double)Application.Current.Resources["ChatColumnWidth"];
@@ -73,6 +73,30 @@ public sealed partial class ChatPage : Page, IFindHost, IReloadablePage
         ChatRoot.KeyDown += ChatRoot_KeyDown;
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
+    }
+
+    /// <summary>
+    /// Stops everything on this page that could still fire after the window closes. Called from
+    /// <c>MainWindow.DetachWindowServices</c> on the real exit path, because <see cref="OnUnloaded"/>
+    /// — where these are normally disarmed — is not guaranteed to run on window close.
+    ///
+    /// <para>Deliberately <i>not</i> a call to <see cref="OnUnloaded"/>: that also cancels the
+    /// load, reports viewing state, and persists scroll position, all of which touch services or
+    /// start work at the exact moment the app is tearing them down. Disarming is the only part
+    /// that is safe — and necessary — here.</para>
+    ///
+    /// <para><c>Composer.Dispose()</c> is the composer's own synchronous, idempotent teardown: it
+    /// stops the recording-elapsed timer, cancels its lifetime token, releases the speech
+    /// recognizer and audio graph, and drops the Win2D stroke resources. Its <c>Unloaded</c>
+    /// handler is <c>async void</c> and would resume on a dispatcher that may no longer have a
+    /// tree to touch, so this path must not rely on it.</para>
+    /// </summary>
+    public void DisarmForShutdown()
+    {
+        _findDebounceTimer.Stop();
+        // Lives on the view model, which outlives this page, so stopping it here is not redundant.
+        Vm.StopThinkingTicker();
+        Composer.Dispose();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)

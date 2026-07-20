@@ -147,12 +147,19 @@ public sealed partial class ChatPage
                 QueueScrollToEnd(force: true);
             }
 
-            // Second wait: the restore re-virtualizes a new set of bubbles at the
-            // landing point. Hold the overlay until that churn goes quiet (a whole
-            // frame with nothing new realized) rather than a single fixed frame,
-            // which was enough for a short chat but not a long one restored near its
-            // end. Still bounded by the budget so it can never hang.
-            await WaitForContainerChurnToSettleAsync(budget);
+            // Second wait: let the scroll actually land. ChangeView is asynchronous even with
+            // disableAnimation — it schedules the view change rather than applying it — so
+            // measuring container churn immediately after it would sample the frames *before*
+            // the re-virtualization it causes has begun. That is what lifted the overlay early
+            // on longer conversations: the first frame was quiet simply because nothing had
+            // started yet.
+            await WaitForScrollSettledAsync();
+
+            // Third wait: the restore re-virtualizes a new set of bubbles at the landing point.
+            // Hold the overlay until that churn goes quiet. Several consecutive quiet frames,
+            // not one: realization arrives in bursts with gaps between them, and a single quiet
+            // frame is as likely to be a gap mid-burst as the end of the work.
+            await WaitForContainerChurnToSettleAsync(budget, requiredQuietFrames: 3);
 
             LoadingOverlay.Visibility = Visibility.Collapsed;
         }
@@ -169,8 +176,15 @@ public sealed partial class ChatPage
     /// before the overlay can lift without revealing a half-populated viewport. Clamped so a
     /// short chat stays snappy and a pathological one can never freeze the page.
     /// </summary>
+    /// <remarks>
+    /// This is a <b>ceiling, not a wait</b> — both waits it bounds exit as soon as the viewport
+    /// is genuinely settled, so raising it costs nothing on conversations that settle quickly and
+    /// only buys headroom for the ones that do not. The ceiling was previously reached by any
+    /// conversation over ~140 messages, which meant the histories most likely to need extra time
+    /// were the ones guaranteed not to get it.
+    /// </remarks>
     private TimeSpan OverlayReadyBudget()
-        => TimeSpan.FromMilliseconds(Math.Clamp(400 + Vm.Messages.Count * 15, 500, 2500));
+        => TimeSpan.FromMilliseconds(Math.Clamp(400 + Vm.Messages.Count * 15, 500, 4000));
 
     /// <summary>Completes once <paramref name="threshold"/> distinct item containers have been
     /// realized, or the timeout elapses — whichever comes first.</summary>
@@ -196,24 +210,79 @@ public sealed partial class ChatPage
         finally { MessageList.ContainerContentChanging -= handler; }
     }
 
-    /// <summary>Waits until container realization has been idle for one full dispatcher frame
-    /// (the viewport has stopped churning), bounded by <paramref name="timeout"/>.</summary>
-    private async System.Threading.Tasks.Task WaitForContainerChurnToSettleAsync(TimeSpan timeout)
+    /// <summary>
+    /// Waits until container realization has been idle for <paramref name="requiredQuietFrames"/>
+    /// consecutive dispatcher frames, bounded by <paramref name="timeout"/>.
+    /// </summary>
+    /// <remarks>
+    /// More than one quiet frame is required because realization arrives in bursts — a run of
+    /// containers, a gap while their content lays out, then another run. Treating the first gap
+    /// as "finished" lifted the overlay in the middle of the work, which is precisely what a
+    /// longer conversation has more of.
+    /// </remarks>
+    private async System.Threading.Tasks.Task WaitForContainerChurnToSettleAsync(
+        TimeSpan timeout, int requiredQuietFrames = 1)
     {
-        var churned = true; // assume churn until a quiet frame proves otherwise
+        var churned = false;
         TypedEventHandler<ListViewBase, ContainerContentChangingEventArgs> handler = (_, _) => churned = true;
         MessageList.ContainerContentChanging += handler;
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
-            while (churned && sw.Elapsed < timeout)
+            var quietFrames = 0;
+            while (quietFrames < requiredQuietFrames && sw.Elapsed < timeout)
             {
                 churned = false;
                 await NextFrameAsync();
+                // A frame that realized anything resets the run — the count is of *consecutive*
+                // quiet frames, not of quiet frames seen.
+                quietFrames = churned ? 0 : quietFrames + 1;
             }
         }
         finally { MessageList.ContainerContentChanging -= handler; }
+    }
+
+    /// <summary>
+    /// Waits for a programmatic <c>ChangeView</c> to actually take effect, bounded by
+    /// <paramref name="timeout"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para><c>ChangeView</c> returns before the view has moved even with
+    /// <c>disableAnimation: true</c>; it queues the change. <c>ViewChanged</c> with
+    /// <c>IsIntermediate == false</c> is the signal that it has landed and that any
+    /// re-virtualization it triggers is now under way. Without this, the churn check that follows
+    /// samples the quiet frames before the work starts.</para>
+    /// <para>Bounded in <b>frames</b>, not by the overlay budget: a queued view change lands
+    /// within a frame or two, and when the view does not move at all — a short chat already at
+    /// the requested offset — no <c>ViewChanged</c> is ever raised. A time-based bound would sit
+    /// there for the whole budget in exactly the case that is supposed to be fastest.</para>
+    /// </remarks>
+    private async System.Threading.Tasks.Task WaitForScrollSettledAsync(int maxFrames = 4)
+    {
+        if (_messageScrollViewer is null)
+        {
+            // No ScrollViewer yet: still give the layout a frame, so the caller keeps a boundary
+            // between queueing the scroll and measuring churn.
+            await NextFrameAsync();
+            return;
+        }
+
+        var settled = false;
+        EventHandler<ScrollViewerViewChangedEventArgs> handler = (_, args) =>
+        {
+            if (!args.IsIntermediate) settled = true;
+        };
+
+        _messageScrollViewer.ViewChanged += handler;
+        try
+        {
+            for (var frame = 0; frame < maxFrames && !settled; frame++)
+            {
+                await NextFrameAsync();
+            }
+        }
+        finally { _messageScrollViewer.ViewChanged -= handler; }
     }
 
     /// <summary>Yields until the next low-priority dispatcher tick, i.e. after the current
