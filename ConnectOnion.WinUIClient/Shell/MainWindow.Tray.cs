@@ -243,6 +243,10 @@ public sealed partial class MainWindow
     {
         if (_isExiting || _isTrayDisposed) return;
 
+        // Logged because "hidden to tray" and "exited" are indistinguishable in a log otherwise —
+        // the process simply stops writing. A user reporting "the app closed itself" is answered
+        // by whether this line or the exit sequence came last.
+        Serilog.Log.Information("Window hidden to tray; app still running");
         EnsureTrayIconVisible();
         ShowWindow(_hwnd, SwHide);
         _windowPresence?.SetVisible(this, false);
@@ -279,6 +283,11 @@ public sealed partial class MainWindow
 
     private async void ExitApplication()
     {
+        // The single funnel for a real exit (close dialog's Exit, tray menu Exit, File > Exit).
+        // Logged at entry so the teardown lines that follow — window detach, then the phase
+        // timings from App.ShutdownAsync — can be read as one sequence, and so a log that simply
+        // stops without this line is recognisable as a crash rather than a clean exit.
+        Serilog.Log.Information("Exit requested; tearing down window");
         _isExiting = true;
         // Single window: this instance owns the only tray behavior to dispose.
         DisposeTrayBehavior();
