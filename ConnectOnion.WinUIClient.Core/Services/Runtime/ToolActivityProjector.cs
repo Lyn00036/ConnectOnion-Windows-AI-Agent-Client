@@ -30,9 +30,23 @@ public sealed class ToolActivityProjector
     /// is shown as a warning rather than an error, because the agent will usually carry on.</summary>
     private static readonly string[] WarningPatterns =
     {
-        "access denied", "permission denied", "unauthorized", "forbidden", "403", "404",
+        "access denied", "permission denied", "unauthorized", "forbidden",
         "empty result", "no content", "captcha", "rate limit", "redirect failed",
     };
+    /// <summary>
+    /// HTTP status codes that mean the same as the warning phrases above, matched on word
+    /// boundaries rather than as bare substrings.
+    ///
+    /// <para>They cannot live in <see cref="WarningPatterns"/>: result text routinely contains
+    /// URLs whose query strings and hex ids embed those three digits, and a plain
+    /// <c>Contains("403")</c> paints a perfectly successful step amber. The case that prompted
+    /// this was a browser navigation reporting
+    /// <c>…&amp;rdrig=750A8A63BA3A403A8733EAD7629913CE</c> — the "403" is inside a redirect
+    /// tracking id, so the card said "warning" while every word a user could read said success.
+    /// Same reasoning as the leading space on <c>" error"</c> below.</para>
+    /// </summary>
+    private static readonly Regex HttpProblemCodes =
+        new(@"\b(?:403|404)\b", RegexOptions.Compiled | RegexOptions.CultureInvariant);
     /// <summary>Substrings that mean the tool call itself did not complete. Checked before the
     /// warning list, so an overlapping result classifies as the more severe of the two. Note
     /// the leading space on <c>" error"</c>: it keeps this off words that merely contain the
@@ -429,7 +443,9 @@ public sealed class ToolActivityProjector
         var text = result ?? "";
         if (string.Equals(transportStatus, "error", StringComparison.OrdinalIgnoreCase) || FailurePatterns.Any(pattern => text.Contains(pattern, StringComparison.OrdinalIgnoreCase)))
             return (ToolStepStatus.Failed, FriendlyProblem(text));
-        if (string.IsNullOrWhiteSpace(text) || WarningPatterns.Any(pattern => text.Contains(pattern, StringComparison.OrdinalIgnoreCase)))
+        if (string.IsNullOrWhiteSpace(text)
+            || WarningPatterns.Any(pattern => text.Contains(pattern, StringComparison.OrdinalIgnoreCase))
+            || HttpProblemCodes.IsMatch(text))
             return (ToolStepStatus.Warning, string.IsNullOrWhiteSpace(text) ? "No content returned" : FriendlyProblem(text));
         return (ToolStepStatus.Success, ResultSummary(text));
     }
@@ -445,7 +461,9 @@ public sealed class ToolActivityProjector
     /// showing a strange error badly is still better than hiding it.</summary>
     private static string FriendlyProblem(string value)
     {
-        if (value.Contains("access denied", StringComparison.OrdinalIgnoreCase) || value.Contains("forbidden", StringComparison.OrdinalIgnoreCase) || value.Contains("403")) return "Page access denied";
+        // "403" is matched with boundaries here for the same reason it is in HttpProblemCodes —
+        // a bare Contains hits hex ids and query strings.
+        if (value.Contains("access denied", StringComparison.OrdinalIgnoreCase) || value.Contains("forbidden", StringComparison.OrdinalIgnoreCase) || Regex.IsMatch(value, @"\b403\b")) return "Page access denied";
         if (value.Contains("permission denied", StringComparison.OrdinalIgnoreCase) || value.Contains("unauthorized", StringComparison.OrdinalIgnoreCase)) return "Permission denied";
         if (value.Contains("timeout", StringComparison.OrdinalIgnoreCase)) return "Request timed out";
         if (value.Contains("connection refused", StringComparison.OrdinalIgnoreCase)) return "Connection refused";
