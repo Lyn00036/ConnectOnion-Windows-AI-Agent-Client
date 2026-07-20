@@ -194,7 +194,7 @@ public sealed partial class ShellSidebar
     private async void AddAgent_Click(object sender, RoutedEventArgs e)
     {
         await RefreshAsync();
-        RequestNavigation(typeof(HomePage), forceReload: true);
+        AddAgentRequested?.Invoke();
     }
 
     private async void Settings_Click(object sender, RoutedEventArgs e)

@@ -37,7 +37,12 @@ public sealed partial class HomeAgentItem : Common.ObservableObject
 /// </summary>
 public sealed partial class HomePage : Page
 {
+    /// <summary>Navigation parameter asking this page to open its add-agent form on arrival.
+    /// Passed by the shell when the sidebar's "Add agent" button is clicked.</summary>
+    public const string OpenAddAgentParameter = "open-add-agent";
+
     private readonly AgentPresenceService _presence = AppServices.Presence;
+    private bool _openAddAgentOnLoad;
 
     public ObservableCollection<HomeAgentItem> Agents { get; } = new();
 
@@ -48,6 +53,15 @@ public sealed partial class HomePage : Page
         Unloaded += HomePage_Unloaded;
     }
 
+    protected override void OnNavigatedTo(Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
+    {
+        base.OnNavigatedTo(e);
+        // Recorded, not acted on: the form is opened after LoadAsync, because the labels it
+        // shows ("Add agent" vs "Add another agent") depend on the agent count, and bringing it
+        // into view before the list above it has rendered would scroll to the wrong offset.
+        _openAddAgentOnLoad = e.Parameter as string == OpenAddAgentParameter;
+    }
+
     private async void HomePage_Loaded(object sender, RoutedEventArgs e)
     {
         // Unsubscribe-then-subscribe: Loaded fires again every time the user navigates back
@@ -56,6 +70,13 @@ public sealed partial class HomePage : Page
         _presence.PresenceChanged -= OnPresenceChanged;
         _presence.PresenceChanged += OnPresenceChanged;
         await LoadAsync();
+
+        if (_openAddAgentOnLoad)
+        {
+            // One-shot: navigating back to this page later must not silently re-open the form.
+            _openAddAgentOnLoad = false;
+            OpenAddAgentPanel();
+        }
     }
 
     private void HomePage_Unloaded(object sender, RoutedEventArgs e)
@@ -120,7 +141,32 @@ public sealed partial class HomePage : Page
     }
 
     private void AddAnotherAgent_Click(object sender, RoutedEventArgs e)
-        => AddAgentPanel.Show();
+        => OpenAddAgentPanel();
+
+    /// <summary>
+    /// Reveals the add-agent form and puts the caret in it. The form sits below the agent list,
+    /// so with more than a couple of agents it is off-screen when opened — showing it without
+    /// scrolling looks like the button did nothing.
+    /// </summary>
+    private void OpenAddAgentPanel()
+    {
+        // Show() also focuses the input, which on its own scrolls the field into view — but only
+        // roughly, and not at all if focus fails. The explicit bring-into-view is what guarantees
+        // the whole form (title and buttons, not just the focused TextBox) ends up visible.
+        AddAgentPanel.Show();
+
+        // Queued rather than called inline: the panel is Collapsed until Show() returns, so at
+        // this point it still has no size or position and bringing it into view would scroll to
+        // a stale offset. Low priority puts this after the layout pass that Show() triggers.
+        // TryEnqueue (not the throwing overload) because a page unloading in the same frame has
+        // no queue left, and skipping the scroll is the right outcome there.
+        DispatcherQueue?.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            () => AddAgentPanel.StartBringIntoView(new BringIntoViewOptions
+            {
+                AnimationDesired = true,
+            }));
+    }
 
     private async void AddAgentForm_AgentAdded(AgentConfig _)
     {
