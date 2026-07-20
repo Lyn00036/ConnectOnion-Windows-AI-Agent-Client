@@ -54,6 +54,16 @@ public sealed partial class UsageViewModel : Common.ObservableObject
     [NotifyPropertyChangedFor(nameof(HasFirstRecorded))]
     public partial string FirstRecordedText { get; private set; }
 
+    /// <summary>
+    /// The twelve-month activity grid. Deliberately independent of <see cref="Range"/>: the
+    /// heatmap's whole job is the long view, so re-cutting it to "Today" whenever the table above
+    /// it is filtered would leave a one-square map and destroy the only thing it shows. It is
+    /// therefore loaded once per <see cref="LoadAsync"/> from the full ledger, not from the
+    /// window the table uses.
+    /// </summary>
+    [ObservableProperty]
+    public partial UsageHeatmap? Heatmap { get; private set; }
+
     public bool HasFirstRecorded => !string.IsNullOrEmpty(FirstRecordedText);
 
     public bool ShowEmptyState => !IsLoading && Rows.Count == 0;
@@ -87,6 +97,13 @@ public sealed partial class UsageViewModel : Common.ObservableObject
             // ObservableCollection and the bound properties, which must happen on the UI thread.
             var summaries = await _usage.GetByModelAsync(Range.SinceUnixMs()).ConfigureAwait(true);
             var first = await _usage.GetFirstRecordedAsync().ConfigureAwait(true);
+
+            // Only the last 13 months are asked for, not the whole ledger: everything older is
+            // discarded by the projection anyway, and the ledger grows without bound. The extra
+            // month covers the partial week the grid pads backwards into.
+            var heatmapSince = DateTimeOffset.Now.AddMonths(-13).ToUnixTimeMilliseconds();
+            var daily = await _usage.GetDailyTotalsAsync(heatmapSince).ConfigureAwait(true);
+            Heatmap = UsageHeatmap.Build(daily, DateOnly.FromDateTime(DateTime.Now));
 
             Rows.Clear();
 

@@ -122,6 +122,14 @@
             <SolidColorBrush x:Key="AvatarForegroundBrush" Color="{ThemeResource AvatarForegroundColor}" />
             <SolidColorBrush x:Key="AvatarBorderBrush" Color="{ThemeResource AvatarBorderColor}" />
 
+            <!-- Usage heatmap ramp. Read by HeatmapLevelToBrushConverter through
+                 Application.Current.Resources, so both themes must define all five keys. -->
+            <SolidColorBrush x:Key="HeatmapLevel0Brush" Color="{ThemeResource HeatmapLevel0Color}" />
+            <SolidColorBrush x:Key="HeatmapLevel1Brush" Color="{ThemeResource HeatmapLevel1Color}" />
+            <SolidColorBrush x:Key="HeatmapLevel2Brush" Color="{ThemeResource HeatmapLevel2Color}" />
+            <SolidColorBrush x:Key="HeatmapLevel3Brush" Color="{ThemeResource HeatmapLevel3Color}" />
+            <SolidColorBrush x:Key="HeatmapLevel4Brush" Color="{ThemeResource HeatmapLevel4Color}" />
+
             <!-- ============ Legacy keys (kept for source compatibility, now sourced from the tokens above) ============ -->
 
             <SolidColorBrush x:Key="ShellBackgroundBrush" Color="{ThemeResource AppBackgroundColor}" />
@@ -289,6 +297,14 @@
             <SolidColorBrush x:Key="AvatarBackgroundBrush" Color="{ThemeResource AvatarBackgroundColor}" />
             <SolidColorBrush x:Key="AvatarForegroundBrush" Color="{ThemeResource AvatarForegroundColor}" />
             <SolidColorBrush x:Key="AvatarBorderBrush" Color="{ThemeResource AvatarBorderColor}" />
+
+            <!-- Usage heatmap ramp. Read by HeatmapLevelToBrushConverter through
+                 Application.Current.Resources, so both themes must define all five keys. -->
+            <SolidColorBrush x:Key="HeatmapLevel0Brush" Color="{ThemeResource HeatmapLevel0Color}" />
+            <SolidColorBrush x:Key="HeatmapLevel1Brush" Color="{ThemeResource HeatmapLevel1Color}" />
+            <SolidColorBrush x:Key="HeatmapLevel2Brush" Color="{ThemeResource HeatmapLevel2Color}" />
+            <SolidColorBrush x:Key="HeatmapLevel3Brush" Color="{ThemeResource HeatmapLevel3Color}" />
+            <SolidColorBrush x:Key="HeatmapLevel4Brush" Color="{ThemeResource HeatmapLevel4Color}" />
 
             <!-- ============ Legacy keys (kept for source compatibility, now sourced from the tokens above) ============ -->
 

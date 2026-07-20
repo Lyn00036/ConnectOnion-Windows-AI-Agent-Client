@@ -97,6 +97,72 @@ public sealed class UsageRepositoryTests
         Assert.Equal(1, summary.Calls);
     }
 
+    [Fact]
+    public async Task GetDailyTotalsAsync_GroupsByLocalCalendarDay_AndSumsBothTokenKinds()
+    {
+        await _usage.ClearAsync();
+        // 09:00 and 21:00 local on the same day. The 21:00 call is the one that matters: with
+        // UTC bucketing it lands on tomorrow for anyone east of Greenwich and on the same day
+        // for anyone west, so this is what pins the 'localtime' modifier in the query.
+        var day = new DateTimeOffset(2026, 3, 14, 9, 0, 0, DateTimeOffset.Now.Offset);
+        await _usage.InsertAsync(new[]
+        {
+            Record("morning", input: 100, output: 20, createdAt: day.ToUnixTimeMilliseconds()),
+            Record("evening", input: 300, output: 80, createdAt: day.AddHours(12).ToUnixTimeMilliseconds()),
+        });
+
+        var totals = await _usage.GetDailyTotalsAsync(null);
+
+        var only = Assert.Single(totals);
+        Assert.Equal(new DateOnly(2026, 3, 14), only.Date);
+        Assert.Equal(400, only.InputTokens);
+        Assert.Equal(100, only.OutputTokens);
+        Assert.Equal(500, only.TotalTokens);
+        Assert.Equal(2, only.Calls);
+    }
+
+    [Fact]
+    public async Task GetDailyTotalsAsync_ReturnsOneRowPerDay_InAscendingOrder()
+    {
+        await _usage.ClearAsync();
+        var first = new DateTimeOffset(2026, 3, 10, 12, 0, 0, DateTimeOffset.Now.Offset);
+        await _usage.InsertAsync(new[]
+        {
+            Record("d3", createdAt: first.AddDays(2).ToUnixTimeMilliseconds()),
+            Record("d1", createdAt: first.ToUnixTimeMilliseconds()),
+            Record("d2", createdAt: first.AddDays(1).ToUnixTimeMilliseconds()),
+        });
+
+        var totals = await _usage.GetDailyTotalsAsync(null);
+
+        Assert.Equal(3, totals.Count);
+        Assert.Equal(totals.OrderBy(t => t.Date).Select(t => t.Date), totals.Select(t => t.Date));
+    }
+
+    [Fact]
+    public async Task GetDailyTotalsAsync_HonoursTheSinceBound()
+    {
+        await _usage.ClearAsync();
+        var now = DateTimeOffset.Now;
+        await _usage.InsertAsync(new[]
+        {
+            Record("old", createdAt: now.AddDays(-40).ToUnixTimeMilliseconds()),
+            Record("recent", createdAt: now.AddDays(-2).ToUnixTimeMilliseconds()),
+        });
+
+        var totals = await _usage.GetDailyTotalsAsync(now.AddDays(-7).ToUnixTimeMilliseconds());
+
+        Assert.Single(totals);
+    }
+
+    [Fact]
+    public async Task GetDailyTotalsAsync_EmptyLedger_ReturnsEmptyNotNull()
+    {
+        await _usage.ClearAsync();
+
+        Assert.Empty(await _usage.GetDailyTotalsAsync(null));
+    }
+
     private static UsageRecord Record(
         string id,
         string model = "test-model",
