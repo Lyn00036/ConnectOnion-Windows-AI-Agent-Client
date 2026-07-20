@@ -35,6 +35,7 @@
             <presentation:BoolToThicknessConverter x:Key="BoolToThickness" />
             <presentation:LocalPathToImageSourceConverter x:Key="PathToImage" />
             <presentation:RowStateToBackgroundConverter x:Key="RowStateToBackground" />
+            <presentation:HeatmapLevelToBrushConverter x:Key="HeatmapLevelToBrush" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

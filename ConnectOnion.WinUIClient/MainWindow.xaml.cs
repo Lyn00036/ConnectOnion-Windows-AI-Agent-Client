@@ -34,6 +34,7 @@ public sealed partial class MainWindow : Window
         InitializeTrayBehavior();
         ShellSidebar.NavigationRequested += NavigateTo;
         ShellSidebar.SettingsRequested += ShowSettingsOverlay;
+        ShellSidebar.AddAgentRequested += ShowAddAgentOnHome;
         SettingsOverlay.CloseRequested += (_, _) => CloseSettingsOverlay();
         KeyboardShortcutsDialog.CloseRequested += (_, _) => CloseKeyboardShortcutsOverlay();
         AboutOverlay.CloseRequested += (_, _) => CloseAboutOverlay();
@@ -101,6 +102,34 @@ public sealed partial class MainWindow : Window
         DetachShortcutHints();
         DetachViewMenu();
         InAppNotifications.Shutdown();
+
+        // Pages disarm their own timers in Unloaded, which is not guaranteed to fire on window
+        // close — so the page currently on screen is asked directly. Wrapped because a page that
+        // throws while disarming must not abort the rest of this teardown; the alternative is
+        // leaving the notification host and window hooks attached.
+        //
+        // The outcome is logged rather than left silent because this is the one step whose
+        // failure mode is invisible: skipping it does not throw, it leaves a timer armed, and the
+        // crash it eventually causes is a native access violation with no managed stack and no
+        // connection back to here. The log line is the only evidence that the disarm ran at all.
+        var pageName = ContentFrame.Content?.GetType().Name ?? "none";
+        try
+        {
+            if (ContentFrame.Content is Views.IShutdownDisarmable page)
+            {
+                page.DisarmForShutdown();
+                Serilog.Log.Information("Window teardown: disarmed page {Page}", pageName);
+            }
+            else
+            {
+                Serilog.Log.Information(
+                    "Window teardown: page {Page} has nothing to disarm", pageName);
+            }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Warning(ex, "Page {Page} did not disarm cleanly during shutdown", pageName);
+        }
     }
 
     private static AppWindow GetAppWindow(IntPtr hwnd)
@@ -236,7 +265,17 @@ public sealed partial class MainWindow : Window
         ThemeService.Apply(prefs.Theme);
     }
 
-    private async void NavigateTo(Type page, bool forceReload = false)
+    /// <summary>Two-parameter shape kept because it is what <c>ShellSidebar.NavigationRequested</c>
+    /// (an <c>Action&lt;Type, bool&gt;</c>) binds to — a method with an extra optional parameter
+    /// does not convert to that delegate.</summary>
+    private void NavigateTo(Type page, bool forceReload = false)
+        => NavigateTo(page, forceReload, parameter: null);
+
+    /// <param name="parameter">Optional navigation parameter, read by the target page in
+    /// <c>OnNavigatedTo</c>. Only reaches a page that is actually navigated to — the
+    /// <see cref="Views.IReloadablePage"/> fast path below reloads the live page instead, and a
+    /// page using this must therefore not depend on it arriving on every call.</param>
+    private async void NavigateTo(Type page, bool forceReload, object? parameter)
     {
         // Chat → chat (or agent → agent) is a change of selection, not a change of page. Navigating
         // would discard the live page and build another — XAML tree, composer + Win2D canvas, view
@@ -256,7 +295,7 @@ public sealed partial class MainWindow : Window
 
         if (forceReload || ContentFrame.CurrentSourcePageType != page)
         {
-            ContentFrame.Navigate(page);
+            ContentFrame.Navigate(page, parameter);
 
             // Navigate pushes the old page onto the BackStack. When
             // force-reloading, remove it so the old instance (with its
@@ -265,6 +304,19 @@ public sealed partial class MainWindow : Window
                 ContentFrame.BackStack.RemoveAt(ContentFrame.BackStack.Count - 1);
         }
     }
+
+    /// <summary>
+    /// Answers the sidebar's "Add agent" button: go to the landing page with the form already
+    /// open and scrolled to.
+    ///
+    /// <para><c>forceReload</c> is what makes this work when the user is already on HomePage —
+    /// without it <c>NavigateTo</c> would see the page type is unchanged and do nothing, so the
+    /// button would appear dead exactly when the target is already on screen. HomePage does not
+    /// implement <see cref="Views.IReloadablePage"/>, so a force-reload is always a real
+    /// navigation and the parameter always arrives.</para>
+    /// </summary>
+    private void ShowAddAgentOnHome()
+        => NavigateTo(typeof(HomePage), forceReload: true, parameter: HomePage.OpenAddAgentParameter);
 
     private void ShowSettingsOverlay(FrameworkElement? opener = null)
         => SettingsOverlay.Show(opener);

@@ -103,6 +103,7 @@ namespace ConnectOnion.WinUIClient
         /// </summary>
         public App()
         {
+            Diagnostics.StartupTelemetry.Mark(Diagnostics.StartupPhases.ManagedEntry);
             InitializeComponent();
 
             AppStorage.EnsureDirectories();
@@ -146,11 +147,24 @@ namespace ConnectOnion.WinUIClient
         {
             try
             {
+                // Deliberately sequential. Starting the host concurrently with window
+                // construction was tried and measured: it changes nothing, because every hosted
+                // service's StartAsync completes synchronously on this thread (the SQLite reads
+                // return inline), so the returned task is already complete and there is nothing
+                // to overlap with. It only moved `MainWindow`/`Closed` assignment after an await
+                // and let the window exist before its services had loaded — risk with no payoff.
+                // Making it real would mean pushing host start onto a background thread, which
+                // OS notification registration is not obviously safe for.
                 await _host.StartAsync();
+                Diagnostics.StartupTelemetry.Mark(Diagnostics.StartupPhases.HostStarted);
                 _window = new MainWindow();
+                Diagnostics.StartupTelemetry.Mark(Diagnostics.StartupPhases.WindowCreated);
                 MainWindow = _window;
                 _window.Closed += (_, _) => _ = ShutdownAsync();
                 _window.Activate();
+                Diagnostics.StartupTelemetry.Mark(Diagnostics.StartupPhases.WindowActivated);
+                // Arm only after Activate(): the first composition pass we want is this window's.
+                Diagnostics.StartupTelemetry.TrackFirstFrame();
                 HandleColdStartActivation();
                 FlushPendingActivation();
             }

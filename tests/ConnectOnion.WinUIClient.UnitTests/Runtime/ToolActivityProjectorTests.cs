@@ -109,5 +109,58 @@ public sealed class ToolActivityProjectorTests
         Assert.Equal(ToolStepStatus.Success, step.Status);
     }
 
+    [Theory]
+    // The real report: a successful Bing navigation whose redirect tracking id happens to
+    // contain "403". Every word a user can read says success, so an amber card is unexplainable.
+    [InlineData("Navigated to https://www.bing.com/search?q=UNSW+ranking&rdr=1&rdrig=750A8A63BA3A403A8733EAD7629913CE")]
+    // Digits that are part of a longer number are not status codes either.
+    [InlineData("Downloaded 4040 rows")]
+    [InlineData("Navigated to https://example.com/item/14032")]
+    public void ApplyResult_DigitsEmbeddedInUrlsOrNumbers_StaysSuccess(string result)
+    {
+        var activity = new ToolActivityViewModel();
+        var projector = new ToolActivityProjector(activity);
+        projector.ApplyCall(Event("tool_call", "{\"tool_id\":\"1\",\"name\":\"navigate\",\"args\":{}}"));
+
+        var step = projector.ApplyResult(
+            Event("tool_result", $"{{\"tool_id\":\"1\",\"status\":\"success\",\"result\":\"{result}\"}}"));
+        projector.Complete();
+
+        Assert.Equal(ToolStepStatus.Success, step!.Status);
+        Assert.Equal(ToolActivityStatus.Success, activity.Status);
+    }
+
+    [Theory]
+    // A real status code still has to register — the boundary fix must not disarm the check.
+    // Note none of these say "failed"/"error": those words would make it a Failure instead,
+    // which is the documented precedence, not a 404 being ignored.
+    [InlineData("Server returned 404 Not Found")]
+    [InlineData("GET /missing -> 404")]
+    [InlineData("Blocked with status 403")]
+    public void ApplyResult_GenuineHttpStatusCode_IsStillAWarning(string result)
+    {
+        var activity = new ToolActivityViewModel();
+        var projector = new ToolActivityProjector(activity);
+        projector.ApplyCall(Event("tool_call", "{\"tool_id\":\"1\",\"name\":\"navigate\",\"args\":{}}"));
+
+        var step = projector.ApplyResult(
+            Event("tool_result", $"{{\"tool_id\":\"1\",\"status\":\"success\",\"result\":\"{result}\"}}"));
+
+        Assert.Equal(ToolStepStatus.Warning, step!.Status);
+    }
+
+    [Fact]
+    public void ApplyResult_403WithoutFailureWording_SummarisesAsAccessDenied()
+    {
+        var activity = new ToolActivityViewModel();
+        var projector = new ToolActivityProjector(activity);
+        projector.ApplyCall(Event("tool_call", "{\"tool_id\":\"1\",\"name\":\"navigate\",\"args\":{}}"));
+
+        var step = projector.ApplyResult(
+            Event("tool_result", "{\"tool_id\":\"1\",\"status\":\"success\",\"result\":\"Blocked with status 403\"}"));
+
+        Assert.Equal("Page access denied", step!.Summary);
+    }
+
     private static AgentStreamEvent Event(string type, string json) => new(type, type, null, json);
 }

@@ -47,9 +47,19 @@ public sealed partial class ChatComposer
     // the re-entrancy guards test.
     private enum RecordingState { Idle, Starting, Recording, Stopping }
     private RecordingState _recordingState = RecordingState.Idle;
-    /// <summary>Audio is metered for this long before the recognizer starts, so the waveform is
-    /// already moving when the user begins speaking rather than snapping to life late.</summary>
-    private const int StartBufferMs = 500;
+    /// <summary>
+    /// Upper bound on how long the start sequence waits for the audio meter to come up before
+    /// showing the recording UI anyway.
+    ///
+    /// <para>This used to be an unconditional <c>Task.Delay</c> in front of all the recogniser
+    /// work, so every start paid it in full and it was pure serialised latency: measured, the
+    /// meter is ready in ~460 ms and the recogniser takes ~1.2 s (first use) or ~220 ms
+    /// (subsequent) to start, and none of that overlapped. It is now a cap on an actual
+    /// readiness signal — the start proceeds as soon as the meter is running — which keeps the
+    /// original intent (waveform already moving before recording begins) without charging every
+    /// user a fixed 500 ms for it.</para>
+    /// </summary>
+    private const int MeterReadyTimeoutMs = 1500;
     /// <summary>Capture continues for this long after Stop, so a word still in flight when the
     /// user clicks lands in the transcript instead of being cut off.</summary>
     private const int StopBufferMs = 500;
@@ -59,6 +69,14 @@ public sealed partial class ChatComposer
 
     // ---- Speech recognition ----
     private SpeechRecognizer? _speechRecognizer;
+
+    /// <summary>
+    /// Completes when the audio meter is running — or has failed, which counts as "ready" because
+    /// the start must not hang waiting for a microphone that will never arrive. Recreated per
+    /// recording session.
+    /// </summary>
+    private TaskCompletionSource? _meterReady;
+
     private AudioGraph? _audioGraph;
     private AudioDeviceInputNode? _audioInputNode;
     private AudioFrameOutputNode? _audioFrameOutputNode;
@@ -66,7 +84,6 @@ public sealed partial class ChatComposer
     /// thread and read by the Win2D draw handler on the UI thread.</summary>
     private readonly object _amplitudeLock = new();
     private readonly DispatcherTimer _recordingElapsedTimer = new() { Interval = TimeSpan.FromSeconds(1) };
-    private string _latestSpeechText = "";
     private double _targetAmplitude;
     private double _smoothedAmplitude;
     private DateTimeOffset _recordingStartedAt;
@@ -103,31 +120,34 @@ public sealed partial class ChatComposer
 
         try
         {
-            // --- Starting: show spinner, start audio meter, buffer delay ---
+            // --- Starting: spinner up, then everything that can run at once, does ---
+            //
+            // The meter and the recogniser touch different audio endpoints (see the category note
+            // in StartAudioMeterAsync), so neither has to wait for the other. Running them in
+            // sequence — which is what the old fixed buffer delay did — made every start cost the
+            // sum of two independent waits instead of the longer one.
             _recordingState = RecordingState.Starting;
+            // Before RefreshSendButtonState, which is what makes the panel visible — clearing it
+            // afterwards would show the previous session's timer for a frame.
+            ResetRecordingVisuals();
+            _transcript.Begin();
             RefreshSendButtonState();
-            // Not awaited: the meter runs for the whole session, so awaiting it here would
-            // never return. It observes the same token, so a cancelled start tears it down.
+            LogSpeechFootprint("starting");
+
+            _meterReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            // Not awaited: the meter runs for the whole session, so awaiting it here would never
+            // return. It observes the same token, so a cancelled start tears it down, and it
+            // signals _meterReady when the graph is live (or has failed).
             _ = StartAudioMeterAsync(ct);
 
-            await Task.Delay(StartBufferMs, ct);
+            var recognizerStarting = StartRecognizerAsync(ct);
 
-            // --- Start recognizer ---
-            // A fresh recognizer per session, with the old one's handlers detached first: a
-            // SpeechRecognizer cannot be restarted after cancellation, and leaving handlers on
-            // a disposed instance would deliver a previous session's results into this one.
-            DetachSpeechRecognizerEvents();
-            _speechRecognizer?.Dispose();
-            _speechRecognizer = new SpeechRecognizer();
-            _latestSpeechText = "";
-            _speechRecognizer.HypothesisGenerated += SpeechRecognizer_HypothesisGenerated;
-            _speechRecognizer.ContinuousRecognitionSession.ResultGenerated += SpeechRecognition_ResultGenerated;
-            _speechRecognizer.Constraints.Add(
-                new SpeechRecognitionTopicConstraint(SpeechRecognitionScenario.Dictation, "message"));
+            // Wait for the meter only as long as it is plausibly still coming. A microphone that
+            // never opens must not block speech recognition, which does not depend on it.
+            var meterWait = Task.WhenAny(_meterReady.Task, Task.Delay(MeterReadyTimeoutMs, ct));
 
-            var compilation = await _speechRecognizer.CompileConstraintsAsync();
-            ct.ThrowIfCancellationRequested();
-            if (compilation.Status != SpeechRecognitionResultStatus.Success)
+            var started = await recognizerStarting;
+            if (!started)
             {
                 _recordingState = RecordingState.Idle;
                 RefreshSendButtonState();
@@ -136,7 +156,10 @@ public sealed partial class ChatComposer
                 return;
             }
 
-            await _speechRecognizer.ContinuousRecognitionSession.StartAsync();
+            // Recording begins only once the waveform has something to draw, preserving the
+            // behaviour the old delay existed for: the meter is normally ready long before this,
+            // so this await usually returns immediately.
+            await meterWait;
             ct.ThrowIfCancellationRequested();
 
             // --- Recording: show waveform, start timer ---
@@ -158,6 +181,44 @@ public sealed partial class ChatComposer
             await ShowSpeechIssueAsync("Speech recognition is unavailable. Check microphone and speech privacy settings.");
             FocusInput();
         }
+    }
+
+    /// <summary>
+    /// Takes the recogniser from idle to listening. Returns false when the constraints could not
+    /// be compiled, which the caller reports as an environment problem rather than a crash.
+    /// </summary>
+    /// <remarks>
+    /// Constructed here, on the UI thread, and not ahead of time on a background thread. A
+    /// pre-warm was tried — it saves ~220 ms of construction and constraint compilation on the
+    /// first use of a session — and removed again: building the recogniser on a thread-pool
+    /// (MTA) thread changes which apartment WinRT delivers its events on, and the speech
+    /// callbacks then arrive off the UI thread. That is survivable now (see
+    /// the note on the speech callbacks below), but it also meant holding a live
+    /// native speech engine resident between recordings for a saving that the far larger cost
+    /// here — <c>StartAsync</c>, measured at ~1.2 s on first use and unaffected by any amount of
+    /// pre-warming — dwarfs.
+    /// </remarks>
+    private async System.Threading.Tasks.Task<bool> StartRecognizerAsync(CancellationToken ct)
+    {
+        // Handlers off the previous instance first: a SpeechRecognizer cannot be restarted after
+        // cancellation, and leaving handlers attached to a disposed one would deliver a previous
+        // session's results into this one.
+        DetachSpeechRecognizerEvents();
+        _speechRecognizer?.Dispose();
+
+        _speechRecognizer = new SpeechRecognizer();
+        _speechRecognizer.Constraints.Add(
+            new SpeechRecognitionTopicConstraint(SpeechRecognitionScenario.Dictation, "message"));
+        _speechRecognizer.HypothesisGenerated += SpeechRecognizer_HypothesisGenerated;
+        _speechRecognizer.ContinuousRecognitionSession.ResultGenerated += SpeechRecognition_ResultGenerated;
+
+        var compilation = await _speechRecognizer.CompileConstraintsAsync();
+        ct.ThrowIfCancellationRequested();
+        if (compilation.Status != SpeechRecognitionResultStatus.Success) return false;
+
+        await _speechRecognizer.ContinuousRecognitionSession.StartAsync();
+        ct.ThrowIfCancellationRequested();
+        return true;
     }
 
     private void StopSpeech_Click(object sender, RoutedEventArgs e)
@@ -196,23 +257,64 @@ public sealed partial class ChatComposer
         DetachSpeechRecognizerEvents();
         StopRecordingVisuals();
         StopAudioMeter();
-        AppendLatestSpeechText();
+        FlushTranscriptToComposer();
+
+        // Released here rather than being left for the next start to dispose. A SpeechRecognizer
+        // cannot be reused after its session is cancelled, so between recordings this object is
+        // pure cost: it holds the native speech engine and its capture endpoint for as long as it
+        // lives, which also keeps the microphone attributed to this app after the user has
+        // visibly stopped recording. Disposal is idempotent, so the next start's defensive
+        // Dispose stays harmless.
+        _speechRecognizer?.Dispose();
+        _speechRecognizer = null;
 
         _recordingState = RecordingState.Idle;
         _recordingCts?.Cancel();
         RefreshSendButtonState();
         FocusInput();
+
+        LogSpeechFootprint("stopped");
+    }
+
+    /// <summary>
+    /// Records the process footprint at each speech transition.
+    ///
+    /// <para>Here because "memory goes up every time I use the microphone" is otherwise
+    /// unfalsifiable: the speech and audio stacks load native DLLs and buffers on first use and
+    /// .NET does not hand working set back to the OS promptly, so some rise is expected and only
+    /// a per-session trend distinguishes that from a leak. Two lines per recording is low enough
+    /// volume to keep permanently, and turns the question into a number that can be read out of
+    /// the log after a few clicks.</para>
+    ///
+    /// <para>Managed heap is the diagnostic half: a rising working set with a flat heap is the
+    /// native stacks warming up, whereas a heap that climbs per session is a real managed leak.</para>
+    /// </summary>
+    private static void LogSpeechFootprint(string phase)
+    {
+        try
+        {
+            using var process = System.Diagnostics.Process.GetCurrentProcess();
+            process.Refresh();
+            Serilog.Log.Information(
+                "Speech {Phase}: working set {WorkingSetMb} MB, managed heap {HeapKb} KB",
+                phase,
+                process.WorkingSet64 / 1024 / 1024,
+                GC.GetTotalMemory(forceFullCollection: false) / 1024);
+        }
+        catch
+        {
+            // Diagnostics must never be able to break the feature they observe.
+        }
     }
 
     private void SpeechRecognizer_HypothesisGenerated(
         SpeechRecognizer sender,
         SpeechRecognitionHypothesisGeneratedEventArgs args)
     {
-        // Hypotheses are the recognizer's running guess and get revised as the user keeps
-        // speaking, so this only *stores* the latest — it must not append. It is the safety net
-        // for the final utterance, which cancellation can end before a Result is generated;
-        // AppendLatestSpeechText flushes it during teardown.
-        _latestSpeechText = args.Hypothesis.Text;
+        // Stored, never displayed. It is the safety net for the utterance in flight when the user
+        // stops: cancellation can end the session before the recogniser finalises what it was
+        // hearing, and for a short dictation that is the entire transcript.
+        _transcript.SetHypothesis(args.Hypothesis.Text);
     }
 
     private void SpeechRecognition_ResultGenerated(
@@ -220,47 +322,71 @@ public sealed partial class ChatComposer
         SpeechContinuousRecognitionResultGeneratedEventArgs args)
     {
         var result = args.Result;
-        if (result.Status == SpeechRecognitionResultStatus.Success
-            && !string.IsNullOrWhiteSpace(result.Text))
+        if (result.Status == SpeechRecognitionResultStatus.Success)
         {
-            // Append immediately — incremental so text accumulates during
-            // recording and the last utterance is never lost on CancelAsync.
-            AppendRecognizedText(result.Text.Trim());
-            _latestSpeechText = result.Text;
+            _transcript.AddResult(result.Text);
         }
     }
 
-    private void AppendRecognizedText(string text)
-    {
-        var current = InputBox.Text;
-        InputBox.Text = string.IsNullOrWhiteSpace(current)
-            ? text
-            : $"{current.TrimEnd()} {text}";
-        InputBox.SelectionStart = InputBox.Text.Length;
-    }
+    // ---- Composer text ----
+    //
+    // There is exactly one path from speech into the composer: FlushTranscriptToComposer, on stop.
+    // Nothing is written while recording, so the box is entirely the user's until they finish —
+    // they can type during dictation without the recogniser rewriting under them, and a revised
+    // guess never has to be withdrawn from text already inserted.
+    //
+    // What was heard is accumulated by DictationTranscript in the Core project, where the
+    // ordering rules are unit tested without a microphone.
 
-    /// <summary>Flushes the pending hypothesis at teardown. Cleared afterwards so the same text
-    /// cannot be appended twice — a hypothesis that did get confirmed as a Result was already
-    /// appended by <see cref="SpeechRecognition_ResultGenerated"/>.</summary>
-    private void AppendLatestSpeechText()
+    private readonly Services.Speech.DictationTranscript _transcript = new();
+
+    /// <summary>
+    /// Inserts everything the session heard, once. Called from the stop sequence on the UI thread.
+    /// </summary>
+    private void FlushTranscriptToComposer()
     {
-        if (string.IsNullOrWhiteSpace(_latestSpeechText)) return;
-        AppendRecognizedText(_latestSpeechText.Trim());
-        _latestSpeechText = "";
+        if (_transcript.IsEmpty) return;
+
+        // Read the box now rather than at start: whatever the user typed while dictating is kept,
+        // and the spoken text goes after it.
+        var composed = _transcript.BuildInsertion(InputBox.Text ?? "");
+        if (string.Equals(composed, InputBox.Text, StringComparison.Ordinal)) return;
+
+        InputBox.Text = composed;
+        InputBox.SelectionStart = composed.Length;
+        // Speech filling the box is what makes Send become available, so the button has to be
+        // re-evaluated here as it would be for typing.
+        RefreshSendButtonState();
     }
 
     // ---- Recording controls ----
 
-    private void StartRecordingVisuals()
+    /// <summary>
+    /// Clears the waveform panel to its empty state. Called when entering <c>Starting</c>, which
+    /// is when the panel becomes <i>visible</i> — <c>RefreshSendButtonState</c> shows it for the
+    /// whole of <c>IsRecordingActive</c>, not just while recording.
+    ///
+    /// <para>Doing this in <see cref="StartRecordingVisuals"/> instead was a bug: that runs on the
+    /// transition to <c>Recording</c>, so for the half-second-plus that starting the recogniser
+    /// takes, the panel was on screen still showing the <i>previous</i> session's elapsed time.</para>
+    /// </summary>
+    private void ResetRecordingVisuals()
     {
-        _recordingStartedAt = DateTimeOffset.Now;
         WaveformTimerText.Text = "0:00";
-        InputBox.PlaceholderText = "Listening...";
         _targetAmplitude = 0;
         _smoothedAmplitude = 0;
         _sampleWritePos = 0;
         _sampleCount = 0;
         Array.Clear(_sampleRing);
+    }
+
+    private void StartRecordingVisuals()
+    {
+        // The clock starts when recording actually starts, not when the panel appeared: the
+        // spinner time spent waiting for the recogniser is not part of the recording.
+        _recordingStartedAt = DateTimeOffset.Now;
+        ResetRecordingVisuals();
+        InputBox.PlaceholderText = "Listening...";
         _recordingElapsedTimer.Start();
     }
 
@@ -440,6 +566,14 @@ public sealed partial class ChatComposer
         catch
         {
             StopAudioMeter();
+        }
+        finally
+        {
+            // Signalled on every path, success or not. This method has several early returns and
+            // two catch arms; a start sequence waiting on a meter that quietly gave up would sit
+            // out the whole MeterReadyTimeoutMs and be slower than the fixed delay this replaced.
+            // "Ready" therefore means "no longer coming", not "succeeded".
+            _meterReady?.TrySetResult();
         }
     }
 

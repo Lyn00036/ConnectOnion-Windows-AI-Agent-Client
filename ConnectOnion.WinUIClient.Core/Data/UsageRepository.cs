@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.Threading.Tasks;
 using ConnectOnion.WinUIClient.Models;
 using Microsoft.Data.Sqlite;
@@ -157,6 +158,80 @@ public sealed class UsageRepository
         catch (Exception ex)
         {
             LogFailure(nameof(GetByModelAsync), ex);
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// One row per <b>local</b> calendar day that has any usage, for the activity heatmap. Days
+    /// with no usage are simply absent — the caller builds the full calendar grid and treats a
+    /// missing day as zero, which is far cheaper than asking SQLite to synthesise 365 empty rows.
+    /// </summary>
+    /// <param name="sinceUnixMs">Inclusive lower bound, or null for the whole ledger.</param>
+    /// <remarks>
+    /// <para>The day bucket is computed <i>in SQL</i>, like every other aggregate here: the ledger
+    /// grows without bound, and reading a year of individual calls into memory to group them in
+    /// C# is exactly the mistake this class is written to avoid.</para>
+    /// <para>The day must be a <i>local</i> day — <c>created_at</c> is Unix milliseconds UTC, and
+    /// grouping on the raw value cuts days at UTC midnight, so a 9pm turn would land on tomorrow
+    /// for anyone east of Greenwich. The obvious spelling, SQLite's <c>'localtime'</c> modifier,
+    /// <b>does not work here</b>: this app runs on <c>winsqlite3</c>, the copy of SQLite that
+    /// ships with Windows, which is built without local-time support — <c>date(…, 'localtime')</c>
+    /// returns NULL, every bucket is discarded, and the panel silently shows nothing. The offset
+    /// is therefore applied as arithmetic before bucketing, which keeps the grouping in SQL.</para>
+    /// <para>Known imprecision, accepted deliberately: one offset is applied to the whole window,
+    /// so across a daylight-saving boundary a call within an hour of local midnight can fall in
+    /// the neighbouring square. Carrying historical offsets would need a time-zone table SQLite
+    /// does not have, and being an hour out on two nights a year does not change what a heatmap
+    /// says. Buckets also follow the machine's <i>current</i> zone, so travelling re-slices
+    /// history rather than re-labelling it — the same trade the rest of the panel makes by
+    /// reading <c>DateTimeOffset.Now</c>.</para>
+    /// </remarks>
+    public async Task<IReadOnlyList<DailyUsageTotal>> GetDailyTotalsAsync(long? sinceUnixMs)
+    {
+        var results = new List<DailyUsageTotal>();
+
+        try
+        {
+            await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
+            await using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                SELECT date((created_at + $offset_ms) / 1000, 'unixepoch') AS day,
+                       SUM(input_tokens)  AS input_tokens,
+                       SUM(output_tokens) AS output_tokens,
+                       COUNT(*)           AS calls
+                FROM usage_events
+                WHERE ($since IS NULL OR created_at >= $since)
+                GROUP BY day
+                ORDER BY day;
+                """;
+            AppDatabase.Add(cmd, "$since", sinceUnixMs);
+            AppDatabase.Add(
+                cmd, "$offset_ms", (long)DateTimeOffset.Now.Offset.TotalMilliseconds);
+
+            await using var reader = await cmd.ExecuteReaderAsync().ConfigureAwait(false);
+            while (await reader.ReadAsync().ConfigureAwait(false))
+            {
+                // date() always yields 'YYYY-MM-DD'; a row that somehow doesn't parse is skipped
+                // rather than throwing, because one malformed bucket must not blank the panel.
+                if (!DateOnly.TryParseExact(
+                        reader.GetString(0), "yyyy-MM-dd",
+                        CultureInfo.InvariantCulture, DateTimeStyles.None, out var day))
+                {
+                    continue;
+                }
+
+                results.Add(new DailyUsageTotal(
+                    Date: day,
+                    InputTokens: reader.GetInt64(1),
+                    OutputTokens: reader.GetInt64(2),
+                    Calls: reader.GetInt64(3)));
+            }
+        }
+        catch (Exception ex)
+        {
+            LogFailure(nameof(GetDailyTotalsAsync), ex);
         }
 
         return results;

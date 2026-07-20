@@ -3,11 +3,23 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:vm="using:ConnectOnion.WinUIClient.ViewModels"
+    xmlns:controls="using:ConnectOnion.WinUIClient.Controls"
     MinWidth="0" HorizontalAlignment="Stretch">
 
     <StackPanel MinWidth="0" HorizontalAlignment="Stretch" Spacing="16">
         <TextBlock Text="Token usage recorded on this device, grouped by model. Usage is kept even after you delete a conversation — the tokens were still spent — and never leaves your machine."
                    TextWrapping="Wrap" Foreground="{ThemeResource TextSecondaryBrush}" />
+
+        <!-- Activity heatmap.
+             Placed ABOVE the time-window buttons on purpose: it always shows the trailing twelve
+             months regardless of the selected range, and sitting below the radio buttons would
+             imply they filter it. Visibility follows IsLoading only — not ShowContent — because
+             ShowContent is false whenever the *table's* window happens to be empty ("Today" with
+             no usage yet), and hiding a year of history for that reason would be wrong. -->
+        <Border Style="{StaticResource SettingsSectionStyle}" HorizontalAlignment="Stretch"
+                Visibility="{x:Bind Vm.IsLoading, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}">
+            <controls:UsageHeatmapView Heatmap="{x:Bind Vm.Heatmap, Mode=OneWay}" />
+        </Border>
 
         <!-- Time window -->
         <StackPanel Orientation="Horizontal" Spacing="8">

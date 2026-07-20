@@ -18,13 +18,19 @@ User
   -> ViewModels: MVVM state and commands
   -> Services:
       -> SQLite repositories (Data/) for local app state
+      -> SchemaMigrator for versioned forward database migrations
       -> ConnectionTester for /health and relay reachability probes
       -> AgentPresenceService for in-memory online status caching
       -> AgentInfoService for /info fetch, caching, and change detection
       -> IdentityStore for the local Ed25519 identity (DPAPI-encrypted seed)
       -> ThemeService for light/dark theme management
+      -> AgentSessionManager for app-level turn lifecycle (send, run, persist)
+      -> KeyboardShortcutService for customizable keyboard shortcuts
       -> Attachment pipeline: PickerService / DropService / ValidationService
          / Encoder / ImageCacheService for outgoing + incoming multimodal content
+      -> Speech pipeline: DictationTranscript for speech-to-text input
+      -> Diagnostics: StartupProfiler / StartupTelemetry for performance measurement
+      -> Usage heatmap: UsageHeatmapModels / UsageHeatmapView for activity visualization
       -> ConnectOnion.Protocol for WebSocket protocol handling
           -> ClientWebSocket / HttpClient
           -> canonical JSON signing
@@ -102,7 +108,7 @@ connectonion-desktop/
       AppJsonContext.cs               Source-generated JSON context for local persistence
     Models/                           AgentConfig, ChatMessage, ChatAttachment, SessionSummary,
                                       ToolActivity, PreferencesSnapshot, KeyChord/KeyBinding,
-                                      UsageModels, AskUserEntries, Notifications/
+                                      UsageModels, UsageHeatmapModels, AskUserEntries, Notifications/
     Services/
       ConversationCache.cs            LRU cache of the last few idle conversations
       SessionSelection.cs             The one testable "which session?" rule
@@ -121,6 +127,8 @@ connectonion-desktop/
         AgentConnectionRegistry.cs    Per-conversation app-owned WebSockets, idle eviction
       Attachments/                    Validation, encoding, attachment-only prompt fallback
       Notifications/                  Dedup, policy, text shaping (no UI, no OS calls)
+      Speech/                         DictationTranscript for speech-to-text
+    Diagnostics/                      StartupProfiler for launch-time measurement (WinUI-free)
     ViewModels/                       KeyboardSettings / KeyboardShortcuts (WinUI-free)
     Common/                           ObservableObject base, NameInitial
 
@@ -154,6 +162,7 @@ connectonion-desktop/
       SettingsPage                    Theme, font size, notifications, audio
       IFindHost.cs                    Contract the shared Ctrl+F overlay drives a page through
       IReloadablePage.cs              Contract for pages reused across navigation
+      IShutdownDisarmable.cs          Contract for pages that own timers needing shutdown disarm
     ViewModels/
       ChatViewModel.cs                State, properties, conversation load/restore
       ChatViewModel.Run.cs            Send/stop/mode; folds run snapshots into the list
@@ -168,7 +177,8 @@ connectonion-desktop/
                                       flat ConnectOnion.WinUIClient.Controls namespace)
       Chat/                           ChatComposer (+ .Speech), ToolActivityView, OfflineNoticeBar
       Agents/                         AddAgentForm, AgentAvatar
-      Settings/                       SettingsOverlay + content panes, shortcut editing, HotkeyInput
+      Settings/                       SettingsOverlay + content panes, shortcut editing, HotkeyInput,
+                                      UsageHeatmapView (activity heatmap)
       Shell/                          ShellSidebar (+ .Events), InAppNotificationHost, AboutOverlay
       Primitives/                     MarkdownTextBlock, HighlightedTextBlock, IconText,
                                       DisclosureAnimation (no view-model or feature-model refs)
@@ -189,10 +199,11 @@ connectonion-desktop/
         IAgentSessionManager.cs       The contract pages depend on
       Attachments/                    Picker, drop, image cache (the window-bound half)
       Notifications/                  Windows toasts, in-app toasts, activation routing
+    Diagnostics/                      StartupTelemetry for wall-clock phase marks
     Models/                           Sidebar row items only (the rest live in Core)
     Rendering/
       WinUiMarkdownRenderer.cs        Markdown -> WinUI inline/block rendering for chat
-    Common/                           Template selector and XAML value converters
+    Common/                           Template selector and XAML value converters (incl. HeatmapLevelToBrush)
     Styles/
       Colors.xaml                     Raw Light/Dark Color resources (brand palette)
       Brushes.xaml                    Semantic brushes + re-pointed Fluent theme keys
@@ -233,6 +244,8 @@ connectonion-desktop/
     ConnectOnion.WinUIClient.UITests/ Opt-in FlaUI real-window shell smoke tests
 
   .github/workflows/ci.yml            Windows/.NET CI workflow
+
+  scripts/Measure-Performance.ps1     Launch-time and memory benchmark script
 ```
 
 ## Requirements
@@ -541,6 +554,7 @@ Known deployed development agents:
 - Native WinUI 3 desktop shell with Mica backdrop and custom title bar
 - Home, Chat, Agent Detail, Sessions, and Settings pages (local identity lives inside Settings)
 - Agent add, edit, delete, select, and connection testing (Direct URL + relay)
+- Sidebar "Add agent" button opens the HomePage add-agent form and scrolls it into view
 - Agent /info fetch with 5-minute cache and change detection
 - Agent online presence with TTL-based caching and per-agent status indicators
 - App-level run runtime: turns are owned by `AgentSessionManager`, not the page — a turn keeps
@@ -552,6 +566,7 @@ Known deployed development agents:
   suppressed when the relevant chat is already on screen)
 - Per-turn tool execution timeline (collapsible, persisted across restart)
 - Token-usage ledger and Usage panel (Settings), independent of conversation/agent deletion
+- Usage activity heatmap with daily aggregation and twelve-month calendar view
 - Local Ed25519 identity display (Settings), seed encrypted at rest via DPAPI
 - SQLite-backed local storage with WAL journal mode and foreign keys
 - Direct URL and relay connection paths
@@ -573,6 +588,7 @@ Known deployed development agents:
 - Responsive sidebar with agent list and session list navigation
 - Back/forward navigation in the title bar
 - Suggested prompts for new conversations
+- Speech-to-text dictation input in the chat composer
 - System tray icon with left-click restore, right-click menu (Open Window / Exit)
 - Close button (X) dialog with Minimize to tray / Exit / Cancel options
 - File menu with keyboard shortcuts (Ctrl+N new chat, Ctrl+Shift+N new window, Ctrl+W close)
@@ -580,6 +596,8 @@ Known deployed development agents:
 - Help menu (keyboard shortcuts dialog, ConnectOnion docs, About overlay)
 - Protocol conformance test gate
 - Windows/.NET CI workflow
+- Startup telemetry and shutdown teardown instrumentation for performance measurement
+- Launch-time and memory benchmark script (`scripts/Measure-Performance.ps1`)
 
 ## Not Implemented Yet
 
@@ -630,6 +648,9 @@ All project documentation lives in [`docs/`](./docs/):
 | [Session & message structure](./docs/SESSION_MESSAGE_STRUCTURE.md) | The ConnectOnion wire protocol: `CONNECT`/`INPUT`/`OUTPUT`, streaming events, sessions, reconnect |
 | [WinUI 3 migration notes](./docs/WINUI3_NATIVE_MIGRATION.md) | Historical record of the Electron → WinUI migration, and how the result diverged from the plan |
 | [Commit convention](./docs/GIT_COMMIT_CONVENTION.md) | Conventional Commits types and scopes used in this repo |
+| [Optimization notes](./docs/OPTIMIZATION.md) | Implemented architecture, performance, reliability, diagnostics, and localization improvements |
+| [Performance baseline](./docs/PERFORMANCE.md) | Launch-time and memory benchmark: method, budgets, current baseline |
+| [Concurrency notes](./docs/CONCURRENCY.md) | Thread model, synchronization primitives, and the post-`Closed` dispatcher race |
 
 [`CLAUDE.md`](./CLAUDE.md) is the authoritative description of the current architecture.
 
