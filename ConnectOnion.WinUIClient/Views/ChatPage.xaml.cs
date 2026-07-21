@@ -14,7 +14,7 @@ using Windows.System;
 
 namespace ConnectOnion.WinUIClient.Views;
 
-public sealed partial class ChatPage : Page, IFindHost, IReloadablePage, IShutdownDisarmable
+public sealed partial class ChatPage : Page, IFindHost, IReloadablePage, IShutdownDisarmable, IDisposable
 {
     /// <summary>Width of the centred conversation column; see the ChatColumnWidth resource in App.xaml.</summary>
     private static double ChatColumnMaxWidth => (double)Application.Current.Resources["ChatColumnWidth"];
@@ -78,14 +78,18 @@ public sealed partial class ChatPage : Page, IFindHost, IReloadablePage, IShutdo
     public void DisarmForShutdown()
     {
         _findDebounceTimer.Stop();
+        StopUiFeedbackLifetime(restoreVisuals: false);
         // Lives on the view model, which outlives this page, so stopping it here is not redundant.
         Vm.StopThinkingTicker();
         Composer.Dispose();
     }
 
+    public void Dispose() => DisarmForShutdown();
+
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         _loadCts?.Cancel();
+        StopUiFeedbackLifetime(restoreVisuals: true);
         // No longer viewing this conversation — clear it so notifications resume.
         ReportViewing(active: false);
 
@@ -160,6 +164,7 @@ public sealed partial class ChatPage : Page, IFindHost, IReloadablePage, IShutdo
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
+        StartUiFeedbackLifetime();
         _messageScrollViewer ??= FindDescendant<ScrollViewer>(MessageList);
         if (_messageScrollViewer is not null)
         {

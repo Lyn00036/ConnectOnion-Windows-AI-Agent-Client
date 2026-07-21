@@ -59,8 +59,6 @@ public sealed partial class ChatViewModel
         await _sessions.SaveAsync(_sessionsState);
 
         Messages.Clear();
-        // A brand-new conversation has no history above the (empty) window.
-        HasMoreHistory = false;
         ResetIdCounter();
         _createdAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         HeaderText = $"{_agent.Name} - {_session.Title}";
@@ -89,16 +87,10 @@ public sealed partial class ChatViewModel
         // Preserve the original page state before switching the active conversation.
         StoreSessionCache();
 
-        // A branch copies *everything* before the selected turn into the new conversation, so it
-        // cannot be built from the loaded window: with older history still unpaged, Messages
-        // starts partway through the conversation and the branch would silently lose whatever
-        // sits above it. Read the real prefix from the database in that case. Branching is
-        // inherently O(history) — the prefix is written to the new conversation either way — so
-        // the full read costs nothing extra beyond what this operation already implies.
-        var prefix = HasMoreHistory
-            ? (await _conversations.LoadMessagesAsync(_session.Id))
-                .Where(m => m.Id < source.Id).ToList()
-            : Messages.Take(sourceIndex).ToList();
+        // A branch copies everything before the selected turn into the new conversation. The whole
+        // conversation is always loaded now, so the prefix is just the loaded bubbles above the
+        // selected turn.
+        var prefix = Messages.Take(sourceIndex).ToList();
         var inheritedMode = CurrentMode;
 
         _loadGeneration++;
@@ -125,8 +117,6 @@ public sealed partial class ChatViewModel
         }
 
         Messages.Clear();
-        // The branch was written from the full prefix above, so its whole history is in the list.
-        HasMoreHistory = false;
         foreach (var message in prefix) Messages.Add(message);
         ResetIdCounter();
         _createdAt = prefix.Count > 0

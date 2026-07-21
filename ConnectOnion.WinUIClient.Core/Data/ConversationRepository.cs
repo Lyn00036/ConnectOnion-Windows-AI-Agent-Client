@@ -6,17 +6,11 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ConnectOnion.WinUIClient.Data;
 
-/// <summary>One page of conversation history, in ascending id (render) order.</summary>
-/// <param name="Messages">The page's bubbles.</param>
-/// <param name="HasMore">Whether older bubbles exist before <see cref="Messages"/>'s first —
-/// what the chat page's scroll-up affordance is gated on.</param>
-public sealed record MessagePage(IReadOnlyList<ChatMessage> Messages, bool HasMore);
-
 /// <summary>
 /// Row-level message persistence. Each chat bubble is a row in the
 /// <c>messages</c> table, keyed by <c>(conversation_id, id)</c>.
-/// Replaces the previous JSON blob approach so messages can be queried,
-/// paged, and written incrementally.
+/// Replaces the previous JSON blob approach so messages can be queried
+/// and written incrementally.
 /// </summary>
 public sealed partial class ConversationRepository
 {
@@ -78,102 +72,6 @@ public sealed partial class ConversationRepository
             LogFailure(nameof(LoadMessagesAsync), conversationId, ex);
         }
         return messages;
-    }
-
-    /// <summary>
-    /// One page of a conversation's history, newest-first from <paramref name="beforeId"/>.
-    ///
-    /// <para>This is what the chat page opens with, instead of <see cref="LoadMessagesAsync"/>'s
-    /// unbounded read: a long conversation otherwise materializes every bubble it has ever had
-    /// into an <c>ObservableCollection</c> on open — and the conversation cache then holds up to
-    /// four of those at once.</para>
-    ///
-    /// <para>Pass <paramref name="beforeId"/> to walk backwards (the scroll-up path): only rows
-    /// with a smaller id are considered. The returned list is always in ascending id order — the
-    /// order the list renders in — regardless of which direction it was paged in.</para>
-    /// </summary>
-    /// <param name="limit">Maximum bubbles to return. One extra row is read internally to answer
-    /// <see cref="MessagePage.HasMore"/> without a second COUNT query.</param>
-    public async Task<MessagePage> LoadMessagePageAsync(
-        string conversationId,
-        int limit,
-        long? beforeId = null,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(limit);
-
-        var messages = new List<ChatMessage>();
-        var hasMore = false;
-        try
-        {
-            await using var connection = await AppDatabase.OpenAsync(cancellationToken).ConfigureAwait(false);
-            await using var command = connection.CreateCommand();
-            // DESC + LIMIT is what makes this cheap — it walks the (conversation_id, id) primary
-            // key backwards and stops, rather than reading the conversation and discarding it.
-            // The caller-facing order is restored by the reverse below.
-            command.CommandText = beforeId is null
-                ? """
-                    SELECT id, role, content, agent_name,
-                           event_kind, event_key, event_eyebrow, event_title,
-                           event_detail, event_meta, event_args, event_result,
-                           event_status, is_onboarding, created_at
-                    FROM messages
-                    WHERE conversation_id = $conversation_id AND event_kind IS NOT 'approval'
-                    ORDER BY id DESC
-                    LIMIT $limit;
-                    """
-                : """
-                    SELECT id, role, content, agent_name,
-                           event_kind, event_key, event_eyebrow, event_title,
-                           event_detail, event_meta, event_args, event_result,
-                           event_status, is_onboarding, created_at
-                    FROM messages
-                    WHERE conversation_id = $conversation_id AND id < $before_id
-                          AND event_kind IS NOT 'approval'
-                    ORDER BY id DESC
-                    LIMIT $limit;
-                    """;
-            AppDatabase.Add(command, "$conversation_id", conversationId);
-            // One more than asked for: if it comes back, there is an older page. Cheaper than a
-            // COUNT(*) over the conversation just to light up a "load more" affordance.
-            AppDatabase.Add(command, "$limit", limit + 1);
-            if (beforeId is { } before) AppDatabase.Add(command, "$before_id", before);
-
-            await using (var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
-            {
-                while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-                {
-                    messages.Add(RowToMessage(reader));
-                }
-            }
-
-            if (messages.Count > limit)
-            {
-                hasMore = true;
-                messages.RemoveAt(messages.Count - 1); // drop the probe row (oldest, DESC order)
-            }
-
-            messages.Reverse(); // DESC read → ascending render order
-
-            await LoadAttachmentsIntoAsync(connection, conversationId, messages, cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            LogFailure(nameof(LoadMessagePageAsync), conversationId, ex);
-            // Whatever was read is kept (a partial history beats an empty page for a user staring
-            // at the screen), but sorted explicitly: the failure may have landed either side of
-            // the reverse above, and handing back descending bubbles would be worse than nothing.
-            messages.Sort(static (a, b) => a.Id.CompareTo(b.Id));
-            // Report no-more-history on failure: offering "load older" against a broken read
-            // would spin the affordance forever on a page that can never fill.
-            return new MessagePage(messages, HasMore: false);
-        }
-        return new MessagePage(messages, hasMore);
     }
 
     /// <summary>

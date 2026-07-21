@@ -47,10 +47,6 @@ public sealed partial class ChatPage
     private void Messages_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         if (_isLoadingConversation) return;
-        // A history pull inserts its page one bubble at a time. Handling each insert here would
-        // re-run the find refresh ~100 times and re-evaluate stick-to-bottom against a list that
-        // is still growing; the pull does both once when it is done.
-        if (_isPagingOlderHistory) return;
         QueueFindRefresh();
 
         // Hide the empty state once a real message appears.
@@ -302,16 +298,6 @@ public sealed partial class ChatPage
         MessageList.ScrollIntoView(Vm.Messages[^1]);
     }
 
-    /// <summary>How close to the top of the loaded window a scroll gets before the next page of
-    /// older history is pulled. Far enough ahead that the read and re-layout usually finish
-    /// before the user actually reaches the top.</summary>
-    private const double LoadOlderHistoryThreshold = 200;
-
-    /// <summary>Guards the pull across its own awaits. <see cref="ChatViewModel.IsLoadingOlderHistory"/>
-    /// only covers the database read; this page keeps adjusting the scroll position for a few
-    /// frames afterwards, and a second pull starting in that window would fight it.</summary>
-    private bool _isPagingOlderHistory;
-
     private void MessageScrollViewer_ViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
     {
         if (_messageScrollViewer is null) return;
@@ -319,56 +305,6 @@ public sealed partial class ChatPage
         var distanceFromBottom = _messageScrollViewer.ScrollableHeight - _messageScrollViewer.VerticalOffset;
         _stickToBottom = distanceFromBottom < 96;
         ScrollToLatestButton.Visibility = _stickToBottom ? Visibility.Collapsed : Visibility.Visible;
-
-        if (_messageScrollViewer.VerticalOffset <= LoadOlderHistoryThreshold)
-            _ = LoadOlderHistoryAsync();
-    }
-
-    /// <summary>
-    /// Pulls the next page of older bubbles in and keeps the user looking at the same content.
-    ///
-    /// <para>The position is restored by re-anchoring on the bubble that was previously the
-    /// oldest, rather than by correcting the offset by the change in <c>ExtentHeight</c>: the
-    /// list virtualizes, so the extent immediately after an insert is an <i>estimate</i> over
-    /// unrealized containers and drifts as they realize. The anchor item's real position is not
-    /// an estimate.</para>
-    /// </summary>
-    private async System.Threading.Tasks.Task LoadOlderHistoryAsync()
-    {
-        if (_isPagingOlderHistory || _isLoadingConversation) return;
-        if (!Vm.HasMoreHistory || Vm.Messages.Count == 0 || _messageScrollViewer is null) return;
-
-        _isPagingOlderHistory = true;
-        try
-        {
-            var anchor = Vm.Messages[0];
-            // How far the anchor sat below the top of the viewport. Re-applied after the insert
-            // so the content the user was reading does not shift under them.
-            var anchorInset = _messageScrollViewer.VerticalOffset;
-
-            var added = await Vm.LoadOlderHistoryAsync();
-            if (added == 0) return;
-
-            // Let the inserted containers measure before asking where the anchor landed.
-            await NextFrameAsync();
-            MessageList.ScrollIntoView(anchor, ScrollIntoViewAlignment.Leading);
-            await NextFrameAsync();
-
-            _messageScrollViewer.ChangeView(
-                null, _messageScrollViewer.VerticalOffset + anchorInset, null, disableAnimation: true);
-
-            // The inserted bubbles are new searchable content; the per-insert refresh is
-            // suppressed during the batch (see Messages_CollectionChanged).
-            QueueFindRefresh();
-        }
-        catch
-        {
-            // A pull that fails leaves the list exactly as it was — nothing to unwind.
-        }
-        finally
-        {
-            _isPagingOlderHistory = false;
-        }
     }
 
     private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject

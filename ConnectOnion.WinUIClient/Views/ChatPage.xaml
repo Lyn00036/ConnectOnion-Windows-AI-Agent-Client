@@ -174,15 +174,15 @@
             <DataTemplate x:Key="AttachmentChipTemplate" x:DataType="models:ChatAttachment">
                 <Grid Margin="0,2">
                     <!-- Image: thumbnail, or a fallback message if it failed to load/decode. -->
-                    <StackPanel Spacing="4" Visibility="{x:Bind IsImage, Converter={StaticResource BoolToVis}}">
+                    <StackPanel Spacing="4" Visibility="{Binding IsImage, Converter={StaticResource BoolToVis}}">
                         <Border CornerRadius="10"
                                 MaxWidth="280"
                                 MaxHeight="280"
                                 Background="{ThemeResource SurfaceSecondaryBrush}"
-                                Visibility="{x:Bind IsFailed, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}"
+                                Visibility="{Binding IsFailed, Converter={StaticResource BoolToVis}, ConverterParameter=invert}"
                                 Tapped="AttachmentImage_Tapped"
-                                Tag="{x:Bind}">
-                            <Image Source="{x:Bind LocalCachePath, Mode=OneWay, Converter={StaticResource PathToImage}}"
+                                Tag="{Binding}">
+                            <Image Source="{Binding LocalCachePath, Converter={StaticResource PathToImage}}"
                                    Stretch="Uniform"
                                    MaxWidth="280"
                                    MaxHeight="280" />
@@ -191,7 +191,7 @@
                                    FontSize="11"
                                    FontStyle="Italic"
                                    Foreground="{ThemeResource TextSecondaryBrush}"
-                                   Visibility="{x:Bind IsFailed, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                                   Visibility="{Binding IsFailed, Converter={StaticResource BoolToVis}}" />
                     </StackPanel>
 
                     <!-- Generic file: icon + name + size, tap to open, button to save a copy. -->
@@ -202,8 +202,8 @@
                             BorderBrush="{ThemeResource BorderDefaultBrush}"
                             BorderThickness="1"
                             Tapped="AttachmentFile_Tapped"
-                            Tag="{x:Bind}"
-                            Visibility="{x:Bind IsImage, Converter={StaticResource BoolToVis}, ConverterParameter=invert}">
+                            Tag="{Binding}"
+                            Visibility="{Binding IsImage, Converter={StaticResource BoolToVis}, ConverterParameter=invert}">
                         <Grid ColumnSpacing="8">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
@@ -217,11 +217,11 @@
                                            VerticalAlignment="Center"
                                            Foreground="{ThemeResource TextSecondaryBrush}" />
                             <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
-                                <TextBlock Text="{x:Bind FileName}"
+                                <TextBlock Text="{Binding FileName}"
                                            FontSize="12"
                                            FontWeight="SemiBold"
                                            TextTrimming="CharacterEllipsis" />
-                                <TextBlock Text="{x:Bind SizeLabel}"
+                                <TextBlock Text="{Binding SizeLabel}"
                                            FontSize="10"
                                            Foreground="{ThemeResource TextSecondaryBrush}" />
                             </StackPanel>
@@ -234,7 +234,7 @@
                                     Background="Transparent"
                                     BorderThickness="0"
                                     VerticalAlignment="Center"
-                                    Tag="{x:Bind}"
+                                    Tag="{Binding}"
                                     Click="SaveAttachment_Click"
                                     ToolTipService.ToolTip="Save a copy">
                                 <ic:FluentIcon Icon="SaveArrowRight"
@@ -253,7 +253,12 @@
                  on every container the list recycled. -->
 
             <DataTemplate x:Key="ChatUserTemplate" x:DataType="models:ChatMessage">
-                <StackPanel MaxWidth="700"
+                <!-- Outer measure matches the shared content column so the bubble's right edge
+                     lines up with the composer's right edge. Top margin opens the gap between
+                     conversation turns (a user message always starts a new turn); intra-turn rows
+                     keep the tighter item spacing. -->
+                <StackPanel MaxWidth="{StaticResource ChatColumnWidth}"
+                            Margin="0,28,0,0"
                             HorizontalAlignment="Right"
                             Spacing="8"
                             Background="Transparent"
@@ -268,13 +273,15 @@
                                       ItemTemplate="{StaticResource AttachmentChipTemplate}"
                                       HorizontalAlignment="Right"
                                       Visibility="{x:Bind HasAttachments, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-                        <Border MaxWidth="520"
+                        <!-- A right-aligned chat bubble, capped narrow so it reads as a discrete user
+                             utterance against the wider agent track. Borderless: the soft neutral
+                             fill alone carries it so it reads as a message, not a button or input. -->
+                        <Border MaxWidth="440"
                                 HorizontalAlignment="Right"
                                 CornerRadius="18"
-                                Padding="16,12"
+                                Padding="15,11"
                                 Background="{ThemeResource UserMessageBackgroundBrush}"
-                                BorderBrush="{ThemeResource BorderDefaultBrush}"
-                                BorderThickness="1"
+                                BorderThickness="0"
                                 Visibility="{x:Bind Content, Converter={StaticResource StringToVis}}">
                             <controls:HighlightedTextBlock Text="{x:Bind Content, Mode=OneWay}"
                                                            SearchQuery="{x:Bind FindQuery, Mode=OneWay}"
@@ -282,9 +289,9 @@
                                                            FontSize="{x:Bind MessageFontSize, Mode=OneWay}"
                                                            Foreground="{ThemeResource TextPrimaryBrush}" />
                         </Border>
-                        <!-- This row always owns its height. Hover only changes the inner
-                             visibility, so showing actions never pushes the transcript down. -->
-                        <Grid Height="24" HorizontalAlignment="Right">
+                        <!-- This row always owns its height. Hover only changes the inner opacity,
+                             so showing actions never pushes the transcript down. -->
+                        <Grid Height="28" HorizontalAlignment="Right">
                             <StackPanel Orientation="Horizontal"
                                         HorizontalAlignment="Right"
                                         Spacing="2"
@@ -461,7 +468,7 @@
                                 Click="SubmitOnboard_Click"
                                 IsEnabled="{x:Bind IsOnboardingInputEnabled, Mode=OneWay}" />
                     </Grid>
-                    <Grid Height="24" HorizontalAlignment="Left">
+                    <Grid Height="28" HorizontalAlignment="Left">
                         <StackPanel Orientation="Horizontal"
                                     Spacing="2"
                                     Opacity="{x:Bind UserActionsOpacity, Mode=OneWay}"
@@ -713,34 +720,50 @@
 
             <!-- A turn's model/token cost is supporting metadata, not another process card.
                  Keep it to one quiet line immediately before the final assistant output. -->
+            <!-- Turn metadata, two lines: "model · duration" over "tokens · context · tools". The
+                 second line is quieter and hides when there's nothing beyond the first segment, so
+                 short turns stay one line. AutomationProperties.Name keeps the full single-line
+                 summary for screen readers. -->
             <DataTemplate x:Key="ChatTurnUsageTemplate" x:DataType="models:ChatMessage">
-                <StackPanel MaxWidth="700"
-                            Margin="0,2,0,0"
-                            Orientation="Horizontal"
-                            Spacing="6"
-                            HorizontalAlignment="Left"
-                            AutomationProperties.Name="{x:Bind TurnUsageSummary, Mode=OneWay}">
+                <Grid MaxWidth="{StaticResource ChatColumnWidth}"
+                      Margin="0,2,0,0"
+                      ColumnSpacing="6"
+                      HorizontalAlignment="Left"
+                      AutomationProperties.Name="{x:Bind TurnUsageSummary, Mode=OneWay}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
                     <!-- Size16 scaled to 0.75 rather than Size12: the 12px font ships ~439 of the
                          4372 glyphs and silently renders a missing one as .notdef (see the
                          FluentIcons notes in CLAUDE.md). The transform does not shrink the layout
-                         slot, so the icon still measures 16px — fine against this 11px line. -->
-                    <ic:FluentIcon Icon="Gauge"
+                         slot, so the icon still measures 16px. Top-aligned to sit against line 1. -->
+                    <ic:FluentIcon Grid.Column="0"
+                                   Icon="Gauge"
                                    IconVariant="Regular"
                                    IconSize="Size16"
-                                   VerticalAlignment="Center"
+                                   VerticalAlignment="Top"
+                                   Margin="0,1,0,0"
                                    RenderTransformOrigin="0.5,0.5"
                                    Foreground="{ThemeResource TextTertiaryBrush}">
                         <ic:FluentIcon.RenderTransform>
                             <ScaleTransform ScaleX="0.75" ScaleY="0.75" />
                         </ic:FluentIcon.RenderTransform>
                     </ic:FluentIcon>
-                    <TextBlock Text="{x:Bind TurnUsageSummary, Mode=OneWay}"
-                               FontSize="11"
-                               VerticalAlignment="Center"
-                               Foreground="{ThemeResource TextTertiaryBrush}"
-                               TextTrimming="CharacterEllipsis"
-                               IsTextSelectionEnabled="True" />
-                </StackPanel>
+                    <StackPanel Grid.Column="1" Spacing="1">
+                        <TextBlock Text="{x:Bind TurnUsagePrimary, Mode=OneWay}"
+                                   FontSize="12"
+                                   Foreground="{ThemeResource TextSecondaryBrush}"
+                                   TextTrimming="CharacterEllipsis"
+                                   IsTextSelectionEnabled="True" />
+                        <TextBlock Text="{x:Bind TurnUsageSecondary, Mode=OneWay}"
+                                   FontSize="11"
+                                   Foreground="{ThemeResource TextTertiaryBrush}"
+                                   TextTrimming="CharacterEllipsis"
+                                   IsTextSelectionEnabled="True"
+                                   Visibility="{x:Bind HasTurnUsageSecondary, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                    </StackPanel>
+                </Grid>
             </DataTemplate>
 
             <DataTemplate x:Key="ChatToolActivityTemplate" x:DataType="models:ChatMessage">
@@ -750,9 +773,10 @@
 
             <!-- Ask-user card. Not a bordered box on the transcript: the options are the only
                  things that carry a frame, so the card reads as a list of choices rather than a
-                 dialog dropped into the conversation. Header (chevron | dot | icon | title |
-                 PENDING) over the question, the option cards, a labelled divider, the custom
-                 answer box, and a quiet way out.
+                 dialog dropped into the conversation. Header (chevron | icon | title | status
+                 badge) over the question, then — while it waits — the option cards, a labelled
+                 divider, the custom answer box and a quiet way out; once answered, a single
+                 "Your answer" line. The status appears once as the badge word, not also as a dot.
 
                  The option rows are hand-built Buttons, not RadioButton/CheckBox — see the
                  comment on the ItemsControl below for why. -->
@@ -768,7 +792,6 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
@@ -780,16 +803,13 @@
                                            Text="&#xE76C;"
                                            Visibility="{x:Bind IsInteractiveCollapsed, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                             </Grid>
-                            <!-- Dot, icon and status label all take the interactive status
-                                 color, so a card still waiting on the user reads amber end to
-                                 end and a resolved one goes green (or red). Three elements
-                                 rather than one because the row is scanned at three widths:
-                                 the dot survives any truncation, the label carries the word. -->
-                            <Ellipse Grid.Column="1"
-                                     Width="7" Height="7"
-                                     VerticalAlignment="Center"
-                                     Fill="{x:Bind Status, Mode=OneWay, Converter={StaticResource InteractiveStatusToBrush}}" />
-                            <ic:FluentIcon Grid.Column="2"
+                            <!-- The type icon (status-coloured) and the status badge carry the state
+                                 between them: amber end-to-end while it waits on the user, resolved
+                                 green/red once answered. The standalone status dot that used to sit
+                                 here was a third telling of the same thing — it existed so status
+                                 survived a truncated badge, but the badge is now a short status word
+                                 ("Answered"/"Pending") that does not truncate, so the dot is gone. -->
+                            <ic:FluentIcon Grid.Column="1"
                                            Icon="QuestionCircle" IconVariant="Regular" IconSize="Size16"
                                            RenderTransformOrigin="0.5,0.5"
                                            VerticalAlignment="Center"
@@ -801,14 +821,14 @@
                             <!-- 14 to match the tool-activity card's header. Fixed rather than
                                  inherited because it is chrome: a card title should not grow with
                                  the message-size setting the way its content does. -->
-                            <TextBlock Grid.Column="3"
+                            <TextBlock Grid.Column="2"
                                        Text="{x:Bind EventEyebrow}"
                                        FontSize="14"
                                        FontWeight="SemiBold"
                                        VerticalAlignment="Center"
                                        TextTrimming="CharacterEllipsis"
                                        Foreground="{ThemeResource TextPrimaryBrush}" />
-                            <Border Grid.Column="4"
+                            <Border Grid.Column="3"
                                     CornerRadius="4"
                                     Padding="7,2"
                                     VerticalAlignment="Center"
@@ -816,6 +836,8 @@
                                 <TextBlock Text="{x:Bind InteractiveStatusLabel, Mode=OneWay}"
                                            FontSize="11"
                                            FontWeight="SemiBold"
+                                           MaxWidth="240"
+                                           TextTrimming="CharacterEllipsis"
                                            Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource InteractiveStatusToBrush}}" />
                             </Border>
                         </Grid>
@@ -1018,12 +1040,19 @@
                                 Click="AskUserSkip_Click"
                                 Visibility="{x:Bind IsAwaitingResponse, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
 
-                        <TextBlock Text="{x:Bind EventMeta, Mode=OneWay}"
-                                   FontSize="12"
-                                   FontWeight="SemiBold"
-                                   TextWrapping="Wrap"
-                                   Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource EventStatusToBrush}}"
-                                   Visibility="{x:Bind IsAwaitingResponse, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
+                        <!-- Resolved answer, shown once (the header badge carries only the status
+                             word). "Your answer" label over the chosen text; hidden while the card
+                             still awaits a reply or when the outcome carries no free-form answer. -->
+                        <StackPanel Spacing="2"
+                                    Visibility="{x:Bind HasInteractiveAnswer, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                            <TextBlock x:Uid="ChatYourAnswer" Text="Your answer"
+                                       FontSize="12"
+                                       Foreground="{ThemeResource TextSecondaryBrush}" />
+                            <TextBlock Text="{x:Bind InteractiveAnswerText, Mode=OneWay}"
+                                       TextWrapping="Wrap"
+                                       IsTextSelectionEnabled="True"
+                                       Foreground="{ThemeResource TextPrimaryBrush}" />
+                        </StackPanel>
                     </StackPanel>
                 </StackPanel>
             </DataTemplate>
@@ -1442,16 +1471,65 @@
                   SelectionMode="None"
                   Background="Transparent"
                   BorderThickness="0"
-                  Padding="92,18,52,22"
+                  Padding="24,18,24,22"
                   HorizontalAlignment="Stretch"
                   HorizontalContentAlignment="Stretch">
             <!-- Conversation identity belongs to the transcript, not permanent page chrome.
                  Keeping it in the ListView header makes it available at the start of a chat and
-                 lets it scroll away once the user is reading the conversation. -->
+                 lets it scroll away once the user is reading the conversation. A lightweight
+                 identity block — avatar, friendly agent name, presence + connection detail —
+                 under a hairline divider, so "who am I talking to and is it there" is answered at
+                 a glance without a heavy fixed header duplicating the window title bar. Live
+                 connection phase stays always-visible below the composer. -->
             <ListView.Header>
                 <Grid MaxWidth="{StaticResource ChatColumnWidth}"
-                      Margin="0,0,0,18"
-                      HorizontalAlignment="Stretch" />
+                      Margin="0,0,0,16"
+                      HorizontalAlignment="Stretch">
+                    <Border BorderBrush="{ThemeResource BorderSubtleBrush}"
+                            BorderThickness="0,0,0,1"
+                            Padding="0,2,0,14"
+                            Visibility="{x:Bind Vm.HasAgent, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <controls:AgentAvatar Grid.Column="0"
+                                                  Size="40"
+                                                  CornerRadius="10"
+                                                  FontSize="16"
+                                                  VerticalAlignment="Center"
+                                                  Initial="{x:Bind Vm.SelectedAgentInitial, Mode=OneWay}" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="3">
+                                <TextBlock Text="{x:Bind Vm.SelectedAgentDisplayName, Mode=OneWay}"
+                                           FontSize="16"
+                                           FontWeight="SemiBold"
+                                           Foreground="{ThemeResource TextPrimaryBrush}"
+                                           TextTrimming="CharacterEllipsis" />
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <Ellipse Width="7" Height="7"
+                                             VerticalAlignment="Center"
+                                             Fill="{x:Bind Vm.Presence, Mode=OneWay, Converter={StaticResource PresenceToBrush}}" />
+                                    <TextBlock Text="{x:Bind Vm.PresenceLabel, Mode=OneWay}"
+                                               FontSize="12"
+                                               VerticalAlignment="Center"
+                                               Foreground="{ThemeResource TextSecondaryBrush}" />
+                                    <TextBlock Text="·"
+                                               FontSize="12"
+                                               VerticalAlignment="Center"
+                                               Foreground="{ThemeResource TextTertiaryBrush}"
+                                               Visibility="{x:Bind Vm.PresenceDetail, Mode=OneWay, Converter={StaticResource StringToVis}}" />
+                                    <TextBlock Text="{x:Bind Vm.PresenceDetail, Mode=OneWay}"
+                                               FontSize="12"
+                                               VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis"
+                                               Foreground="{ThemeResource TextTertiaryBrush}"
+                                               Visibility="{x:Bind Vm.PresenceDetail, Mode=OneWay, Converter={StaticResource StringToVis}}" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </Grid>
             </ListView.Header>
             <ListView.ItemContainerStyle>
                 <Style TargetType="ListViewItem">
@@ -1469,32 +1547,43 @@
 
         <!-- Claude-style continuation affordance. It is controlled by the real ScrollViewer
              offset, so it appears only while transcript content remains below the viewport. -->
-        <Button x:Name="ScrollToLatestButton"
-                Grid.Row="0"
-                Canvas.ZIndex="20"
-                Width="44"
-                Height="44"
-                Margin="0,0,0,10"
-                Padding="0"
-                CornerRadius="22"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Bottom"
-                Background="{ThemeResource SurfaceElevatedBrush}"
-                BorderBrush="{ThemeResource BorderDefaultBrush}"
-                BorderThickness="1"
-                Translation="0,0,12"
-                Visibility="Collapsed"
-                Click="ScrollToLatest_Click"
-                AutomationProperties.Name="Scroll to latest message"
-                ToolTipService.ToolTip="Scroll to latest message">
-            <Button.Shadow>
-                <ThemeShadow />
-            </Button.Shadow>
-            <ic:FluentIcon Icon="ArrowDown"
-                           IconVariant="Regular"
-                           IconSize="Size20"
-                           Foreground="{ThemeResource TextPrimaryBrush}" />
-        </Button>
+        <!-- Jump-to-latest: pinned to the content track's bottom-right, just above the composer,
+             so it never covers the transcript or a turn's hover actions the way a centred button
+             did. The wrapper centres the 880 track (Stretch + MaxWidth) with the same 24px gutters
+             as the list and composer, and the button right-aligns within it, so it lands on the
+             composer's right edge. Its empty areas paint nothing and so pass the pointer through to
+             the transcript. Show/hide stays driven by the scroll offset in ChatPage.Scrolling.cs
+             (it sets ScrollToLatestButton.Visibility directly). -->
+        <Grid Grid.Row="0"
+              Canvas.ZIndex="20"
+              MaxWidth="{StaticResource ChatColumnWidth}"
+              Margin="24,0,24,12"
+              HorizontalAlignment="Stretch"
+              VerticalAlignment="Bottom">
+            <Button x:Name="ScrollToLatestButton"
+                    Width="40"
+                    Height="40"
+                    Padding="0"
+                    CornerRadius="20"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Bottom"
+                    Background="{ThemeResource SurfaceElevatedBrush}"
+                    BorderBrush="{ThemeResource BorderDefaultBrush}"
+                    BorderThickness="1"
+                    Translation="0,0,12"
+                    Visibility="Collapsed"
+                    Click="ScrollToLatest_Click"
+                    AutomationProperties.Name="Jump to latest message"
+                    ToolTipService.ToolTip="Jump to latest">
+                <Button.Shadow>
+                    <ThemeShadow />
+                </Button.Shadow>
+                <ic:FluentIcon Icon="ArrowDown"
+                               IconVariant="Regular"
+                               IconSize="Size20"
+                               Foreground="{ThemeResource TextPrimaryBrush}" />
+            </Button>
+        </Grid>
 
         <!-- Failure bar: appears when the last run failed and is still retryable. Mutually
              exclusive with the offline bar (see Vm.ShowRetryBar) so the two never stack. -->
@@ -1541,29 +1630,10 @@
         </controls:OfflineNoticeBar>
 
         <StackPanel Grid.Row="1">
-            <!-- Transient run feedback is input-adjacent: it explains what the action the user
-                 just submitted is doing without consuming a permanent page header. -->
-            <Grid MaxWidth="{StaticResource ChatComposerWidth}"
-                  MinHeight="22"
-                  Margin="20,0,20,3"
-                  HorizontalAlignment="Stretch"
-                  Visibility="{x:Bind Vm.StatusText, Mode=OneWay, Converter={StaticResource StringToVis}}">
-                <StackPanel Orientation="Horizontal"
-                            Spacing="7"
-                            VerticalAlignment="Center">
-                    <ProgressRing Width="12"
-                                  Height="12"
-                                  IsActive="{x:Bind Vm.IsProcessing, Mode=OneWay}"
-                                  Visibility="{x:Bind Vm.IsProcessing, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-                    <TextBlock Text="{x:Bind Vm.StatusText, Mode=OneWay}"
-                               AutomationProperties.AutomationId="ConnectionStatus"
-                               FontSize="11"
-                               Foreground="{ThemeResource TextSecondaryBrush}"
-                               TextTrimming="CharacterEllipsis"
-                               VerticalAlignment="Center" />
-                </StackPanel>
-            </Grid>
-
+            <!-- Transient run feedback (progress, errors) is no longer a separate line here:
+                 progress is carried by the composer's busy state and the connection-phase line
+                 below it, and client-side failures (send / stop / reconnect) now surface inline
+                 in the conversation as Error activity bubbles (see ChatViewModel.AddErrorActivity). -->
             <controls:ChatComposer x:Name="Composer"
                                    CanSubmit="{x:Bind Vm.CanSend, Mode=OneWay}"
                                    EnterToSubmit="{x:Bind Vm.EnterToSend, Mode=OneWay}"
@@ -1578,34 +1648,34 @@
                                    ModeChangeRequested="Composer_ModeChangeRequested"
                                    SubmitRequested="Composer_SubmitRequested" />
 
-            <!-- Identity and live socket phase, below the composer. One line rather than two:
-                 both answer "what am I talking to and is it there", and a separate connection
-                 banner would compete with the transient run status above the composer. -->
+            <!-- Status line below the composer: the live socket phase (dot + label) leads, then the
+                 session. Agent identity lives in the transcript header up top, so this line is only
+                 the always-visible "is it connected, which session" pair. Caption size (12px) and a
+                 ~28px slot so it reads as a deliberate status strip rather than tiny debug text. -->
             <StackPanel Orientation="Horizontal"
                         Spacing="6"
                         HorizontalAlignment="Center"
-                        Margin="0,4,0,12">
-                <TextBlock FontSize="10"
-                           VerticalAlignment="Center"
-                           Foreground="{ThemeResource TextTertiaryBrush}">
-                        <Run Text="{x:Bind Vm.SelectedAgentName, Mode=OneWay}" />
-                        <Run Text="· Session " />
-                        <Run Text="{x:Bind Vm.SessionShortId, Mode=OneWay}" />
-                </TextBlock>
-
-                <TextBlock Text="·"
-                           FontSize="10"
-                           VerticalAlignment="Center"
-                           Foreground="{ThemeResource TextTertiaryBrush}" />
-
-                <Ellipse Width="6" Height="6"
+                        Margin="0,6,0,12">
+                <Ellipse Width="7" Height="7"
                          VerticalAlignment="Center"
                          Fill="{x:Bind Vm.ConnectionPhase, Mode=OneWay, Converter={StaticResource ConnectionPhaseToBrush}}" />
                 <TextBlock Text="{x:Bind Vm.ConnectionPhaseText, Mode=OneWay}"
-                           AutomationProperties.AutomationId="ConnectionPhaseLabel"
-                           FontSize="10"
+                           AutomationProperties.AutomationId="ConnectionStatus"
+                           FontSize="12"
                            VerticalAlignment="Center"
                            Foreground="{x:Bind Vm.ConnectionPhase, Mode=OneWay, Converter={StaticResource ConnectionPhaseToBrush}}" />
+
+                <TextBlock Text="·"
+                           FontSize="12"
+                           VerticalAlignment="Center"
+                           Foreground="{ThemeResource TextTertiaryBrush}" />
+
+                <TextBlock FontSize="12"
+                           VerticalAlignment="Center"
+                           Foreground="{ThemeResource TextTertiaryBrush}">
+                        <Run Text="Session " />
+                        <Run Text="{x:Bind Vm.SessionShortId, Mode=OneWay}" />
+                </TextBlock>
             </StackPanel>
         </StackPanel>
 

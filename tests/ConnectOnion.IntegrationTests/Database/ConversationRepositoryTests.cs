@@ -249,76 +249,8 @@ public sealed class ConversationRepositoryTests
         });
 
         var all = await _repository.LoadMessagesAsync("approval-hidden");
-        var page = await _repository.LoadMessagePageAsync("approval-hidden", limit: 10);
 
         Assert.Equal(new long[] { 1, 3 }, all.Select(m => m.Id));
-        Assert.Equal(new long[] { 1, 3 }, page.Messages.Select(m => m.Id));
-    }
-
-    // ---- Paging (what the chat page opens with) ----
-
-    [Fact]
-    public async Task LoadMessagePageAsync_ReturnsNewestPage_InAscendingOrder()
-    {
-        await _fixture.CreateSessionAsync("paging");
-        await _repository.UpsertMessagesAsync("paging",
-            Enumerable.Range(1, 10).Select(i => Message(i, "message " + i)).ToArray());
-
-        var page = await _repository.LoadMessagePageAsync("paging", limit: 4);
-
-        // Newest four, but handed back oldest-first — the order the list renders in.
-        Assert.Equal(new[] { 7L, 8L, 9L, 10L }, page.Messages.Select(m => m.Id));
-        Assert.True(page.HasMore);
-    }
-
-    [Fact]
-    public async Task LoadMessagePageAsync_WalksBackwards_AndReportsWhenHistoryIsExhausted()
-    {
-        await _fixture.CreateSessionAsync("paging-back");
-        await _repository.UpsertMessagesAsync("paging-back",
-            Enumerable.Range(1, 10).Select(i => Message(i, "message " + i)).ToArray());
-
-        var older = await _repository.LoadMessagePageAsync("paging-back", limit: 4, beforeId: 7);
-        Assert.Equal(new[] { 3L, 4L, 5L, 6L }, older.Messages.Select(m => m.Id));
-        Assert.True(older.HasMore);
-
-        // The last page is short and must say so, rather than leaving the scroll-up affordance
-        // armed against a conversation that has nothing left to give.
-        var oldest = await _repository.LoadMessagePageAsync("paging-back", limit: 4, beforeId: 3);
-        Assert.Equal(new[] { 1L, 2L }, oldest.Messages.Select(m => m.Id));
-        Assert.False(oldest.HasMore);
-    }
-
-    [Fact]
-    public async Task LoadMessagePageAsync_PageExactlyExhaustsHistory_ReportsNoMore()
-    {
-        await _fixture.CreateSessionAsync("paging-exact");
-        await _repository.UpsertMessagesAsync("paging-exact",
-            Enumerable.Range(1, 4).Select(i => Message(i, "message " + i)).ToArray());
-
-        // The off-by-one that a limit+1 probe exists to get right: a page that lands exactly on
-        // the end of history must not claim there is another one.
-        var page = await _repository.LoadMessagePageAsync("paging-exact", limit: 4);
-
-        Assert.Equal(4, page.Messages.Count);
-        Assert.False(page.HasMore);
-    }
-
-    [Fact]
-    public async Task LoadMessagePageAsync_CarriesAttachments_ForThePagedRowsOnly()
-    {
-        await _fixture.CreateSessionAsync("paging-attachments");
-        await _repository.UpsertMessagesAsync("paging-attachments", new[]
-        {
-            Message(1, "old", Attachment("old-file")),
-            Message(2, "new", Attachment("new-file")),
-        });
-
-        var page = await _repository.LoadMessagePageAsync("paging-attachments", limit: 1);
-
-        var message = Assert.Single(page.Messages);
-        Assert.Equal(2, message.Id);
-        Assert.Equal("new-file", Assert.Single(message.Attachments).Id);
     }
 
     private static ChatMessage Message(long id, string content, params ChatAttachment[] attachments)

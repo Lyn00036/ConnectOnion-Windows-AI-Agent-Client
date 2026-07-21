@@ -66,28 +66,6 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
 
     public ObservableCollection<ChatMessage> Messages { get; } = new();
 
-    /// <summary>How much history a conversation opens with. Comfortably more than a viewport
-    /// holds, so the common case never needs a second read, while a conversation with thousands
-    /// of bubbles no longer materializes all of them (and no longer parks all of them in the
-    /// four-entry <see cref="ConversationCache"/>) just to show its tail.</summary>
-    private const int InitialHistoryPageSize = 150;
-
-    /// <summary>How much each scroll-up pull adds. Smaller than the opening page: this one runs
-    /// while the user is looking at the list, so it trades a little more paging for a shorter
-    /// pause and a smaller scroll-position correction.</summary>
-    private const int OlderHistoryPageSize = 100;
-
-    /// <summary>True when older bubbles exist above the loaded window — drives the chat page's
-    /// scroll-up load. False for a conversation whose whole history is already in
-    /// <see cref="Messages"/>.</summary>
-    [ObservableProperty]
-    public partial bool HasMoreHistory { get; private set; }
-
-    /// <summary>True while an older page is being fetched, so the page can show a spinner and,
-    /// more importantly, not fire a second overlapping pull while this one is in flight.</summary>
-    [ObservableProperty]
-    public partial bool IsLoadingOlderHistory { get; private set; }
-
     private readonly PreferencesRepository _preferences;
     private readonly AgentRepository _agents;
     private readonly SessionRepository _sessions;
@@ -121,7 +99,6 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         // Partial-property [ObservableProperty] declarations can't carry initializers, so the
         // non-default seeds live here.
         HeaderText = "Chat";
-        StatusText = "";
         MessageFontSize = 14;
         EnterToSend = true;
         CurrentMode = AgentModes.Safe;
@@ -270,6 +247,12 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
 
     public string SelectedAgentName => _agent?.Name ?? "Agent";
 
+    /// <summary>User-facing agent name for the chat header (e.g. <c>Remote Admin Agent</c>);
+    /// the raw id stays in <see cref="SelectedAgentName"/> and on the config.</summary>
+    public string SelectedAgentDisplayName => _agent is null
+        ? "Agent"
+        : Common.FriendlyAgentName.From(_agent.Name);
+
     public string SelectedAgentInitial => NameInitial.From(_agent?.Name);
     public string SessionShortId => _session is null ? "" : _session.Id[..Math.Min(8, _session.Id.Length)];
     public string? SessionId => _session?.Id;
@@ -280,12 +263,6 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
 
     [ObservableProperty]
     public partial string HeaderText { get; private set; }
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasStatusText))]
-    public partial string StatusText { get; private set; }
-
-    public bool HasStatusText => !string.IsNullOrWhiteSpace(StatusText);
 
     /// <summary>
     /// The conversation socket's current phase, shown under the composer. Derived rather than
@@ -395,7 +372,6 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         IsProcessing = false;
         CanStop = false;
         IsStopping = false;
-        StatusText = "";
         // Cleared here rather than only in RestoreConversationAsync, so the early returns below
         // (no agent, no session) can't leave the previous conversation's bubbles on screen.
         Messages.Clear();
@@ -581,31 +557,23 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
             Messages.Clear();
             foreach (var message in cached.Messages) Messages.Add(message);
             _createdAt = cached.CreatedAt;
-            // The cached list is itself a window, so its "is there more above" answer has to be
-            // cached with it — recomputing it as false would strand the user at the top of a
-            // partial history with no way to pull the rest.
-            HasMoreHistory = cached.HasMoreHistory;
             ResetIdCounter();
             return;
         }
 
-        var page = await _conversations.LoadMessagePageAsync(
-            _session.Id, InitialHistoryPageSize, cancellationToken: cancellationToken);
-        var messages = ToolActivityMigration.UpgradeLegacyToolMessages(page.Messages);
+        var loaded = await _conversations.LoadMessagesAsync(_session.Id, cancellationToken);
+        var messages = ToolActivityMigration.UpgradeLegacyToolMessages(loaded);
         // A newer switch already owns the list — dropping this history is the whole point.
         if (generation != _loadGeneration) return;
 
         Messages.Clear();
-        HasMoreHistory = page.HasMore;
         _createdAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
         if (messages.Count > 0)
         {
             foreach (var message in messages) Messages.Add(message);
-            // Only meaningful when this page reaches the start of the conversation. With older
-            // bubbles still unloaded the first loaded id is just where the window happens to
-            // begin, so the wall-clock seed above is left in place instead.
-            if (!page.HasMore && messages[0].Id > 0) _createdAt = messages[0].Id;
+            // The whole conversation is loaded, so the first bubble is genuinely the start.
+            if (messages[0].Id > 0) _createdAt = messages[0].Id;
         }
         ResetIdCounter();
 
@@ -622,58 +590,6 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
 
         if (!hasRun) StoreSessionCache();
     }
-
-    /// <summary>
-    /// Prepends the next page of older bubbles, for the chat page's scroll-up pull. Returns the
-    /// number of bubbles added so the caller can correct the scroll offset by exactly the height
-    /// the new content introduced — without that the viewport jumps to wherever the anchor item
-    /// ends up after the insert.
-    /// </summary>
-    /// <remarks>
-    /// Prepending (rather than reloading a bigger window) is what keeps the user's position and
-    /// the already-realized containers intact. It also means an in-flight run streaming into the
-    /// bottom of the list is untouched by a pull at the top.
-    /// </remarks>
-    public async Task<int> LoadOlderHistoryAsync(CancellationToken cancellationToken = default)
-    {
-        if (_session is null || !HasMoreHistory || IsLoadingOlderHistory) return 0;
-        if (Messages.Count == 0) return 0;
-
-        var oldestLoadedId = Messages[0].Id;
-        var generation = _loadGeneration;
-        IsLoadingOlderHistory = true;
-        try
-        {
-            var page = await _conversations.LoadMessagePageAsync(
-                _session.Id, OlderHistoryPageSize, beforeId: oldestLoadedId, cancellationToken)
-                .ConfigureAwait(true);
-
-            // Switching conversations mid-pull must not splice one conversation's history into
-            // another's list. The generation check is the same guard the initial load uses.
-            if (generation != _loadGeneration || _session is null) return 0;
-
-            var older = ToolActivityMigration.UpgradeLegacyToolMessages(page.Messages);
-            // Insert in reverse so each goes to index 0 and the batch lands in its original order.
-            for (var i = older.Count - 1; i >= 0; i--) Messages.Insert(0, older[i]);
-
-            HasMoreHistory = page.HasMore;
-            if (!page.HasMore && Messages.Count > 0 && Messages[0].Id > 0) _createdAt = Messages[0].Id;
-
-            // Re-cache the widened window so returning to this conversation does not have to page
-            // back up again. Skipped while a run is active — that path must always reload the
-            // authoritative history (see RestoreConversationAsync).
-            if (_runManager.GetActiveRun(_session.Id) is null) StoreSessionCache();
-
-            return older.Count;
-        }
-        finally
-        {
-            IsLoadingOlderHistory = false;
-        }
-    }
-
-
-
 
     // Ids are handed out from a counter rather than rescanned off Messages: the projection asks
     // for one per bubble, so a Max() scan would make a turn cost O(messages x events) on the UI
@@ -712,6 +628,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     private void RaiseHeaderProperties()
     {
         OnPropertyChanged(nameof(SelectedAgentName));
+        OnPropertyChanged(nameof(SelectedAgentDisplayName));
         OnPropertyChanged(nameof(SelectedAgentInitial));
         OnPropertyChanged(nameof(SessionShortId));
     }
@@ -736,7 +653,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         if (_session is null || _agent is null) return;
         ConversationCache.Store(
             _session.Id,
-            new ConversationCache.Entry(_agent, _session, Messages.ToList(), _createdAt, HasMoreHistory));
+            new ConversationCache.Entry(_agent, _session, Messages.ToList(), _createdAt));
     }
 
 

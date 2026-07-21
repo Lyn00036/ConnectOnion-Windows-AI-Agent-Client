@@ -70,20 +70,6 @@ public sealed class ConversationCacheTests
     }
 
     [Fact]
-    public void Store_PartialWindow_RoundTripsHasMoreHistory()
-    {
-        var id = Unique("partial-window");
-        var entry = Entry("agent", "tail of a long conversation") with { HasMoreHistory = true };
-
-        ConversationCache.Store(id, entry);
-
-        // The flag travels with the window: a cached partial history that came back claiming to
-        // be complete would leave the reader stuck at the top of it, unable to page further up.
-        Assert.True(ConversationCache.Get(id, "agent")!.HasMoreHistory);
-        ConversationCache.Invalidate(id);
-    }
-
-    [Fact]
     public void Invalidate_StoredSession_RemovesEntry()
     {
         var id = Unique("invalidate");
