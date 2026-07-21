@@ -440,6 +440,9 @@ Note the test steps pass no `-p:Platform`. The solution build maps the conforman
 | **UI-MD-007** | Highlight match count equals the number of highlights | A | **P0** | The fallback path must still increment `matchIndex`, or Ctrl+F's "n of m" desyncs | ✅ | `HighlightedTextBlock.AddHighlightedRuns` |
 | **UI-MD-008** | Code blocks and highlights sit on the text baseline | F | P2 | No upward float | ❌ manual/visual | `ApplyBaselineNudge` — **Risk: 0.22 is an empirical ratio, not font metrics** |
 | **UI-MD-009** | Correct colors in both themes | B | P1 | Brushes read fresh from `Application.Current.Resources`; no stale colors after a theme flip | ⚠️ | `ResolveBrush` |
+| **UI-MD-010** | Table presentation and alignment | B | P1 | Cells with default/repeated parser column indices advance sequentially without overlap; header has distinct surface/weight; `:---`, `:---:`, `---:` align left/center/right; long cells wrap at a bounded width | ❌ manual/visual | `WinUiMarkdownRenderer.WriteTable` |
+| **UI-MD-011** | Wide table scrolling does not break message-list scrolling | B | **P0** | Table owns horizontal overflow only; mouse wheel and touch continue to scroll the outer virtualized message list vertically | ❌ manual/visual | `WriteTable` horizontal-only `ScrollViewer` |
+| **UI-MD-012** | Fenced code language header | B | P2 | A language info string renders as a compact themed header; blocks without a language keep the simpler layout | ❌ manual/visual | `WriteCodeBlockLines` |
 | **PERF-MD-001** | Large markdown (10k lines) render time | E | P2 | < 500ms | ✅ | performance test |
 
 ### 11.9 Tool calls (TOOL)
@@ -586,7 +589,7 @@ The first **INFRA-1** slice is complete: 24 IDs exist and `Accessibility/Automat
 | `TestConnectionButton` / `SubmitAgentButton` | `AddAgentForm.xaml` | ✅ |
 | `MessageList` | `ChatPage.xaml` message list | ✅ |
 | `MessageInput` / `SendMessageButton` / `StopResponseButton` | `ChatComposer.xaml` | ✅ |
-| `ConnectionStatus` | `ChatPage.xaml` status text | ✅ |
+| `ConnectionStatus` | `ChatPage.xaml` connection-phase label below the composer (Connected / Reconnecting / Offline) | ✅ |
 | `SettingsButton` | `ShellSidebar.xaml` | ✅ |
 | `HelpMenuButton` | `MainWindow.xaml` `HelpMenuBarItem` | ✅ |
 | `AboutMenuItem` / `ConnectOnionDocsMenuItem` / `KeyboardShortcutsMenuItem` | `MainWindow.xaml` Help menu | ✅ |
