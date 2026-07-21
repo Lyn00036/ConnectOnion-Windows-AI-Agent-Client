@@ -1,10 +1,8 @@
 using System;
-using System.Runtime.InteropServices;
 using ConnectOnion.WinUIClient.Models.Notifications;
 using ConnectOnion.WinUIClient.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
-using Windows.System;
 
 namespace ConnectOnion.WinUIClient;
 

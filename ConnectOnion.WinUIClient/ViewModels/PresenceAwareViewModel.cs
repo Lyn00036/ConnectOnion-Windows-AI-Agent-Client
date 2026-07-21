@@ -1,6 +1,5 @@
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
-using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
 using Microsoft.UI.Dispatching;

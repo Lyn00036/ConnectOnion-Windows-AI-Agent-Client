@@ -4,10 +4,8 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
-using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Models;
-using ConnectOnion.WinUIClient.Services;
 
 namespace ConnectOnion.WinUIClient.ViewModels;
 

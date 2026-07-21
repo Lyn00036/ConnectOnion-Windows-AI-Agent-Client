@@ -1,6 +1,3 @@
-using ConnectOnion.Protocol;
-using Xunit;
-
 namespace ConnectOnion.Protocol.Tests;
 
 /// <summary>

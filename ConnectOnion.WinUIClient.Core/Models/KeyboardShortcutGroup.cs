@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-
 namespace ConnectOnion.WinUIClient.Models;
 
 /// <summary>A titled section of related shortcuts (e.g. "Chat"), as shown in the dialog.</summary>

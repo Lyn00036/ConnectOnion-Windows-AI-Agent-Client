@@ -1,8 +1,6 @@
 using System;
 using ConnectOnion.WinUIClient.Models;
-using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Data;
-using Microsoft.UI.Xaml.Media;
 
 namespace ConnectOnion.WinUIClient.Presentation;
 
@@ -31,12 +29,10 @@ public sealed class HeatmapLevelToBrushConverter : IValueConverter
         // engine, where the stack says nothing about where it came from.
         level = Math.Clamp(level, 0, UsageHeatmap.MaxLevel);
 
-        // Two fallbacks, matching ToolStatusToBrushConverter: a missing key returns null rather
-        // than throwing, and returning null would fail inside the binding engine. A visibly-wrong
-        // grey beats an unexplained blank grid.
-        return Application.Current.Resources[$"HeatmapLevel{level}Brush"] as Brush
-            ?? Application.Current.Resources["SurfaceTertiaryBrush"] as Brush
-            ?? new SolidColorBrush(Windows.UI.Color.FromArgb(255, 128, 128, 128));
+        // Neutral-token fallback and, behind it, the shared palette-missing grey — a missing key
+        // returns null rather than throwing, and null would fail inside the binding engine. A
+        // visibly-wrong grey beats an unexplained blank grid. See ThemeBrushResolver.
+        return ThemeBrushResolver.Resolve($"HeatmapLevel{level}Brush", "SurfaceTertiaryBrush");
     }
 
     // One-way by nature: a brush cannot tell you which level produced it.

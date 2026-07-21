@@ -102,14 +102,20 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
     {
         var paragraph = CreateParagraph();
         paragraph.FontWeight = FontWeights.SemiBold;
-        paragraph.FontSize = block.Level switch
+        // Heading sizes scale with the message's base font size (the "Message text size" setting)
+        // rather than being fixed, so a heading stays proportionally larger than its body text at
+        // every step. 14 is the Medium baseline the raw sizes below were picked against.
+        var scale = _target.FontSize > 0 ? _target.FontSize / 14.0 : 1.0;
+        // Parenthesized on purpose: `switch` binds looser than `*`, so without these parens this
+        // reads as `(scale * block.Level) switch …` — matching a scaled level against 1/2/3/4.
+        paragraph.FontSize = scale * (block.Level switch
         {
             1 => 24,
             2 => 20,
             3 => 18,
             4 => 16,
             _ => 14,
-        };
+        });
         paragraph.Margin = new Thickness(0, block.Level <= 2 ? 10 : 8, 0, 6);
         _target.Blocks.Add(paragraph);
 

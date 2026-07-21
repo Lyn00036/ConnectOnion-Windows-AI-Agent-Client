@@ -1,7 +1,6 @@
 using System;
 using System.Numerics;
 using ConnectOnion.WinUIClient.Services;
-using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Geometry;
 using Microsoft.Graphics.Canvas.UI.Xaml;
 using Microsoft.UI.Xaml;

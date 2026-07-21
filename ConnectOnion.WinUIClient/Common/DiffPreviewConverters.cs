@@ -48,8 +48,8 @@ public sealed class DiffTextToLinesConverter : IValueConverter
         {
             return "meta";
         }
-        if (line.StartsWith("+", StringComparison.Ordinal)) return "add";
-        if (line.StartsWith("-", StringComparison.Ordinal)) return "remove";
+        if (line.StartsWith('+')) return "add";
+        if (line.StartsWith('-')) return "remove";
         return "context";
     }
 

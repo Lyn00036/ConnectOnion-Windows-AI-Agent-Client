@@ -6,7 +6,6 @@ using ConnectOnion.WinUIClient.Services.Notifications;
 using ConnectOnion.WinUIClient.Services.Runtime;
 using ConnectOnion.WinUIClient.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Http.Resilience;
 using Polly;
 

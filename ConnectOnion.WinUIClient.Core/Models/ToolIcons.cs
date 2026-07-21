@@ -1,5 +1,3 @@
-using System;
-
 namespace ConnectOnion.WinUIClient.Models;
 
 /// <summary>

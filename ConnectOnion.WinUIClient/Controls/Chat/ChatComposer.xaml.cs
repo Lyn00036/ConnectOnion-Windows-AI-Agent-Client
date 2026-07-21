@@ -7,7 +7,6 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.UI;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
@@ -19,7 +18,6 @@ using Windows.System;
 using Windows.UI.Core;
 using ConnectOnion.Protocol;
 using ConnectOnion.WinUIClient.Models;
-using ConnectOnion.WinUIClient.Services;
 using ConnectOnion.WinUIClient.Services.Attachments;
 
 namespace ConnectOnion.WinUIClient.Controls;

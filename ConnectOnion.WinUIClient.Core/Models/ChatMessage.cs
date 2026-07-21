@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System;
 using System.Globalization;
 using System.Text.Json.Serialization;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -42,6 +41,7 @@ public sealed partial class ChatMessage : Common.ObservableObject
         OnboardInviteCode = "";
         FindQuery = "";
         ActiveFindMatchIndex = -1;
+        MessageFontSize = 14;
         AskUserFreeText = "";
         ThinkingElapsedLabel = "";
         PlanFeedback = "";
@@ -517,6 +517,16 @@ public sealed partial class ChatMessage : Common.ObservableObject
     [ObservableProperty]
     [JsonIgnore]
     public partial int ActiveFindMatchIndex { get; set; }
+
+    /// <summary>
+    /// Pixel font size for this bubble's message text, stamped by <c>ChatViewModel</c> from the
+    /// user's "Message text size" preference. Bound directly by the user/agent message templates
+    /// because <c>ListView.FontSize</c> does not cascade into <c>ListViewItemPresenter</c> content,
+    /// so a per-message value is what actually reaches the text. Default matches the "Medium" step.
+    /// </summary>
+    [ObservableProperty]
+    [JsonIgnore]
+    public partial double MessageFontSize { get; set; }
 
     /// <summary>
     /// Attachments sent by the user on this message, or images the agent produced

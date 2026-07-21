@@ -84,6 +84,11 @@ public sealed class MarkdownTextBlock : UserControl
         // inlines it produces (code spans, links, search highlights), so those colors are
         // already fixed by the time they reach the tree. The parse cache makes this cheap.
         ActualThemeChanged += (_, _) => RenderMarkdown(Markdown);
+        // Same reasoning for font size: the renderer bakes absolute sizes into headings and code
+        // spans from the base FontSize, so a size change (the "Message text size" setting, applied
+        // live or stamped after the markdown first renders) needs a re-render, not just the inner
+        // RichTextBlock's bound FontSize update — otherwise those inlines keep the old size.
+        RegisterPropertyChangedCallback(FontSizeProperty, (_, _) => RenderMarkdown(Markdown));
     }
 
     public string Markdown

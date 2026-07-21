@@ -1,8 +1,5 @@
-using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
-using System.Threading.Tasks;
 using ConnectOnion.WinUIClient.Models;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;

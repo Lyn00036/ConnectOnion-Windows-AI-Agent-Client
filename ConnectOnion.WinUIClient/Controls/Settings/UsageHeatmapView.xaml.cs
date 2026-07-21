@@ -1,4 +1,3 @@
-using System;
 using System.Globalization;
 using ConnectOnion.WinUIClient.Models;
 using Microsoft.UI.Xaml;

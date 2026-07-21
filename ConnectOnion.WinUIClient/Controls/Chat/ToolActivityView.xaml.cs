@@ -108,8 +108,7 @@ public sealed partial class ToolActivityView : UserControl
     }
 
     private static Brush ResolveBrush(string key)
-        => Application.Current.Resources[key] as Brush
-           ?? new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 128, 128, 128));
+        => Presentation.ThemeBrushResolver.Resolve(key);
 
     /// <summary>Walks up the visual tree to find the ListView's internal
     /// ScrollViewer. Needed so we can save/restore the scroll offset around

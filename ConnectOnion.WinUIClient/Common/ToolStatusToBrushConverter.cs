@@ -1,8 +1,6 @@
 using System;
 using ConnectOnion.WinUIClient.Models;
-using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Data;
-using Microsoft.UI.Xaml.Media;
 
 namespace ConnectOnion.WinUIClient.Presentation;
 
@@ -44,17 +42,10 @@ public sealed class ToolStatusToBrushConverter : IValueConverter
             ToolActivityStatus.WaitingForConfirmation or ToolActivityStatus.WaitingForPermission => "WarningBrush",
             _ => "TextSecondaryBrush",
         };
-        // Resolved from Application.Resources on every call rather than cached in a field:
-        // the brush behind a key changes when the user flips light/dark, and a cached Brush
-        // would keep painting the old theme's color until the control was recreated.
-        //
-        // Two fallbacks because a missing key returns null rather than throwing: first the
-        // neutral token, then a hard-coded grey for the case where the palette itself failed
-        // to merge. Returning null would throw inside the binding engine with no useful
-        // stack, so a visibly-wrong grey is the better failure.
-        return Application.Current.Resources[key] as Brush
-            ?? Application.Current.Resources["TextSecondaryBrush"] as Brush
-            ?? new SolidColorBrush(Windows.UI.Color.FromArgb(255, 128, 128, 128));
+        // Resolved from Application.Resources on every call (never cached — a cached brush would
+        // survive a light/dark flip), with a neutral-token fallback and, behind that, the shared
+        // palette-missing grey. See ThemeBrushResolver.
+        return ThemeBrushResolver.Resolve(key, "TextSecondaryBrush");
     }
 
     // One-way by nature: a brush cannot tell you which status produced it.

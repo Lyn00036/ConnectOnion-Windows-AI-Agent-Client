@@ -1,4 +1,3 @@
-using System;
 using ConnectOnion.WinUIClient.Models.Notifications;
 
 namespace ConnectOnion.WinUIClient.Services.Notifications;

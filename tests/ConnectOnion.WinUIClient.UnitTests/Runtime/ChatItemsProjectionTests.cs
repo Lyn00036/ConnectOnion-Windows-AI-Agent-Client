@@ -1,7 +1,5 @@
-using System.Linq;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services.Runtime;
-using Xunit;
 
 namespace ConnectOnion.WinUIClient.UnitTests.Runtime;
 

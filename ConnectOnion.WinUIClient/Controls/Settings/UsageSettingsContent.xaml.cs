@@ -1,5 +1,4 @@
 using System;
-using System.Threading.Tasks;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.ViewModels;
 using Microsoft.UI.Xaml;

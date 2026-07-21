@@ -1,6 +1,4 @@
-using System;
 using System.Text;
-using ConnectOnion.Protocol;
 
 namespace ConnectOnion.Protocol.Tests;
 

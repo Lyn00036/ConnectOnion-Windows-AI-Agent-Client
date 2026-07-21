@@ -1,14 +1,7 @@
-using System;
-using System.Collections.Generic;
-using System.Data;
 using System.Diagnostics;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
 using ConnectOnion.WinUIClient.Models;
 using Microsoft.Data.Sqlite;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ConnectOnion.WinUIClient.Data;
 

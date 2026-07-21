@@ -2,13 +2,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
-using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
 using Windows.Devices.Enumeration;
 using Windows.Foundation;
-using System.Runtime.InteropServices.WindowsRuntime;
 
 namespace ConnectOnion.WinUIClient.ViewModels;
 
@@ -99,6 +97,10 @@ public sealed partial class SettingsViewModel : Common.ObservableObject
     {
         if (!_loaded || _prefs.MessageFontSize == size) return;
         _prefs.MessageFontSize = size;
+        // Broadcast before the await so open chat views resize immediately; the save trails,
+        // matching SetThemeAsync. Without this an already-open ChatPage keeps its old size until
+        // it reloads, so the setting looks broken.
+        MessageFontService.Apply(size);
         OnPropertyChanged(nameof(MessageFontSize));
         await _repo.SaveAsync(_prefs);
     }

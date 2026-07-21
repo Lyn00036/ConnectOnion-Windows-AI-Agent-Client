@@ -1,8 +1,3 @@
-using System;
-using System.Linq;
-using ConnectOnion.Protocol;
-using Xunit;
-
 namespace ConnectOnion.Protocol.Tests;
 
 public class ReconnectPolicyTests

@@ -7,13 +7,11 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
-using CommunityToolkit.Mvvm.Input;
 using ConnectOnion.Protocol;
 using ConnectOnion.Protocol.Runtime;
 using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
-using ConnectOnion.WinUIClient.Services.Attachments;
 using ConnectOnion.WinUIClient.Services.Notifications;
 using ConnectOnion.WinUIClient.Services.Runtime;
 using ConnectOnion.WinUIClient.Data;
@@ -128,6 +126,22 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         EnterToSend = true;
         CurrentMode = AgentModes.Safe;
 
+        // Live-apply message text-size changes made in Settings while this chat is open. The
+        // page is cached (NavigationCacheMode.Required), so this instance and its subscription
+        // live for the session — Cleanup detaches it for genuine disposal. Fired on the UI thread.
+        MessageFontService.FontSizeChanged += ApplyLiveFontSize;
+
+        // ListView.FontSize does not cascade into ListViewItemPresenter content, so each bubble
+        // carries its own font size (bound by the templates). Stamp the current size onto every
+        // message as it is added — projection appends bubbles from several call sites, and this is
+        // the one place they all funnel through.
+        Messages.CollectionChanged += (_, e) =>
+        {
+            if (e.NewItems is null) return;
+            foreach (ChatMessage message in e.NewItems)
+                message.MessageFontSize = MessageFontSize;
+        };
+
         // Ticks the "Thinking... 3s" counter. A DispatcherTimer (not a threading one) because it
         // writes straight into bound properties, and this type is resolved on the UI thread from
         // the page's constructor. It only runs while a thinking row is actually live — see
@@ -198,8 +212,23 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     /// disposal of the view model (the page instance is actually being discarded, not cached).</summary>
     public void Cleanup()
     {
+        MessageFontService.FontSizeChanged -= ApplyLiveFontSize;
         DetachPresence();
         DetachRun();
+    }
+
+    /// <summary>Applies a live message-font-size change from Settings. Assigning the property
+    /// runs the generated <see cref="OnMessageFontSizeChanged"/> hook, which restamps every
+    /// loaded bubble so the open chat resizes immediately.</summary>
+    private void ApplyLiveFontSize(double size) => MessageFontSize = size;
+
+    // Fires on every MessageFontSize assignment (ctor seed, load, and the live setting change).
+    // Restamps bubbles already in the list; ones added afterwards are stamped on insert by the
+    // Messages.CollectionChanged handler wired in the constructor.
+    partial void OnMessageFontSizeChanged(double value)
+    {
+        foreach (var message in Messages)
+            message.MessageFontSize = value;
     }
 
     [ObservableProperty]
@@ -373,12 +402,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
 
         var prefs = await _preferences.LoadAsync(cancellationToken);
         EnterToSend = prefs.EnterToSend;
-        MessageFontSize = prefs.MessageFontSize switch
-        {
-            Models.MessageFontSize.Sm => 12,
-            Models.MessageFontSize.Lg => 18,
-            _ => 14,
-        };
+        MessageFontSize = MessageFontService.ToPixels(prefs.MessageFontSize);
 
         var agents = await _agents.LoadAsync(cancellationToken);
         if (generation != _loadGeneration) return;

@@ -1,13 +1,11 @@
 using System;
 using System.IO;
 using ConnectOnion.WinUIClient.Data;
-using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
 using ConnectOnion.WinUIClient.Views;
 using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
-using Windows.UI;
 
 namespace ConnectOnion.WinUIClient;
 

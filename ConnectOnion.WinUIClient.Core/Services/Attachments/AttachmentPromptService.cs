@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-using System.Linq;
 using ConnectOnion.WinUIClient.Models;
 
 namespace ConnectOnion.WinUIClient.Services.Attachments;

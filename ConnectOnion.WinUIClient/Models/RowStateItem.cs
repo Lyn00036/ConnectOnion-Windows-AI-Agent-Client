@@ -1,5 +1,4 @@
 using CommunityToolkit.Mvvm.ComponentModel;
-using ConnectOnion.WinUIClient.Common;
 
 namespace ConnectOnion.WinUIClient.Models;
 

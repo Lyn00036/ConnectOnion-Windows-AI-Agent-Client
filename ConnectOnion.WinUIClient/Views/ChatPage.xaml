@@ -279,6 +279,7 @@
                             <controls:HighlightedTextBlock Text="{x:Bind Content, Mode=OneWay}"
                                                            SearchQuery="{x:Bind FindQuery, Mode=OneWay}"
                                                            ActiveMatchIndex="{x:Bind ActiveFindMatchIndex, Mode=OneWay}"
+                                                           FontSize="{x:Bind MessageFontSize, Mode=OneWay}"
                                                            Foreground="{ThemeResource TextPrimaryBrush}" />
                         </Border>
                         <!-- This row always owns its height. Hover only changes the inner
@@ -421,6 +422,7 @@
                     <controls:MarkdownTextBlock Markdown="{x:Bind Content, Mode=OneWay}"
                                                 SearchQuery="{x:Bind FindQuery, Mode=OneWay}"
                                                 ActiveMatchIndex="{x:Bind ActiveFindMatchIndex, Mode=OneWay}"
+                                                FontSize="{x:Bind MessageFontSize, Mode=OneWay}"
                                                 Foreground="{ThemeResource TextPrimaryBrush}" />
                     <StackPanel Orientation="Horizontal"
                                 Spacing="5"

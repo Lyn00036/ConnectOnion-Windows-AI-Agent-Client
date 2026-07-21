@@ -11,7 +11,6 @@ using ConnectOnion.Protocol.Runtime;
 using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services.Attachments;
-using ConnectOnion.WinUIClient.Services.Notifications;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 

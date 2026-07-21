@@ -19,8 +19,6 @@
             <x:Double x:Key="ChatComposerWidth">680</x:Double>
 
             <presentation:BoolToVisibilityConverter x:Key="BoolToVis" />
-            <presentation:RoleToAlignmentConverter x:Key="RoleToAlignment" />
-            <presentation:RoleToBrushConverter x:Key="RoleToBrush" />
             <presentation:StringToVisibilityConverter x:Key="StringToVis" />
             <presentation:PresenceToBrushConverter x:Key="PresenceToBrush" />
             <presentation:EventStatusToBrushConverter x:Key="EventStatusToBrush" />

@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Models;
 
 namespace ConnectOnion.WinUIClient.Services;
