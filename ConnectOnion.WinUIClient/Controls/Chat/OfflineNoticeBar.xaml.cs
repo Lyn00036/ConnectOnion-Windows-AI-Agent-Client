@@ -1,6 +1,8 @@
 using System;
+using CommunityToolkit.WinUI.Animations;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Windows.UI.ViewManagement;
 
 namespace ConnectOnion.WinUIClient.Controls;
 
@@ -11,6 +13,10 @@ namespace ConnectOnion.WinUIClient.Controls;
 /// </summary>
 public sealed partial class OfflineNoticeBar : UserControl
 {
+    /// <summary>Honours the OS "show animations" accessibility setting (Reduce Motion). Read once
+    /// as a startup constant, matching <c>DisclosureAnimation</c>/<c>ThinkingIndicator</c>.</summary>
+    private static readonly bool AnimationsEnabled = new UISettings().AnimationsEnabled;
+
     public static readonly DependencyProperty DetailProperty =
         DependencyProperty.Register(
             nameof(Detail),
@@ -44,6 +50,12 @@ public sealed partial class OfflineNoticeBar : UserControl
     public OfflineNoticeBar()
     {
         InitializeComponent();
+        // The host attaches the slide/fade entrance via Implicit.ShowAnimations in its XAML, which
+        // is set on this instance after our constructor runs — so Reduce Motion is honoured in
+        // Loaded (still collapsed at that point, before the first show fires) by clearing it. The
+        // card then simply appears, its meaning unchanged.
+        if (!AnimationsEnabled)
+            Loaded += (_, _) => Implicit.SetShowAnimations(this, null);
     }
 
     public string Detail

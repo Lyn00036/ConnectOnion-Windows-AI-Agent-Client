@@ -149,6 +149,23 @@ public sealed class NotificationCoordinatorTests
     }
 
     [Fact]
+    public void Dispose_CancelsPendingTimers_AndIgnoresLaterPublishes()
+    {
+        var h = new Harness();
+        h.Presence.IsForeground = false;
+        h.Coordinator.NotifyConnectionLost(AgentId, AgentName);
+
+        h.Coordinator.Dispose();
+        h.Scheduler.FireAll();
+        h.Coordinator.PublishAgentTurnCompleted(
+            AgentId, AgentName, ConvId, "turn-after-dispose", "done", 0, 100);
+
+        Assert.Equal(0, h.Scheduler.PendingCount);
+        Assert.Equal(0, h.System.Count);
+        Assert.Equal(0, h.InApp.Count);
+    }
+
+    [Fact]
     public void PublishAgentTurnCompleted_NotificationsDisabled_SuppressesNotification()
     {
         var h = new Harness();

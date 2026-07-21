@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.Threading;
 using ConnectOnion.WinUIClient.Controls;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
@@ -19,6 +22,56 @@ namespace ConnectOnion.WinUIClient.Views;
 /// </summary>
 public sealed partial class ChatPage
 {
+    private CancellationTokenSource? _uiFeedbackCts;
+    private readonly Dictionary<Button, Action> _copyFeedbackRestores = new();
+
+    private void StartUiFeedbackLifetime()
+    {
+        if (_uiFeedbackCts is not null)
+            StopUiFeedbackLifetime(restoreVisuals: true);
+        _uiFeedbackCts = new CancellationTokenSource();
+    }
+
+    private void StopUiFeedbackLifetime(bool restoreVisuals)
+    {
+        _uiFeedbackCts?.Cancel();
+        _uiFeedbackCts?.Dispose();
+        _uiFeedbackCts = null;
+
+        if (restoreVisuals)
+        {
+            foreach (var restore in _copyFeedbackRestores.Values)
+                restore();
+        }
+        _copyFeedbackRestores.Clear();
+    }
+
+    private async System.Threading.Tasks.Task ShowCopyFeedbackAsync(Button button, Action restore)
+    {
+        if (_uiFeedbackCts is not { IsCancellationRequested: false } lifetime) return;
+
+        if (_copyFeedbackRestores.Remove(button, out var previous)) previous();
+        _copyFeedbackRestores[button] = restore;
+        try
+        {
+            await System.Threading.Tasks.Task.Delay(1000, lifetime.Token);
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
+        {
+            return;
+        }
+
+        if (!ReferenceEquals(_uiFeedbackCts, lifetime) ||
+            !_copyFeedbackRestores.TryGetValue(button, out var current) ||
+            !ReferenceEquals(current, restore))
+        {
+            return;
+        }
+
+        _copyFeedbackRestores.Remove(button);
+        restore();
+    }
+
     private async void CopyMessage_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.DataContext is not ChatMessage message ||
@@ -35,10 +88,15 @@ public sealed partial class ChatPage
             iconButton.IsHitTestVisible = false;
             fluentIcon.Icon = Icon.Checkmark;
             AutomationProperties.SetName(iconButton, "Copied");
-            await System.Threading.Tasks.Task.Delay(1000);
-            fluentIcon.Icon = originalIcon;
-            AutomationProperties.SetName(iconButton, message.IsUser ? "Copy message" : "Copy response");
-            iconButton.IsHitTestVisible = true;
+            await ShowCopyFeedbackAsync(iconButton, () =>
+            {
+                fluentIcon.Icon = originalIcon;
+                var current = iconButton.DataContext as ChatMessage ?? message;
+                AutomationProperties.SetName(
+                    iconButton,
+                    current.IsUser ? "Copy message" : "Copy response");
+                iconButton.IsHitTestVisible = true;
+            });
             return;
         }
 
@@ -46,8 +104,7 @@ public sealed partial class ChatPage
         {
             var original = iconText.Text;
             iconText.Text = "Copied";
-            await System.Threading.Tasks.Task.Delay(1000);
-            iconText.Text = original;
+            await ShowCopyFeedbackAsync((Button)sender, () => iconText.Text = original);
         }
     }
 

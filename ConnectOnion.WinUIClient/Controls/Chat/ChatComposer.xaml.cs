@@ -350,26 +350,40 @@ public sealed partial class ChatComposer : UserControl, IDisposable
 
     // ---- Attachments ----
 
+    // Built once and reused. Rebuilding a MenuFlyout (with fresh lambda Click handlers) on every
+    // click leaked: WinUI 3 does not reliably release a Popup/MenuFlyout once shown, so a new one
+    // per open accumulated for the process's life. The two items' enabled state is the only thing
+    // that varies per open (with the agent's accepted inputs), so that is refreshed in place.
+    private MenuFlyout? _attachmentFlyout;
+    private MenuFlyoutItem? _addImageItem;
+    private MenuFlyoutItem? _addFileItem;
+
     private void AddAttachment_Click(object sender, RoutedEventArgs e)
     {
+        if (_attachmentFlyout is null)
+        {
+            _addImageItem = new MenuFlyoutItem { Text = "Add image..." };
+            _addImageItem.Click += async (_, _) => await AddAttachmentsAsync(AttachmentKind.Image);
+
+            _addFileItem = new MenuFlyoutItem { Text = "Add file..." };
+            _addFileItem.Click += async (_, _) => await AddAttachmentsAsync(AttachmentKind.File);
+
+            _attachmentFlyout = new MenuFlyout();
+            _attachmentFlyout.Items.Add(_addImageItem);
+            _attachmentFlyout.Items.Add(_addFileItem);
+        }
+
         var accepted = AcceptedInputs;
-        var flyout = new MenuFlyout();
 
-        var imageItem = new MenuFlyoutItem { Text = "Add image..." };
         var imagesBlocked = accepted?.Images == false;
-        imageItem.IsEnabled = !imagesBlocked;
-        if (imagesBlocked) ToolTipService.SetToolTip(imageItem, "This agent does not accept image input.");
-        imageItem.Click += async (_, _) => await AddAttachmentsAsync(AttachmentKind.Image);
-        flyout.Items.Add(imageItem);
+        _addImageItem!.IsEnabled = !imagesBlocked;
+        ToolTipService.SetToolTip(_addImageItem, imagesBlocked ? "This agent does not accept image input." : null);
 
-        var fileItem = new MenuFlyoutItem { Text = "Add file..." };
         var filesBlocked = accepted is not null && accepted.Files is null;
-        fileItem.IsEnabled = !filesBlocked;
-        if (filesBlocked) ToolTipService.SetToolTip(fileItem, "This agent does not accept file input.");
-        fileItem.Click += async (_, _) => await AddAttachmentsAsync(AttachmentKind.File);
-        flyout.Items.Add(fileItem);
+        _addFileItem!.IsEnabled = !filesBlocked;
+        ToolTipService.SetToolTip(_addFileItem, filesBlocked ? "This agent does not accept file input." : null);
 
-        flyout.ShowAt((FrameworkElement)sender);
+        _attachmentFlyout.ShowAt((FrameworkElement)sender);
     }
 
     private async Task AddAttachmentsAsync(AttachmentKind kind)

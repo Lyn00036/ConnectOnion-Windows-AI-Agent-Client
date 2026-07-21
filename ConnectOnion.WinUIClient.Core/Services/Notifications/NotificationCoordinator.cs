@@ -11,7 +11,7 @@ namespace ConnectOnion.WinUIClient.Services.Notifications;
 /// marshaling), so it can be driven from background socket callbacks and unit-
 /// tested with fakes.
 /// </summary>
-public sealed class NotificationCoordinator
+public sealed class NotificationCoordinator : IDisposable
 {
     private readonly INotificationChannel _system;
     private readonly INotificationChannel _inApp;
@@ -34,6 +34,7 @@ public sealed class NotificationCoordinator
     /// what limits an outage to one notification, because an outage can outlive 256 other
     /// events and would otherwise re-fire once its key aged out.</summary>
     private readonly HashSet<string> _notifiedDown = new(StringComparer.Ordinal);
+    private bool _disposed;
 
     /// <summary>How long a disconnect must persist before we notify. Short blips
     /// that recover within this window are silent.</summary>
@@ -68,6 +69,7 @@ public sealed class NotificationCoordinator
         {
             lock (_gate)
             {
+                if (_disposed) return;
                 if (!_dedup.Add(request.EffectiveDedupKey)) return;
             }
 
@@ -154,6 +156,7 @@ public sealed class NotificationCoordinator
         if (string.IsNullOrEmpty(agentId)) return;
         lock (_gate)
         {
+            if (_disposed) return;
             if (_notifiedDown.Contains(agentId)) return;       // already told the user
             if (_pendingConnection.ContainsKey(agentId)) return; // grace timer already armed
             _pendingConnection[agentId] = _scheduler.Schedule(
@@ -168,6 +171,7 @@ public sealed class NotificationCoordinator
         if (string.IsNullOrEmpty(agentId)) return;
         lock (_gate)
         {
+            if (_disposed) return;
             if (_pendingConnection.Remove(agentId, out var handle)) handle.Dispose();
             _notifiedDown.Remove(agentId);
         }
@@ -181,6 +185,7 @@ public sealed class NotificationCoordinator
     {
         lock (_gate)
         {
+            if (_disposed) return;
             if (!_pendingConnection.Remove(agentId, out var handle)) return;
             handle.Dispose();
             if (!_notifiedDown.Add(agentId)) return;
@@ -203,4 +208,19 @@ public sealed class NotificationCoordinator
     /// acceptable here — do not persist or transmit this value.</summary>
     private static string Hash(string? s)
         => string.IsNullOrEmpty(s) ? "0" : ((uint)s.GetHashCode()).ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    public void Dispose()
+    {
+        IDisposable[] handles;
+        lock (_gate)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            handles = _pendingConnection.Values.ToArray();
+            _pendingConnection.Clear();
+            _notifiedDown.Clear();
+        }
+
+        foreach (var handle in handles) handle.Dispose();
+    }
 }

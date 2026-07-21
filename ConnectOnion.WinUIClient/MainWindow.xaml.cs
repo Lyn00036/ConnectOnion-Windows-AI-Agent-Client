@@ -95,11 +95,13 @@ public sealed partial class MainWindow : Window
         if (System.Threading.Interlocked.Exchange(ref _windowServicesDetached, 1) != 0) return;
 
         ThemeService.ThemeApplied -= ApplyTitleBarTheme;
+        ThemeService.UnregisterRoot(RootGrid);
         _sessionRepository.SessionsChanged -= OnSessionsChanged;
         DetachNotificationPresence();
         DetachShortcutHints();
         DetachViewMenu();
         InAppNotifications.Shutdown();
+        SettingsOverlay.Shutdown();
 
         // Pages disarm their own timers in Unloaded, which is not guaranteed to fire on window
         // close — so the page currently on screen is asked directly. Wrapped because a page that

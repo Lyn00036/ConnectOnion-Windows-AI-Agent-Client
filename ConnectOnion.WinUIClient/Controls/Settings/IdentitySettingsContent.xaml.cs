@@ -12,12 +12,14 @@ namespace ConnectOnion.WinUIClient.Controls;
 /// Ed25519 seed in <c>identity_keys</c>, so there is nothing here a user could edit, and
 /// regenerating it would invalidate every authorization the agents have granted.
 /// </summary>
-public sealed partial class IdentitySettingsContent : UserControl
+public sealed partial class IdentitySettingsContent : UserControl, System.IDisposable
 {
     // Kept as fields rather than re-read from the TextBlocks on copy: the displayed text may
     // be trimmed or styled, and the clipboard must get the exact value.
     private string _address = "";
     private string _publicKey = "";
+    private readonly System.Threading.CancellationTokenSource _shutdownCts = new();
+    private int _disposed;
 
     public IdentitySettingsContent()
     {
@@ -56,15 +58,29 @@ public sealed partial class IdentitySettingsContent : UserControl
             // Restoring the caption means capturing it first — the label differs per button
             // and is localized, so it cannot be re-derived from a literal here.
             var original = button.Content;
+            button.IsHitTestVisible = false;
             button.Content = "Copied";
-            await System.Threading.Tasks.Task.Delay(900);
-            // KNOWN HAZARD: this resumes on the dispatcher, which keeps pumping after
-            // Window.Closed. Closing the window inside this 900ms window resumes against a
-            // tree the framework is tearing down — the access-violation-in-Microsoft.UI.Xaml
-            // failure mode described in CLAUDE.md. Every other async-void-after-await site in
-            // the app (see InAppNotificationHost.Remove) carries an explicit "did we shut
-            // down?" check on the far side of the await; this one does not yet.
+            var shutdownToken = _shutdownCts.Token;
+            try
+            {
+                await System.Threading.Tasks.Task.Delay(900, shutdownToken);
+            }
+            catch (System.OperationCanceledException) when (shutdownToken.IsCancellationRequested)
+            {
+                return;
+            }
             button.Content = original;
+            button.IsHitTestVisible = true;
         }
+    }
+
+    /// <summary>Cancels delayed visual feedback before the window's XAML tree is torn down.</summary>
+    public void Shutdown() => Dispose();
+
+    public void Dispose()
+    {
+        if (System.Threading.Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        _shutdownCts.Cancel();
+        _shutdownCts.Dispose();
     }
 }

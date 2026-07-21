@@ -15,6 +15,7 @@ public sealed class NotificationActivationRouter
     private readonly object _gate = new();
     private (string? AgentId, string? ConversationId)? _pending;
     private bool _ready;
+    private int _registered;
 
     public NotificationActivationRouter(ConversationNavigationService navigation)
         => _navigation = navigation;
@@ -23,22 +24,28 @@ public sealed class NotificationActivationRouter
     /// Safe to call once at startup for both packaged and unpackaged apps.</summary>
     public void RegisterAndListen()
     {
+        if (System.Threading.Interlocked.CompareExchange(ref _registered, 1, 0) != 0) return;
+        var manager = AppNotificationManager.Default;
         try
         {
-            var manager = AppNotificationManager.Default;
             manager.NotificationInvoked += OnNotificationInvoked;
             manager.Register();
             NotificationLog.Info("RegisterAndListen: registered for notification activation");
         }
         catch (Exception ex)
         {
+            manager.NotificationInvoked -= OnNotificationInvoked;
+            System.Threading.Interlocked.Exchange(ref _registered, 0);
             NotificationLog.Warn("notification registration failed", ex);
         }
     }
 
     public void Unregister()
     {
-        try { AppNotificationManager.Default.Unregister(); }
+        if (System.Threading.Interlocked.Exchange(ref _registered, 0) == 0) return;
+        var manager = AppNotificationManager.Default;
+        manager.NotificationInvoked -= OnNotificationInvoked;
+        try { manager.Unregister(); }
         catch (Exception ex) { NotificationLog.Warn("notification unregister failed", ex); }
     }
 

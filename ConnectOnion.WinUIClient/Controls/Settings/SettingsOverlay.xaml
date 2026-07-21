@@ -98,7 +98,7 @@
                                   HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled"
                                   VerticalScrollMode="Enabled" VerticalScrollBarVisibility="Auto"
                                   HorizontalContentAlignment="Stretch">
-                        <controls:IdentitySettingsContent Margin="28,6,28,28" />
+                        <controls:IdentitySettingsContent x:Name="IdentityContent" Margin="28,6,28,28" />
                     </ScrollViewer>
                     <ScrollViewer x:Name="UsageScrollViewer" Grid.Row="1" Visibility="Collapsed"
                                   HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled"

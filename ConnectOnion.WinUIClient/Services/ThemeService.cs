@@ -27,6 +27,13 @@ public static class ThemeService
         _root.ActualThemeChanged += Root_ActualThemeChanged;
     }
 
+    public static void UnregisterRoot(FrameworkElement root)
+    {
+        if (!ReferenceEquals(_root, root)) return;
+        _root.ActualThemeChanged -= Root_ActualThemeChanged;
+        _root = null;
+    }
+
     public static void Apply(ThemeMode theme)
     {
         _theme = theme;

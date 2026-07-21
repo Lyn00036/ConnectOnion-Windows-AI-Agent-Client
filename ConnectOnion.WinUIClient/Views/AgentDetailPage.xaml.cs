@@ -6,7 +6,7 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace ConnectOnion.WinUIClient.Views;
 
-public sealed partial class AgentDetailPage : Page, IReloadablePage
+public sealed partial class AgentDetailPage : Page, IReloadablePage, IShutdownDisarmable
 {
     public AgentDetailViewModel Vm { get; } = App.GetService<AgentDetailViewModel>();
 
@@ -32,6 +32,9 @@ public sealed partial class AgentDetailPage : Page, IReloadablePage
     /// this page carries a <see cref="ChatComposer"/> (Win2D canvas and all), so clicking through
     /// the sidebar's agents was constructing and discarding one per click.</summary>
     public System.Threading.Tasks.Task ReloadAsync() => LoadPageAsync();
+
+    /// <summary>Synchronously releases the cached composer's Win2D, timer, audio, and speech resources.</summary>
+    public void DisarmForShutdown() => Composer.Dispose();
 
     private async System.Threading.Tasks.Task LoadPageAsync()
     {

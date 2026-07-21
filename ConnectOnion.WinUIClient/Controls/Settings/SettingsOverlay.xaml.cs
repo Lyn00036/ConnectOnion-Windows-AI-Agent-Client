@@ -46,6 +46,9 @@ public sealed partial class SettingsOverlay : UserControl
         _focusReturnTarget = null;
     }
 
+    /// <summary>Disarms child controls whose delayed callbacks must not outlive the window.</summary>
+    public void Shutdown() => IdentityContent.Shutdown();
+
     private void UpdateModalSize(double width, double height)
     {
         if (width <= 0 || height <= 0) return;
