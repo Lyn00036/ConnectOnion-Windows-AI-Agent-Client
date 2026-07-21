@@ -49,7 +49,6 @@ public sealed partial class ChatViewModel
 
         message.IsOnboardingSubmitted = true;
         message.Content = "Invite code submitted. Waiting for the agent to finish onboarding...";
-        StatusText = "Submitting invite code...";
         OnPropertyChanged(nameof(Messages));
 
         try
@@ -61,7 +60,6 @@ public sealed partial class ChatViewModel
             connection.InviteCode = null;
             message.IsOnboardingSubmitted = false;
             message.Content = $"Invite code submission failed: {ex.Message}";
-            StatusText = "";
         }
     }
 
@@ -115,7 +113,6 @@ public sealed partial class ChatViewModel
         message.EventMeta = $"Answered: {answer}";
         message.Status = EventStatus.Done;
         RecordInteractiveAnswer(message);
-        StatusText = "";
         await (CurrentConnection?.RespondAskUserAsync(answer) ?? Task.CompletedTask);
     }
 
@@ -154,7 +151,6 @@ public sealed partial class ChatViewModel
         message.EventMeta = "Skipped";
         message.Status = EventStatus.Done;
         RecordInteractiveAnswer(message);
-        StatusText = "";
         await (CurrentConnection?.RespondAskUserAsync(SkipAnswer) ?? Task.CompletedTask);
     }
 
@@ -183,7 +179,6 @@ public sealed partial class ChatViewModel
         // reply speaks to it, so a row restating the decision is the third telling of it. The
         // persist path drops it too, so the live list and reloaded history agree.
         Messages.Remove(message);
-        StatusText = "";
         await (CurrentConnection?.RespondApprovalAsync(approved, scope, rejectMode) ?? Task.CompletedTask);
     }
 
@@ -210,7 +205,6 @@ public sealed partial class ChatViewModel
         }
 
         RecordInteractiveAnswer(message);
-        StatusText = "";
         await (CurrentConnection?.RespondPlanReviewAsync(responseMessage) ?? Task.CompletedTask);
     }
 
