@@ -40,6 +40,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
     private readonly string _relayUrl;
     private readonly AgentIdentity _identity;
     private readonly HttpClient _http;
+    private readonly bool _ownsHttp;
     private readonly TimeSpan _connectTimeout;
     private readonly TimeSpan _silenceTimeout;
     private readonly TimeSpan _watchdogInterval;
@@ -171,6 +172,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
         _address = address;
         _directUrl = string.IsNullOrWhiteSpace(directUrl) ? null : directUrl.TrimEnd('/');
         _identity = identity;
+        _ownsHttp = http is null;
         _http = http ?? new HttpClient();
         _relayUrl = EndpointResolver.NormalizeRelayUrl(relayUrl);
         _connectTimeout = connectTimeout ?? TimeSpan.FromMilliseconds(ConnectTimeoutMs);
@@ -922,7 +924,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
             .ConfigureAwait(false);
     }
 
-    private async Task CloseSocketAsync()
+    private async Task CloseSocketAsync(bool detachSubscribers = false)
     {
         _loopCts?.Cancel();
         _authenticated = false;
@@ -944,17 +946,25 @@ public sealed class AgentConnectionService : IAsyncDisposable
             _receiveLoop = null;
         }
 
-        // Clear event subscribers so the old connection can be GC'd even
-        // if the subscriber (ChatViewModel) is still alive.
-        StreamEvent = null;
-        InputSent = null;
-        ConnectionLost = null;
-        AskUserRequested = null;
-        ApprovalRequested = null;
-        PlanReviewRequested = null;
-        OnboardRequired = null;
-        ModeChanged = null;
-        RuntimeInputAcknowledged = null;
+        // A reconnect closes only the transport; the service and its subscribers remain the same.
+        // Detaching here unconditionally used to make every typed/stream event silently disappear
+        // after either an automatic or user-requested reconnect. Subscribers are released only on
+        // final service disposal.
+        if (detachSubscribers)
+        {
+            StreamEvent = null;
+            InputSent = null;
+            ConnectionLost = null;
+            Reconnecting = null;
+            Reconnected = null;
+            SessionDiverged = null;
+            AskUserRequested = null;
+            ApprovalRequested = null;
+            PlanReviewRequested = null;
+            OnboardRequired = null;
+            ModeChanged = null;
+            RuntimeInputAcknowledged = null;
+        }
 
         if (_ws is not null)
         {
@@ -980,7 +990,8 @@ public sealed class AgentConnectionService : IAsyncDisposable
         // Before closing, so the close cannot be mistaken for a drop worth reconnecting: the
         // receive loop unwinding through HandleConnectionLoss checks this flag.
         _disposed = true;
-        await CloseSocketAsync().ConfigureAwait(false);
+        await CloseSocketAsync(detachSubscribers: true).ConfigureAwait(false);
         _loopCts?.Dispose();
+        if (_ownsHttp) _http.Dispose();
     }
 }

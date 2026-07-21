@@ -395,6 +395,47 @@ public sealed class AgentConnectionServiceTests
     }
 
     [Fact]
+    public async Task ReconnectAsync_PreservesStreamAndTypedEventSubscribers()
+    {
+        var connectionNumber = 0;
+        await using var server = new FakeAgentServer(async (socket, ct) =>
+        {
+            var current = Interlocked.Increment(ref connectionNumber);
+            await FakeAgentServer.ReceiveTextAsync(socket, ct); // CONNECT
+            await FakeAgentServer.SendTextAsync(
+                socket, "{\"type\":\"CONNECTED\",\"session_id\":\"session-1\"}", ct);
+
+            var input = WireMessage.Parse(await FakeAgentServer.ReceiveTextAsync(socket, ct));
+            Assert.Equal("INPUT", input.Type);
+            if (current == 2)
+            {
+                await FakeAgentServer.SendTextAsync(
+                    socket,
+                    "{\"type\":\"mode_changed\",\"id\":\"mode-2\",\"mode\":\"plan\",\"triggered_by\":\"agent\"}",
+                    ct);
+            }
+            await FakeAgentServer.SendTextAsync(
+                socket, $"{{\"type\":\"OUTPUT\",\"result\":\"turn-{current}\"}}", ct);
+
+            try { await FakeAgentServer.ReceiveTextAsync(socket, ct); }
+            catch (WebSocketException) { }
+        });
+        await using var service = Service(server);
+        var streamed = new List<string>();
+        ModeChangedEvent? modeChanged = null;
+        service.StreamEvent += value => streamed.Add(value.Type);
+        service.ModeChanged += value => modeChanged = value;
+
+        Assert.Equal("turn-1", await service.SendInputAsync("first", "session-1"));
+        await service.ReconnectAsync("session-1");
+        Assert.Equal("turn-2", await service.SendInputAsync("second", "session-1"));
+
+        Assert.Contains("mode_changed", streamed);
+        Assert.Equal(AgentModes.Plan, modeChanged?.Mode);
+        Assert.Equal(2, Volatile.Read(ref connectionNumber));
+    }
+
+    [Fact]
     public async Task DisposeAsync_ConnectedService_DoesNotRaiseConnectionLost()
     {
         await using var server = new FakeAgentServer(async (socket, ct) =>
