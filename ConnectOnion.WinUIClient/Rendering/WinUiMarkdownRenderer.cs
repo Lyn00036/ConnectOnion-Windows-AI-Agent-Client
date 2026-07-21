@@ -32,6 +32,7 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
     private readonly int _activeMatchIndex;
     private int _matchIndex;
     private int _quoteDepth;
+    private int _listDepth;
 
     /// <summary>Greater than zero while the current inline scope sits inside an element that
     /// cannot host an <see cref="InlineUIContainer"/> — today that means a <see cref="Hyperlink"/>,
@@ -85,6 +86,16 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
     internal void WriteParagraphBlock(ParagraphBlock block, string? prefix = null)
     {
         var paragraph = CreateParagraph();
+
+        if (!string.IsNullOrEmpty(prefix))
+        {
+            // A hanging indent keeps wrapped list text aligned with the content instead of the
+            // bullet/number. Nested lists get one additional Fluent spacing unit per level.
+            var leftIndent = 18 + (Math.Max(0, _listDepth - 1) * 18);
+            paragraph.Margin = new Thickness(leftIndent, 2, 0, 2);
+            paragraph.TextIndent = -18;
+        }
+
         _target.Blocks.Add(paragraph);
 
         if (!string.IsNullOrEmpty(prefix))
@@ -143,25 +154,33 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
 
     internal void WriteListBlock(ListBlock block)
     {
-        var itemIndex = 1;
-        foreach (var child in block)
+        _listDepth++;
+        try
         {
-            if (child is not ListItemBlock item)
+            var itemIndex = 1;
+            foreach (var child in block)
             {
-                continue;
+                if (child is not ListItemBlock item)
+                {
+                    continue;
+                }
+
+                var prefix = block.IsOrdered
+                    ? $"{itemIndex}. "
+                    : "\u2022 ";
+                itemIndex++;
+
+                WriteListItem(item, prefix);
             }
-
-            var prefix = block.IsOrdered
-                ? $"{itemIndex}. "
-                : "\u2022 ";
-            itemIndex++;
-
-            WriteListItem(item, prefix);
+        }
+        finally
+        {
+            _listDepth--;
         }
     }
 
     internal void WriteFencedCodeBlock(FencedCodeBlock block)
-        => WriteCodeBlockLines(block.Lines.ToString());
+        => WriteCodeBlockLines(block.Lines.ToString(), GetCodeLanguage(block));
 
     internal void WriteCodeBlock(CodeBlock block)
         => WriteCodeBlockLines(block.Lines.ToString());
@@ -180,45 +199,168 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
 
     internal void WriteTable(Table table)
     {
+        var rows = new List<TableRow>();
+        var columnCount = table.ColumnDefinitions?.Count ?? 0;
+
         foreach (var child in table)
         {
-            if (child is not TableRow row)
+            if (child is TableRow row)
             {
-                continue;
-            }
+                rows.Add(row);
+                var nextColumnIndex = 0;
 
-            var paragraph = CreateParagraph();
-            paragraph.Margin = new Thickness(0, 2, 0, 2);
-            _target.Blocks.Add(paragraph);
-
-            var firstCell = true;
-            foreach (var cellObj in row)
-            {
-                if (cellObj is not TableCell cell)
+                foreach (var cellObject in row)
                 {
-                    continue;
-                }
-
-                if (!firstCell)
-                {
-                    paragraph.Inlines.Add(new Run
+                    if (cellObject is TableCell cell)
                     {
-                        Text = " | ",
-                        Foreground = ResolveBrush("TextFillColorSecondaryBrush"),
-                    });
-                }
-
-                firstCell = false;
-
-                foreach (var descendant in cell)
-                {
-                    if (descendant is ParagraphBlock cellParagraph && cellParagraph.Inline is not null)
-                    {
-                        WriteInlineContainer(cellParagraph.Inline, paragraph.Inlines);
+                        var cellColumnIndex = ResolveCellColumnIndex(cell, nextColumnIndex);
+                        nextColumnIndex = cellColumnIndex + Math.Max(1, cell.ColumnSpan);
+                        columnCount = Math.Max(columnCount, nextColumnIndex);
                     }
                 }
             }
         }
+
+        if (rows.Count == 0 || columnCount == 0)
+        {
+            return;
+        }
+
+        var tableGrid = new Grid
+        {
+            Background = ResolveBrush("SurfaceElevatedBrush"),
+        };
+
+        for (var columnIndex = 0; columnIndex < columnCount; columnIndex++)
+        {
+            tableGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        }
+
+        for (var rowIndex = 0; rowIndex < rows.Count; rowIndex++)
+        {
+            tableGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            var row = rows[rowIndex];
+            var nextColumnIndex = 0;
+
+            foreach (var cellObject in row)
+            {
+                if (cellObject is not TableCell cell)
+                {
+                    continue;
+                }
+
+                var columnIndex = Math.Clamp(
+                    ResolveCellColumnIndex(cell, nextColumnIndex),
+                    0,
+                    columnCount - 1);
+                var columnSpan = Math.Min(Math.Max(1, cell.ColumnSpan), columnCount - columnIndex);
+                var rowSpan = Math.Min(Math.Max(1, cell.RowSpan), rows.Count - rowIndex);
+                nextColumnIndex = columnIndex + columnSpan;
+                var cellText = CreateTableCellText(table, cell, columnIndex, row.IsHeader);
+                var reachesLastColumn = columnIndex + columnSpan >= columnCount;
+                var reachesLastRow = rowIndex + rowSpan >= rows.Count;
+
+                var cellBorder = new Border
+                {
+                    Background = row.IsHeader ? ResolveBrush("SurfaceSecondaryBrush") : null,
+                    BorderBrush = ResolveBrush("DividerBrush"),
+                    BorderThickness = new Thickness(0, 0, reachesLastColumn ? 0 : 1, reachesLastRow ? 0 : 1),
+                    Padding = new Thickness(10, row.IsHeader ? 7 : 6, 10, row.IsHeader ? 7 : 6),
+                    Child = cellText,
+                };
+
+                Grid.SetColumn(cellBorder, columnIndex);
+                Grid.SetColumnSpan(cellBorder, columnSpan);
+                Grid.SetRow(cellBorder, rowIndex);
+                Grid.SetRowSpan(cellBorder, rowSpan);
+                tableGrid.Children.Add(cellBorder);
+            }
+        }
+
+        var tableBorder = new Border
+        {
+            Background = ResolveBrush("SurfaceElevatedBrush"),
+            BorderBrush = ResolveBrush("BorderSubtleBrush"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6),
+            Child = new ScrollViewer
+            {
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollMode = ScrollMode.Auto,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                VerticalScrollMode = ScrollMode.Disabled,
+                Content = tableGrid,
+            },
+        };
+
+        // InlineUIContainer is the only way WinUI's RichTextBlock can host a Grid. Keep the
+        // scroller horizontal-only so the outer virtualized message list remains the sole owner
+        // of vertical scrolling.
+        HighlightedTextBlock.ApplyBaselineNudge(tableBorder, _target.FontSize, fontFamily: _target.FontFamily);
+        var paragraph = CreateParagraph();
+        paragraph.Margin = new Thickness(0, 7, 0, 7);
+        paragraph.Inlines.Add(new InlineUIContainer { Child = tableBorder });
+        _target.Blocks.Add(paragraph);
+    }
+
+    private static int ResolveCellColumnIndex(TableCell cell, int nextColumnIndex)
+    {
+        // Pipe-table cells can retain the parser's default ColumnIndex instead of a monotonically
+        // increasing visual position. Trust an explicit index only when it does not move back over
+        // columns already occupied by earlier cells in this row; otherwise continue sequentially.
+        return cell.ColumnIndex >= nextColumnIndex ? cell.ColumnIndex : nextColumnIndex;
+    }
+
+    private RichTextBlock CreateTableCellText(Table table, TableCell cell, int columnIndex, bool isHeader)
+    {
+        var cellText = new RichTextBlock
+        {
+            FontFamily = _target.FontFamily,
+            FontSize = _target.FontSize,
+            FontWeight = isHeader ? FontWeights.SemiBold : FontWeights.Normal,
+            Foreground = _target.Foreground,
+            IsTextSelectionEnabled = _target.IsTextSelectionEnabled,
+            MinWidth = 72,
+            MaxWidth = 320,
+            TextAlignment = GetTableTextAlignment(table, columnIndex),
+            TextWrapping = TextWrapping.WrapWholeWords,
+        };
+
+        foreach (var descendant in cell)
+        {
+            if (descendant is ParagraphBlock cellParagraph)
+            {
+                var paragraph = new Paragraph();
+                if (cellParagraph.Inline is not null)
+                {
+                    WriteInlineContainer(cellParagraph.Inline, paragraph.Inlines);
+                }
+
+                cellText.Blocks.Add(paragraph);
+            }
+        }
+
+        if (cellText.Blocks.Count == 0)
+        {
+            cellText.Blocks.Add(new Paragraph());
+        }
+
+        return cellText;
+    }
+
+    private static TextAlignment GetTableTextAlignment(Table table, int columnIndex)
+    {
+        if (table.ColumnDefinitions is null || columnIndex >= table.ColumnDefinitions.Count)
+        {
+            return TextAlignment.Left;
+        }
+
+        return table.ColumnDefinitions[columnIndex].Alignment switch
+        {
+            TableColumnAlign.Center => TextAlignment.Center,
+            TableColumnAlign.Right => TextAlignment.Right,
+            _ => TextAlignment.Left,
+        };
     }
 
     internal void WriteHtmlBlock(HtmlBlock block)
@@ -349,9 +491,12 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
 
         if (_quoteDepth > 0)
         {
+            paragraph.FontStyle = FontStyle.Italic;
+            paragraph.Foreground = ResolveBrush("TextFillColorSecondaryBrush");
+            paragraph.Margin = new Thickness(6 + ((_quoteDepth - 1) * 14), 4, 0, 4);
             paragraph.Inlines.Add(new Run
             {
-                Text = string.Concat(System.Linq.Enumerable.Repeat("\u2502 ", _quoteDepth)),
+                Text = string.Concat(System.Linq.Enumerable.Repeat("\u258e ", _quoteDepth)),
                 Foreground = ResolveBrush("BrandPrimaryBrush"),
             });
         }
@@ -398,7 +543,7 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
         }
     }
 
-    private void WriteCodeBlockLines(string code)
+    private void WriteCodeBlockLines(string code, string? language = null)
     {
         // Give fenced/indented code blocks a real background + border so they read
         // as a distinct layer from surrounding prose. WinUI 3's RichTextBlock has no
@@ -419,19 +564,53 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
         WriteHighlightedText(code.TrimEnd(), codeParagraph.Inlines, fontFamily: CodeFont);
         codeText.Blocks.Add(codeParagraph);
 
+        var codeScroller = new ScrollViewer
+        {
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollMode = ScrollMode.Auto,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            VerticalScrollMode = ScrollMode.Disabled,
+            Padding = new Thickness(10, 8, 10, 8),
+            Content = codeText,
+        };
+
+        UIElement codeContent = codeScroller;
+        if (!string.IsNullOrEmpty(language))
+        {
+            var codeGrid = new Grid();
+            codeGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            codeGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            var languageHeader = new Border
+            {
+                Background = ResolveBrush("SurfaceSecondaryBrush"),
+                BorderBrush = ResolveBrush("DividerBrush"),
+                BorderThickness = new Thickness(0, 0, 0, 1),
+                Padding = new Thickness(10, 5, 10, 5),
+                Child = new TextBlock
+                {
+                    FontFamily = CodeFont,
+                    FontSize = Math.Max(11, _target.FontSize - 2),
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = ResolveBrush("TextFillColorSecondaryBrush"),
+                    Text = language,
+                },
+            };
+
+            Grid.SetRow(languageHeader, 0);
+            Grid.SetRow(codeScroller, 1);
+            codeGrid.Children.Add(languageHeader);
+            codeGrid.Children.Add(codeScroller);
+            codeContent = codeGrid;
+        }
+
         var border = new Border
         {
             Background = ResolveBrush("CodeBackgroundBrush"),
             BorderBrush = ResolveBrush("BorderSubtleBrush"),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(6),
-            Padding = new Thickness(10, 8, 10, 8),
-            Child = new ScrollViewer
-            {
-                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
-                VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
-                Content = codeText,
-            },
+            Child = codeContent,
         };
 
         // The block's own (otherwise empty) line still has a baseline, and the container hangs the
@@ -444,6 +623,19 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
         paragraph.Margin = new Thickness(0, 6, 0, 6);
         paragraph.Inlines.Add(new InlineUIContainer { Child = border });
         _target.Blocks.Add(paragraph);
+    }
+
+    private static string? GetCodeLanguage(FencedCodeBlock block)
+    {
+        var info = block.Info?.ToString()?.Trim() ?? string.Empty;
+        if (info.Length == 0)
+        {
+            return null;
+        }
+
+        var separator = info.IndexOfAny(' ', '\t', '{');
+        var language = separator >= 0 ? info[..separator] : info;
+        return language.Length == 0 ? null : language;
     }
 
     private void WritePlainParagraph(string text)
@@ -519,6 +711,9 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
             "InlineCodeBackgroundBrush" => "InlineCodeBackgroundColor",
             "CodeBackgroundBrush" => "CodeBackgroundColor",
             "BorderSubtleBrush" => "BorderSubtleColor",
+            "DividerBrush" => "DividerColor",
+            "SurfaceElevatedBrush" => "SurfaceElevatedColor",
+            "SurfaceSecondaryBrush" => "SurfaceSecondaryColor",
             _ => throw new System.Collections.Generic.KeyNotFoundException(
                 $"Markdown theme brush '{key}' has no color-token mapping."),
         };
