@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using ConnectOnion.WinUIClient.Common;
 
 namespace ConnectOnion.WinUIClient.Models;
 
@@ -9,7 +10,9 @@ public sealed partial class ShellSessionItem : RowStateItem
 {
     public string Id { get; set; } = "";
     public string Title { get; set; } = "";
+    /// <summary>Raw owning-agent id; <see cref="AgentDisplayName"/> is what the pinned row shows.</summary>
     public string AgentName { get; set; } = "";
+    public string AgentDisplayName => FriendlyAgentName.From(AgentName);
     public string PinToolTip => IsPinned ? "Unpin chat" : "Pin chat";
 
     [ObservableProperty]

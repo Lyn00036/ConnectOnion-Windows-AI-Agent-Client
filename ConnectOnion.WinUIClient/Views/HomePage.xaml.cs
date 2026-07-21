@@ -177,24 +177,14 @@ public sealed partial class HomePage : Page
     /// <summary>
     /// Guarantees the agent has a current conversation before the chat page opens, so
     /// <c>ChatPage</c> never has to handle "selected agent, no session".
-    ///
-    /// NOTE: the selection rule here (keep the active conversation if it belongs to this
-    /// agent, else the most recently updated one) is a duplicate of
-    /// <see cref="SessionSelection.FindExisting"/>, which exists precisely to be the one
-    /// testable copy. This should call it; the two will drift otherwise.
     /// </summary>
     private static async System.Threading.Tasks.Task EnsureSessionAsync(string agentId)
     {
         var sessionsState = await AppServices.Sessions.LoadAsync();
-        var active = sessionsState.Sessions.FirstOrDefault(s => s.Id == sessionsState.ActiveSessionId && s.AgentId == agentId);
-        if (active is not null) return;
+        var recent = SessionSelection.FindExisting(
+            sessionsState.Sessions, sessionsState.ActiveSessionId, agentId);
+        if (recent?.Id == sessionsState.ActiveSessionId) return;
 
-        // Ordinal sort over ISO-8601 ("o" format) timestamps — lexicographic order is
-        // chronological order, so this ranks without parsing every row.
-        var recent = sessionsState.Sessions
-            .Where(s => s.AgentId == agentId)
-            .OrderByDescending(s => s.UpdatedAt, StringComparer.Ordinal)
-            .FirstOrDefault();
         if (recent is not null)
         {
             sessionsState.ActiveSessionId = recent.Id;

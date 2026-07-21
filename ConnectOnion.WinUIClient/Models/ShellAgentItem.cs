@@ -11,20 +11,29 @@ namespace ConnectOnion.WinUIClient.Models;
 public sealed partial class ShellAgentItem : RowStateItem
 {
     public string Id { get; set; } = "";
+    /// <summary>The raw, stored agent identifier (e.g. <c>remote-admin-agent</c>). Kept
+    /// verbatim for tooltips and to drive avatar/lookup logic; the sidebar shows
+    /// <see cref="DisplayName"/> instead.</summary>
     public string Name { get; set; } = "";
-    public string Initial => NameInitial.From(Name);
+    /// <summary>User-facing name derived from <see cref="Name"/> (e.g. <c>Remote Admin Agent</c>).
+    /// Never persisted — the internal id is unchanged.</summary>
+    public string DisplayName => FriendlyAgentName.From(Name);
+    public string Initial => NameInitial.From(DisplayName);
     public int SessionCount => Sessions.Count;
     public ObservableCollection<ShellSessionItem> Sessions { get; } = new();
 
     public double ChevronAngle => IsExpanded ? 0 : 270;
     public bool IsOnline => Presence == AgentPresence.Online;
-    public bool IsOfflineIconVisible => Presence != AgentPresence.Online;
+    /// <summary>A reachability probe is in flight — shown as a breathing neutral dot.</summary>
+    public bool IsChecking => Presence == AgentPresence.Checking;
+    /// <summary>Offline or never-probed — shown as a hollow gray dot.</summary>
+    public bool IsOfflineIconVisible => Presence == AgentPresence.Offline || Presence == AgentPresence.Unknown;
     public string PresenceLabel => Presence switch
     {
         AgentPresence.Online => "Online",
-        AgentPresence.Checking => "Checking",
+        AgentPresence.Checking => "Connecting",
         AgentPresence.Offline => "Offline",
-        _ => "Unknown",
+        _ => "Not connected",
     };
 
     [ObservableProperty]
@@ -33,6 +42,7 @@ public sealed partial class ShellAgentItem : RowStateItem
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsOnline))]
+    [NotifyPropertyChangedFor(nameof(IsChecking))]
     [NotifyPropertyChangedFor(nameof(IsOfflineIconVisible))]
     [NotifyPropertyChangedFor(nameof(PresenceLabel))]
     public partial AgentPresence Presence { get; set; }
