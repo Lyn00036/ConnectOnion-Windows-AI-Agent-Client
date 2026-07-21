@@ -4,6 +4,76 @@ namespace ConnectOnion.WinUIClient.UnitTests.Models;
 
 public sealed class ChatMessageTests
 {
+    // The turn-usage row splits its metadata into "model · duration" over the rest. The split is a
+    // display concern computed from EventTitle + EventMeta, so pin the segment boundaries down.
+    [Fact]
+    public void TurnUsage_Split_PutsModelAndFirstSegmentOnLineOne()
+    {
+        var message = new ChatMessage
+        {
+            EventTitle = "deepseek-v4-pro",
+            EventMeta = "10.5 s · 8K→632 tok · ctx 1.5% · 4 tools",
+        };
+
+        Assert.Equal("deepseek-v4-pro · 10.5 s", message.TurnUsagePrimary);
+        Assert.Equal("8K→632 tok · ctx 1.5% · 4 tools", message.TurnUsageSecondary);
+        Assert.True(message.HasTurnUsageSecondary);
+    }
+
+    [Fact]
+    public void TurnUsage_Split_SingleSegment_HasNoSecondLine()
+    {
+        var message = new ChatMessage { EventTitle = "gpt-x", EventMeta = "0.4 s" };
+
+        Assert.Equal("gpt-x · 0.4 s", message.TurnUsagePrimary);
+        Assert.Equal("", message.TurnUsageSecondary);
+        Assert.False(message.HasTurnUsageSecondary);
+    }
+
+    [Fact]
+    public void TurnUsage_Split_NoMeta_IsModelOnly()
+    {
+        var message = new ChatMessage { EventTitle = "gpt-x", EventMeta = null };
+
+        Assert.Equal("gpt-x", message.TurnUsagePrimary);
+        Assert.False(message.HasTurnUsageSecondary);
+    }
+
+    // The interactive card's header badge must carry only the status word; the answer shows once in
+    // the body. Pin the split so "Answered: <answer>" never leaks the answer back into the badge.
+    [Fact]
+    public void InteractiveAnswered_BadgeIsStatusWord_AnswerIsBody()
+    {
+        var message = new ChatMessage
+        {
+            Status = EventStatus.Done,
+            EventMeta = "Answered: Delete only test.txt (root)",
+        };
+
+        Assert.Equal("Answered", message.InteractiveStatusLabel);
+        Assert.Equal("Delete only test.txt (root)", message.InteractiveAnswerText);
+        Assert.True(message.HasInteractiveAnswer);
+    }
+
+    [Fact]
+    public void InteractivePending_BadgeIsPending_NoAnswerLine()
+    {
+        var message = new ChatMessage { Status = EventStatus.Running };
+
+        Assert.Equal("Pending", message.InteractiveStatusLabel);
+        Assert.False(message.HasInteractiveAnswer);
+    }
+
+    [Fact]
+    public void InteractiveOutcome_WithoutColon_HasNoSeparateAnswer()
+    {
+        // An approval's "Approved once" carries no free-form answer, so no "Your answer" line.
+        var message = new ChatMessage { Status = EventStatus.Done, EventMeta = "Approved once" };
+
+        Assert.Equal("Approved once", message.InteractiveStatusLabel);
+        Assert.False(message.HasInteractiveAnswer);
+    }
+
     // The option cards are hand-drawn Buttons, so exclusivity is the model's job now rather than
     // RadioButton's — which makes it worth pinning down.
     [Fact]

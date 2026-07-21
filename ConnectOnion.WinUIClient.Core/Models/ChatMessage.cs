@@ -92,6 +92,7 @@ public sealed partial class ChatMessage : Common.ObservableObject
     [NotifyPropertyChangedFor(nameof(ActivityTimelineText))]
     [NotifyPropertyChangedFor(nameof(ActivityAccessibilityName))]
     [NotifyPropertyChangedFor(nameof(TurnUsageSummary))]
+    [NotifyPropertyChangedFor(nameof(TurnUsagePrimary))]
     [NotifyPropertyChangedFor(nameof(ApprovalTrustLabel))]
     [NotifyPropertyChangedFor(nameof(ApprovalTrustAccessibilityName))]
     [JsonPropertyName("eventTitle")]
@@ -157,8 +158,13 @@ public sealed partial class ChatMessage : Common.ObservableObject
     [NotifyPropertyChangedFor(nameof(HasEventMeta))]
     [NotifyPropertyChangedFor(nameof(HasActivityTimelineMeta))]
     [NotifyPropertyChangedFor(nameof(TurnUsageSummary))]
+    [NotifyPropertyChangedFor(nameof(TurnUsagePrimary))]
+    [NotifyPropertyChangedFor(nameof(TurnUsageSecondary))]
+    [NotifyPropertyChangedFor(nameof(HasTurnUsageSecondary))]
     [NotifyPropertyChangedFor(nameof(InteractiveOutcome))]
     [NotifyPropertyChangedFor(nameof(InteractiveStatusLabel))]
+    [NotifyPropertyChangedFor(nameof(InteractiveAnswerText))]
+    [NotifyPropertyChangedFor(nameof(HasInteractiveAnswer))]
     [NotifyPropertyChangedFor(nameof(InteractiveAccessibilityName))]
     [JsonPropertyName("eventMeta")]
     public partial string? EventMeta { get; set; }
@@ -249,6 +255,46 @@ public sealed partial class ChatMessage : Common.ObservableObject
     public string TurnUsageSummary => string.IsNullOrWhiteSpace(EventMeta)
         ? EventTitle
         : $"{EventTitle} · {EventMeta}";
+
+    // --- Two-line split of the turn-usage row (display only) ---
+    // The metadata reads as "model · duration" on top and "tokens · context · tools" beneath, so
+    // the model and time — the two facts a reader scans for — aren't buried in a dense single line.
+    // This is a purely presentational split of the already-built EventMeta (whose segments the
+    // projection always orders duration-first): EventMeta itself, TurnUsageSummary and the
+    // accessibility name are unchanged, so persistence and screen-reader output are untouched.
+
+    private string[] TurnUsageSegments()
+        => string.IsNullOrWhiteSpace(EventMeta)
+            ? System.Array.Empty<string>()
+            : EventMeta.Split(" · ");
+
+    /// <summary>First line: the model, plus the leading metadata segment (the turn duration when
+    /// the agent reported one).</summary>
+    [JsonIgnore]
+    public string TurnUsagePrimary
+    {
+        get
+        {
+            var model = string.IsNullOrWhiteSpace(EventTitle) ? "Turn usage" : EventTitle;
+            var segments = TurnUsageSegments();
+            return segments.Length > 0 ? $"{model} · {segments[0]}" : model;
+        }
+    }
+
+    /// <summary>Second line: the remaining metadata segments (tokens, context, tool count), empty
+    /// when there is only the model and one segment to show.</summary>
+    [JsonIgnore]
+    public string TurnUsageSecondary
+    {
+        get
+        {
+            var segments = TurnUsageSegments();
+            return segments.Length > 1 ? string.Join(" · ", segments[1..]) : "";
+        }
+    }
+
+    [JsonIgnore]
+    public bool HasTurnUsageSecondary => TurnUsageSecondary.Length > 0;
 
     [JsonIgnore]
     public bool IsThinkingEvent => IsActivityEvent
@@ -428,13 +474,41 @@ public sealed partial class ChatMessage : Common.ObservableObject
         ? "Waiting for you"
         : string.IsNullOrWhiteSpace(EventMeta) ? "Skipped" : EventMeta;
 
-    /// <summary>The small-caps status chip on an interactive card's header: "PENDING" while it
-    /// still wants an answer, otherwise the recorded outcome. Uppercased here rather than by a
-    /// XAML text transform so the same string is what a screen reader gets.</summary>
+    /// <summary>The status chip on an interactive card's header: a short *status word only*
+    /// ("Pending" / "Answered" / "Approved once" / "Rejected" / "Skipped"), never the full answer.
+    /// The chosen answer itself is shown once in the card body (see <see cref="InteractiveAnswerText"/>),
+    /// so the badge stripping everything after the first ":" ("Answered: delete test.txt" → "Answered")
+    /// removes the answer-in-two-places duplication. Sentence case, not SHOUTING CAPS; the same
+    /// string is what a screen reader gets.</summary>
     [JsonIgnore]
-    public string InteractiveStatusLabel => IsAwaitingResponse
-        ? "PENDING"
-        : InteractiveOutcome.ToUpperInvariant();
+    public string InteractiveStatusLabel
+    {
+        get
+        {
+            if (IsAwaitingResponse) return "Pending";
+            var outcome = InteractiveOutcome;
+            var colon = outcome.IndexOf(':');
+            return colon > 0 ? outcome[..colon] : outcome;
+        }
+    }
+
+    /// <summary>The answer the user actually gave, split off an "Answered: …" outcome for the card's
+    /// "Your answer" line. Empty for outcomes that carry no free-form answer (an approval's
+    /// "Approved once", a plain "Rejected", a skipped card), which is exactly when that line hides.</summary>
+    [JsonIgnore]
+    public string InteractiveAnswerText
+    {
+        get
+        {
+            if (IsAwaitingResponse) return "";
+            var outcome = InteractiveOutcome;
+            var colon = outcome.IndexOf(':');
+            return colon >= 0 && colon + 1 < outcome.Length ? outcome[(colon + 1)..].Trim() : "";
+        }
+    }
+
+    [JsonIgnore]
+    public bool HasInteractiveAnswer => InteractiveAnswerText.Length > 0;
 
     /// <summary>Spoken name for the collapse toggle, so the state is not conveyed by chevron alone.</summary>
     [JsonIgnore]
