@@ -13,6 +13,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Shapes;
 using Microsoft.UI.Dispatching;
+using Windows.UI.ViewManagement;
 
 namespace ConnectOnion.WinUIClient.Controls;
 
@@ -415,15 +416,27 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     private void TogglePinned_Click(object sender, RoutedEventArgs e)
         => IsPinnedExpanded = !IsPinnedExpanded;
 
+    /// <summary>Honours the OS "show animations" accessibility setting (Reduce Motion). Read once
+    /// as a startup constant, matching <c>DisclosureAnimation</c>/<c>ThinkingIndicator</c> — the
+    /// value only changes across an app restart, and a stale read costs at most the motion the user
+    /// sees until then.</summary>
+    private static readonly bool AnimationsEnabled = new UISettings().AnimationsEnabled;
+
     /// <summary>
-    /// Starts the online-dot breathing animation once per realized Ellipse.
-    /// WinUI's FrameworkElement.Triggers/EventTrigger has no RoutedEvent
-    /// property (WPF-only), so a XAML-declared Loaded trigger isn't valid here
-    /// — the Storyboard is built and started from code instead.
+    /// Starts the breathing animation on the "Connecting" presence dot once per
+    /// realized Ellipse — an in-flight reachability probe pulses; a settled Online
+    /// dot is solid and static. WinUI's FrameworkElement.Triggers/EventTrigger has
+    /// no RoutedEvent property (WPF-only), so a XAML-declared Loaded trigger isn't
+    /// valid here — the Storyboard is built and started from code instead.
+    ///
+    /// Under Reduce Motion the dot is left solid (full opacity): the "Connecting" state is still
+    /// carried by its colour, tooltip and AutomationProperties.Name, so suppressing the pulse costs
+    /// nothing but the motion.
     /// </summary>
-    private void OnlinePresenceDot_Loaded(object sender, RoutedEventArgs e)
+    private void PresenceCheckingDot_Loaded(object sender, RoutedEventArgs e)
     {
         if (sender is not Ellipse ellipse) return;
+        if (!AnimationsEnabled) return;
 
         var animation = new DoubleAnimation
         {

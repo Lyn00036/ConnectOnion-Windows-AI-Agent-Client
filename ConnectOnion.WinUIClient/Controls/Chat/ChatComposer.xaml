@@ -150,7 +150,7 @@
              to one handler, and the drop region visually matches the rounded surface
              the DropOverlay paints over. -->
         <Border x:Name="ComposerSurface"
-                CornerRadius="28"
+                CornerRadius="22"
                 Background="{ThemeResource ComposerBackgroundBrush}"
                 BorderBrush="{ThemeResource ComposerBorderBrush}"
                 BorderThickness="1"
@@ -163,7 +163,7 @@
             <Border.Shadow>
                 <ThemeShadow />
             </Border.Shadow>
-            <Grid MinHeight="100" Padding="12,10">
+            <Grid MinHeight="88" Padding="12,10">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
@@ -421,12 +421,12 @@
                       Margin="-16,-14,-16,-14"
                       IsHitTestVisible="False"
                       Visibility="Collapsed">
-                    <Border CornerRadius="28"
+                    <Border CornerRadius="22"
                             Background="{ThemeResource ComposerBackgroundBrush}"
                             Opacity="0.92" />
                     <Rectangle Margin="2"
-                               RadiusX="26"
-                               RadiusY="26"
+                               RadiusX="20"
+                               RadiusY="20"
                                Fill="Transparent"
                                Stroke="{ThemeResource BrandPrimaryBrush}"
                                StrokeThickness="2"

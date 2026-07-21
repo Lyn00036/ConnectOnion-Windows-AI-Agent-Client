@@ -13,10 +13,14 @@
                 <ResourceDictionary Source="ms-appx:///Styles/Brushes.xaml" />
                 <ResourceDictionary Source="ms-appx:///Styles/ControlStyles.xaml" />
             </ResourceDictionary.MergedDictionaries>
-            <!-- The transcript keeps a wider reading measure while the composer is intentionally
-                 shorter and centred beneath it, matching the focused Claude-style input surface. -->
-            <x:Double x:Key="ChatColumnWidth">760</x:Double>
-            <x:Double x:Key="ChatComposerWidth">680</x:Double>
+            <!-- One reading measure shared by the transcript and the composer, so every bubble,
+                 the tool-activity card, the metadata line and the input surface all sit on the
+                 same left/right edge. Both are capped, not fixed: the ListView centres its column
+                 within 24px gutters and the composer clamps itself to window-48 (see
+                 Composer_SizeChanged), so narrow windows shrink both together with no horizontal
+                 scroll. Keep the two values equal. -->
+            <x:Double x:Key="ChatColumnWidth">880</x:Double>
+            <x:Double x:Key="ChatComposerWidth">880</x:Double>
 
             <presentation:BoolToVisibilityConverter x:Key="BoolToVis" />
             <presentation:StringToVisibilityConverter x:Key="StringToVis" />
@@ -33,6 +37,12 @@
             <presentation:BoolToThicknessConverter x:Key="BoolToThickness" />
             <presentation:LocalPathToImageSourceConverter x:Key="PathToImage" />
             <presentation:RowStateToBackgroundConverter x:Key="RowStateToBackground" />
+            <presentation:BoolToFontWeightConverter x:Key="BoolToFontWeight" />
+
+            <!-- An app-resolvable transparent brush, so a BoolToResourceBrush binding can pick
+                 "no fill" for its false case by key (the converter indexes Application.Current
+                 .Resources directly, which does not reliably surface framework system brushes). -->
+            <SolidColorBrush x:Key="TransparentBrush" Color="Transparent" />
             <presentation:HeatmapLevelToBrushConverter x:Key="HeatmapLevelToBrush" />
         </ResourceDictionary>
     </Application.Resources>
