@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Windows.ApplicationModel.DataTransfer;
 
 namespace ConnectOnion.WinUIClient.Controls;
 
@@ -73,6 +74,42 @@ public sealed partial class ToolActivityView : UserControl
             step.ToggleExpanded);
     }
 
+    /// <summary>Copies a step's full raw log to the clipboard and flashes "Copied" on the button.
+    /// The wrap/enlarge toggles are pure state (commands on the step); copy lives here because the
+    /// clipboard is a UI concern the WinUI-free model can't reach.</summary>
+    private async void LogCopy_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not ToolStepViewModel step) return;
+        var text = step.DetailText;
+        if (string.IsNullOrEmpty(text)) return;
+
+        var package = new DataPackage();
+        package.SetText(text);
+        Clipboard.SetContent(package);
+
+        // "Copied" feedback instead of a blocking dialog, cleared after a short delay. The step is
+        // a plain model object, so setting this after the await touches no visual tree and is safe
+        // even if the row was recycled or the window closed meanwhile.
+        step.JustCopied = true;
+        await System.Threading.Tasks.Task.Delay(1500);
+        step.JustCopied = false;
+    }
+
+    /// <summary>Default log height cap; must match <see cref="ToolStepViewModel.LogMaxHeight"/>'s
+    /// un-enlarged value. The Expand button only appears when the rendered log is taller than this,
+    /// so a short log that already fits shows no pointless Expand.</summary>
+    private const double DefaultLogMaxHeight = 280;
+
+    /// <summary>Tracks whether a step's rendered log overflows the default cap. The log sits inside
+    /// a vertically-scrolling ScrollViewer, so its measured height is the full content height
+    /// regardless of the cap — comparing it to the default tells us whether enlarging reveals more.
+    /// Updates as the log streams (each growth re-fires SizeChanged) and on a wrap toggle.</summary>
+    private void Log_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is ToolStepViewModel step)
+            step.CanEnlargeLog = e.NewSize.Height > DefaultLogMaxHeight;
+    }
+
     private void Header_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
         if (HeaderTitle is not null)
@@ -89,15 +126,17 @@ public sealed partial class ToolActivityView : UserControl
             HeaderChevron.Opacity = 0;
     }
 
-    // A step's hover feedback is the name lifting to the primary foreground, and nothing else.
-    // The card header still reveals its chevron on hover; an individual step does not — it sits
-    // inside an already-opened card, where a per-row icon appearing under the pointer was more
-    // motion than the affordance was worth.
+    // A step's hover feedback is the name lifting to the primary foreground and its duration
+    // fading up to full strength — and nothing else. The card header still reveals its chevron on
+    // hover; an individual step does not — it sits inside an already-opened card, where a per-row
+    // icon appearing under the pointer was more motion than the affordance was worth.
     private void StepItem_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
         if (sender is not FrameworkElement root) return;
         if (root.FindName("StepNameText") is TextBlock nameText)
             nameText.Foreground = ResolveBrush("TextPrimaryBrush");
+        if (root.FindName("StepDurationText") is TextBlock durationText)
+            durationText.Opacity = 1;
     }
 
     private void StepItem_PointerExited(object sender, PointerRoutedEventArgs e)
@@ -105,6 +144,8 @@ public sealed partial class ToolActivityView : UserControl
         if (sender is not FrameworkElement root) return;
         if (root.FindName("StepNameText") is TextBlock nameText)
             nameText.Foreground = ResolveBrush("TextSecondaryBrush");
+        if (root.FindName("StepDurationText") is TextBlock durationText)
+            durationText.Opacity = 0.5;
     }
 
     private static Brush ResolveBrush(string key)

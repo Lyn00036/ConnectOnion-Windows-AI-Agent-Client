@@ -42,12 +42,12 @@ public sealed class ToolResultTextBlock : UserControl
     private readonly TextBlock _textBlock = new()
     {
         FontFamily = new FontFamily("Consolas"),
-        FontSize = 11,
+        FontSize = 12.5,
         IsTextSelectionEnabled = true,
-        // Always on: the card is a fixed-width column, so anything that would overflow has to
-        // fold. Set here rather than per-render because it never varies by content kind.
+        // Always on: the log region is a fixed-width column, so anything that would overflow folds
+        // rather than scrolling sideways.
         TextWrapping = TextWrapping.Wrap,
-        LineHeight = 16,
+        LineHeight = 19,
     };
 
     public ToolResultTextBlock()
@@ -72,7 +72,7 @@ public sealed class ToolResultTextBlock : UserControl
 
         // Re-indented JSON sits tighter: its lines are short, indented and visually grouped, so
         // the leading that keeps a wall of console text readable only pulls them apart.
-        _textBlock.LineHeight = formatted.Format == ResultFormat.Json ? 15 : 16;
+        _textBlock.LineHeight = formatted.Format == ResultFormat.Json ? 18 : 19;
 
         foreach (var token in formatted.Tokens)
         {

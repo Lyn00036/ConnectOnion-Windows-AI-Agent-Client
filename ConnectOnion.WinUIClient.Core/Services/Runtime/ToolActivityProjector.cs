@@ -14,6 +14,7 @@ namespace ConnectOnion.WinUIClient.Services.Runtime;
 public sealed class ToolActivityProjector
 {
     /// <summary>Argument/result JSON keys whose <i>value</i> is replaced wholesale by
+    /// 
     /// <c>[hidden]</c>. Matched by exact (case-insensitive) property name, so this only
     /// catches structured payloads — free-form text goes through <see cref="SanitizeText"/>
     /// instead, and the two are deliberately both applied.</summary>
@@ -213,7 +214,7 @@ public sealed class ToolActivityProjector
         Activity.Steps.Add(step);
         Activity.Status = ToolActivityStatus.Failed;
         Activity.ErrorSummary = step.Summary;
-        Activity.Summary = $"Tool execution failed · view details";
+        Activity.Summary = $"Failed · view details";
         ApplyAutoExpansion();
         return step;
     }
@@ -251,12 +252,17 @@ public sealed class ToolActivityProjector
         AnchorSpanOnSteps();
         Activity.ErrorSummary = error is null ? Activity.ErrorSummary : FriendlyProblem(error);
         var count = Activity.Steps.Count;
+        // The header sits beside the literal "Tool activity" title and above the timeline's own
+        // "Done"/"Failed" completion row, so the old "Tool execution completed …" phrasing said the
+        // subject three times over. The status word alone ("Completed", "Failed") carries it — the
+        // title supplies "Tool", the row supplies the finality — leaving the summary to do the one
+        // thing only it can: the counts and the elapsed span.
         Activity.Summary = Activity.Status switch
         {
-            ToolActivityStatus.Failed => $"Tool execution failed · {Activity.ErrorSummary ?? "view details"}",
-            ToolActivityStatus.Cancelled => $"Tool execution cancelled · {count} steps",
-            ToolActivityStatus.PartialSuccess => $"Tool execution completed · {Activity.Steps.Count(step => step.Status is ToolStepStatus.Warning or ToolStepStatus.Failed)} steps had issues",
-            _ => $"Tool execution completed · {count} steps · {Activity.DurationLabel}",
+            ToolActivityStatus.Failed => $"Failed · {Activity.ErrorSummary ?? "view details"}",
+            ToolActivityStatus.Cancelled => $"Cancelled · {count} steps",
+            ToolActivityStatus.PartialSuccess => $"Completed · {Activity.Steps.Count(step => step.Status is ToolStepStatus.Warning or ToolStepStatus.Failed)} steps had issues",
+            _ => $"Completed · {count} steps · {Activity.DurationLabel}",
         };
         ApplyAutoExpansion();
 

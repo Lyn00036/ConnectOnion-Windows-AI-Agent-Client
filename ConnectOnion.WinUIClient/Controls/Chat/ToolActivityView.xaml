@@ -10,6 +10,20 @@
     <UserControl.Resources>
         <!-- Hover feedback comes through foreground color and icon visibility
              (handled in code-behind), never background painting. -->
+
+        <!-- Low-weight text buttons for the per-step log toolbar (Wrap / Copy / Expand).
+             Transparent at rest; the default Button template supplies the SurfaceHover/Pressed
+             states and the system focus visual, so the toolbar stays quiet until hovered. -->
+        <Style x:Key="LogToolbarButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="8,3" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Foreground" Value="{ThemeResource TextSecondaryBrush}" />
+        </Style>
     </UserControl.Resources>
 
     <Grid MaxWidth="{StaticResource ChatColumnWidth}"
@@ -21,6 +35,30 @@
             </TransitionCollection>
         </Grid.ChildrenTransitions>
 
+        <!-- One grouping container for every tool card, single-step or multi. A subtle,
+             hairline-bordered surface — very light neutral fill, 1px subtle stroke, no shadow — so
+             both a run of steps AND a lone tool call read as a card rather than loose text on the
+             transcript, sharing the same design tokens (Compact Tool Card == Tool Activity, minus
+             the aggregate header, which stays gated on ShowCardChrome below). Unconditional now:
+             the single-step case used to drop the chrome and sit flush on the transcript, but a
+             lone call floating on the page was exactly the "散落的普通文字" problem. -->
+        <!-- Vertical padding compensates for the step row's own asymmetric margin (top 2, bottom 10,
+             which spaces steps apart in a list). Multi-step keeps 8/8 — its header and completion
+             marker balance the top and bottom. The single-step compact card has only that one row,
+             so its bottom margin would otherwise leave ~6px more space below the row than above it,
+             sitting the content high; 10/4 cancels the difference so the lone tool row is centred. -->
+        <!-- An outline card, not a filled one. The fill used to be SurfaceSecondaryBrush — a solid
+             light-grey slab that sat heavier on the transcript than the agent's own reply below it
+             (the large grey slab this pass set out to remove). Sitting the background on the chat
+             background instead leaves only the 1px stroke to say "this is one grouped thing", which
+             is all the separation a de-emphasised activity block needs. BorderDefault rather than
+             the fainter BorderSubtle precisely because there is no fill behind it now: in dark mode
+             a subtle stroke on an identical-coloured background would vanish, and the card with it. -->
+        <Border CornerRadius="10"
+                Background="{ThemeResource ChatBackgroundBrush}"
+                BorderBrush="{ThemeResource BorderDefaultBrush}"
+                BorderThickness="1"
+                Padding="{x:Bind Activity.ShowCardChrome, Mode=OneWay, Converter={StaticResource BoolToThickness}, ConverterParameter='14,10,14,10|14,12,14,4'}">
         <!-- No Spacing on this panel: StackPanel reserves it between child *slots*, including
              collapsed ones, so a folded card paid 5px for the hidden timeline and another 5px
              for the hidden error line — a blank strip under the header with nothing in it. The
@@ -58,6 +96,7 @@
                     <TextBlock x:Name="HeaderTitle"
                                Text="Tool activity"
                                FontSize="14"
+                               FontWeight="SemiBold"
                                Foreground="{ThemeResource TextSecondaryBrush}"
                                VerticalAlignment="Center" />
 
@@ -72,7 +111,7 @@
                              goes red too when it did ("Tool execution failed · …"). -->
                         <TextBlock Text="{x:Bind Activity.Summary, Mode=OneWay}"
                                    MaxWidth="560"
-                                   FontSize="11"
+                                   FontSize="12"
                                    Foreground="{x:Bind Activity.Status, Mode=OneWay, Converter={StaticResource ToolStatusToBrush}, ConverterParameter='danger-only:TextTertiaryBrush'}"
                                    TextTrimming="CharacterEllipsis"
                                    VerticalAlignment="Center" />
@@ -128,16 +167,33 @@
                   Visibility="{x:Bind Activity.IsTimelineVisible, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                 <!-- The connecting rule is what makes a list of steps read as a timeline. One
                      step is not a timeline, so it draws no thread. -->
+                <!-- A thread, not a rule: the card outline is BorderDefault, so the timeline drops
+                     to the fainter BorderSubtle to stay a background hint rather than competing with
+                     the frame around it. -->
                 <Border Width="1"
                         Visibility="{x:Bind Activity.ShowCardChrome, Mode=OneWay, Converter={StaticResource BoolToVis}}"
-                        Background="{ThemeResource BorderDefaultBrush}"
+                        Background="{ThemeResource BorderSubtleBrush}"
                         HorizontalAlignment="Left"
                         Margin="10,10,0,12" />
 
                 <StackPanel>
+                    <!-- ItemsControl, deliberately non-virtualizing: it realizes every step row up
+                         front, so the card's height is settled the moment it is measured. A
+                         virtualizing host (ItemsRepeater) realizes rows lazily against the viewport,
+                         so a card scrolled past would grow as its rows came in and shove the whole
+                         transcript — the scroll-jitter this replaced. The step count per card is
+                         tiny, so full realization costs nothing. -->
+                    <!-- The item template binds with classic {Binding}, not compiled {x:Bind}. A
+                         non-virtualizing ItemsControl never releases compiled bindings, so an x:Bind
+                         here would keep each ToolStepViewModel (which lives on in ConversationCache)
+                         strongly rooting an orphaned row every time the card is rebuilt — the leak
+                         behind "re-entering a session keeps growing memory". Classic bindings
+                         subscribe to the step's PropertyChanged weakly, so the row is collectable
+                         even though the host never recycles. Heights stay stable because the host is
+                         still a fully-realizing ItemsControl. -->
                     <ItemsControl ItemsSource="{x:Bind Activity.Steps, Mode=OneWay}"
                                   Margin="0,2,4,0">
-                    <ItemsControl.ItemTemplate>
+                        <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="models:ToolStepViewModel">
                             <Grid x:Name="StepItemRoot"
                                   Margin="0,2,0,10"
@@ -169,13 +225,13 @@
                                          Globe, Database, Screenshot and WindowDevTools ship no
                                          Size12 design and would render as a silent blank. The
                                          16px layout slot still fits inside the 21px node. -->
-                                    <ic:FluentIcon Icon="{x:Bind IconKind, Converter={StaticResource ToolIcon}}"
+                                    <ic:FluentIcon Icon="{Binding IconKind, Converter={StaticResource ToolIcon}}"
                                                    IconVariant="Regular"
                                                    IconSize="Size16"
                                                    RenderTransformOrigin="0.5,0.5"
                                                    HorizontalAlignment="Center"
                                                    VerticalAlignment="Center"
-                                                   Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource ToolStatusToBrush}, ConverterParameter=muted-success}">
+                                                   Foreground="{Binding Status, Converter={StaticResource ToolStatusToBrush}, ConverterParameter=muted-success}">
                                         <ic:FluentIcon.RenderTransform>
                                             <ScaleTransform ScaleX="0.75" ScaleY="0.75" />
                                         </ic:FluentIcon.RenderTransform>
@@ -194,8 +250,8 @@
                                             HorizontalContentAlignment="Stretch"
                                             Style="{StaticResource TransparentButtonStyle}"
                                             Click="Step_Click"
-                                            Tag="{x:Bind}"
-                                            AutomationProperties.Name="{x:Bind AccessibilityName, Mode=OneWay}">
+                                            Tag="{Binding}"
+                                            AutomationProperties.Name="{Binding AccessibilityName}">
                                         <!-- Two columns: name/target, then duration. A step used to
                                              carry a hover-revealed chevron in a third column; the
                                              row is still click-to-expand, and hover still lifts
@@ -209,10 +265,10 @@
 
                                             <StackPanel Spacing="2">
                                                 <TextBlock x:Name="StepNameText"
-                                                           Text="{x:Bind DisplayName, Mode=OneWay}"
+                                                           Text="{Binding DisplayName}"
                                                            FontSize="13"
                                                            FontWeight="SemiBold"
-                                                           Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource ToolStatusToBrush}, ConverterParameter=danger-only}"
+                                                           Foreground="{Binding Status, Converter={StaticResource ToolStatusToBrush}, ConverterParameter=danger-only}"
                                                            TextTrimming="CharacterEllipsis" />
                                                 <!-- The step's *target* only ("a.txt"), not its
                                                      result summary. A collapsed step says what
@@ -223,17 +279,24 @@
                                                      still collected and still read out by
                                                      AccessibilityName — this is a display choice,
                                                      not a collection one. -->
-                                                <TextBlock Text="{x:Bind DisplayTarget, Mode=OneWay}"
+                                                <TextBlock Text="{Binding DisplayTarget}"
                                                            FontSize="12"
                                                            Foreground="{ThemeResource TextSecondaryBrush}"
                                                            TextWrapping="WrapWholeWords"
                                                            MaxLines="2"
-                                                           Visibility="{x:Bind HasDisplayTarget, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                                                           Visibility="{Binding HasDisplayTarget, Converter={StaticResource BoolToVis}}" />
                                             </StackPanel>
 
-                                            <TextBlock Grid.Column="1"
-                                                       Text="{x:Bind DurationLabel, Mode=OneWay}"
+                                            <!-- Right-aligned so the column never shifts the name,
+                                                 but held at low opacity at rest: a per-step "13 ms"
+                                                 is reference detail, not something to scan down the
+                                                 whole timeline. StepItem_PointerEntered lifts just
+                                                 the hovered row's figure back to full strength. -->
+                                            <TextBlock x:Name="StepDurationText"
+                                                       Grid.Column="1"
+                                                       Text="{Binding DurationLabel}"
                                                        FontSize="11"
+                                                       Opacity="0.5"
                                                        Foreground="{ThemeResource TextTertiaryBrush}"
                                                        VerticalAlignment="Top"
                                                        Margin="12,2,0,0" />
@@ -241,56 +304,70 @@
                                         </Grid>
                                     </Button>
 
-                                    <!-- Per-step expanded content -->
-                                    <ScrollViewer MaxHeight="330"
-                                                  VerticalScrollBarVisibility="Auto"
-                                                  HorizontalScrollBarVisibility="Disabled"
-                                                  Visibility="{x:Bind IsExpanded, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                                        <!-- The step's Input (its arguments) is deliberately not
-                                             rendered. The header row already names the tool and
-                                             its target ("Read file · a.txt"), which is the part
-                                             a user is scanning for; the raw argument JSON was
-                                             noise above the result. The data is still captured
-                                             on the step (redacted, and persisted in event_args)
-                                             — this is a display choice, not a collection one, so
-                                             re-adding a block bound to Arguments restores it. -->
-                                        <!-- One output block, not a Result card plus an Error
-                                             card. A failed step carries the same text in both
-                                             fields, so two cards printed the same message twice.
-                                             Status drives the accent (DangerBrush when failed)
-                                             through ToolStatusToBrushConverter, and DetailLabel
-                                             switches the heading — the styling carries the
-                                             success/failure distinction the second card used to. -->
-                                        <StackPanel Spacing="7">
-                                            <!-- No status-coloured left rule. The step's own
-                                                 status glyph in the timeline gutter already says
-                                                 whether it succeeded, and the body's heading
-                                                 switches to "Error" when it did not — a second,
-                                                 full-height colour bar on every single step made
-                                                 a long tool card read as a stack of alerts. -->
-                                            <Border Background="{ThemeResource SurfaceElevatedBrush}"
-                                                    CornerRadius="4"
-                                                    Padding="10,8"
-                                                    Visibility="{x:Bind HasDetail, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                                                <StackPanel Spacing="5">
-                                                    <TextBlock Text="{x:Bind DetailLabel, Mode=OneWay}"
-                                                               FontSize="11"
-                                                               FontWeight="SemiBold"
-                                                               Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource ToolStatusToBrush}}" />
-                                                    <!-- Content-aware: a JSON result is
-                                                         re-indented and syntax coloured, anything
-                                                         else renders exactly as the tool sent it.
-                                                         See ToolResultFormatter. -->
-                                                    <controls:ToolResultTextBlock
-                                                        Text="{x:Bind DetailText, Mode=OneWay}" />
-                                                </StackPanel>
-                                            </Border>
-                                        </StackPanel>
-                                    </ScrollViewer>
+                                    <!-- Per-step expanded content: an output toolbar over a themed,
+                                         height-capped log region. Only the log scrolls internally;
+                                         the toolbar and the step header above it stay put.
+
+                                         One output block, not a Result card plus an Error card — a
+                                         failed step carries the same text in both fields, so two
+                                         cards printed the same message twice. Status drives the
+                                         heading colour (DangerBrush when failed) via
+                                         ToolStatusToBrushConverter and DetailLabel switches the word.
+                                         (The step's Input/Arguments are still captured and persisted
+                                         but deliberately not rendered — see the model comments.) -->
+                                    <StackPanel Spacing="6"
+                                                Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}">
+                                        <!-- Toolbar: heading left, low-weight Wrap / Copy / Expand right. -->
+                                        <Grid ColumnSpacing="4"
+                                              Visibility="{Binding HasDetail, Converter={StaticResource BoolToVis}}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0"
+                                                       Text="{Binding DetailLabel}"
+                                                       FontSize="12"
+                                                       FontWeight="SemiBold"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="{Binding Status, Converter={StaticResource ToolStatusToBrush}}" />
+                                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2">
+                                                <Button Style="{StaticResource LogToolbarButtonStyle}"
+                                                        Content="{Binding CopyLabel}"
+                                                        Tag="{Binding}"
+                                                        Click="LogCopy_Click"
+                                                        AutomationProperties.Name="Copy log"
+                                                        ToolTipService.ToolTip="Copy the full log" />
+                                                <Button Style="{StaticResource LogToolbarButtonStyle}"
+                                                        Content="{Binding EnlargeLabel}"
+                                                        Command="{Binding ToggleLogSizeCommand}"
+                                                        Visibility="{Binding ShowEnlargeButton, Converter={StaticResource BoolToVis}}"
+                                                        AutomationProperties.Name="Enlarge or restore log area"
+                                                        ToolTipService.ToolTip="Enlarge or restore the log area" />
+                                            </StackPanel>
+                                        </Grid>
+                                        <!-- Log region: a single themed monospace surface (a subtle
+                                             code background + hairline stroke, no white-inner-on-grey
+                                             nesting), height-capped with internal vertical scroll.
+                                             The log always wraps, so it never scrolls sideways. -->
+                                        <Border Background="{ThemeResource CodeBackgroundBrush}"
+                                                BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+                                                BorderThickness="1"
+                                                CornerRadius="8"
+                                                Padding="12"
+                                                Visibility="{Binding HasDetail, Converter={StaticResource BoolToVis}}">
+                                            <ScrollViewer MaxHeight="{Binding LogMaxHeight}"
+                                                          VerticalScrollBarVisibility="Auto"
+                                                          HorizontalScrollBarVisibility="Disabled">
+                                                <controls:ToolResultTextBlock
+                                                    Text="{Binding DetailText}"
+                                                    SizeChanged="Log_SizeChanged" />
+                                            </ScrollViewer>
+                                        </Border>
+                                    </StackPanel>
                                 </StackPanel>
                             </Grid>
                         </DataTemplate>
-                    </ItemsControl.ItemTemplate>
+                        </ItemsControl.ItemTemplate>
                     </ItemsControl>
 
                     <!-- Completion marker. Suppressed for a single step, whose own node already
@@ -336,5 +413,6 @@
                 </StackPanel>
             </Grid>
         </StackPanel>
+        </Border>
     </Grid>
 </UserControl>

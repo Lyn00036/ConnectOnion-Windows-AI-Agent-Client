@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.Text.Json.Serialization;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 
 namespace ConnectOnion.WinUIClient.Models;
 
@@ -310,6 +311,45 @@ public sealed partial class ToolStepViewModel : Common.ObservableObject
     [ObservableProperty]
     public partial bool IsExpanded { get; set; }
 
+    // ---- Per-step expanded-log UI state ----
+    // Purely presentational and transient state for this step's expanded log; never persisted, and
+    // it lives for the card's lifetime. Copy needs the clipboard (a UI concern) so it stays in the
+    // view's code-behind; the size toggle is pure state and runs through a command here.
+
+    /// <summary>Whether the log region is enlarged (taller) or at its default cap.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(LogMaxHeight))]
+    [NotifyPropertyChangedFor(nameof(EnlargeLabel))]
+    [NotifyPropertyChangedFor(nameof(ShowEnlargeButton))]
+    public partial bool IsLogEnlarged { get; set; }
+
+    /// <summary>Whether the rendered log is taller than the default cap, so enlarging it actually
+    /// reveals more. Set from the log's measured height by the view (a layout fact the model can't
+    /// know on its own); a short log that already fits gets no Expand button.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowEnlargeButton))]
+    public partial bool CanEnlargeLog { get; set; }
+
+    /// <summary>Show the Expand/Collapse button only when it does something: the log overflows the
+    /// default cap, or it is already enlarged (so the user can still collapse it back).</summary>
+    [JsonIgnore] public bool ShowEnlargeButton => CanEnlargeLog || IsLogEnlarged;
+
+    /// <summary>Briefly true after Copy, so the button can show "Copied" without a dialog. The
+    /// view sets it and clears it on a short delay.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CopyLabel))]
+    public partial bool JustCopied { get; set; }
+
+    /// <summary>Default height cap for the log; ~280px keeps a long result from pushing the final
+    /// reply off the page, and Expand roughly doubles it. A fixed enlarged value rather than a
+    /// viewport fraction because a DataTemplate has no cheap handle on the page height. Must stay in
+    /// step with <c>ToolActivityView.DefaultLogMaxHeight</c>, which decides when Expand even appears.</summary>
+    [JsonIgnore] public double LogMaxHeight => IsLogEnlarged ? 560 : 280;
+    [JsonIgnore] public string CopyLabel => JustCopied ? "Copied" : "Copy";
+    [JsonIgnore] public string EnlargeLabel => IsLogEnlarged ? "Collapse" : "Expand";
+
+    [RelayCommand] private void ToggleLogSize() => IsLogEnlarged = !IsLogEnlarged;
+
     [JsonIgnore] public string StatusGlyph => Status switch { ToolStepStatus.Success => "✓", ToolStepStatus.Warning => "⚠", ToolStepStatus.Failed => "✕", ToolStepStatus.Cancelled => "⊘", ToolStepStatus.Pending => "·", _ => "◌" };
     /// <summary>Which glyph identifies the tool this step ran. Derived from <see cref="ToolName"/>
     /// rather than stored, so it costs no column, needs no migration, and conversations persisted
@@ -349,7 +389,17 @@ public sealed partial class ToolStepViewModel : Common.ObservableObject
     /// error from its chrome and this label without needing a second card.</summary>
     [JsonIgnore] public string DetailLabel => HasError ? "Error" : "Result";
 
-    [JsonIgnore] public string DurationLabel => DurationMs is null ? "" : DurationMs < 1000 ? $"{DurationMs:0} ms" : $"{DurationMs / 1000:0.0} s";
+    /// <summary>The step's own run time, kept deliberately quiet (see the view's low-opacity,
+    /// hover-to-reveal treatment). A missing measurement and a genuine zero both render as nothing
+    /// — a column of "0 ms" was pure horizontal-scan noise for tools that report no timing — and a
+    /// sub-millisecond call reads as "&lt;1 ms" rather than rounding down into that same blank.</summary>
+    [JsonIgnore] public string DurationLabel => DurationMs switch
+    {
+        null or <= 0 => "",
+        < 1 => "<1 ms",
+        < 1000 => $"{DurationMs:0} ms",
+        _ => $"{DurationMs / 1000:0.0} s",
+    };
     [JsonIgnore] public string AccessibilityName => $"{StatusGlyph} {DisplayName}{(HasSummary ? ", " + Summary : "")}";
 
     public void ToggleExpanded() => IsExpanded = !IsExpanded;
