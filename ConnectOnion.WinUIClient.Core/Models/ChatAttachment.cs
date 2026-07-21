@@ -29,8 +29,8 @@ public enum AttachmentStatus
 /// An attachment already attached to a rendered <see cref="ChatMessage"/> bubble —
 /// either something the user sent, or an image the agent produced via the
 /// <c>agent_image</c> wire event. Never holds a full data URL: outgoing attachments
-/// keep <see cref="LocalCachePath"/> pointing at the user's original file,
-/// incoming images are decoded once to <c>AppStorage</c>'s image cache and only the
+/// keep generic files pointing at the user's original file; user and agent images are copied
+/// once to <c>AppStorage</c>'s content-addressed image cache and only the
 /// cache path is kept (see <c>AttachmentImageCacheService</c>) — this is what keeps
 /// large base64 payloads out of the in-memory message list and out of SQLite.
 /// </summary>
@@ -57,9 +57,9 @@ public sealed partial class ChatAttachment : Common.ObservableObject
     public long SizeBytes { get; set; }
 
     /// <summary>
-    /// Absolute local filesystem path: the user's original file for something
-    /// they sent, or the decoded/downloaded cache file for something the agent
-    /// produced. Used both for "open/save" and, for images, as the bitmap source.
+    /// Absolute local filesystem path: an app-owned content-cache file for images, or the
+    /// user's original path for a generic file they sent. Used both for "open/save" and, for
+    /// images, as the bitmap source.
     /// Settable after construction (not just at creation) because an incoming
     /// <c>agent_image</c> attachment starts with no local copy and gets one once
     /// <c>AttachmentImageCacheService</c> finishes decoding/downloading it — the

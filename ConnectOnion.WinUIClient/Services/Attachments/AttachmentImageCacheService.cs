@@ -1,11 +1,8 @@
 using System;
-using System.IO;
 using System.Net.Http;
-using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using ConnectOnion.Protocol;
-using ConnectOnion.WinUIClient.Data;
 
 namespace ConnectOnion.WinUIClient.Services.Attachments;
 
@@ -23,60 +20,58 @@ namespace ConnectOnion.WinUIClient.Services.Attachments;
 /// </summary>
 public static class AttachmentImageCacheService
 {
-    private const long MaxImageBytes = 50 * 1024 * 1024;
     private static readonly TimeSpan DownloadTimeout = TimeSpan.FromSeconds(15);
 
     public static async Task<(string LocalPath, string MimeType)?> ResolveAndCacheAsync(
         string source, HttpClient http, CancellationToken ct = default)
     {
-        byte[] bytes;
-        string mime;
-
         switch (DataUrlCodec.ClassifyImageSource(source))
         {
             case ImageSourceKind.DataUrl:
+                byte[] bytes;
+                string mime;
                 if (!DataUrlCodec.TryDecode(source, out mime, out bytes)) return null;
                 if (!IsImageMime(mime)) return null;
-                break;
+                var localPath = await ImageContentStore
+                    .StoreBytesAsync(bytes, mime, ct)
+                    .ConfigureAwait(false);
+                return localPath is null ? null : (localPath, mime);
 
             case ImageSourceKind.HttpUrl:
-                var downloaded = await TryDownloadAsync(source, http, ct).ConfigureAwait(false);
-                if (downloaded is null) return null;
-                (bytes, mime) = downloaded.Value;
-                break;
+                return await TryDownloadAsync(source, http, ct).ConfigureAwait(false);
 
             default:
                 return null;
         }
-
-        if (bytes.Length == 0 || bytes.Length > MaxImageBytes) return null;
-
-        var hash = Convert.ToHexString(SHA256.HashData(bytes));
-        var path = Path.Combine(AppStorage.ImageCacheDir, hash + ExtensionFor(mime));
-
-        if (!File.Exists(path))
-        {
-            Directory.CreateDirectory(AppStorage.ImageCacheDir);
-            await File.WriteAllBytesAsync(path, bytes, ct).ConfigureAwait(false);
-        }
-
-        return (path, mime);
     }
 
-    private static async Task<(byte[] Bytes, string Mime)?> TryDownloadAsync(string url, HttpClient http, CancellationToken ct)
+    private static async Task<(string LocalPath, string MimeType)?> TryDownloadAsync(
+        string url, HttpClient http, CancellationToken ct)
     {
         try
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(DownloadTimeout);
-            using var response = await http.GetAsync(url, cts.Token).ConfigureAwait(false);
+            using var response = await http.GetAsync(
+                url, HttpCompletionOption.ResponseHeadersRead, cts.Token).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode) return null;
 
             var mime = response.Content.Headers.ContentType?.MediaType ?? "";
             if (!IsImageMime(mime)) return null;
+            if (response.Content.Headers.ContentLength is > ImageContentStore.MaxImageBytes)
+                return null;
 
-            var bytes = await response.Content.ReadAsByteArrayAsync(cts.Token).ConfigureAwait(false);
-            return (bytes, mime);
+            await using var stream = await response.Content
+                .ReadAsStreamAsync(cts.Token)
+                .ConfigureAwait(false);
+            var path = await ImageContentStore
+                .StoreStreamAsync(stream, mime, ImageContentStore.MaxImageBytes, cts.Token)
+                .ConfigureAwait(false);
+            return path is null ? null : (path, mime);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
         }
         catch
         {
@@ -88,12 +83,4 @@ public static class AttachmentImageCacheService
     private static bool IsImageMime(string mime)
         => mime.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
 
-    private static string ExtensionFor(string mime) => mime.ToLowerInvariant() switch
-    {
-        "image/png" => ".png",
-        "image/jpeg" or "image/jpg" => ".jpg",
-        "image/gif" => ".gif",
-        "image/webp" => ".webp",
-        _ => ".bin",
-    };
 }

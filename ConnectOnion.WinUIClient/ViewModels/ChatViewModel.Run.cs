@@ -55,7 +55,6 @@ public sealed partial class ChatViewModel
         IsProcessing = true;
         CanStop = false;
         IsStopping = false;
-        StatusText = "Connecting...";
         try
         {
             // Hand off to the app-level manager. It persists the user message, opens/reuses
@@ -76,7 +75,18 @@ public sealed partial class ChatViewModel
             LogSendFailure(_logger, _session?.Id, ex);
             IsProcessing = false;
             CanStop = false;
-            StatusText = $"Send failed: {UserFacingError(ex)}";
+            AddErrorActivity($"Send failed: {UserFacingError(ex)}");
+        }
+        finally
+        {
+            // AgentSessionManager replaces user-image source paths with app-owned content-cache
+            // paths before persistence. Mirror those paths onto the already-rendered optimistic
+            // bubble so moving the original file cannot break either the live or reloaded view.
+            if (attachments is not null)
+            {
+                for (var i = 0; i < attachments.Count && i < userMessage.Attachments.Count; i++)
+                    userMessage.Attachments[i].LocalCachePath = attachments[i].LocalPath;
+            }
         }
     }
 
@@ -127,7 +137,6 @@ public sealed partial class ChatViewModel
         IsProcessing = false;
         CanStop = false;
         IsStopping = false;
-        StatusText = "";
         SendCancelled?.Invoke(pending.Text, pending.Attachments);
     }
 
@@ -138,7 +147,6 @@ public sealed partial class ChatViewModel
         if (_session is null || !CanStop || IsStopping) return;
 
         IsStopping = true;
-        StatusText = "Stopping...";
         try
         {
             var outcome = await _runManager.RequestStopAsync(_session.Id);
@@ -146,13 +154,12 @@ public sealed partial class ChatViewModel
             {
                 IsStopping = false;
                 CanStop = false;
-                StatusText = "";
             }
         }
         catch (Exception ex)
         {
             IsStopping = false;
-            StatusText = $"Stop failed: {UserFacingError(ex)}";
+            AddErrorActivity($"Stop failed: {UserFacingError(ex)}");
         }
     }
 
@@ -180,7 +187,6 @@ public sealed partial class ChatViewModel
             IsProcessing = !snapshot.IsTerminal;
             CanStop = !snapshot.IsTerminal && snapshot.Status == ConversationRunStatus.Running;
             IsStopping = HasPendingStop(snapshot);
-            StatusText = IsStopping ? "Stopping..." : StatusTextFor(snapshot);
             if (snapshot.IsTerminal)
             {
                 CanStop = false;
@@ -202,7 +208,6 @@ public sealed partial class ChatViewModel
                 IsProcessing = false;
                 CanStop = false;
                 IsStopping = false;
-                StatusText = "";
                 CanRetry = snapshot.Status == ConversationRunStatus.Failed;
                 return;
             }
@@ -232,7 +237,6 @@ public sealed partial class ChatViewModel
         CanCancelSend = _pendingSend is not null && !snapshot.IsTerminal
             && snapshot.Status is ConversationRunStatus.Queued or ConversationRunStatus.Connecting;
         if (!CanCancelSend) _pendingSend = null;
-        StatusText = IsStopping ? "Stopping..." : StatusTextFor(snapshot);
 
         // The snapshot owns the phase for a live turn, except while reconnecting: the run stays
         // Running with a dead socket underneath it, and reporting that as Running would tell the
@@ -266,7 +270,6 @@ public sealed partial class ChatViewModel
             // rather than posting a connection-error bubble for a connection that was never the
             // problem.
             _liveProjection?.CompleteToolActivity(ToolActivityStatus.Cancelled);
-            StatusText = "";
             CanRetry = false;
             // The manager may have just recovered the turn's reply out of the CONNECTED frame and
             // written it to SQLite — it persists before publishing this terminal snapshot, so the
@@ -288,11 +291,7 @@ public sealed partial class ChatViewModel
                 AgentName = _agent?.Name,
                 Content = $"[connection error] {snapshot.ErrorMessage}",
             });
-            // The error is shown as a bubble plus the Retry bar, so the status line stays out of
-            // it. StatusTextFor already returns "" for Failed; this clears the one case it can't
-            // — a stop that was still pending when the run died, which would otherwise leave
-            // "Stopping..." sitting under a finished turn.
-            StatusText = "";
+            // The error is shown as a "[connection error]" bubble plus the Retry bar.
             CanRetry = true;
             if (_agent is not null)
             {
@@ -470,13 +469,6 @@ public sealed partial class ChatViewModel
     /// and the gap between a started run and its first event, where nothing else says the app
     /// heard the user.
     /// </summary>
-    private static string StatusTextFor(ConversationRunSnapshot snapshot) => snapshot.Status switch
-    {
-        ConversationRunStatus.Queued => "Working...",
-        ConversationRunStatus.Connecting => "Connecting...",
-        ConversationRunStatus.Running when snapshot.Events.Count == 0 => "Working...",
-        _ => "",
-    };
     /// <summary>Forces the app-owned socket for this conversation to reconnect to its session.</summary>
     public async Task ReconnectAsync()
     {
@@ -485,15 +477,13 @@ public sealed partial class ChatViewModel
         var connection = _runManager.Connections.GetOrCreate(_session.Id, _agent);
 
         IsConnecting = true;
-        StatusText = "Reconnecting...";
         try
         {
             await connection.ReconnectAsync(_session.Id);
-            StatusText = "Connected.";
         }
         catch (Exception ex)
         {
-            StatusText = $"Reconnect failed: {UserFacingError(ex)}";
+            AddErrorActivity($"Reconnect failed: {UserFacingError(ex)}");
         }
         finally
         {
@@ -523,8 +513,21 @@ public sealed partial class ChatViewModel
         IsProcessing = true;
         CanStop = false;
         IsStopping = false;
-        StatusText = "Connecting...";
     }
+
+    /// <summary>Appends a transient, non-persisted error row to the conversation for a
+    /// client-side failure (send / stop / reconnect) that happens outside a run's own event
+    /// stream. Rendered as an activity bubble in the Error state — the same in-chat surface the
+    /// agent's own activity uses — rather than a separate status line above the composer. Ephemeral
+    /// by design: a local network hiccup is not written to history, so it clears on reload.</summary>
+    private void AddErrorActivity(string message) => Messages.Add(new ChatMessage
+    {
+        Id = NextId(),
+        Role = ChatRole.Event,
+        EventKind = "activity",
+        EventTitle = message,
+        Status = EventStatus.Error,
+    });
 
     /// <summary>Drops the "[connection error]" bubble for the last failed turn (whether it was
     /// added live or restored from history) so a successful retry doesn't leave a stale error

@@ -26,8 +26,8 @@ public static class AppStorage
     public static readonly string ConversationsDir = Path.Combine(RootDir, "conversations");
 
     /// <summary>
-    /// Cache for decoded/downloaded incoming images (from <c>agent_image</c> events).
-    /// Files are named by content hash so re-receiving the same image is idempotent
+    /// Content store for user-selected and agent-produced conversation images.
+    /// Files are named by content hash so storing the same image is idempotent
     /// and remote filenames are never trusted as local paths.
     /// </summary>
     public static readonly string ImageCacheDir = Path.Combine(RootDir, "cache", "images");

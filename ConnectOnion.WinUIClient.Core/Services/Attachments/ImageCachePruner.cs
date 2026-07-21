@@ -5,9 +5,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace ConnectOnion.WinUIClient.Services.Attachments;
 
 /// <summary>
-/// Garbage-collects the received-image cache (<see cref="AppStorage.ImageCacheDir"/>).
+/// Garbage-collects the conversation-image cache (<see cref="AppStorage.ImageCacheDir"/>).
 ///
-/// <para>The cache is written by <c>AttachmentImageCacheService</c> and never cleaned up
+/// <para>The cache is written through <see cref="ImageContentStore"/> and never cleaned up
 /// otherwise: deleting a conversation removes its <c>message_attachments</c> rows but leaves the
 /// image files, so the directory only ever grows.</para>
 ///
@@ -39,7 +39,7 @@ public static class ImageCachePruner
     /// <summary>
     /// How long a file is protected from the sweep regardless of whether anything references it.
     ///
-    /// <para>This closes a real race: <c>AttachmentImageCacheService</c> writes the file during a
+    /// <para>This closes a real race: <see cref="ImageContentStore"/> writes the file during a
     /// turn, but the row that references it is not written until the turn is persisted at its
     /// end. A sweep landing in that window would see a legitimately in-use file with no referent
     /// and delete it. An hour is far longer than any turn, and the cost of being wrong in this

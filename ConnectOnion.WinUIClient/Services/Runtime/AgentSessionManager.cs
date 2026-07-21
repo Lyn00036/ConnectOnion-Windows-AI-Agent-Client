@@ -30,6 +30,9 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
     private static readonly Action<ILogger, Exception?> LogRunFailure =
         LoggerMessage.Define(LogLevel.Error, new EventId(1, "RunFailure"),
             "Conversation run pipeline raised an unhandled fault");
+    private static readonly Action<ILogger, string, Exception?> LogOutgoingImageCacheFailure =
+        LoggerMessage.Define<string>(LogLevel.Warning, new EventId(2, "OutgoingImageCacheFailure"),
+            "Could not persist outgoing image {FileName} in the content cache; using its source path");
 
     private readonly ILogger<AgentSessionManager> _logger;
     private readonly HttpClient _http;
@@ -144,13 +147,35 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
             files = new List<OutgoingFileAttachment>();
             foreach (var attachment in attachments)
             {
+                var localCachePath = attachment.LocalPath;
+                if (attachment.Kind == AttachmentKind.Image)
+                {
+                    try
+                    {
+                        var cached = await ImageContentStore
+                            .StoreFileAsync(attachment.LocalPath, attachment.MimeType)
+                            .ConfigureAwait(false);
+                        if (cached is not null)
+                        {
+                            localCachePath = cached;
+                            // The page's optimistic bubble and a cancelled-send draft both reuse
+                            // this object, so point them at the durable copy as well.
+                            attachment.LocalPath = cached;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LogOutgoingImageCacheFailure(_logger, attachment.FileName, ex);
+                    }
+                }
+
                 userAttachments.Add(new ChatAttachment
                 {
                     Kind = attachment.Kind,
                     FileName = attachment.FileName,
                     MimeType = attachment.MimeType,
                     SizeBytes = attachment.SizeBytes,
-                    LocalCachePath = attachment.LocalPath,
+                    LocalCachePath = localCachePath,
                     Status = AttachmentStatus.Sent,
                 });
 
