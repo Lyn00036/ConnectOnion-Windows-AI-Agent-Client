@@ -158,7 +158,13 @@ public sealed class AgentTurnExecutor : ITurnExecutor
             ["tool"] = r.Tool,
             ["description"] = r.Description,
             ["arguments"] = args,
+            ["reason"] = r.Reason,
         };
+        if (!string.IsNullOrWhiteSpace(r.BatchRemainingJson))
+        {
+            try { frame["batch_remaining"] = JsonSerializer.Deserialize<JsonElement>(r.BatchRemainingJson); }
+            catch { /* Optional preview data must not hide the approval itself. */ }
+        }
         return JsonSerializer.Serialize(frame);
     }
 

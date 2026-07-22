@@ -91,6 +91,69 @@ public sealed class ToolActivityMigrationTests
         Assert.Null(Assert.Single(upgraded[0].ToolActivity!.Steps).DurationMs);
     }
 
+    [Theory]
+    [InlineData(ToolActivityStatus.Running)]
+    [InlineData(ToolActivityStatus.WaitingForConfirmation)]
+    [InlineData(ToolActivityStatus.WaitingForPermission)]
+    public void UpgradeLegacyToolMessages_RestoredNonTerminalActivity_IsSealedAsHistory(
+        ToolActivityStatus staleStatus)
+    {
+        var activity = new ToolActivityViewModel { Status = staleStatus };
+        activity.Steps.Add(new ToolStepViewModel
+        {
+            Id = "done",
+            Status = ToolStepStatus.Success,
+            ToolName = "read_file",
+        });
+        var message = new ChatMessage
+        {
+            Id = 1,
+            Role = ChatRole.Event,
+            EventKind = "tool_activity",
+            Status = EventStatus.Running,
+            ToolActivity = activity,
+        };
+
+        var upgraded = ToolActivityMigration.UpgradeLegacyToolMessages(new[] { message });
+
+        var restored = Assert.Single(upgraded);
+        Assert.Equal(ToolActivityStatus.Success, restored.ToolActivity!.Status);
+        Assert.Equal(EventStatus.Done, restored.Status);
+        Assert.Equal("Done", restored.ToolActivity.CompletionLabel);
+        Assert.False(restored.ToolActivity.IsAwaitingApproval);
+    }
+
+    [Fact]
+    public void UpgradeLegacyToolMessages_RestoredTerminalActivity_ClearsCachedApprovalAndMessageRunningState()
+    {
+        var approval = new ChatMessage
+        {
+            EventKind = "approval",
+            Status = EventStatus.Running,
+        };
+        var activity = new ToolActivityViewModel
+        {
+            Status = ToolActivityStatus.Success,
+            Summary = "Completed · 2 steps",
+            Approval = approval,
+        };
+        activity.Steps.Add(new ToolStepViewModel { Status = ToolStepStatus.Success });
+        var message = new ChatMessage
+        {
+            Role = ChatRole.Event,
+            EventKind = "tool_activity",
+            Status = EventStatus.Running,
+            ToolActivity = activity,
+        };
+
+        var restored = Assert.Single(ToolActivityMigration.UpgradeLegacyToolMessages([message]));
+
+        Assert.Null(restored.ToolActivity!.Approval);
+        Assert.False(restored.ToolActivity.IsAwaitingApproval);
+        Assert.Equal(EventStatus.Done, restored.Status);
+        Assert.Equal("Completed · 2 steps", restored.ToolActivity.Summary);
+    }
+
     private static ChatMessage Legacy(long id, string tool, EventStatus status) => new()
     {
         Id = id,

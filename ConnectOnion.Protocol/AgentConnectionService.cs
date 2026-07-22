@@ -502,12 +502,11 @@ public sealed class AgentConnectionService : IAsyncDisposable
     // SendInputAsync stays open until the agent finally emits OUTPUT). ---
 
     /// <summary>Answers an ask_user turn. Port of the ASK_USER_RESPONSE message.</summary>
-    public Task RespondAskUserAsync(string answer)
+    public Task RespondAskUserAsync(object answer)
     {
         ResumeWatchdogAfterHumanResponse();
         return SendOrQueueAsync(new Dictionary<string, object?>
         {
-            ["type"] = "ASK_USER_RESPONSE",
             ["answer"] = answer,
         }, CancellationToken.None);
     }
@@ -531,10 +530,9 @@ public sealed class AgentConnectionService : IAsyncDisposable
         ResumeWatchdogAfterHumanResponse();
         var msg = new Dictionary<string, object?>
         {
-            ["type"] = "APPROVAL_RESPONSE",
             ["approved"] = approved,
-            ["scope"] = scope,
         };
+        if (approved) msg["scope"] = scope;
         if (!approved)
         {
             msg["mode"] = rejectMode;
@@ -543,28 +541,12 @@ public sealed class AgentConnectionService : IAsyncDisposable
         return SendOrQueueAsync(msg, CancellationToken.None);
     }
 
-    /// <summary>Sends the exact hard-rejection payload used to stop while the host is blocked
-    /// in its approval FIFO. An INTERRUPT frame at this point would be consumed as the approval
-    /// response, so this payload intentionally has no type, scope, session, or routing fields.</summary>
-    public Task RejectApprovalForStopAsync(string feedback = "用户中断")
-    {
-        if (!IsConnected) throw new InvalidOperationException("Cannot stop: the agent connection is not open.");
-        ResumeWatchdogAfterHumanResponse();
-        return SendJsonAsync(new Dictionary<string, object?>
-        {
-            ["approved"] = false,
-            ["mode"] = ApprovalRejectModes.Hard,
-            ["feedback"] = feedback,
-        }, CancellationToken.None);
-    }
-
     /// <summary>Responds to a plan_review turn. Port of PLAN_REVIEW_RESPONSE.</summary>
     public Task RespondPlanReviewAsync(string message)
     {
         ResumeWatchdogAfterHumanResponse();
         return SendOrQueueAsync(new Dictionary<string, object?>
         {
-            ["type"] = "PLAN_REVIEW_RESPONSE",
             ["message"] = message,
         }, CancellationToken.None);
     }
@@ -684,6 +666,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
             // diff card; answering *this* frame would send a response nothing is waiting on and
             // leave the real ask_user blocked forever. See diff_writer.py `_send_preview`.
             case "diff_preview":
+            case "session_sync":
             {
                 var eventId = msg.GetString("id");
                 if (!string.IsNullOrEmpty(eventId))
@@ -729,7 +712,9 @@ public sealed class AgentConnectionService : IAsyncDisposable
                 ApprovalRequested?.Invoke(new ApprovalRequest(
                     msg.GetString("tool") ?? "",
                     msg.GetString("description"),
-                    msg.TryGet("arguments", out var argsEl) ? argsEl.GetRawText() : "{}"));
+                    msg.TryGet("arguments", out var argsEl) ? argsEl.GetRawText() : "{}",
+                    msg.GetString("reason"),
+                    msg.TryGet("batch_remaining", out var batchEl) ? batchEl.GetRawText() : null));
                 return;
 
             case "plan_review":

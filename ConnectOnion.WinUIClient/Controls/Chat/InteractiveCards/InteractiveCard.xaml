@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="ConnectOnion.WinUIClient.Controls.InteractiveCard"
+    x:Name="Root"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:models="using:ConnectOnion.WinUIClient.Models">
+    <Border x:Name="CardBorder"
+            MaxWidth="{StaticResource ChatColumnWidth}"
+            HorizontalAlignment="Stretch"
+            CornerRadius="{StaticResource InteractiveCardCornerRadius}"
+            Background="{ThemeResource SurfaceElevatedBrush}"
+            BorderBrush="{x:Bind ChromeTone, Mode=OneWay, Converter={StaticResource InteractiveToneToBrush}}"
+            BorderThickness="1"
+            AutomationProperties.Name="{x:Bind AccessibilityName, Mode=OneWay}">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Grid Padding="{x:Bind IsCompact, Mode=OneWay, Converter={StaticResource BoolToThickness}, ConverterParameter='12,9|16,14'}" ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="20" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="{x:Bind IconGlyph, Mode=OneWay}"
+                           FontFamily="Segoe Fluent Icons"
+                           FontSize="16"
+                           VerticalAlignment="Top"
+                           Foreground="{x:Bind IconTone, Mode=OneWay, Converter={StaticResource InteractiveToneToBrush}}"
+                           AutomationProperties.AccessibilityView="Raw" />
+                <StackPanel Grid.Column="1" Spacing="2">
+                    <TextBlock Text="{x:Bind Title, Mode=OneWay}"
+                               Style="{StaticResource InteractiveCardTitleStyle}" />
+                    <TextBlock Text="{x:Bind Subtitle, Mode=OneWay}"
+                               Style="{StaticResource InteractiveCardSubtitleStyle}"
+                               Visibility="{x:Bind Subtitle, Mode=OneWay, Converter={StaticResource StringToVis}}" />
+                </StackPanel>
+                <Border Grid.Column="2"
+                        Padding="8,3"
+                        CornerRadius="4"
+                        VerticalAlignment="Top"
+                        Visibility="{x:Bind ShowStatusBadge, Mode=OneWay, Converter={StaticResource BoolToVis}}"
+                        Background="{x:Bind IconTone, Mode=OneWay, Converter={StaticResource InteractiveToneToBrush}, ConverterParameter=surface}">
+                    <TextBlock Text="{x:Bind StatusLabel, Mode=OneWay}"
+                               Style="{StaticResource InteractiveCardBadgeTextStyle}"
+                               Foreground="{x:Bind IconTone, Mode=OneWay, Converter={StaticResource InteractiveToneToBrush}}" />
+                </Border>
+                <TextBlock Grid.Column="2" Text="{x:Bind HeaderMeta, Mode=OneWay}"
+                           FontFamily="Consolas" FontSize="12" VerticalAlignment="Top"
+                           Foreground="{ThemeResource TextSecondaryBrush}"
+                           Visibility="{x:Bind ShowStatusBadge, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
+            </Grid>
+            <Border Grid.Row="1" Height="1" Background="{ThemeResource BorderSubtleBrush}"
+                    Visibility="{x:Bind ShowBody, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+            <ContentPresenter Grid.Row="2" Content="{x:Bind CardBody, Mode=OneWay}"
+                              Visibility="{x:Bind ShowBody, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+            <Grid Grid.Row="3" Visibility="{x:Bind ShowFooter, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Border Height="1" Background="{ThemeResource BorderSubtleBrush}" />
+                <ContentPresenter Grid.Row="1" Content="{x:Bind CardFooter, Mode=OneWay}" />
+            </Grid>
+        </Grid>
+    </Border>
+</UserControl>

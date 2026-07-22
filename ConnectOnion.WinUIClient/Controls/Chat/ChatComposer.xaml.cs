@@ -621,7 +621,11 @@ public sealed partial class ChatComposer : UserControl, IDisposable
 
         StopButton.Visibility = CanStop ? Visibility.Visible : Visibility.Collapsed;
         StopButton.IsEnabled = CanStop && !IsStopping;
+        StopButton.Width = IsStopping ? 112 : 36;
         StopRing.IsActive = IsStopping;
+        StopRing.Visibility = IsStopping ? Visibility.Visible : Visibility.Collapsed;
+        StopGlyph.Visibility = IsStopping ? Visibility.Collapsed : Visibility.Visible;
+        StopLabel.Visibility = IsStopping ? Visibility.Visible : Visibility.Collapsed;
         StopRing.Foreground = Brush("AppBackgroundBrush");
         var stopLabel = IsStopping ? "Stopping..." : "Stop";
         ToolTipService.SetToolTip(StopButton, stopLabel);

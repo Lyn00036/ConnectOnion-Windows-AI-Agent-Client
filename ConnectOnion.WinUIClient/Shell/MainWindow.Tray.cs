@@ -295,6 +295,11 @@ public sealed partial class MainWindow
         // late Activated/Closed events never resolve services from a disposed IServiceProvider.
         DetachWindowServices();
 
+        // Persist while the host and its services are still alive. Application.Exit raises
+        // Closed only after ShutdownAsync has disposed the provider; SaveWindowPlacementAsync is
+        // idempotent, so that later Closed callback becomes a harmless no-op.
+        await SaveWindowPlacementAsync();
+
         // Real exit (as opposed to minimize-to-tray): cancel in-flight turns, let them
         // persist recoverable state, and release the sockets — all bounded so exit never
         // hangs. ShutdownAsync self-limits; the extra cap is a hard backstop.

@@ -60,6 +60,7 @@ public static class ServiceRegistration
         services.AddSingleton<PreferencesRepository>();
         services.AddSingleton<ConversationRepository>();
         services.AddSingleton<UsageRepository>();
+        services.AddSingleton<WindowPlacementStore>();
 
         // ---- Keyboard ----
         // Singleton because it is the live binding table the window's key handlers consult on

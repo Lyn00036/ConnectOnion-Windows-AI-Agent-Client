@@ -26,9 +26,6 @@ public sealed partial class AutomationContractTests
         "KeyboardShortcutsOverlay",
         "AboutOkButton",
         "ShortcutsSearchBox",
-        "ApproveOnceButton",
-        "RejectButton",
-        "SkipStepButton",
         "ApprovalModeButton",
     };
 

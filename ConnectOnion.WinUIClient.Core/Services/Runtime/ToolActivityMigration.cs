@@ -23,7 +23,9 @@ public static class ToolActivityMigration
         {
             if (!source[i].IsToolEvent)
             {
-                upgraded.Add(source[i++]);
+                var message = source[i++];
+                NormalizeLoadedActivity(message);
+                upgraded.Add(message);
                 continue;
             }
 
@@ -71,6 +73,27 @@ public static class ToolActivityMigration
             });
         }
         return upgraded;
+    }
+
+    /// <summary>
+    /// A tool-activity restored from SQLite is history, never a live decision surface. Older
+    /// builds could persist the card while it was parked on approval (or simply still running),
+    /// leaving its durable status non-terminal even though the turn had already ended. Seal that
+    /// stale state through the same roll-up used by a normally completed turn so history cannot
+    /// advertise an approval the user can no longer answer.
+    /// </summary>
+    private static void NormalizeLoadedActivity(ChatMessage message)
+    {
+        if (!message.IsToolActivityEvent || message.ToolActivity is not { } activity) return;
+
+        // Approval is live-only. Clear defensively as well as relying on JsonIgnore, because an
+        // in-memory ConversationCache entry can be restored without a serialization round trip.
+        activity.Approval = null;
+        if (!activity.IsTerminal) new ToolActivityProjector(activity).Complete();
+        message.Status = activity.Status == ToolActivityStatus.Failed
+            ? EventStatus.Error
+            : EventStatus.Done;
+        activity.RefreshPresentation();
     }
 
     /// <summary>Recovers a millisecond duration from the legacy meta string, which was written

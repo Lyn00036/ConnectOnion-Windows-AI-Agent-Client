@@ -26,17 +26,20 @@ public sealed partial class ChatViewModel
     private AgentConnectionService? CurrentConnection
         => _session is null ? null : _runManager.Connections.Get(_session.Id);
 
-    /// <summary>Hands the just-resolved interactive card's result to the app-level manager so it
-    /// survives into persisted history. The live stream never echoes the user's reply, so the
-    /// manager can only stamp the chosen result (or "no selection") onto its re-projected card
-    /// if we record it here at the moment of answering.</summary>
-    private void RecordInteractiveAnswer(ChatMessage message)
+    private Guid? BeginInteractiveAnswer(string meta, EventStatus status)
+        => _session is null
+            ? null
+            : _runManager.BeginInteractiveAnswer(_session.Id, meta, status);
+
+    private void ConfirmInteractiveAnswer(Guid? reservation)
     {
-        if (_session is null || string.IsNullOrEmpty(message.EventMeta)) return;
-        _runManager.RecordInteractiveAnswer(_session.Id, message.EventMeta, message.Status);
-        // The agent is no longer parked on this turn, so Stop must stop treating it as an open
-        // gate it could halt through — from here on the agent is back to being un-interruptible.
-        _runManager.ClearPendingInteractive(_session.Id);
+        if (reservation is { } id) _runManager.ConfirmInteractiveAnswer(id);
+        if (_session is not null) _runManager.ClearPendingInteractive(_session.Id);
+    }
+
+    private void CancelInteractiveAnswer(Guid? reservation)
+    {
+        if (reservation is { } id) _runManager.CancelInteractiveAnswer(id);
     }
 
     public async Task SubmitOnboardInviteCodeAsync(ChatMessage message)
@@ -85,35 +88,33 @@ public sealed partial class ChatViewModel
     /// comma-joined checked options, else free text or the selected radio option.</summary>
     public async Task SubmitAskUserAnswerAsync(ChatMessage message)
     {
-        if (message.Status != EventStatus.Running) return;
+        if (!message.ValidateAskUser()) return;
+        var answer = Services.Runtime.InteractiveResponseBuilder.BuildAskUserAnswer(message);
+        if (answer is null || !message.TryBeginInteractiveSubmit()) return;
 
-        string answer;
-        if (message.AskUserFields.Count > 0)
+        var connection = CurrentConnection;
+        if (connection is not { IsConnected: true })
         {
-            var values = new Dictionary<string, string>();
-            foreach (var field in message.AskUserFields) values[field.Name] = field.Value;
-            answer = JsonSerializer.Serialize(values, AppJsonContext.Default.DictionaryStringString);
-        }
-        else if (message.AskUserMultiSelect)
-        {
-            var selected = message.AskUserOptionEntries.Where(o => o.IsChecked).Select(o => o.Text).ToList();
-            answer = selected.Count > 0 ? string.Join(", ", selected) : message.AskUserFreeText.Trim();
-        }
-        else
-        {
-            // Typed text wins over a picked option: if the user went to the trouble of writing
-            // something, that is the more specific answer.
-            answer = !string.IsNullOrWhiteSpace(message.AskUserFreeText)
-                ? message.AskUserFreeText.Trim()
-                : message.SelectedOptionText ?? "";
+            message.FailInteractiveSubmit("Reconnect before sending this answer.", connectionLost: true);
+            return;
         }
 
-        if (string.IsNullOrEmpty(answer)) return;
-
-        message.EventMeta = $"Answered: {answer}";
-        message.Status = EventStatus.Done;
-        RecordInteractiveAnswer(message);
-        await (CurrentConnection?.RespondAskUserAsync(answer) ?? Task.CompletedTask);
+        var answerSummary = answer is IEnumerable<string> values
+            ? string.Join(", ", values)
+            : answer.ToString() ?? "";
+        var outcome = $"Answered: {answerSummary}";
+        var reservation = BeginInteractiveAnswer(outcome, EventStatus.Done);
+        try
+        {
+            await connection.RespondAskUserAsync(answer);
+            ConfirmInteractiveAnswer(reservation);
+            message.CompleteInteractiveSubmit(outcome);
+        }
+        catch (Exception ex)
+        {
+            CancelInteractiveAnswer(reservation);
+            message.FailInteractiveSubmit(ex.Message, connectionLost: !connection.IsConnected);
+        }
     }
 
     /// <summary>
@@ -146,66 +147,157 @@ public sealed partial class ChatViewModel
     /// </summary>
     public async Task SkipAskUserAsync(ChatMessage message)
     {
-        if (message.Status != EventStatus.Running) return;
+        if (!message.TryBeginInteractiveSubmit()) return;
+        var connection = CurrentConnection;
+        if (connection is not { IsConnected: true })
+        {
+            message.FailInteractiveSubmit("Reconnect before skipping this question.", connectionLost: true);
+            return;
+        }
 
-        message.EventMeta = "Skipped";
-        message.Status = EventStatus.Done;
-        RecordInteractiveAnswer(message);
-        await (CurrentConnection?.RespondAskUserAsync(SkipAnswer) ?? Task.CompletedTask);
+        var reservation = BeginInteractiveAnswer("Skipped", EventStatus.Done);
+        try
+        {
+            await connection.RespondAskUserAsync(SkipAnswer);
+            ConfirmInteractiveAnswer(reservation);
+            message.CompleteInteractiveSubmit("Skipped");
+        }
+        catch (Exception ex)
+        {
+            CancelInteractiveAnswer(reservation);
+            message.FailInteractiveSubmit(ex.Message, connectionLost: !connection.IsConnected);
+        }
     }
 
     /// <summary>
-    /// <paramref name="scope"/> is "once" or "session". <paramref name="rejectMode"/> decides what
-    /// a rejection means to the agent and the two are genuinely different actions, not a wording
-    /// choice: <see cref="ApprovalRejectModes.Hard"/> (Reject) halts the agent's loop and hands
-    /// the conversation back to the user, while <see cref="ApprovalRejectModes.Soft"/> (Skip step)
-    /// declines this one tool and lets it carry on looking for another way.
+    /// Answers an <b>embedded</b> approval (the card inside the tool-activity card). The command on
+    /// the message has already flipped it to <see cref="ApprovalCardPhase.Submitting"/> synchronously,
+    /// so this cannot be entered twice for one decision; here we only do the socket round-trip and
+    /// settle the phase.
+    ///
+    /// <para>Maps the five <see cref="ApprovalAction"/>s onto the approval wire call: Allow once /
+    /// Trust are affirmatives (scope
+    /// once/session); Reject is the <see cref="ApprovalRejectModes.Soft"/> decline that lets the
+    /// agent keep working; Stop is the <see cref="ApprovalRejectModes.Hard"/> halt that ends the
+    /// turn. The two are genuinely different scopes, which is why the card shows them apart.</para>
+    ///
+    /// <para>The answer is recorded (for the persist path's FIFO) and the phase settled only
+    /// <i>after</i> a successful send, so a failed attempt the user retries never enqueues the
+    /// answer twice. On failure the original decision surface becomes actionable again and the
+    /// transport error is reported through the normal activity channel; the card has no separate
+    /// fallback/retry face.</para>
     /// </summary>
-    public async Task SubmitApprovalAsync(
-        ChatMessage message, bool approved, string scope,
-        string rejectMode = ApprovalRejectModes.Hard)
+    public async Task HandleApprovalDecisionAsync(ChatMessage message, ApprovalAction action)
     {
-        if (message.Status != EventStatus.Running) return;
+        var (approved, scope, rejectMode, meta) = action switch
+        {
+            ApprovalAction.AllowOnce    => (true,  "once",    ApprovalRejectModes.Hard, "Approved once"),
+            ApprovalAction.TrustSession => (true,  "session", ApprovalRejectModes.Hard, "Approved for session"),
+            ApprovalAction.Reject       => (false, "once",    ApprovalRejectModes.Soft, "Skipped"),
+            ApprovalAction.Stop         => (false, "once",    ApprovalRejectModes.Hard, "Stopped"),
+            ApprovalAction.Explain      => (false, "once",    ApprovalRejectModes.Explain, "Explanation requested"),
+            _                           => (true,  "once",    ApprovalRejectModes.Hard, "Approved once"),
+        };
 
-        message.EventMeta = approved
-            ? (scope == "session" ? "Approved for session" : "Approved once")
-            : rejectMode == ApprovalRejectModes.Soft ? "Skipped" : "Rejected";
-        message.Status = approved ? EventStatus.Done : EventStatus.Error;
-        // Record before removing: the answer queue is what the app-level persist replays onto the
-        // cards it re-projects, and it is consumed in creation order.
-        RecordInteractiveAnswer(message);
-        // Then the card goes. An answered approval has nothing left to offer — the tool-activity
-        // step below it reports what actually happened (Skipped, failed, done) and the agent's
-        // reply speaks to it, so a row restating the decision is the third telling of it. The
-        // persist path drops it too, so the live list and reloaded history agree.
-        Messages.Remove(message);
-        await (CurrentConnection?.RespondApprovalAsync(approved, scope, rejectMode) ?? Task.CompletedTask);
+        var connection = CurrentConnection;
+        if (connection is not { IsConnected: true })
+        {
+            message.FailApproval("Reconnect before responding to this approval.");
+            return;
+        }
+        var reservation = BeginInteractiveAnswer(meta, approved ? EventStatus.Done : EventStatus.Error);
+        try
+        {
+            await connection.RespondApprovalAsync(
+                approved, scope, rejectMode, message.ApprovalFeedback.Trim());
+            ConfirmInteractiveAnswer(reservation);
+        }
+        catch (Exception ex)
+        {
+            CancelInteractiveAnswer(reservation);
+            message.FailApproval(ex.Message);
+            return;
+        }
+
+        // The agent is parked on this approval, so the turn cannot complete (and persist) until the
+        // response above lands — recording here, after a successful send, is both in time for the
+        // persist FIFO and safe against a retried failure double-enqueuing the answer.
+        message.EventMeta = meta;
+        message.Status = action == ApprovalAction.Stop ? EventStatus.Error : EventStatus.Done;
+        message.CompleteApproval(action);
+
+        if (action == ApprovalAction.Stop)
+        {
+            _runManager.ClearPendingInteractive(_session!.Id);
+            if (message.OwnerToolActivity is { } stoppedActivity)
+            {
+                // Keep the resolved approval attached as a compact audit result. Removing it here
+                // made "Task stopped" disappear at the exact moment the user chose it.
+                stoppedActivity.Status = Models.ToolActivityStatus.Cancelled;
+            }
+            Messages.Add(new ChatMessage
+            {
+                Id = NextId(),
+                Role = ChatRole.Event,
+                EventKind = "activity",
+                EventTitle = "User stopped the task",
+                Status = EventStatus.Done,
+            });
+
+            var run = _runManager.GetActiveRun(_session.Id);
+            if (run is { IsTerminal: false })
+                await _runManager.CancelRunAsync(_session.Id, run.RunId);
+            IsProcessing = false;
+            CanStop = false;
+            IsStopping = false;
+            return;
+        }
+
+        // Clear the tool-activity card's parked "waiting" status now the decision is made — the
+        // turn's own Complete() may be many tool calls away, and until then the card would keep
+        // reporting a wait that is already over. Back to Running (an allowed tool proceeds; a
+        // rejected/stopped turn ends and Complete() finalizes shortly after).
+        if (message.OwnerToolActivity is { } activity
+            && activity.Status is Models.ToolActivityStatus.WaitingForConfirmation
+                or Models.ToolActivityStatus.WaitingForPermission)
+        {
+            activity.Status = Models.ToolActivityStatus.Running;
+        }
     }
 
     /// <summary>Approving with no feedback sends the SDK's default "proceed" message;
     /// requesting changes with no feedback is a no-op.</summary>
-    public async Task SubmitPlanReviewAsync(ChatMessage message, bool approved)
+    public async Task SubmitPlanReviewAsync(ChatMessage message, PlanReviewAction action)
     {
-        if (message.Status != EventStatus.Running) return;
-
-        var feedback = message.PlanFeedback.Trim();
-        string responseMessage;
-        if (approved)
+        var response = Services.Runtime.InteractiveResponseBuilder
+            .BuildPlanReviewResponse(action, message.PlanFeedback);
+        if (response is null)
         {
-            responseMessage = feedback.Length == 0 ? "Plan approved. Proceed with implementation." : feedback;
-            message.EventMeta = "Plan approved";
-            message.Status = EventStatus.Done;
+            message.InteractiveErrorText = "Describe the changes you want the agent to make.";
+            return;
         }
-        else
+        if (!message.TryBeginInteractiveSubmit()) return;
+
+        var connection = CurrentConnection;
+        if (connection is not { IsConnected: true })
         {
-            if (feedback.Length == 0) return;
-            responseMessage = feedback;
-            message.EventMeta = "Changes requested";
-            message.Status = EventStatus.Error;
+            message.FailInteractiveSubmit("Reconnect before reviewing this plan.", connectionLost: true);
+            return;
         }
 
-        RecordInteractiveAnswer(message);
-        await (CurrentConnection?.RespondPlanReviewAsync(responseMessage) ?? Task.CompletedTask);
+        var reservation = BeginInteractiveAnswer(
+            response.Outcome, response.Rejected ? EventStatus.Error : EventStatus.Done);
+        try
+        {
+            await connection.RespondPlanReviewAsync(response.Message);
+            ConfirmInteractiveAnswer(reservation);
+            message.CompleteInteractiveSubmit(response.Outcome, response.Rejected);
+        }
+        catch (Exception ex)
+        {
+            CancelInteractiveAnswer(reservation);
+            message.FailInteractiveSubmit(ex.Message, connectionLost: !connection.IsConnected);
+        }
     }
 
     /// <summary>

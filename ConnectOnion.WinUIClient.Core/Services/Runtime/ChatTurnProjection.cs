@@ -57,6 +57,14 @@ public sealed partial class ChatTurnProjection
     // arrive later in the same turn. Flushed by AppendCompletedTurn / CompleteToolActivity.
     private readonly List<string> _pendingAgentImages = new();
     private bool _wasInterrupted;
+    // plan_review has no protocol id. Keep the one card emitted by this turn so reconnect
+    // replay cannot create a fresh actionable copy after the original was already answered.
+    private readonly Dictionary<string, ChatMessage> _planReviewCards = new(StringComparer.Ordinal);
+    // remote_write_file opens as a tool call, emits diff_preview + ask_user, then eventually
+    // returns a tool_result. Keeping this turn-local correlation is what prevents an accepted
+    // proposal from being labelled Applied before the tool itself confirms success.
+    private readonly List<string> _writeCallsAwaitingDiff = new();
+    private readonly Dictionary<string, ChatMessage> _diffsByToolId = new(StringComparer.Ordinal);
 
     public ChatTurnProjection(IChatProjectionTarget target) => _target = target;
 
@@ -126,6 +134,7 @@ public sealed partial class ChatTurnProjection
     public void AppendCompletedTurn(string reply)
     {
         _toolActivity?.Complete();
+        CompleteOpenDiffs(DiffChangeState.Unconfirmed);
         CompleteThinkingActivities(EventStatus.Done);
 
         // Reuse the streamed bubble only when it *is* the final answer. An empty reply counts as
@@ -184,6 +193,13 @@ public sealed partial class ChatTurnProjection
     public void CompleteToolActivity(ToolActivityStatus status, string? error = null)
     {
         _toolActivity?.Complete(status, error);
+        var diffState = status == ToolActivityStatus.Failed
+            && (error?.Contains("connection", StringComparison.OrdinalIgnoreCase) == true
+                || error?.Contains("socket", StringComparison.OrdinalIgnoreCase) == true
+                || error?.Contains("websocket", StringComparison.OrdinalIgnoreCase) == true)
+            ? DiffChangeState.Disconnected
+            : status == ToolActivityStatus.Failed ? DiffChangeState.Failed : DiffChangeState.Unconfirmed;
+        CompleteOpenDiffs(diffState);
         CompleteThinkingActivities(status == ToolActivityStatus.Failed
             ? EventStatus.Error
             : EventStatus.Done);
@@ -288,6 +304,22 @@ public sealed partial class ChatTurnProjection
         Messages.Remove(_llmThinking);
         _thinkingActivities.Remove(_llmThinking);
         _llmThinking = null;
+    }
+
+    private void CompleteOpenDiffs(DiffChangeState state)
+    {
+        foreach (var diff in Messages.Where(message => message.IsDiffPreviewEvent
+            && message.DiffState is DiffChangeState.Pending or DiffChangeState.Applying))
+        {
+            diff.SetDiffState(state);
+        }
+    }
+
+    private static bool IsWriteFileTool(string toolName)
+    {
+        var normalized = toolName.Replace('-', '_').ToLowerInvariant();
+        return normalized.Contains("write_file", StringComparison.Ordinal)
+            && !normalized.Contains("diff_preview", StringComparison.Ordinal);
     }
 
     /// <summary>The turn's one tool-activity card, created on first use. Lazily, because most

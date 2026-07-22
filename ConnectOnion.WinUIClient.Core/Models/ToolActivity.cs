@@ -78,6 +78,60 @@ public sealed partial class ToolActivityViewModel : Common.ObservableObject
 
     partial void OnStatusChanged(ToolActivityStatus value) => OnPresentationChanged();
 
+    /// <summary>
+    /// The approval request that blocks this turn, rendered <b>inside</b> this card below the
+    /// timeline (see <c>ToolActivityView.xaml</c>) so the tool activity and the decision read as one
+    /// card. Set by the projection when an <c>approval_needed</c> frame arrives; <c>[JsonIgnore]</c>
+    /// because approvals are live-only — a reloaded conversation shows the timeline outcome, not a
+    /// dead decision (the persist path drops the approval entirely).
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasApproval))]
+    [JsonIgnore]
+    public partial ChatMessage? Approval { get; set; }
+
+    // Embedding an approval turns the card's chrome/timeline on, and the card's "waiting" display
+    // follows the *approval's own* pending state (not this card's ToolActivityStatus), so subscribe
+    // to it and re-present when it resolves. Two-param hook so the previous approval is unsubscribed
+    // (no dangling handler when a turn rolls over to a fresh card for its next approval).
+    partial void OnApprovalChanged(ChatMessage? oldValue, ChatMessage? newValue)
+    {
+        if (oldValue is not null) oldValue.PropertyChanged -= OnApprovalMessagePropertyChanged;
+        if (newValue is not null) newValue.PropertyChanged += OnApprovalMessagePropertyChanged;
+        OnPresentationChanged();
+    }
+
+    private void OnApprovalMessagePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ChatMessage.IsApprovalPending))
+        {
+            OnPropertyChanged(nameof(IsAwaitingApproval));
+            OnPropertyChanged(nameof(ShowCompletionMarker));
+        }
+    }
+
+    [JsonIgnore] public bool HasApproval => Approval is not null;
+    [JsonIgnore] public string HeaderTitle => HasApproval && !string.IsNullOrWhiteSpace(Approval!.EventTitle)
+        ? Approval.EventTitle
+        : "Tool activity";
+    [JsonIgnore] public ToolIconKind HeaderIconKind => HasApproval
+        ? ToolIcons.ForTool(Approval!.EventTitle)
+        : ToolIconKind.Generic;
+
+    /// <summary>The card is parked on a decision. Driven by the <b>live</b> approval still being
+    /// pending — never by this card's <see cref="Status"/>, which lags (it stays
+    /// WaitingForConfirmation until the turn's Complete runs) and is absent on reload (the approval
+    /// is <c>[JsonIgnore]</c>). So a card loaded from history, or one whose approval was just
+    /// answered, never shows the amber "waiting" chrome. Drives the header's amber status and
+    /// suppresses the timeline's completion marker so "waiting" is stated once, not three times.</summary>
+    [JsonIgnore]
+    public bool IsAwaitingApproval => Approval is { IsApprovalPending: true };
+
+    /// <summary>The timeline's own completion row ("Done"/"Waiting for approval"). Suppressed while
+    /// the card is parked on a decision: the embedded approval section is the one place that state
+    /// is shown, so the marker would be a second copy of it.</summary>
+    [JsonIgnore] public bool ShowCompletionMarker => ShowCardChrome && !IsAwaitingApproval;
+
     [ObservableProperty]
     public partial ToolDisplayMode DisplayMode { get; set; }
 
@@ -175,16 +229,21 @@ public sealed partial class ToolActivityViewModel : Common.ObservableObject
     [JsonIgnore] public bool IsSingleStep => Steps.Count == 1;
 
     /// <summary>The wrapper: header, collapsed error line and completion row. Present whenever the
-    /// card is summarising more than one thing.</summary>
-    [JsonIgnore] public bool ShowCardChrome => !IsSingleStep;
+    /// card is summarising more than one thing — and always while an approval is embedded, so the
+    /// unified card keeps its "Tool activity · Waiting for approval" header even over a single
+    /// tool.</summary>
+    [JsonIgnore] public bool ShowCardChrome => !IsSingleStep || HasApproval;
 
     // Only IsExpanded gates the timeline. Status and DisplayMode choose the *default* expansion
     // (see ToolActivityProjector), never override it — ORing "Failed" in here left the header
     // toggle dead for exactly the runs a user most wants to collapse.
     //
-    // IsSingleStep is the one exception, and not really an override: with the header gone there is
-    // no disclosure control left, so a collapsed single-step card would be a permanently blank row.
-    [JsonIgnore] public bool IsTimelineVisible => IsVisible && (IsExpanded || IsSingleStep);
+    // A single step is forced visible only when it has no disclosure header. Embedding an approval
+    // restores the header even for one step; in that shape the user's collapse choice must remove
+    // the timeline from layout. Keeping the old `|| IsSingleStep` rule left the panel measured but
+    // transparent after the disclosure animation, producing a large blank region above the
+    // resolved approval summary.
+    [JsonIgnore] public bool IsTimelineVisible => IsVisible && (IsExpanded || !ShowCardChrome);
     [JsonIgnore] public bool IsDetailed => DisplayMode == ToolDisplayMode.Detailed;
     [JsonIgnore] public string StatusGlyph => Status switch
     {
@@ -202,8 +261,8 @@ public sealed partial class ToolActivityViewModel : Common.ObservableObject
         ToolActivityStatus.PartialSuccess => "Completed with warnings",
         ToolActivityStatus.Failed => "Failed",
         ToolActivityStatus.Cancelled => "Cancelled",
-        ToolActivityStatus.WaitingForConfirmation => "Waiting for confirmation",
-        ToolActivityStatus.WaitingForPermission => "Waiting for permission",
+        ToolActivityStatus.WaitingForConfirmation => "Waiting for approval",
+        ToolActivityStatus.WaitingForPermission => "Waiting for approval",
         _ => "Working...",
     };
     [JsonIgnore] public string AccessibilityName
@@ -247,6 +306,10 @@ public sealed partial class ToolActivityViewModel : Common.ObservableObject
         // where a newly failed step reaches the collapsed error line.
         OnPropertyChanged(nameof(LastErrorMessage));
         OnPropertyChanged(nameof(ShowCollapsedError));
+        OnPropertyChanged(nameof(IsAwaitingApproval));
+        OnPropertyChanged(nameof(ShowCompletionMarker));
+        OnPropertyChanged(nameof(HeaderTitle));
+        OnPropertyChanged(nameof(HeaderIconKind));
     }
 }
 
@@ -270,10 +333,12 @@ public sealed partial class ToolStepViewModel : Common.ObservableObject
     partial void OnStatusChanged(ToolStepStatus value) => OnPresentationChanged();
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DisplayLabel))]
     public partial string DisplayName { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasDisplayTarget))]
+    [NotifyPropertyChangedFor(nameof(DisplayLabel))]
     public partial string? DisplayTarget { get; set; }
 
     [ObservableProperty]
@@ -356,6 +421,7 @@ public sealed partial class ToolStepViewModel : Common.ObservableObject
     /// before icons existed draw them the moment they are reopened.</summary>
     [JsonIgnore] public ToolIconKind IconKind => ToolIcons.ForTool(ToolName);
     [JsonIgnore] public bool HasDisplayTarget => !string.IsNullOrWhiteSpace(DisplayTarget);
+    [JsonIgnore] public string DisplayLabel => HasDisplayTarget ? $"{DisplayName} · {DisplayTarget}" : DisplayName;
     /// <summary>Still true (and still fed to <see cref="AccessibilityName"/>) even though the
     /// collapsed row no longer prints the summary — the result digest reads usefully to a screen
     /// reader, which has no pointer to expand the step with.</summary>

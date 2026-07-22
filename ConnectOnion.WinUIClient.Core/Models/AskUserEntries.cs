@@ -16,9 +16,26 @@ public sealed partial class AskUserFieldEntry : Common.ObservableObject
     public string Name { get; set; } = "";
     public string Label { get; set; } = "";
     public string? Placeholder { get; set; }
+    public bool Required { get; set; }
+    public string? Type { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasValidationError))]
+    public partial string? ValidationError { get; set; }
+
+    public bool HasValidationError => !string.IsNullOrWhiteSpace(ValidationError);
+    public string RequirementLabel => Required ? "Required" : "Optional";
 
     [ObservableProperty]
     public partial string Value { get; set; }
+
+    partial void OnValueChanged(string value)
+    {
+        if (!string.IsNullOrWhiteSpace(value)) ValidationError = null;
+        Owner?.NotifyAskUserInputChanged();
+    }
+
+    public ChatMessage? Owner { get; set; }
 }
 
 /// <summary>
@@ -29,6 +46,13 @@ public sealed partial class AskUserFieldEntry : Common.ObservableObject
 public sealed partial class AskUserOptionEntry : Common.ObservableObject
 {
     public string Text { get; set; } = "";
+    public string DisplayText => Text switch
+    {
+        "Yes, apply this change" => "Apply once",
+        "Yes to all (auto-approve)" => "Apply all similar changes",
+        "No, reject and give feedback" => "Reject and provide feedback",
+        _ => Text,
+    };
 
     /// <summary>
     /// The card this option belongs to, so a click can reach its siblings to deselect them.
@@ -39,7 +63,10 @@ public sealed partial class AskUserOptionEntry : Common.ObservableObject
     public ChatMessage? Owner { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AccessibilityName))]
     public partial bool IsChecked { get; set; }
+
+    public string AccessibilityName => $"{DisplayText}, {(IsChecked ? "selected" : "not selected")}";
 
     /// <summary>Handles a click on the option's card. Single-select turns clear the siblings and
     /// keep the clicked one on (clicking the selected option again is a no-op, matching a radio
@@ -53,8 +80,10 @@ public sealed partial class AskUserOptionEntry : Common.ObservableObject
                 if (!ReferenceEquals(sibling, this)) sibling.IsChecked = false;
             }
             IsChecked = true;
+            Owner.NotifyAskUserInputChanged();
             return;
         }
         IsChecked = !IsChecked;
+        Owner?.NotifyAskUserInputChanged();
     }
 }

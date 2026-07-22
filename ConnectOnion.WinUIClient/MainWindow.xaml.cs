@@ -17,17 +17,23 @@ public sealed partial class MainWindow : Window
     private readonly AppWindow _appWindow;
     private readonly IntPtr _hwnd;
     private readonly SessionRepository _sessionRepository;
+    private readonly WindowPlacementStore _windowPlacementStore;
     private int _windowServicesDetached;
+    private int _windowPlacementSaved;
     private bool _isSidebarVisible = true;
 
     public MainWindow()
     {
         InitializeComponent();
         _sessionRepository = AppServices.Sessions;
+        // Capture DI-owned services while the host is alive. Closed can run after App.Exit has
+        // already disposed the provider, so teardown code must never resolve a fresh service.
+        _windowPlacementStore = AppServices.WindowPlacement;
         TrackWindowLifetime();
         InitializeNotificationPresence();
         _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         _appWindow = GetAppWindow(_hwnd);
+        InitializeWindowPlacement();
         ConfigureCustomTitleBar();
         InitializeTrayBehavior();
         ShellSidebar.NavigationRequested += NavigateTo;

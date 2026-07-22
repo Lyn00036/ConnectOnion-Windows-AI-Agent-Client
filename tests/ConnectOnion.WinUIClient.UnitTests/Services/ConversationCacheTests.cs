@@ -80,6 +80,23 @@ public sealed class ConversationCacheTests
         Assert.Null(ConversationCache.Get(id, "agent"));
     }
 
+    [Fact]
+    public void RepeatedlySwitchingTwoCachedConversations_RemainsBounded()
+    {
+        var first = Unique("switch-a");
+        var second = Unique("switch-b");
+        for (var i = 0; i < 10_000; i++)
+        {
+            var id = (i & 1) == 0 ? first : second;
+            ConversationCache.Store(id, Entry("agent", i.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+            Assert.NotNull(ConversationCache.Get(id, "agent"));
+        }
+
+        Assert.InRange(ConversationCache.CountForTests, 1, 4);
+        ConversationCache.Invalidate(first);
+        ConversationCache.Invalidate(second);
+    }
+
     private static ConversationCache.Entry Entry(string agentId, string content) => new(
         new AgentConfig { Id = agentId, Name = "Agent", Address = "0x1" },
         new SessionSummary

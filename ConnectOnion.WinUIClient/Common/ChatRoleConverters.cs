@@ -96,6 +96,28 @@ public sealed class InteractiveStatusToBrushConverter : IValueConverter
         => throw new NotSupportedException();
 }
 
+/// <summary>Theme-aware semantic tone for reusable interactive-card chrome.</summary>
+public sealed class InteractiveToneToBrushConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        var surface = string.Equals(parameter as string, "surface", StringComparison.OrdinalIgnoreCase);
+        var key = value is InteractiveVisualTone tone
+            ? tone switch
+            {
+                InteractiveVisualTone.Warning => surface ? "AttentionSubtleBrush" : "AttentionBrush",
+                InteractiveVisualTone.Success => surface ? "SuccessSubtleBrush" : "SuccessBrush",
+                InteractiveVisualTone.Danger => surface ? "DangerSubtleBrush" : "DangerBrush",
+                _ => surface ? "SurfaceSecondaryBrush" : "BorderDefaultBrush",
+            }
+            : surface ? "SurfaceSecondaryBrush" : "BorderDefaultBrush";
+        return (Brush)Application.Current.Resources[key];
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+        => throw new NotSupportedException();
+}
+
 /// <summary>
 /// Picks one of two theme brushes from a bool, named in the converter parameter as
 /// <c>"TrueKey|FalseKey"</c>. Exists so a selected ask_user option can carry an accent

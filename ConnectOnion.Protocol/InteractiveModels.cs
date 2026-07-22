@@ -20,7 +20,12 @@ public sealed record AskUserRequest(
 /// An <c>approval_needed</c> turn: the agent wants to run a tool. Respond with
 /// <see cref="AgentConnectionService.RespondApprovalAsync"/>.
 /// </summary>
-public sealed record ApprovalRequest(string Tool, string? Description, string ArgumentsJson);
+public sealed record ApprovalRequest(
+    string Tool,
+    string? Description,
+    string ArgumentsJson,
+    string? Reason = null,
+    string? BatchRemainingJson = null);
 
 /// <summary>
 /// A <c>plan_review</c> turn: the agent wants its plan reviewed. Respond with

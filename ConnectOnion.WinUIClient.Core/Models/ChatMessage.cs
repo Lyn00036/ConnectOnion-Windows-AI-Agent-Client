@@ -29,7 +29,6 @@ public enum EventStatus
 /// </summary>
 public sealed partial class ChatMessage : Common.ObservableObject
 {
-    private bool? _interactiveExpandOverride;
     private bool _approvalExplainOpen;
 
     public ChatMessage()
@@ -45,6 +44,7 @@ public sealed partial class ChatMessage : Common.ObservableObject
         AskUserFreeText = "";
         ThinkingElapsedLabel = "";
         PlanFeedback = "";
+        ApprovalFeedback = "";
         EditDraft = "";
         CreatedAtUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         Attachments.CollectionChanged += (_, _) =>
@@ -93,8 +93,6 @@ public sealed partial class ChatMessage : Common.ObservableObject
     [NotifyPropertyChangedFor(nameof(ActivityAccessibilityName))]
     [NotifyPropertyChangedFor(nameof(TurnUsageSummary))]
     [NotifyPropertyChangedFor(nameof(TurnUsagePrimary))]
-    [NotifyPropertyChangedFor(nameof(ApprovalTrustLabel))]
-    [NotifyPropertyChangedFor(nameof(ApprovalTrustAccessibilityName))]
     [JsonPropertyName("eventTitle")]
     public partial string EventTitle { get; set; }
 
@@ -105,7 +103,6 @@ public sealed partial class ChatMessage : Common.ObservableObject
     [NotifyPropertyChangedFor(nameof(HasThoughtText))]
     [NotifyPropertyChangedFor(nameof(IsThinkingSingleThought))]
     [NotifyPropertyChangedFor(nameof(IsPlainSingleActivity))]
-    [NotifyPropertyChangedFor(nameof(ApprovalAllowOnceAccessibilityName))]
     [JsonPropertyName("eventDetail")]
     public partial string? EventDetail { get; set; }
 
@@ -119,8 +116,6 @@ public sealed partial class ChatMessage : Common.ObservableObject
     [NotifyPropertyChangedFor(nameof(IsApprovalEvent))]
     [NotifyPropertyChangedFor(nameof(IsPlanReviewEvent))]
     [NotifyPropertyChangedFor(nameof(IsInteractiveEvent))]
-    [NotifyPropertyChangedFor(nameof(IsInteractiveExpanded))]
-    [NotifyPropertyChangedFor(nameof(IsInteractiveCollapsed))]
     [JsonPropertyName("eventKind")]
     public partial string EventKind { get; set; }
 
@@ -129,11 +124,7 @@ public sealed partial class ChatMessage : Common.ObservableObject
     [NotifyPropertyChangedFor(nameof(IsAwaitingResponse))]
     [NotifyPropertyChangedFor(nameof(ShowAskUserFreeText))]
     [NotifyPropertyChangedFor(nameof(ShowAskUserOptions))]
-    [NotifyPropertyChangedFor(nameof(ShowAskUserCustomAnswer))]
-    [NotifyPropertyChangedFor(nameof(IsInteractiveExpanded))]
-    [NotifyPropertyChangedFor(nameof(IsInteractiveCollapsed))]
     [NotifyPropertyChangedFor(nameof(InteractiveOutcome))]
-    [NotifyPropertyChangedFor(nameof(InteractiveStatusLabel))]
     [NotifyPropertyChangedFor(nameof(InteractiveAccessibilityName))]
     [NotifyPropertyChangedFor(nameof(IsActivityFailed))]
     [NotifyPropertyChangedFor(nameof(ActivityHeaderTitle))]
@@ -142,11 +133,19 @@ public sealed partial class ChatMessage : Common.ObservableObject
     [JsonPropertyName("eventStatus")]
     public partial EventStatus Status { get; set; }
 
-    // Answering an interactive turn folds the card away again. Dropping any manual toggle the user
-    // made while it was pending is deliberate: the default for a resolved card is collapsed, and
-    // they can always re-open it. Runs before the [NotifyPropertyChangedFor] notifications above,
-    // so IsInteractiveExpanded re-reads the cleared override.
-    partial void OnStatusChanged(EventStatus value) => _interactiveExpandOverride = null;
+    partial void OnStatusChanged(EventStatus value)
+    {
+        OnPropertyChanged(nameof(IsInteractiveEditable));
+        OnPropertyChanged(nameof(IsInteractiveReadOnly));
+        OnPropertyChanged(nameof(ShowInteractiveResult));
+        OnPropertyChanged(nameof(ShowInteractiveActions));
+        OnPropertyChanged(nameof(ShowAskUserFields));
+        OnPropertyChanged(nameof(InteractiveStateLabel));
+        OnPropertyChanged(nameof(InteractiveStateDescription));
+        OnPropertyChanged(nameof(CanSubmitAskUser));
+        OnPropertyChanged(nameof(CanSendPlanFeedback));
+        NotifyInteractivePresentationChanged();
+    }
 
     /// <summary>Small uppercase label shown before the title on tool cards.</summary>
     [ObservableProperty]
@@ -162,7 +161,6 @@ public sealed partial class ChatMessage : Common.ObservableObject
     [NotifyPropertyChangedFor(nameof(TurnUsageSecondary))]
     [NotifyPropertyChangedFor(nameof(HasTurnUsageSecondary))]
     [NotifyPropertyChangedFor(nameof(InteractiveOutcome))]
-    [NotifyPropertyChangedFor(nameof(InteractiveStatusLabel))]
     [NotifyPropertyChangedFor(nameof(InteractiveAnswerText))]
     [NotifyPropertyChangedFor(nameof(HasInteractiveAnswer))]
     [NotifyPropertyChangedFor(nameof(InteractiveAccessibilityName))]
@@ -452,19 +450,6 @@ public sealed partial class ChatMessage : Common.ObservableObject
     [JsonIgnore]
     public bool IsInteractiveEvent => IsAskUserEvent || IsApprovalEvent || IsPlanReviewEvent;
 
-    /// <summary>
-    /// Collapse state of an interactive card, modelled on the tool-activity card. It is derived,
-    /// not stored: a card is open exactly while it is still waiting on the user, and folds itself
-    /// away once answered — which also means history reloaded from SQLite (every card there is
-    /// resolved) comes back collapsed. <see cref="ToggleInteractiveExpanded"/> sets the override
-    /// so either state can be opened or folded by hand; the override is dropped whenever
-    /// <see cref="Status"/> changes, so answering always re-collapses.
-    /// </summary>
-    [JsonIgnore]
-    public bool IsInteractiveExpanded => _interactiveExpandOverride ?? IsAwaitingResponse;
-
-    [JsonIgnore]
-    public bool IsInteractiveCollapsed => !IsInteractiveExpanded;
 
     /// <summary>The one-line result shown on a collapsed card: the recorded answer ("Approved
     /// once", "Rejected", "Changes requested", "Answered: …"), <c>"Skipped"</c> for a card a run
@@ -474,23 +459,6 @@ public sealed partial class ChatMessage : Common.ObservableObject
         ? "Waiting for you"
         : string.IsNullOrWhiteSpace(EventMeta) ? "Skipped" : EventMeta;
 
-    /// <summary>The status chip on an interactive card's header: a short *status word only*
-    /// ("Pending" / "Answered" / "Approved once" / "Rejected" / "Skipped"), never the full answer.
-    /// The chosen answer itself is shown once in the card body (see <see cref="InteractiveAnswerText"/>),
-    /// so the badge stripping everything after the first ":" ("Answered: delete test.txt" → "Answered")
-    /// removes the answer-in-two-places duplication. Sentence case, not SHOUTING CAPS; the same
-    /// string is what a screen reader gets.</summary>
-    [JsonIgnore]
-    public string InteractiveStatusLabel
-    {
-        get
-        {
-            if (IsAwaitingResponse) return "Pending";
-            var outcome = InteractiveOutcome;
-            var colon = outcome.IndexOf(':');
-            return colon > 0 ? outcome[..colon] : outcome;
-        }
-    }
 
     /// <summary>The answer the user actually gave, split off an "Answered: …" outcome for the card's
     /// "Your answer" line. Empty for outcomes that carry no free-form answer (an approval's
@@ -510,23 +478,10 @@ public sealed partial class ChatMessage : Common.ObservableObject
     [JsonIgnore]
     public bool HasInteractiveAnswer => InteractiveAnswerText.Length > 0;
 
-    /// <summary>Spoken name for the collapse toggle, so the state is not conveyed by chevron alone.</summary>
     [JsonIgnore]
     public string InteractiveAccessibilityName
-        => $"{EventEyebrow}: {EventTitle}. {InteractiveOutcome}. {(IsInteractiveExpanded ? "Collapse" : "Expand")}";
+        => $"{EventEyebrow}: {EventTitle}. {InteractiveOutcome}.";
 
-    public void ToggleInteractiveExpanded()
-    {
-        _interactiveExpandOverride = !IsInteractiveExpanded;
-        OnPropertyChanged(nameof(IsInteractiveExpanded));
-        OnPropertyChanged(nameof(IsInteractiveCollapsed));
-        OnPropertyChanged(nameof(InteractiveAccessibilityName));
-    }
-
-    /// <summary>Label for the approval card's "trust this tool for the session" action. The tool
-    /// name is <see cref="EventTitle"/> on an approval card, so this reads "Trust send".</summary>
-    [JsonIgnore]
-    public string ApprovalTrustLabel => $"Trust {EventTitle}";
 
     /// <summary>
     /// Whether the approval card's "Explain why?" panel is open. It is purely local disclosure —
@@ -537,20 +492,13 @@ public sealed partial class ChatMessage : Common.ObservableObject
     [JsonIgnore]
     public bool IsApprovalExplainOpen => _approvalExplainOpen;
 
-    // The approval menu rows split their meaning across a bold verb and a muted consequence, which
-    // a screen reader would otherwise announce as two unrelated fragments — so each row names
-    // itself in full.
-    [JsonIgnore]
-    public string ApprovalAllowOnceAccessibilityName
-        => string.IsNullOrWhiteSpace(EventDetail) ? "Allow once" : $"Allow once. {EventDetail}";
-
-    [JsonIgnore]
-    public string ApprovalTrustAccessibilityName => $"{ApprovalTrustLabel} for this session";
-
     public void ToggleApprovalExplain()
     {
         _approvalExplainOpen = !_approvalExplainOpen;
         OnPropertyChanged(nameof(IsApprovalExplainOpen));
+        // ShowApprovalRisk (defined in ChatMessage.Approval.cs) derives from this flag; without the
+        // notification the "Explain this risk" panel never appears when the link is clicked.
+        OnPropertyChanged(nameof(ShowApprovalRisk));
     }
 
     [JsonIgnore]
@@ -676,12 +624,6 @@ public sealed partial class ChatMessage : Common.ObservableObject
     /// keeps an empty box from reappearing on a resolved bubble reloaded from history (whose
     /// options/fields aren't persisted, so <see cref="HasAskUserFields"/> reads false).</summary>
     [JsonIgnore]
-    public bool ShowAskUserFreeText => IsAwaitingResponse && !HasAskUserFields;
+    public bool ShowAskUserFreeText => IsAwaitingResponse && !HasAskUserFields && !HasAskUserOptions;
 
-    /// <summary>The "or provide custom answer" divider only earns its place when there is
-    /// something to be an alternative *to* — with no options on offer, the box is simply the
-    /// answer and a divider announcing it is noise.</summary>
-    [JsonIgnore]
-    public bool ShowAskUserCustomAnswer
-        => ShowAskUserFreeText && HasAskUserOptions;
 }

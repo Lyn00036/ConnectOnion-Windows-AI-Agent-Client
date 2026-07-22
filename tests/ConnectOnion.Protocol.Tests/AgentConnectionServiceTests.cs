@@ -104,8 +104,84 @@ public sealed class AgentConnectionServiceTests
 
         Assert.Equal("continued", await service.SendInputAsync("start", null));
         var response = WireMessage.Parse(responseJson!);
-        Assert.Equal("ASK_USER_RESPONSE", response.Type);
+        Assert.Equal("", response.Type);
         Assert.Equal("Yes", response.GetString("answer"));
+        await server.Completion;
+    }
+
+    [Fact]
+    public async Task SendInterruptAsync_RepeatedRequests_SendOneFrameEach()
+    {
+        var frames = new List<string>();
+        var inputSent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var server = new FakeAgentServer(async (socket, ct) =>
+        {
+            await FakeAgentServer.ReceiveTextAsync(socket, ct);
+            await FakeAgentServer.SendTextAsync(socket, "{\"type\":\"CONNECTED\"}", ct);
+            await FakeAgentServer.ReceiveTextAsync(socket, ct);
+            frames.Add(await FakeAgentServer.ReceiveTextAsync(socket, ct));
+            frames.Add(await FakeAgentServer.ReceiveTextAsync(socket, ct));
+            await FakeAgentServer.SendTextAsync(socket, "{\"type\":\"OUTPUT\",\"result\":\"stopped\"}", ct);
+        });
+        await using var service = Service(server);
+        service.InputSent += inputSent.SetResult;
+
+        var turn = service.SendInputAsync("start", null);
+        await inputSent.Task;
+        await service.SendInterruptAsync();
+        await service.SendInterruptAsync();
+
+        Assert.Equal("stopped", await turn);
+        Assert.Equal(2, frames.Count);
+        Assert.All(frames, frame => Assert.Equal("INTERRUPT", WireMessage.Parse(frame).Type));
+        await server.Completion;
+    }
+
+    [Fact]
+    public async Task SendInputAsync_PlanReview_SendsDocumentedMessageResponse()
+    {
+        string? responseJson = null;
+        await using var server = new FakeAgentServer(async (socket, ct) =>
+        {
+            await FakeAgentServer.ReceiveTextAsync(socket, ct);
+            await FakeAgentServer.SendTextAsync(socket, "{\"type\":\"CONNECTED\"}", ct);
+            await FakeAgentServer.ReceiveTextAsync(socket, ct);
+            await FakeAgentServer.SendTextAsync(socket,
+                "{\"type\":\"plan_review\",\"plan_content\":\"1. Inspect\"}", ct);
+            responseJson = await FakeAgentServer.ReceiveTextAsync(socket, ct);
+            await FakeAgentServer.SendTextAsync(socket, "{\"type\":\"OUTPUT\",\"result\":\"revised\"}", ct);
+        });
+        await using var service = Service(server);
+        service.PlanReviewRequested += request => _ = service.RespondPlanReviewAsync("Change the port");
+
+        Assert.Equal("revised", await service.SendInputAsync("start", null));
+        var response = WireMessage.Parse(responseJson!);
+        Assert.Equal("", response.Type);
+        Assert.Equal("Change the port", response.GetString("message"));
+        await server.Completion;
+    }
+
+    [Fact]
+    public async Task SendInputAsync_DiffPreview_IsNotificationAndSendsNoResponse()
+    {
+        var streamed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var server = new FakeAgentServer(async (socket, ct) =>
+        {
+            await FakeAgentServer.ReceiveTextAsync(socket, ct);
+            await FakeAgentServer.SendTextAsync(socket, "{\"type\":\"CONNECTED\"}", ct);
+            await FakeAgentServer.ReceiveTextAsync(socket, ct);
+            await FakeAgentServer.SendTextAsync(socket,
+                "{\"type\":\"diff_preview\",\"path\":\"a.txt\",\"preview\":\"@@ -1 +1 @@\\n-old\\n+new\"}", ct);
+            await streamed.Task.WaitAsync(ct);
+            await FakeAgentServer.SendTextAsync(socket, "{\"type\":\"OUTPUT\",\"result\":\"done\"}", ct);
+        });
+        await using var service = Service(server);
+        service.StreamEvent += value =>
+        {
+            if (value.Type == "diff_preview") streamed.TrySetResult();
+        };
+
+        Assert.Equal("done", await service.SendInputAsync("start", null));
         await server.Completion;
     }
 
@@ -181,7 +257,7 @@ public sealed class AgentConnectionServiceTests
             await FakeAgentServer.ReceiveTextAsync(socket, ct);
             await FakeAgentServer.SendTextAsync(socket, "{\"type\":\"ask_user\",\"id\":\"question-1\",\"text\":\"Continue?\"}", ct);
             var response = WireMessage.Parse(await FakeAgentServer.ReceiveTextAsync(socket, ct));
-            Assert.Equal("ASK_USER_RESPONSE", response.Type);
+            Assert.Equal("", response.Type);
             await Task.Delay(TimeSpan.FromMilliseconds(75), ct);
             await FakeAgentServer.SendTextAsync(socket, "{\"type\":\"OUTPUT\",\"result\":\"continued\"}", ct);
         });
@@ -293,15 +369,19 @@ public sealed class AgentConnectionServiceTests
         // reject_soft only skips the one tool and lets the loop continue; reject_hard is what sets
         // the host's stop_signal and ends the turn. A user who clicked Reject meant the latter.
         var response = WireMessage.Parse(responseJson!);
-        Assert.Equal("APPROVAL_RESPONSE", response.Type);
+        Assert.Equal("", response.Type);
         Assert.False(response.GetBool("approved"));
         Assert.Equal(ApprovalRejectModes.Hard, response.GetString("mode"));
         Assert.Equal("no", response.GetString("feedback"));
+        Assert.False(response.TryGet("scope", out _));
         await server.Completion;
     }
 
-    [Fact]
-    public async Task RejectApprovalForStopAsync_SendsExactFifoPayloadWithoutTypeOrScope()
+    [Theory]
+    [InlineData(ApprovalRejectModes.Soft)]
+    [InlineData(ApprovalRejectModes.Hard)]
+    [InlineData(ApprovalRejectModes.Explain)]
+    public async Task RespondApprovalAsync_RejectionModes_SendFeedbackWithoutTypeOrScope(string mode)
     {
         string? responseJson = null;
         await using var server = new FakeAgentServer(async (socket, ct) =>
@@ -312,19 +392,19 @@ public sealed class AgentConnectionServiceTests
             await FakeAgentServer.SendTextAsync(
                 socket, "{\"type\":\"approval_needed\",\"tool\":\"bash\",\"arguments\":{}}", ct);
             responseJson = await FakeAgentServer.ReceiveTextAsync(socket, ct);
-            await FakeAgentServer.SendTextAsync(socket, "{\"type\":\"OUTPUT\",\"result\":\"stopped\"}", ct);
+            await FakeAgentServer.SendTextAsync(socket, "{\"type\":\"OUTPUT\",\"result\":\"done\"}", ct);
         });
         await using var service = Service(server);
-        service.ApprovalRequested += request => _ = service.RejectApprovalForStopAsync();
+        service.ApprovalRequested += request => _ = service.RespondApprovalAsync(
+            approved: false, rejectMode: mode, feedback: "user feedback");
 
-        Assert.Equal("stopped", await service.SendInputAsync("start", null));
+        Assert.Equal("done", await service.SendInputAsync("start", null));
 
         using var response = System.Text.Json.JsonDocument.Parse(responseJson!);
         var root = response.RootElement;
-        Assert.Equal(3, root.EnumerateObject().Count());
         Assert.False(root.GetProperty("approved").GetBoolean());
-        Assert.Equal("reject_hard", root.GetProperty("mode").GetString());
-        Assert.Equal("用户中断", root.GetProperty("feedback").GetString());
+        Assert.Equal(mode, root.GetProperty("mode").GetString());
+        Assert.Equal("user feedback", root.GetProperty("feedback").GetString());
         Assert.False(root.TryGetProperty("type", out _));
         Assert.False(root.TryGetProperty("scope", out _));
         await server.Completion;

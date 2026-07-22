@@ -63,8 +63,8 @@ public interface IAgentSessionManager
     ConversationRunSnapshot? RetryRun(AgentConfig agent, string conversationId);
 
     /// <summary>
-    /// Sends INTERRUPT on the active run's existing socket. While approval is pending it sends
-    /// the exact reject_hard payload instead. Repeated requests are idempotent.
+    /// Sends one fire-and-forget INTERRUPT on the active run's existing socket. Approval state
+    /// does not change this global action; the approval card owns reject_hard separately.
     /// </summary>
     Task<StopOutcome> RequestStopAsync(string conversationId);
 
