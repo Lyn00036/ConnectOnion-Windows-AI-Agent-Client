@@ -95,6 +95,25 @@ public sealed partial class ToolActivityView : UserControl
         step.JustCopied = false;
     }
 
+    private void ApprovalCopyCommand_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not ChatMessage approval
+            || string.IsNullOrWhiteSpace(approval.ApprovalCommandText)) return;
+
+        var package = new DataPackage();
+        package.SetText(approval.ApprovalCommandText);
+        Clipboard.SetContent(package);
+    }
+
+    private void ApprovalRoot_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != Windows.System.VirtualKey.Escape || Activity?.Approval is not { } approval)
+            return;
+
+        approval.CloseApprovalDisclosures();
+        e.Handled = true;
+    }
+
     /// <summary>Default log height cap; must match <see cref="ToolStepViewModel.LogMaxHeight"/>'s
     /// un-enlarged value. The Expand button only appears when the rendered log is taller than this,
     /// so a short log that already fits shows no pointless Expand.</summary>
@@ -123,7 +142,7 @@ public sealed partial class ToolActivityView : UserControl
         if (HeaderTitle is not null)
             HeaderTitle.Foreground = ResolveBrush("TextSecondaryBrush");
         if (HeaderChevron is not null)
-            HeaderChevron.Opacity = 0;
+            HeaderChevron.Opacity = 0.75;
     }
 
     // A step's hover feedback is the name lifting to the primary foreground and its duration

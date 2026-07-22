@@ -225,7 +225,10 @@ public sealed class ToolActivityProjector
     public void WaitForConfirmation(bool permission = false)
     {
         Activity.Status = permission ? ToolActivityStatus.WaitingForPermission : ToolActivityStatus.WaitingForConfirmation;
-        Activity.Summary = permission ? "Waiting for permission…" : "Waiting for your confirmation…";
+        // Deliberately does NOT overwrite Summary with "Waiting…": the embedded approval section
+        // carries the waiting state, the header summary is hidden while awaiting, and once the
+        // decision resolves the summary should read as the normal running/completed one rather than
+        // a stale "Waiting for your confirmation…" that the card's Complete hasn't cleared yet.
         ApplyAutoExpansion();
     }
 
@@ -233,6 +236,14 @@ public sealed class ToolActivityProjector
     /// frame (the turn is over), so they are closed out here rather than spinning forever.</summary>
     public void Complete(ToolActivityStatus? terminalStatus = null, string? error = null)
     {
+        // A finished turn whose embedded approval is still pending means the decision was made
+        // outside this card — the agent proceeded (an approval satisfied elsewhere, e.g. a separate
+        // ask_user), or the turn was stopped. Either way the wait is over, so drop the stale
+        // approval; keeping it would leave a completed card advertising "Waiting for approval". A
+        // genuinely answered approval (resolved phase) is left in place so its result line stays.
+        if (Activity.Approval is { IsApprovalPending: true })
+            Activity.Approval = null;
+
         foreach (var running in Activity.Steps.Where(step => step.Status is ToolStepStatus.Running or ToolStepStatus.Pending))
         {
             // Warning, not Failed: the tool may well have succeeded — all we actually know is

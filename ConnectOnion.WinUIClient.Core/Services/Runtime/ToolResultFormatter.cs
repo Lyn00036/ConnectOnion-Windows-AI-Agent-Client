@@ -120,9 +120,15 @@ public static class ToolResultFormatter
     /// <summary>
     /// Recognizes a command/console transcript and colours its structural lines in place.
     ///
-    /// <para>Claims the format only when the text really is one — at least two command, label, or
-    /// key=value lines. Colouring an ordinary paragraph that happens to contain <c>a=b</c> would
-    /// be worse than leaving it alone.</para>
+    /// <para>Two structural lines is the bar, but at least one of them must be a
+    /// <i>distinctive</i> console anchor: a <c>$</c> shell prompt, a <c>stdout:</c>/<c>stderr:</c>
+    /// label, or an exit/return/status line. A generic <c>key=value</c> and a markdown-ish
+    /// <c>#</c>/<c>&gt;</c> line are deliberately <b>weak</b> — a URL query string
+    /// (<c>utm_source=google</c>), a config snippet, a markdown heading (<c>#&#160;Title</c>) and a
+    /// blockquote (<c>&gt;&#160;quote</c>) all look identical to them — so two of those on their
+    /// own no longer flip a fetched web page or a file listing into a "transcript" whose filenames
+    /// and links then get recoloured. Weak lines still get coloured once a real anchor has claimed
+    /// the format; they just can't establish it by themselves.</para>
     /// </summary>
     private static bool TryFormatConsole(string text, out IReadOnlyList<ResultToken> tokens)
     {
@@ -132,6 +138,8 @@ public static class ToolResultFormatter
         var lines = SplitKeepingLineEndings(text);
         var collected = new List<ResultToken>(lines.Count * 2);
         var recognized = 0;
+        // Distinctive console markers, unlikely to appear in prose/markdown/URLs by accident.
+        var anchors = 0;
 
         foreach (var (line, ending) in lines)
         {
@@ -139,11 +147,15 @@ public static class ToolResultFormatter
             {
                 collected.Add(new ResultToken(line, ResultTokenKind.Command));
                 recognized++;
+                // Only a `$ ` shell prompt anchors the format; markdown `# heading` and
+                // `> quote` share the `#`/`>` markers, so they stay weak.
+                if (IsShellPrompt(line)) anchors++;
             }
             else if (LabelLine.IsMatch(line))
             {
                 collected.Add(new ResultToken(line, ResultTokenKind.Label));
                 recognized++;
+                anchors++;
             }
             else if (KeyValueLine.Match(line) is { Success: true } kv)
             {
@@ -157,6 +169,8 @@ public static class ToolResultFormatter
                 collected.Add(new ResultToken("=", ResultTokenKind.Punctuation));
                 collected.Add(new ResultToken(value, failed ? ResultTokenKind.Failure : ResultTokenKind.Plain));
                 recognized++;
+                // A bare `foo=bar` is weak; only an exit/return/status line is a console anchor.
+                if (IsStatusKey(key)) anchors++;
             }
             else
             {
@@ -166,21 +180,26 @@ public static class ToolResultFormatter
             if (ending.Length > 0) collected.Add(new ResultToken(ending, ResultTokenKind.Plain));
         }
 
-        if (recognized < 2) return false;
+        if (recognized < 2 || anchors < 1) return false;
 
         tokens = collected;
         return true;
+    }
+
+    /// <summary>Whether a command line opens on a <c>$</c> shell prompt — the one prompt marker
+    /// that doesn't collide with markdown (<c>#</c> heading, <c>&gt;</c> blockquote).</summary>
+    private static bool IsShellPrompt(string line)
+    {
+        var i = 0;
+        while (i < line.Length && char.IsWhiteSpace(line[i])) i++;
+        return i < line.Length && line[i] == '$';
     }
 
     /// <summary>Whether a <c>key=value</c> line reports a failure, which is the one thing in a
     /// transcript worth finding without reading it.</summary>
     private static bool IsFailureStatus(string key, string value)
     {
-        var isStatusKey = key.Equals("exit_code", StringComparison.OrdinalIgnoreCase)
-            || key.Equals("exitcode", StringComparison.OrdinalIgnoreCase)
-            || key.Equals("returncode", StringComparison.OrdinalIgnoreCase)
-            || key.Equals("status", StringComparison.OrdinalIgnoreCase);
-        if (!isStatusKey) return false;
+        if (!IsStatusKey(key)) return false;
 
         var trimmed = value.Trim();
         if (trimmed.Length == 0) return false;
@@ -191,6 +210,14 @@ public static class ToolResultFormatter
             : trimmed.Equals("error", StringComparison.OrdinalIgnoreCase)
               || trimmed.Equals("failed", StringComparison.OrdinalIgnoreCase);
     }
+
+    /// <summary>Whether a <c>key=value</c> line's key names a process exit/return status — the
+    /// one <c>key=value</c> shape distinctive enough to anchor the console format on its own.</summary>
+    private static bool IsStatusKey(string key)
+        => key.Equals("exit_code", StringComparison.OrdinalIgnoreCase)
+            || key.Equals("exitcode", StringComparison.OrdinalIgnoreCase)
+            || key.Equals("returncode", StringComparison.OrdinalIgnoreCase)
+            || key.Equals("status", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Splits into (content, lineEnding) pairs, preserving CRLF vs LF and whether the
     /// last line had a terminator — so concatenating the tokens rebuilds the input exactly.</summary>

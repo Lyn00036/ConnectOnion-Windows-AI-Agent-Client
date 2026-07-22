@@ -66,7 +66,9 @@ public sealed class DiffKindToBrushConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
     {
-        var kind = value as string ?? "context";
+        var kind = value is ConnectOnion.WinUIClient.Models.DiffLineKind typed
+            ? typed.ToString().ToLowerInvariant()
+            : value as string ?? "context";
         var foreground = string.Equals(parameter as string, "foreground", StringComparison.OrdinalIgnoreCase);
 
         var key = foreground
@@ -75,14 +77,14 @@ public sealed class DiffKindToBrushConverter : IValueConverter
                 // Body text stays at full contrast on the tinted rows — the wash already says
                 // which way the line goes, and recoloring the code as well makes it harder to
                 // read for no extra information.
-                "add" or "remove" => "TextPrimaryBrush",
+                "add" or "addition" or "remove" or "deletion" => "TextPrimaryBrush",
                 "meta" => "TextTertiaryBrush",
                 _ => "TextSecondaryBrush",
             }
             : kind switch
             {
-                "add" => "SuccessSubtleBrush",
-                "remove" => "DangerSubtleBrush",
+                "add" or "addition" => "SuccessSubtleBrush",
+                "remove" or "deletion" => "DangerSubtleBrush",
                 _ => "TransparentBrushFallback",
             };
 
