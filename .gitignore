@@ -1,10 +1,6 @@
 # Logs
 logs/
 *.log
-npm-debug.log*
-yarn-debug.log*
-pnpm-debug.log*
-lerna-debug.log*
 
 # Environment files
 .env
@@ -12,41 +8,10 @@ lerna-debug.log*
 !.env.example
 *.local
 
-# Node / frontend
-node_modules/
-frontend/node_modules/
-frontend/dist/
-frontend/dist-ssr/
-frontend/.vite/
-frontend/.turbo/
-frontend/.cache/
-frontend/node_modules/.tmp/
-frontend/playwright-report/
-frontend/test-results/
-
-# Python / backend
-__pycache__/
-*.py[cod]
-*$py.class
-.pytest_cache/
-.ruff_cache/
-.mypy_cache/
-.coverage
-htmlcov/
-venv/
-.venv/
-backend/venv/
-backend/.venv/
-backend/__pycache__/
-backend/app/__pycache__/
-
 # ConnectOnion agent local state and secrets
 .co/
 .agents/
 .claude/
-agent/**/.co/
-agent/**/.browser_agent_profile/
-agent/**/screenshots/
 skills-lock.json
 
 # Database and local runtime data
@@ -57,16 +22,11 @@ skills-lock.json
 *.sqlite3
 *.sqlite-shm
 *.sqlite-wal
-pgdata/
 /data/
 tmp/
 temp/
 
 # Build and packaging
-dist/
-build/
-out/
-release/
 *.exe
 *.msi
 *.msix
@@ -74,8 +34,6 @@ release/
 *.appx
 *.appxbundle
 *.appxupload
-*.dmg
-*.AppImage
 *.binlog
 
 # .NET / WinUI 3 build output
@@ -124,6 +82,4 @@ project.assets.json
 Thumbs.db
 .vscode/*
 !.vscode/extensions.json
-*.ntvs*
-*.njsproj
 *.sw?
