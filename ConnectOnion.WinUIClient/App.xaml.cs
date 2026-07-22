@@ -142,10 +142,15 @@ namespace ConnectOnion.WinUIClient
                 // OS notification registration is not obviously safe for.
                 await _host.StartAsync();
                 Diagnostics.StartupTelemetry.Mark(Diagnostics.StartupPhases.HostStarted);
+                await AppServices.WindowPlacement.LoadAsync();
                 _window = new MainWindow();
                 Diagnostics.StartupTelemetry.Mark(Diagnostics.StartupPhases.WindowCreated);
                 MainWindow = _window;
-                _window.Closed += (_, _) => _ = ShutdownAsync();
+                _window.Closed += async (_, _) =>
+                {
+                    if (_window is MainWindow main) await main.SaveWindowPlacementAsync();
+                    await ShutdownAsync();
+                };
                 _window.Activate();
                 Diagnostics.StartupTelemetry.Mark(Diagnostics.StartupPhases.WindowActivated);
                 // Arm only after Activate(): the first composition pass we want is this window's.

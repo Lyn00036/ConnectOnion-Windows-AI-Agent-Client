@@ -24,6 +24,7 @@ public static class AppServices
     public static SessionRepository Sessions => Provider.GetRequiredService<SessionRepository>();
     public static PreferencesRepository Preferences => Provider.GetRequiredService<PreferencesRepository>();
     public static ConversationRepository Conversations => Provider.GetRequiredService<ConversationRepository>();
+    public static WindowPlacementStore WindowPlacement => Provider.GetRequiredService<WindowPlacementStore>();
 
     /// <summary>Token-usage ledger. Deliberately independent of conversation/agent lifetime —
     /// deleting a chat never erases the record that its tokens were spent.</summary>
