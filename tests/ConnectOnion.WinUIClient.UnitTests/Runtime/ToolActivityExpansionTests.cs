@@ -287,6 +287,23 @@ public sealed class ToolActivityExpansionTests
         Assert.True(activity.IsTimelineVisible);
     }
 
+    [Fact]
+    public void CollapsedSingleStep_WithResolvedApproval_RemovesTimelineFromLayout()
+    {
+        var activity = new ToolActivityViewModel { IsExpanded = false };
+        var projector = new ToolActivityProjector(activity);
+        projector.ApplyCall(Event("{\"tool_id\":\"one\",\"name\":\"remote_bash\",\"args\":{}}"));
+        var approval = new ChatMessage { EventKind = "approval", EventTitle = "Remote Bash" };
+        activity.Approval = approval;
+        approval.CompleteApproval(ApprovalAction.AllowOnce);
+
+        Assert.True(activity.IsSingleStep);
+        Assert.True(activity.ShowCardChrome);
+        Assert.False(activity.IsExpanded);
+        Assert.False(activity.IsTimelineVisible);
+        Assert.True(activity.HasApproval);
+    }
+
     /// <summary>A failed single step shows no collapsed error line: the step is already open and
     /// prints the same message in its own Error block.</summary>
     [Fact]
@@ -343,6 +360,51 @@ public sealed class ToolActivityExpansionTests
 
         Assert.Null(activity.LastErrorMessage);
         Assert.False(activity.ShowCollapsedError);
+    }
+
+    [Fact]
+    public void AwaitingApproval_IsDrivenByTheLiveApproval_NotByStatus()
+    {
+        // A card with the parked status but NO live approval (the reload case) must not read as
+        // waiting — otherwise history shows a stale "Waiting for approval".
+        var reloaded = new ToolActivityViewModel { Status = ToolActivityStatus.WaitingForConfirmation };
+        Assert.False(reloaded.IsAwaitingApproval);
+        Assert.False(reloaded.HasApproval);
+
+        // With a live, still-pending approval it reads as waiting…
+        var live = new ToolActivityViewModel { Status = ToolActivityStatus.WaitingForConfirmation };
+        var approval = new ChatMessage { EventKind = "approval", EventTitle = "Write" };
+        live.Approval = approval;
+        Assert.True(live.IsAwaitingApproval);
+
+        // …and stops the moment the decision resolves, even though Status still says waiting (the
+        // turn's Complete hasn't run yet). The activity must re-raise the derived flag.
+        var raised = new System.Collections.Generic.List<string>();
+        live.PropertyChanged += (_, e) => raised.Add(e.PropertyName ?? "");
+        approval.CompleteApproval(ApprovalAction.AllowOnce);
+
+        Assert.False(live.IsAwaitingApproval);
+        Assert.Contains(nameof(ToolActivityViewModel.IsAwaitingApproval), raised);
+    }
+
+    [Fact]
+    public void ReplacingApproval_UnsubscribesThePreviousApproval()
+    {
+        var activity = new ToolActivityViewModel { Status = ToolActivityStatus.WaitingForConfirmation };
+        var previous = new ChatMessage { EventKind = "approval" };
+        var current = new ChatMessage { EventKind = "approval" };
+        activity.Approval = previous;
+        activity.Approval = current;
+        var raised = new System.Collections.Generic.List<string>();
+        activity.PropertyChanged += (_, e) => raised.Add(e.PropertyName ?? "");
+
+        previous.CompleteApproval(ApprovalAction.AllowOnce);
+        Assert.Empty(raised);
+        Assert.True(activity.IsAwaitingApproval);
+
+        current.CompleteApproval(ApprovalAction.AllowOnce);
+        Assert.Contains(nameof(ToolActivityViewModel.IsAwaitingApproval), raised);
+        Assert.False(activity.IsAwaitingApproval);
     }
 
     private static ConnectOnion.Protocol.AgentStreamEvent Result(string json)

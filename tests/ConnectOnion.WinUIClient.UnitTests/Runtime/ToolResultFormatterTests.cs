@@ -110,6 +110,41 @@ public sealed class ToolResultFormatterTests
         Assert.Equal(ResultFormat.PlainText, result.Format);
     }
 
+    [Theory]
+    // Two `key=value`-shaped lines with no console anchor: URL query params from a fetched page…
+    [InlineData("utm_source=google\nutm_medium=cpc")]
+    // …form-encoded data, a filename that happens to carry an '='…
+    [InlineData("ref=abc123\nfile=export-2026==")]
+    // …a config snippet quoted out of a web page…
+    [InlineData("timeout=30\nretries=3")]
+    // …and markdown headings/blockquotes, which share the `#`/`>` command markers.
+    [InlineData("# Getting started\n> Note: read this first")]
+    public void KeyValueOrMarkdownLines_WithoutAConsoleAnchor_StayPlain(string text)
+    {
+        // The whole point of the fix: a fetched web page or a file listing must not be recoloured
+        // as a shell transcript just because two of its lines look like `key=value` or markdown.
+        var result = ToolResultFormatter.Format(text);
+
+        Assert.Equal(ResultFormat.PlainText, result.Format);
+        Assert.Equal(text, Rendered(result));
+        Assert.All(result.Tokens, t => Assert.Equal(ResultTokenKind.Plain, t.Kind));
+    }
+
+    [Theory]
+    // A `$` prompt anchors it; the weak `key=value` line rides along and gets coloured.
+    [InlineData("$ curl https://example.com?ref=1\nref=1")]
+    // A status line is itself an anchor, so a lone weak line beside it is enough.
+    [InlineData("downloaded=report.pdf\nexit_code=0")]
+    // A stdout: label anchors it.
+    [InlineData("stdout:\nutm_source=google")]
+    public void OneConsoleAnchorPlusAWeakLine_IsRecognizedAsConsole(string text)
+    {
+        var result = ToolResultFormatter.Format(text);
+
+        Assert.Equal(ResultFormat.Console, result.Format);
+        Assert.Equal(text, Rendered(result));
+    }
+
     [Fact]
     public void Json_WinsOverConsole_WhenTheResultIsBoth()
     {

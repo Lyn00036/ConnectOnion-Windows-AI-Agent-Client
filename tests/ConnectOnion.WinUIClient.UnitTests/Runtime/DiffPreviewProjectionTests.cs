@@ -45,6 +45,94 @@ public class DiffPreviewProjectionTests
         Assert.Equal("CREATE", Assert.Single(target.Messages).EventEyebrow);
     }
 
+    [Fact]
+    public void WriteDiff_IsPendingAndExpanded_ThenOnlySuccessfulToolResultMarksApplied()
+    {
+        var target = new FakeTarget { IsLiveView = true };
+        var projection = new ChatTurnProjection(target);
+        projection.Apply(Event("tool_call",
+            """{"tool_id":"write-1","name":"remote_write_file","args":{"path":"/tmp/test.txt"}}"""));
+        projection.Apply(Event("diff_preview",
+            """{"type":"diff_preview","path":"/tmp/test.txt","preview":"+ hello world","file_exists":false}"""));
+        projection.Apply(Event("ask_user",
+            """{"id":"ask-1","question":"Apply changes to /tmp/test.txt?","options":["Yes, apply this change","No, reject and give feedback"],"multi_select":false}"""));
+
+        var diff = target.Messages.Single(message => message.IsDiffPreviewEvent);
+        var ask = target.Messages.Single(message => message.IsAskUserEvent);
+        Assert.Equal(DiffChangeState.Pending, diff.DiffState);
+        Assert.True(diff.IsDiffExpanded);
+        Assert.Equal(1, diff.DiffPreview.Additions);
+        Assert.Equal(0, diff.DiffPreview.Deletions);
+
+        ask.EventMeta = "Answered: Yes, apply this change";
+        Assert.Equal(DiffChangeState.Applying, diff.DiffState);
+        Assert.True(diff.IsDiffExpanded);
+
+        projection.Apply(Event("tool_result",
+            """{"tool_id":"write-1","status":"success","result":"File written successfully."}"""));
+        Assert.Equal(DiffChangeState.Applied, diff.DiffState);
+        Assert.False(diff.IsDiffExpanded);
+        Assert.Equal("Changes applied to test.txt", diff.DiffCardTitle);
+    }
+
+    [Fact]
+    public void RejectedWrite_FoldsButKeepsFullDiffAvailable()
+    {
+        var (projection, target, diff, ask) = ProjectWriteApproval();
+        ask.EventMeta = "Answered: No, reject and give feedback";
+
+        Assert.Equal(DiffChangeState.Rejected, diff.DiffState);
+        Assert.False(diff.IsDiffExpanded);
+        Assert.Contains("+new", diff.EventDetail);
+
+        diff.ToggleDiffExpanded();
+        Assert.True(diff.IsDiffExpanded);
+        Assert.Contains("+new", diff.DiffPreview.RawText);
+    }
+
+    [Fact]
+    public void FailedWrite_RemainsExpandedAndNeverClaimsApplied()
+    {
+        var (projection, _, diff, ask) = ProjectWriteApproval();
+        ask.EventMeta = "Answered: Yes, apply this change";
+        projection.Apply(Event("tool_result",
+            """{"tool_id":"write-1","status":"error","error":"permission denied"}"""));
+
+        Assert.Equal(DiffChangeState.Failed, diff.DiffState);
+        Assert.True(diff.IsDiffExpanded);
+        Assert.True(diff.ShowDiffProblem);
+        Assert.NotEqual("Changes applied to test.txt", diff.DiffCardTitle);
+    }
+
+    [Fact]
+    public void CompletedWithoutToolResult_IsUnconfirmedAndExpanded()
+    {
+        var (projection, _, diff, ask) = ProjectWriteApproval();
+        ask.EventMeta = "Answered: Yes, apply this change";
+
+        projection.AppendCompletedTurn("");
+
+        Assert.Equal(DiffChangeState.Unconfirmed, diff.DiffState);
+        Assert.True(diff.IsDiffExpanded);
+        Assert.DoesNotContain("Changes applied", diff.DiffCardTitle, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void InformationalDiffPreview_DoesNotPretendToAwaitApproval()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+        projection.Apply(Event("tool_call",
+            """{"tool_id":"preview-1","name":"remote_diff_preview","args":{"path":"/tmp/test.txt"}}"""));
+        projection.Apply(Event("diff_preview",
+            """{"type":"diff_preview","path":"/tmp/test.txt","preview":"@@ -1 +1 @@\n-old\n+new","file_exists":true}"""));
+
+        var diff = target.Messages.Single(message => message.IsDiffPreviewEvent);
+        Assert.Equal(DiffChangeState.Preview, diff.DiffState);
+        Assert.True(diff.IsDiffExpanded);
+        Assert.False(diff.IsInteractiveEvent);
+    }
+
     /// <summary>An empty preview is the writer saying it found nothing to change. Saying so
     /// beats a blank card, which reads as a failure.</summary>
     [Fact]
@@ -114,6 +202,22 @@ public class DiffPreviewProjectionTests
         projection.Apply(Event("reconnected",
             $$"""{"type":"reconnected","status":"{{(resumedFlag ? "running" : "connected")}}","resumed":{{(resumedFlag ? "true" : "false")}}}"""));
         return Assert.Single(target.Messages);
+    }
+
+    private static (ChatTurnProjection Projection, FakeTarget Target, ChatMessage Diff, ChatMessage Ask)
+        ProjectWriteApproval()
+    {
+        var target = new FakeTarget { IsLiveView = true };
+        var projection = new ChatTurnProjection(target);
+        projection.Apply(Event("tool_call",
+            """{"tool_id":"write-1","name":"remote_write_file","args":{"path":"/tmp/test.txt"}}"""));
+        projection.Apply(Event("diff_preview",
+            """{"type":"diff_preview","path":"/tmp/test.txt","preview":"@@ -1 +1 @@\n-old\n+new","file_exists":true}"""));
+        projection.Apply(Event("ask_user",
+            """{"id":"ask-1","question":"Apply changes to /tmp/test.txt?","options":["Yes, apply this change","No, reject and give feedback"],"multi_select":false}"""));
+        return (projection, target,
+            target.Messages.Single(message => message.IsDiffPreviewEvent),
+            target.Messages.Single(message => message.IsAskUserEvent));
     }
 
     private static AgentStreamEvent Event(string type, string json) => new(type, type, null, json);

@@ -137,6 +137,46 @@ public sealed class ChatTurnProjectionTests
     }
 
     [Fact]
+    public void Apply_ReplayedCompletedAskUser_DoesNotBecomePendingAgain()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+        const string frame = "{\"id\":\"q1\",\"text\":\"Pick one\",\"options\":[\"A\",\"B\"]}";
+
+        projection.Apply(Event("ask_user", frame));
+        var card = Assert.Single(target.Messages);
+        card.CompleteInteractiveSubmit("A");
+        projection.Apply(Event("ask_user", frame));
+
+        Assert.Single(target.Messages);
+        Assert.Equal(EventStatus.Done, card.Status);
+        Assert.False(card.IsInteractiveEditable);
+    }
+
+    [Fact]
+    public void Apply_ReplayedPlanReview_ReusesCardAndReconnectRestoresOnlyPendingCard()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+        const string frame = "{\"plan_content\":\"1. Inspect\"}";
+
+        projection.Apply(Event("plan_review", frame));
+        var card = Assert.Single(target.Messages);
+        card.MarkInteractiveConnectionLost();
+        projection.Apply(Event("plan_review", frame));
+
+        Assert.Single(target.Messages);
+        Assert.Equal("Waiting", card.InteractiveStateLabel);
+        Assert.True(card.IsInteractiveEditable);
+
+        card.CompleteInteractiveSubmit("Plan approved");
+        projection.Apply(Event("plan_review", frame));
+        Assert.Single(target.Messages);
+        Assert.Equal(EventStatus.Done, card.Status);
+        Assert.False(card.IsInteractiveEditable);
+    }
+
+    [Fact]
     public void Apply_LlmCall_OpensThinkingIndicator_AndLlmResultTakesItAway()
     {
         var target = new FakeTarget();
@@ -267,6 +307,27 @@ public sealed class ChatTurnProjectionTests
     }
 
     [Fact]
+    public void AppendCompletedTurn_ToolCallsSeparatedByOtherEvents_StayInOneActivityCard()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+
+        projection.Apply(Event("tool_call", "{\"tool_id\":\"one\",\"name\":\"read_file\",\"args\":{\"path\":\"a.txt\"}}"));
+        projection.Apply(Event("tool_result", "{\"tool_id\":\"one\",\"status\":\"success\",\"result\":\"ok\"}"));
+        projection.Apply(Event("thinking", "{\"content\":\"Checking another file\"}"));
+        projection.Apply(Event("llm_call", "{\"model\":\"test-model\"}"));
+        projection.Apply(Event("llm_result", "{\"duration_ms\":10}"));
+        projection.Apply(Event("tool_call", "{\"tool_id\":\"two\",\"name\":\"read_file\",\"args\":{\"path\":\"b.txt\"}}"));
+        projection.Apply(Event("tool_result", "{\"tool_id\":\"two\",\"status\":\"success\",\"result\":\"ok\"}"));
+
+        projection.AppendCompletedTurn("Done");
+
+        var card = Assert.Single(target.Messages, message => message.IsToolActivityEvent);
+        Assert.Equal(2, card.ToolActivity!.Steps.Count);
+        Assert.Equal(ToolActivityStatus.Success, card.ToolActivity.Status);
+    }
+
+    [Fact]
     public void Apply_OnboardRequiredRepeated_AddsOnlyOnePendingBubble()
     {
         var target = new FakeTarget();
@@ -312,6 +373,19 @@ public sealed class ChatTurnProjectionTests
     }
 
     [Fact]
+    public void Apply_SessionSync_IsStateOnlyAndDoesNotRenderTechnicalBubble()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+
+        projection.Apply(Event("session_sync", """
+            {"type":"session_sync","session":{"session_id":"abc","mode":"plan","turn":3}}
+            """));
+
+        Assert.Empty(target.Messages);
+    }
+
+    [Fact]
     public void AgentImage_IsHeldUntilTurnCompletes_ThenAttachesToFinalReply()
     {
         var target = new FakeTarget();
@@ -352,6 +426,158 @@ public sealed class ChatTurnProjectionTests
         Assert.True(target.Messages[0].IsEvent);
         Assert.True(target.Messages[1].IsAgent);
         Assert.Single(target.Messages[1].Attachments);
+    }
+
+    // ---- Approval embedded in the tool-activity card ----
+
+    [Fact]
+    public void ApprovalAfterAToolCall_EmbedsInTheSameCard_WithoutAnExtraStep()
+    {
+        var target = new FakeTarget { IsLiveView = true };
+        var projection = new ChatTurnProjection(target);
+
+        projection.Apply(Event("tool_call", "{\"tool_id\":\"one\",\"name\":\"remote_write_file\",\"args\":{\"path\":\"/notes/plan.txt\"}}"));
+        projection.Apply(Event("approval_needed",
+            "{\"tool\":\"Remote Write File\",\"description\":\"writes a file\",\"arguments\":{\"path\":\"/notes/plan.txt\"}}"));
+
+        // One tool-activity card, one step — the approval added no second timeline row.
+        var toolCard = target.Messages.Single(m => m.IsToolActivityEvent);
+        Assert.Single(toolCard.ToolActivity!.Steps);
+        Assert.Equal(ToolActivityStatus.WaitingForConfirmation, toolCard.ToolActivity.Status);
+
+        // The approval is linked into that card and marked embedded (so it draws no standalone row).
+        var approval = target.Messages.Single(m => m.IsApprovalEvent);
+        Assert.True(approval.IsEmbeddedApproval);
+        Assert.Same(approval, toolCard.ToolActivity.Approval);
+        Assert.True(toolCard.ToolActivity.HasApproval);
+    }
+
+    [Fact]
+    public void ApprovalAsTheFirstEvent_StillCreatesTheToolActivityCardToHostIt()
+    {
+        var target = new FakeTarget { IsLiveView = true };
+        var projection = new ChatTurnProjection(target);
+
+        projection.Apply(Event("approval_needed",
+            "{\"tool\":\"Remote Write File\",\"arguments\":{\"path\":\"/notes/plan.txt\"}}"));
+
+        // The tool-activity card exists (so the approval renders inside it) even with no prior
+        // tool_call, and carries no fabricated step.
+        var toolCard = Assert.Single(target.Messages, m => m.IsToolActivityEvent);
+        Assert.Empty(toolCard.ToolActivity!.Steps);
+        Assert.Same(target.Messages.Single(m => m.IsApprovalEvent), toolCard.ToolActivity.Approval);
+    }
+
+    [Fact]
+    public void Approval_ExtractsTargetAndBuildsPrompt_FromLiveData()
+    {
+        var target = new FakeTarget { IsLiveView = true };
+        var projection = new ChatTurnProjection(target);
+
+        projection.Apply(Event("approval_needed",
+            "{\"tool\":\"Remote Write File\",\"arguments\":{\"path\":\"/home/me/Project_Almond_weekly_meeting_notes.txt\"}}"));
+
+        var approval = target.Messages.Single(m => m.IsApprovalEvent);
+        Assert.Equal("Approve file operation?", approval.ApprovalPromptTitle);
+        Assert.Equal("Remote Write File", approval.OwnerToolActivity!.HeaderTitle);
+        Assert.Equal("This tool wants to modify:", approval.ApprovalOperationLine);
+        Assert.Equal("Project_Almond_weekly_meeting_notes.txt", approval.ApprovalTargetText);
+        Assert.Equal(ApprovalTargetKind.File, approval.ApprovalTargetKind);
+        Assert.False(approval.ShowApprovalFallback);
+    }
+
+    [Fact]
+    public void Approval_UsesSecurityReasonAndShowsRemainingBatchTools()
+    {
+        var target = new FakeTarget { IsLiveView = true };
+        var projection = new ChatTurnProjection(target);
+
+        projection.Apply(Event("approval_needed", """
+            {"tool":"remote_bash","description":"Replace a value",
+             "reason":"Blocked: sed can modify server state.","arguments":{"command":"sed -i ..."},
+             "batch_remaining":[{"tool":"remote_edit_file","arguments":{"file_path":"/etc/config.yaml"}}]}
+            """));
+
+        var approval = target.Messages.Single(m => m.IsApprovalEvent);
+        Assert.Equal("Blocked: sed can modify server state.", approval.EventDetail);
+        Assert.Equal("This batch also includes 1: remote_edit_file", approval.ApprovalBatchSummary);
+        Assert.True(approval.HasApprovalBatch);
+    }
+
+    [Fact]
+    public void Approval_WithNoExtractableTarget_FallsBackToTheGenericPrompt()
+    {
+        var target = new FakeTarget { IsLiveView = true };
+        var projection = new ChatTurnProjection(target);
+
+        projection.Apply(Event("approval_needed",
+            "{\"tool\":\"Do Thing\",\"arguments\":{\"reason\":\"because\"}}"));
+
+        var approval = target.Messages.Single(m => m.IsApprovalEvent);
+        Assert.False(approval.HasApprovalTarget);
+        Assert.True(approval.ShowApprovalFallback);
+    }
+
+    [Fact]
+    public void RepeatedApprovalFrame_OnAReconnect_DoesNotDuplicateTheStandaloneRow()
+    {
+        // The projection dedupes ask_user by id; approval has no id, but the host only re-parks the
+        // single tool card. Two frames must not leave two visible approvals — they collapse onto the
+        // one card's Approval slot (the later frame wins), so the card never shows a doubled decision.
+        var target = new FakeTarget { IsLiveView = true };
+        var projection = new ChatTurnProjection(target);
+        var frame = "{\"tool\":\"Remote Write File\",\"arguments\":{\"path\":\"/notes/plan.txt\"}}";
+
+        projection.Apply(Event("approval_needed", frame));
+        projection.Apply(Event("approval_needed", frame));
+
+        var toolCard = Assert.Single(target.Messages, m => m.IsToolActivityEvent);
+        // There is exactly one hidden backing message, so persistence answer alignment cannot be
+        // shifted by a replayed frame.
+        var approval = Assert.Single(target.Messages, m => m.IsApprovalEvent);
+        Assert.True(approval.IsEmbeddedApproval);
+        Assert.Same(approval, toolCard.ToolActivity!.Approval);
+    }
+
+    [Fact]
+    public void SequentialApprovals_ShareOneAggregatedCard_SlotHoldsTheCurrentOne()
+    {
+        var target = new FakeTarget { IsLiveView = true };
+        var projection = new ChatTurnProjection(target);
+
+        // Tool A needs approval, then (after it runs) tool B needs approval. Approvals are
+        // sequential, so one aggregated card holds both tools as steps and the single approval slot
+        // holds whichever decision is currently pending.
+        projection.Apply(Event("tool_call", "{\"tool_id\":\"a\",\"name\":\"remote_write_file\",\"args\":{\"path\":\"a.txt\"}}"));
+        projection.Apply(Event("approval_needed", "{\"tool\":\"Write A\",\"arguments\":{\"path\":\"a.txt\"}}"));
+        projection.Apply(Event("tool_result", "{\"tool_id\":\"a\",\"status\":\"success\",\"result\":\"ok\"}"));
+        projection.Apply(Event("tool_call", "{\"tool_id\":\"b\",\"name\":\"remote_write_file\",\"args\":{\"path\":\"b.txt\"}}"));
+        projection.Apply(Event("approval_needed", "{\"tool\":\"Write B\",\"arguments\":{\"path\":\"b.txt\"}}"));
+
+        var card = Assert.Single(target.Messages, m => m.IsToolActivityEvent);
+        Assert.Equal(2, card.ToolActivity!.Steps.Count);
+        Assert.Equal("Write B", card.ToolActivity.Approval!.EventTitle);  // current pending decision
+    }
+
+    [Fact]
+    public void CompletedTurn_SealsAStillPendingApproval_SoTheCardDoesNotShowWaiting()
+    {
+        // The screenshot bug: a finished turn whose embedded approval was resolved elsewhere (a
+        // separate ask_user, or the turn was stopped) must not keep advertising "Waiting for
+        // approval" on a card that plainly says "Tool execution completed".
+        var target = new FakeTarget { IsLiveView = true };
+        var projection = new ChatTurnProjection(target);
+
+        projection.Apply(Event("tool_call", "{\"tool_id\":\"a\",\"name\":\"delete_file\",\"args\":{\"path\":\"test.txt\"}}"));
+        projection.Apply(Event("approval_needed", "{\"tool\":\"Delete File\",\"arguments\":{\"path\":\"test.txt\"}}"));
+        var card = Assert.Single(target.Messages, m => m.IsToolActivityEvent);
+        Assert.True(card.ToolActivity!.IsAwaitingApproval);   // pending while running
+
+        // The turn finishes without the embedded approval being answered through the card.
+        projection.AppendCompletedTurn("Done! The file test.txt has been deleted.");
+
+        Assert.False(card.ToolActivity.IsAwaitingApproval);   // no stale "Waiting for approval"
+        Assert.Null(card.ToolActivity.Approval);
     }
 
     private static AgentStreamEvent Event(string type, string json) => new(type, type, null, json);

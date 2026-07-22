@@ -226,6 +226,37 @@ public sealed class ConversationRepositoryTests
         Assert.Equal(expected.IsOnboarding, actual.IsOnboarding);
     }
 
+    [Theory]
+    [InlineData(DiffChangeState.Applied, false)]
+    [InlineData(DiffChangeState.Rejected, false)]
+    [InlineData(DiffChangeState.Pending, true)]
+    [InlineData(DiffChangeState.Failed, true)]
+    public async Task DiffStateAndContent_RoundTripWithCorrectDefaultExpansion(
+        DiffChangeState state, bool expectedExpanded)
+    {
+        var conversationId = $"diff-{state}";
+        await _fixture.CreateSessionAsync(conversationId);
+        var diff = new ChatMessage
+        {
+            Id = 1,
+            Role = ChatRole.Event,
+            EventKind = "diff_preview",
+            EventTitle = "/tmp/test.txt",
+            EventEyebrow = "CREATE",
+            EventDetail = "+ hello world",
+            Status = EventStatus.Done,
+        };
+        diff.SetDiffState(state);
+
+        await _repository.UpsertMessagesAsync(conversationId, new[] { diff });
+        var restored = Assert.Single(await _repository.LoadMessagesAsync(conversationId));
+
+        Assert.Equal(state, restored.DiffState);
+        Assert.Equal("+ hello world", restored.EventDetail);
+        Assert.Equal(1, restored.DiffPreview.Additions);
+        Assert.Equal(expectedExpanded, restored.IsDiffExpanded);
+    }
+
     [Fact]
     public async Task Reads_ExcludeApprovalBubbles_EvenWhenARowExists()
     {

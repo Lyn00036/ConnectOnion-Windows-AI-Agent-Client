@@ -39,10 +39,8 @@ public sealed class ChatMessageTests
         Assert.False(message.HasTurnUsageSecondary);
     }
 
-    // The interactive card's header badge must carry only the status word; the answer shows once in
-    // the body. Pin the split so "Answered: <answer>" never leaks the answer back into the badge.
     [Fact]
-    public void InteractiveAnswered_BadgeIsStatusWord_AnswerIsBody()
+    public void InteractiveAnswered_ExtractsAnswerForReadOnlyBody()
     {
         var message = new ChatMessage
         {
@@ -50,7 +48,6 @@ public sealed class ChatMessageTests
             EventMeta = "Answered: Delete only test.txt (root)",
         };
 
-        Assert.Equal("Answered", message.InteractiveStatusLabel);
         Assert.Equal("Delete only test.txt (root)", message.InteractiveAnswerText);
         Assert.True(message.HasInteractiveAnswer);
     }
@@ -60,7 +57,6 @@ public sealed class ChatMessageTests
     {
         var message = new ChatMessage { Status = EventStatus.Running };
 
-        Assert.Equal("Pending", message.InteractiveStatusLabel);
         Assert.False(message.HasInteractiveAnswer);
     }
 
@@ -70,7 +66,6 @@ public sealed class ChatMessageTests
         // An approval's "Approved once" carries no free-form answer, so no "Your answer" line.
         var message = new ChatMessage { Status = EventStatus.Done, EventMeta = "Approved once" };
 
-        Assert.Equal("Approved once", message.InteractiveStatusLabel);
         Assert.False(message.HasInteractiveAnswer);
     }
 
@@ -135,7 +130,6 @@ public sealed class ChatMessageTests
     {
         var message = InteractiveMessage(EventStatus.Running);
 
-        Assert.True(message.IsInteractiveExpanded);
         Assert.Equal("Waiting for you", message.InteractiveOutcome);
     }
 
@@ -143,14 +137,13 @@ public sealed class ChatMessageTests
     [InlineData("Approved once")]
     [InlineData("Rejected")]
     [InlineData("Changes requested")]
-    public void InteractiveOutcome_ResolvedCard_PreservesAnswerAndCollapses(string outcome)
+    public void InteractiveOutcome_ResolvedCard_PreservesAnswer(string outcome)
     {
         var message = InteractiveMessage(EventStatus.Running);
         message.EventMeta = outcome;
 
         message.Status = EventStatus.Done;
 
-        Assert.True(message.IsInteractiveCollapsed);
         Assert.Equal(outcome, message.InteractiveOutcome);
         Assert.Contains(outcome, message.InteractiveAccessibilityName);
     }
@@ -162,17 +155,6 @@ public sealed class ChatMessageTests
 
         Assert.Equal("Skipped", message.InteractiveOutcome);
         Assert.False(message.ShowAskUserFreeText);
-    }
-
-    [Fact]
-    public void ToggleInteractiveExpanded_ResolvedCard_AllowsHistoryInspection()
-    {
-        var message = InteractiveMessage(EventStatus.Done);
-
-        message.ToggleInteractiveExpanded();
-
-        Assert.True(message.IsInteractiveExpanded);
-        Assert.Contains("Collapse", message.InteractiveAccessibilityName);
     }
 
     [Fact]

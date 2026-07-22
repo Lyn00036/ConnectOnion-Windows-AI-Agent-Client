@@ -533,9 +533,13 @@ public sealed class ConversationRunRegistryTests
         // A retry offered promptly still works...
         Assert.NotNull(registry.RetryRun("conv", new FakeExecutor((_, _) => Task.FromResult("recovered"))));
         await WaitUntilAsync(() => registry.GetActiveRun("conv")?.Status == ConversationRunStatus.Completed);
+        // Terminal publication precedes removal from the active dictionary. Wait for both so the
+        // next StartRun does not race that final cleanup on a busy test runner.
+        await WaitUntilAsync(() => !registry.IsRunActive("conv"));
 
         registry.StartRun(NewRequest(), new FakeExecutor((_, _) => throw new Exception("boom")));
         await WaitUntilAsync(() => registry.GetActiveRun("conv")?.Status == ConversationRunStatus.Failed);
+        await WaitUntilAsync(() => !registry.IsRunActive("conv"));
 
         // ...but a failed turn nobody ever retried must not pin its request — and a TurnRequest
         // carries the turn's images and files as base64, so that is a whole payload per abandoned
