@@ -25,7 +25,6 @@ public sealed partial class ChatMessageTemplateSelector : DataTemplateSelector
     public DataTemplate? Activity { get; set; }
     public DataTemplate? ToolActivity { get; set; }
     public DataTemplate? AskUser { get; set; }
-    public DataTemplate? Approval { get; set; }
     public DataTemplate? PlanReview { get; set; }
     public DataTemplate? DiffPreview { get; set; }
 
@@ -47,7 +46,10 @@ public sealed partial class ChatMessageTemplateSelector : DataTemplateSelector
         if (message.IsActivityEvent) return Activity;
         if (message.IsToolActivityEvent) return ToolActivity;
         if (message.IsAskUserEvent) return AskUser;
-        if (message.IsApprovalEvent) return Approval;
+        // Every approval is rendered by its owning ToolActivityView. The message remains in the
+        // list for answer/persistence alignment but never owns a standalone fallback card; that
+        // legacy route produced a second, visually incompatible approval UI when ownership lagged.
+        if (message.IsApprovalEvent) return Empty;
         if (message.IsPlanReviewEvent) return PlanReview;
         if (message.IsDiffPreviewEvent) return DiffPreview;
 

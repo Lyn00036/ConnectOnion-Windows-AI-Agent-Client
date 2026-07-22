@@ -12,6 +12,7 @@
                 <ResourceDictionary Source="ms-appx:///Styles/Colors.xaml" />
                 <ResourceDictionary Source="ms-appx:///Styles/Brushes.xaml" />
                 <ResourceDictionary Source="ms-appx:///Styles/ControlStyles.xaml" />
+                <ResourceDictionary Source="ms-appx:///Styles/InteractiveCards.xaml" />
             </ResourceDictionary.MergedDictionaries>
             <!-- One reading measure shared by the transcript and the composer, so every bubble,
                  the tool-activity card, the metadata line and the input surface all sit on the
@@ -27,6 +28,7 @@
             <presentation:PresenceToBrushConverter x:Key="PresenceToBrush" />
             <presentation:EventStatusToBrushConverter x:Key="EventStatusToBrush" />
             <presentation:InteractiveStatusToBrushConverter x:Key="InteractiveStatusToBrush" />
+            <presentation:InteractiveToneToBrushConverter x:Key="InteractiveToneToBrush" />
             <presentation:BoolToResourceBrushConverter x:Key="BoolToResourceBrush" />
             <presentation:ConnectionPhaseToBrushConverter x:Key="ConnectionPhaseToBrush" />
             <presentation:DiffTextToLinesConverter x:Key="DiffTextToLines" />
@@ -34,6 +36,7 @@
             <presentation:ToolStatusToBrushConverter x:Key="ToolStatusToBrush" />
             <presentation:ToolIconConverter x:Key="ToolIcon" />
             <presentation:ToolStatusToIconConverter x:Key="ToolStatusToIcon" />
+            <presentation:ApprovalTargetKindToIconConverter x:Key="ApprovalTargetIcon" />
             <presentation:BoolToThicknessConverter x:Key="BoolToThickness" />
             <presentation:LocalPathToImageSourceConverter x:Key="PathToImage" />
             <presentation:RowStateToBackgroundConverter x:Key="RowStateToBackground" />

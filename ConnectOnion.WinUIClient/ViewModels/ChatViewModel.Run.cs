@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -140,8 +141,9 @@ public sealed partial class ChatViewModel
         SendCancelled?.Invoke(pending.Text, pending.Attachments);
     }
 
-    /// <summary>Sends one graceful-stop request and keeps rendering until OUTPUT/ERROR.
-    /// Repeated clicks are ignored while the current iteration finishes.</summary>
+    /// <summary>Sends one graceful-stop request and keeps rendering until OUTPUT/ERROR. The UI
+    /// disables the button while stopping; the manager still permits repeated idempotent calls
+    /// from another surface and sends one INTERRUPT for each.</summary>
     public async Task StopAsync()
     {
         if (_session is null || !CanStop || IsStopping) return;
@@ -284,12 +286,18 @@ public sealed partial class ChatViewModel
             // ONBOARD_SUCCESS, so hand the input back rather than leaving a card that
             // says "waiting" over a box the user can no longer type in.
             ReopenPendingOnboarding();
+            var connectionLost = ConnectionPhase == ConnectionPhase.Reconnecting
+                || snapshot.ErrorMessage?.Contains("connection", StringComparison.OrdinalIgnoreCase) == true
+                || snapshot.ErrorMessage?.Contains("socket", StringComparison.OrdinalIgnoreCase) == true
+                || snapshot.ErrorMessage?.Contains("websocket", StringComparison.OrdinalIgnoreCase) == true;
             Messages.Add(new ChatMessage
             {
                 Id = NextId(),
                 Role = ChatRole.Agent,
                 AgentName = _agent?.Name,
-                Content = $"[connection error] {snapshot.ErrorMessage}",
+                Content = connectionLost
+                    ? "[connection error] Connection lost. The task was interrupted."
+                    : $"[connection error] {snapshot.ErrorMessage}",
             });
             // The error is shown as a "[connection error]" bubble plus the Retry bar.
             CanRetry = true;
@@ -305,11 +313,10 @@ public sealed partial class ChatViewModel
             CanRetry = false;
         }
 
-        // The turn is over, so nothing can answer an approval any more. Answering removes its own
-        // card (SubmitApprovalAsync); this covers every other way a turn can end — Stop, a dropped
-        // socket, a cancelled run — where the card would otherwise sit there offering buttons that
-        // resolve nothing. It also keeps the live list agreeing with what was persisted, which for
-        // an approval is nothing at all.
+        // The turn is over, so no standalone approval message remains in the item source. Its
+        // owning ToolActivityView keeps the live resolved summary through its direct reference;
+        // unfinished approvals are sealed by the projection. Persisted history reconstructs only
+        // the terminal tool activity, never a dead approval row.
         RemoveApprovalBubbles();
         StopThinkingTicker();
 
@@ -394,6 +401,12 @@ public sealed partial class ChatViewModel
             case "reconnecting":
                 ConnectionPhase = ConnectionPhase.Reconnecting;
                 ReconnectAttempt = ReadAttempt(e.RawJson);
+                foreach (var card in Messages.Where(message =>
+                             (message.IsAskUserEvent || message.IsPlanReviewEvent)
+                             && message.Status == EventStatus.Running))
+                {
+                    card.MarkInteractiveConnectionLost();
+                }
                 break;
 
             // The socket is back. Whether the turn survived is the "resumed" flag's business
@@ -440,13 +453,16 @@ public sealed partial class ChatViewModel
 
     private void FollowAgentModeChange(AgentStreamEvent e)
     {
-        if (e.Type != "mode_changed" || _session is null) return;
+        if (e.Type is not ("mode_changed" or "session_sync") || _session is null) return;
 
         string? mode;
         try
         {
             using var doc = System.Text.Json.JsonDocument.Parse(e.RawJson);
-            mode = doc.RootElement.TryGetProperty("mode", out var v) ? v.GetString() : null;
+            var root = doc.RootElement;
+            if (e.Type == "session_sync" && root.TryGetProperty("session", out var session))
+                root = session;
+            mode = root.TryGetProperty("mode", out var v) ? v.GetString() : null;
         }
         catch { return; }
 

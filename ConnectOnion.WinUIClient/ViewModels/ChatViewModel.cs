@@ -554,10 +554,15 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
 
         if (!hasRun && ConversationCache.Get(_session.Id, _agent.Id) is { } cached)
         {
+            // Cache entries bypass SQLite deserialization, so run the same history normalizer
+            // here as on a database load. In particular this clears a live-only embedded
+            // approval object that a just-completed Tool Activity may still reference.
+            var cachedMessages = ToolActivityMigration.UpgradeLegacyToolMessages(cached.Messages);
             Messages.Clear();
-            foreach (var message in cached.Messages) Messages.Add(message);
+            foreach (var message in cachedMessages) Messages.Add(message);
             _createdAt = cached.CreatedAt;
             ResetIdCounter();
+            ConversationCache.Store(_session.Id, cached with { Messages = cachedMessages.ToList() });
             return;
         }
 
@@ -670,6 +675,12 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         // A live thinking row is the only thing the elapsed ticker exists for, so arming it here
         // is what keeps the timer off for every turn that never shows one.
         if (message.IsThinkingRunning) EnsureThinkingTicker();
+        // An embedded approval answers through the live socket. Wire its responder here — the one
+        // add-time hook every live bubble passes through — rather than subscribing per row in the
+        // view, so there is no per-container event handler to leak. The delegate targets this view
+        // model, whose lifetime already bounds the message's.
+        if (message.IsApprovalEvent && message.IsEmbeddedApproval)
+            message.ApprovalResponder = HandleApprovalDecisionAsync;
     }
     void IChatProjectionTarget.ResolveAgentImage(string dataUrl, ChatAttachment attachment)
         => _ = ResolveAgentImageAsync(dataUrl, attachment);
