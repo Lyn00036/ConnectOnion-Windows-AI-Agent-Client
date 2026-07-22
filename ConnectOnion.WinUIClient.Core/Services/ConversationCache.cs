@@ -31,6 +31,11 @@ public static class ConversationCache
 
     private static readonly object Gate = new();
 
+    internal static int CountForTests
+    {
+        get { lock (Gate) return Entries.Count; }
+    }
+
     /// <summary>Returns the cached conversation and marks it most-recently-used. Misses when the
     /// entry was cached for a different agent, which guards against an id collision serving a
     /// conversation into the wrong agent's page.</summary>

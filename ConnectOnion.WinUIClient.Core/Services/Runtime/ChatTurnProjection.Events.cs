@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Text.Json;
 using ConnectOnion.Protocol;
 using ConnectOnion.WinUIClient.Models;
@@ -58,12 +59,32 @@ public sealed partial class ChatTurnProjection
             // a result with no preceding call has nothing to attach to and must not conjure an
             // empty activity card out of a stray frame.
             case "tool_call":
-                GetToolActivity().ApplyCall(e);
+            {
+                var step = GetToolActivity().ApplyCall(e);
+                if (IsWriteFileTool(step.ToolName)
+                    && !_diffsByToolId.ContainsKey(step.Id)
+                    && !_writeCallsAwaitingDiff.Contains(step.Id, StringComparer.Ordinal))
+                {
+                    _writeCallsAwaitingDiff.Add(step.Id);
+                }
                 break;
+            }
 
             case "tool_result":
-                _toolActivity?.ApplyResult(e);
+            {
+                var step = _toolActivity?.ApplyResult(e);
+                if (step is not null && _diffsByToolId.TryGetValue(step.Id, out var diff))
+                {
+                    diff.SetDiffState(step.Status switch
+                    {
+                        ToolStepStatus.Success => DiffChangeState.Applied,
+                        ToolStepStatus.Warning => DiffChangeState.PartiallyApplied,
+                        ToolStepStatus.Cancelled => DiffChangeState.Rejected,
+                        _ => DiffChangeState.Failed,
+                    });
+                }
                 break;
+            }
 
             // llm_call/llm_result are what actually bracket the agent's thinking on this host —
             // there is no `thinking` frame in its trace stream, so nothing else opens a spinner.
@@ -222,6 +243,7 @@ public sealed partial class ChatTurnProjection
             case "reconnected":
             {
                 var resumed = Flag("resumed") == true;
+                if (!resumed) CompleteOpenDiffs(DiffChangeState.Disconnected);
                 if (FindEvent("reconnect", "activity") is { } open)
                 {
                     // "Reconnected" alone would be misleading when the turn did not survive:
@@ -256,6 +278,18 @@ public sealed partial class ChatTurnProjection
                     EventEyebrow = Flag("file_exists") == true ? "MODIFY" : "CREATE",
                     Status = EventStatus.Done,
                 };
+                if (_writeCallsAwaitingDiff.Count > 0)
+                {
+                    var toolId = _writeCallsAwaitingDiff[^1];
+                    _writeCallsAwaitingDiff.RemoveAt(_writeCallsAwaitingDiff.Count - 1);
+                    _diffsByToolId[toolId] = card;
+                    card.SetDiffState(DiffChangeState.Pending);
+                }
+                else
+                {
+                    // remote_diff_preview is informational and has no approval/result contract.
+                    card.SetDiffState(DiffChangeState.Preview);
+                }
                 // Note the `truncated` flag is deliberately NOT surfaced as a separate badge:
                 // _truncate_preview already appends a literal "\n...(truncated)" line to the
                 // preview body it sends, so a badge would state the same fact twice.
@@ -316,6 +350,11 @@ public sealed partial class ChatTurnProjection
                 break;
             }
 
+            // Authoritative transport/session state. The live view model consumes its mode,
+            // while the transcript remains free of technical session JSON.
+            case "session_sync":
+                break;
+
             // ---- interactive turns & onboarding (synthetic events, see AgentTurnExecutor) ----
 
             case "ONBOARD_REQUIRED":
@@ -344,7 +383,11 @@ public sealed partial class ChatTurnProjection
                 // during an unanswered question would otherwise stack a second card carrying a
                 // second copy of the options. The buffered events are replayed into the persist
                 // projection as well, so the duplicate outlives the session that caused it.
-                if (FindEvent(request.Id, "ask_user") is not null) break;
+                if (FindEvent(request.Id, "ask_user") is { } existingAsk)
+                {
+                    existingAsk.RevalidateInteractiveRequest();
+                    break;
+                }
 
                 var message = new ChatMessage
                 {
@@ -372,44 +415,115 @@ public sealed partial class ChatTurnProjection
                         Name = field.Name,
                         Label = field.Label,
                         Placeholder = field.Placeholder,
+                        Required = field.Required,
+                        Type = field.Type,
+                        Owner = message,
                     });
+                }
+                if (message.IsFileChangeApproval)
+                {
+                    message.RelatedDiffPreview = Messages.LastOrDefault(candidate =>
+                        candidate.IsDiffPreviewEvent
+                        && candidate.DiffState is DiffChangeState.Pending or DiffChangeState.Preview
+                        && string.Equals(candidate.EventTitle, message.AskUserTargetPath,
+                            StringComparison.OrdinalIgnoreCase));
                 }
                 Add(message);
                 break;
             }
 
             case "approval_needed":
-                // Park the tool card on "waiting for your confirmation" as well as raising the
-                // approval bubble: the step that triggered this is still open in the activity
-                // list, and leaving it spinning as though it were running would misreport what
-                // the agent is actually blocked on.
-                _toolActivity?.WaitForConfirmation();
-                Add(new ChatMessage
+            {
+                // The approval renders inside the turn's ONE tool-activity card, which aggregates
+                // every tool in the turn as a step and collapses under a single "Tool activity"
+                // header when it finishes. Approvals in a turn are sequential — the agent blocks on
+                // each before the next — so one Approval slot suffices: it always holds the single
+                // currently-pending decision, while every already-answered tool sits as a done step
+                // above it. GetToolActivity() creates the card only if no tool_call opened one yet;
+                // it never adds a duplicate step.
+                var toolActivity = GetToolActivity();
+                toolActivity.WaitForConfirmation();
+
+                var argsJson = root.ValueKind == JsonValueKind.Object
+                    && root.TryGetProperty("arguments", out var a)
+                        ? a.GetRawText() : "{}";
+                var toolName = Str("tool") ?? "";
+                var toolDisplayName = ToolActivityProjector.DisplayName(toolName);
+                var batchSummary = "";
+                if (root.TryGetProperty("batch_remaining", out var batch)
+                    && batch.ValueKind == JsonValueKind.Array)
+                {
+                    var tools = batch.EnumerateArray()
+                        .Where(item => item.ValueKind == JsonValueKind.Object
+                            && item.TryGetProperty("tool", out var tool)
+                            && tool.ValueKind == JsonValueKind.String)
+                        .Select(item => item.GetProperty("tool").GetString()!)
+                        .ToList();
+                    if (tools.Count > 0)
+                        batchSummary = $"This batch also includes {tools.Count}: {string.Join(", ", tools)}";
+                }
+
+                // A reconnect can replay the pending approval frame. Keep the existing live card
+                // instead of appending another hidden approval message: those hidden rows still
+                // participate in ResolveInteractiveCards' FIFO, so duplicating one would consume
+                // the answer intended for the next interactive card in the turn.
+                if (toolActivity.Activity.Approval is { IsApprovalPending: true } pending
+                    && string.Equals(pending.EventTitle, toolDisplayName, StringComparison.Ordinal)
+                    && string.Equals(pending.EventArgs, PrettyJson(argsJson), StringComparison.Ordinal))
+                {
+                    break;
+                }
+
+                var approval = new ChatMessage
                 {
                     Id = NextId(),
                     Role = ChatRole.Event,
                     EventKind = "approval",
                     EventEyebrow = "Approval needed",
-                    EventTitle = Str("tool") ?? "",
-                    EventDetail = Str("description"),
-                    EventArgs = root.ValueKind == JsonValueKind.Object && root.TryGetProperty("arguments", out var a)
-                        ? PrettyJson(a.GetRawText()) : PrettyJson("{}"),
+                    EventTitle = toolDisplayName,
+                    EventDetail = Str("reason") ?? Str("description"),
+                    EventArgs = PrettyJson(argsJson),
                     Status = EventStatus.Running,
-                });
+                    IsEmbeddedApproval = true,
+                    // Extracted target/operation for the card's summary — never the raw args blob.
+                    ApprovalTargetInfo = ApprovalTargetFormatter.Extract(argsJson),
+                    ApprovalBatchSummary = batchSummary,
+                    // Back-ref so answering can clear the card's parked status immediately.
+                    OwnerToolActivity = toolActivity.Activity,
+                };
+                // Link it into the card, and still Add it to the list: approval messages always
+                // render Empty because ToolActivityView is their sole UI, but the message must remain
+                // in the list so the persist path's answer alignment (ResolveInteractiveCards, which
+                // dequeues answers in creation order across ask_user/approval/plan_review) stays correct.
+                toolActivity.Activity.Approval = approval;
+                Add(approval);
                 break;
+            }
 
             case "plan_review":
-                Add(new ChatMessage
+            {
+                // A resumed session replays its pending plan. Treat that replay as the sync signal
+                // that makes a connection-lost card actionable again, never as a second card.
+                var planContent = Str("plan_content") ?? "";
+                if (_planReviewCards.TryGetValue(planContent, out var existingPlan))
+                {
+                    existingPlan.RevalidateInteractiveRequest();
+                    break;
+                }
+                var planCard = new ChatMessage
                 {
                     Id = NextId(),
                     Role = ChatRole.Event,
                     EventKind = "plan_review",
                     EventEyebrow = "Plan review",
                     EventTitle = "Review the plan",
-                    EventDetail = Str("plan_content") ?? "",
+                    EventDetail = planContent,
                     Status = EventStatus.Running,
-                });
+                };
+                _planReviewCards.Add(planContent, planCard);
+                Add(planCard);
                 break;
+            }
         }
     }
 }

@@ -55,7 +55,7 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
     // cards were created. The live stream carries each *request* but never the user's reply, so
     // without this the app-level persist (which re-projects cards from the reply-less event
     // stream) has no way to record the chosen result — a reloaded card would show dead controls.
-    private readonly ConcurrentDictionary<string, ConcurrentQueue<InteractiveAnswer>> _interactiveAnswers = new();
+    private readonly InteractiveAnswerBuffer _interactiveAnswers = new();
 
     // The interactive turn (if any) the agent is currently blocked on, per conversation. Stop
     // reads this to pick its tier: only an "approval" can be turned into a real halt.
@@ -87,10 +87,6 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
     /// </summary>
     private const string UnansweredApprovalMeta = "Rejected";
 
-    /// <summary>A resolved interactive answer: the meta text to show (e.g. "Answered: yes",
-    /// "Approved once", "Rejected") and the status it resolves the card to.</summary>
-    private readonly record struct InteractiveAnswer(string Meta, EventStatus Status);
-
     /// <param name="usage">Optional so existing callers and tests that don't care about accounting
     /// can omit it; a default instance is used when it isn't supplied.</param>
     public AgentSessionManager(
@@ -120,8 +116,16 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
     /// reply-less event stream. Called by the chat page the moment it resolves the turn; answers
     /// are consumed in creation order when the run is persisted.</summary>
     public void RecordInteractiveAnswer(string conversationId, string meta, EventStatus status)
-        => _interactiveAnswers.GetOrAdd(conversationId, _ => new ConcurrentQueue<InteractiveAnswer>())
-            .Enqueue(new InteractiveAnswer(meta, status));
+        => _interactiveAnswers.RecordConfirmed(conversationId, meta, status);
+
+    public Guid BeginInteractiveAnswer(string conversationId, string meta, EventStatus status)
+        => _interactiveAnswers.Begin(conversationId, meta, status);
+
+    public void ConfirmInteractiveAnswer(Guid reservationId)
+        => _interactiveAnswers.Confirm(reservationId);
+
+    public void CancelInteractiveAnswer(Guid reservationId)
+        => _interactiveAnswers.Cancel(reservationId);
 
     // ---- IAgentSessionManager ----
 
@@ -133,7 +137,7 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         _agentsById[agent.Id] = agent;
         // A fresh run starts clean: drop any interactive answers left over from an abandoned
         // prior turn so they can't leak onto this run's cards at persist time.
-        _interactiveAnswers.TryRemove(conversationId, out _);
+        _interactiveAnswers.Reset(conversationId);
         _pendingInteractive.TryRemove(conversationId, out _);
         _interruptRequestedRuns.TryRemove(conversationId, out _);
 
@@ -248,7 +252,7 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
 
         await _runs.CancelRunAsync(conversationId, runId).ConfigureAwait(false);
 
-        _interactiveAnswers.TryRemove(conversationId, out _);
+        _interactiveAnswers.Reset(conversationId);
         _pendingInteractive.TryRemove(conversationId, out _);
         _interruptRequestedRuns.TryRemove(conversationId, out _);
 
@@ -495,7 +499,7 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
     public ConversationRunSnapshot? RetryRun(AgentConfig agent, string conversationId)
     {
         _agentsById[agent.Id] = agent;
-        _interactiveAnswers.TryRemove(conversationId, out _);
+        _interactiveAnswers.Reset(conversationId);
         _pendingInteractive.TryRemove(conversationId, out _);
         _interruptRequestedRuns.TryRemove(conversationId, out _);
         var connection = _connections.GetOrCreate(conversationId, agent);
@@ -516,27 +520,17 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         var connection = _connections.Get(conversationId);
         if (connection is not { IsConnected: true }) return StopOutcome.NotRunning;
 
-        if (!_interruptRequestedRuns.TryAdd(conversationId, run.RunId))
-            return StopOutcome.StopRequested;
-
-        _runs.PublishLocalEvent(conversationId, new AgentStreamEvent(
-            "interrupt_requested", "Stopping", null,
-            "{\"type\":\"interrupt_requested\"}"));
-
-        _pendingInteractive.TryGetValue(conversationId, out var pending);
+        // Only the first request needs a local state marker, but every invocation sends an
+        // INTERRUPT frame. The host treats duplicates as idempotent and drains them.
+        if (_interruptRequestedRuns.TryAdd(conversationId, run.RunId))
+        {
+            _runs.PublishLocalEvent(conversationId, new AgentStreamEvent(
+                "interrupt_requested", "Stopping", null,
+                "{\"type\":\"interrupt_requested\"}"));
+        }
 
         try
         {
-            // The approval FIFO would parse INTERRUPT as the approval response. A hard rejection
-            // is the protocol-defined equivalent and ends the same loop without corrupting logs.
-            if (pending == "approval")
-            {
-                await connection.RejectApprovalForStopAsync("用户中断").ConfigureAwait(false);
-                _pendingInteractive.TryRemove(conversationId, out _);
-                RecordInteractiveAnswer(conversationId, "Stopped by user", EventStatus.Error);
-                return StopOutcome.StopRequested;
-            }
-
             await connection.SendInterruptAsync().ConfigureAwait(false);
             return StopOutcome.StopRequested;
         }
@@ -583,7 +577,7 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
             try { await _runs.CancelRunAsync(conversationId, run.RunId).ConfigureAwait(false); }
             catch { /* best-effort: the socket is torn down next regardless */ }
         }
-        _interactiveAnswers.TryRemove(conversationId, out _);
+        _interactiveAnswers.Reset(conversationId);
         _pendingInteractive.TryRemove(conversationId, out _);
         _interruptRequestedRuns.TryRemove(conversationId, out _);
         // After the cancel above, so a run unwinding into its terminal snapshot cannot re-add the
@@ -635,7 +629,7 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
             catch { /* a single bad image must not fail the whole persist */ }
         }
 
-        ResolveInteractiveCards(snapshot.ConversationId, window);
+        await ResolveInteractiveCardsAsync(snapshot.ConversationId, window).ConfigureAwait(false);
 
         await _conversations.UpsertMessagesAsync(
             snapshot.ConversationId, window.Where(m => !m.IsOnboarding).ToList()).ConfigureAwait(false);
@@ -748,7 +742,7 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
             });
         }
 
-        ResolveInteractiveCards(snapshot.ConversationId, window);
+        await ResolveInteractiveCardsAsync(snapshot.ConversationId, window).ConfigureAwait(false);
 
         await _conversations.UpsertMessagesAsync(
             snapshot.ConversationId, window.Where(m => !m.IsOnboarding).ToList()).ConfigureAwait(false);
@@ -834,9 +828,10 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
     /// same conversation (they already carry their own meta/status). This is what makes the
     /// chosen result — or "no selection" — survive into reloaded history.
     /// </summary>
-    private void ResolveInteractiveCards(string conversationId, List<ChatMessage> history)
+    private async Task ResolveInteractiveCardsAsync(string conversationId, List<ChatMessage> history)
     {
-        _interactiveAnswers.TryRemove(conversationId, out var answers);
+        var answers = new Queue<RecordedInteractiveAnswer>(
+            await _interactiveAnswers.DrainAsync(conversationId).ConfigureAwait(false));
 
         foreach (var m in history)
         {
@@ -848,7 +843,7 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
                 continue;
             }
 
-            if (answers is not null && answers.TryDequeue(out var answer))
+            if (answers.TryDequeue(out var answer))
             {
                 m.EventMeta = answer.Meta;
                 m.Status = answer.Status;
