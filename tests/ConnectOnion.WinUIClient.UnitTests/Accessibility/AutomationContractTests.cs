@@ -8,6 +8,8 @@ public sealed partial class AutomationContractTests
     {
         "MainWindow",
         "AgentList",
+        "AgentAvatarButton",
+        "AgentCapabilitiesLoadingIndicator",
         "AddAgentButton",
         "AgentAddressInput",
         "SubmitAgentButton",
@@ -22,6 +24,9 @@ public sealed partial class AutomationContractTests
         "ConnectOnionDocsMenuItem",
         "KeyboardShortcutsMenuItem",
         "SettingsOverlay",
+        "AgentsNav",
+        "SettingsAgentList",
+        "SettingsAddAgentButton",
         "AboutOverlay",
         "KeyboardShortcutsOverlay",
         "AboutOkButton",

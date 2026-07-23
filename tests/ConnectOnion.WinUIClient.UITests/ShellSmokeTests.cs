@@ -70,6 +70,45 @@ public sealed class ShellSmokeTests
         Assert.NotNull(overlay);
     }
 
+    [Fact]
+    public void SettingsAgents_Click_ShowsAgentManagementActions()
+    {
+        using var launched = LaunchApp();
+        if (launched is null) return;
+
+        var window = launched.Window;
+        window.FindFirstDescendant(query => query.ByAutomationId("SettingsButton"))?.AsButton().Invoke();
+        Assert.NotNull(WaitForDescendant(window, "GeneralNav"));
+
+        var agentsNav = window.FindFirstDescendant(query => query.ByAutomationId("AgentsNav"));
+        Assert.NotNull(agentsNav);
+        agentsNav.AsRadioButton().Click();
+
+        AutomationElement? addAgent = null;
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (DateTime.UtcNow < deadline && addAgent is null)
+        {
+            try
+            {
+                addAgent = window
+                    .FindAllDescendants(query => query.ByControlType(FlaUI.Core.Definitions.ControlType.Button))
+                    .FirstOrDefault(element =>
+                        string.Equals(element.Properties.Name.ValueOrDefault, "Add agent", StringComparison.Ordinal));
+            }
+            catch (System.Runtime.InteropServices.COMException)
+            {
+                // The settings pane is swapping its visual tree; retry below.
+            }
+
+            if (addAgent is null) Thread.Sleep(150);
+        }
+
+        Assert.NotNull(addAgent);
+        Assert.True(addAgent.IsEnabled);
+        addAgent.AsButton().Invoke();
+        Assert.NotNull(WaitForDescendant(window, "AgentAddressInput"));
+    }
+
     /// <summary>
     /// The sidebar's "Add agent" button opens the shell-owned modal over the current page.
     /// Collapsed overlay content is absent from the UIA tree, so its focused input proves both

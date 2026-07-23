@@ -18,4 +18,8 @@
   <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\ConnectOnion.WinUIClient.Core\ConnectOnion.WinUIClient.Core.csproj" />
+  </ItemGroup>
 </Project>

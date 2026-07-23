@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using ConnectOnion.WinUIClient.Data;
+using ConnectOnion.WinUIClient.Models;
 using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Definitions;
 using Xunit.Abstractions;
@@ -34,6 +36,11 @@ public sealed class MemoryLeakTests(ITestOutputHelper output)
         Assert.False(string.IsNullOrWhiteSpace(baselineDataRoot),
             "CONNECTONION_DATA_ROOT must point at the isolated baseline profile.");
 
+        if (scenarios.Contains("conversation-alternating"))
+        {
+            EnsureConversationCountAsync(4).GetAwaiter().GetResult();
+        }
+
         // Each surface gets a fresh process. Otherwise the JIT/XAML/font high-water marks from
         // earlier surfaces are charged to the next one and can look like that surface's slope.
         // The isolated data root is shared, but only one app owns it at a time.
@@ -64,6 +71,51 @@ public sealed class MemoryLeakTests(ITestOutputHelper output)
             File.Copy(file, Path.Combine(destination, Path.GetFileName(file)), overwrite: true);
         foreach (var directory in Directory.EnumerateDirectories(source))
             CopyDirectory(directory, Path.Combine(destination, Path.GetFileName(directory)));
+    }
+
+    /// <summary>
+    /// Expands only the already-isolated memory-test profile so the alternating scenario really
+    /// fills the four-entry conversation LRU. Cloning an existing transcript gives each page a
+    /// representative XAML tree; the user's source profile remains untouched by the wrapper.
+    /// </summary>
+    private static async Task EnsureConversationCountAsync(int minimum)
+    {
+        var sessions = new SessionRepository();
+        var state = await sessions.LoadAsync();
+        if (state.Sessions.Count == 0) return;
+
+        var conversations = new ConversationRepository();
+        var sourceSessions = state.Sessions.ToArray();
+        var source = sourceSessions.FirstOrDefault(session => session.Id == state.ActiveSessionId)
+            ?? sourceSessions[0];
+        var existingForAgent = state.Sessions.Count(session => session.AgentId == source.AgentId);
+        if (existingForAgent >= minimum) return;
+
+        var sourceMessages = new Dictionary<string, IReadOnlyList<ChatMessage>>();
+        sourceMessages[source.Id] = await conversations.LoadMessagesAsync(source.Id);
+
+        var clones = new List<(SessionSummary Session, IReadOnlyList<ChatMessage> Messages)>();
+        for (var index = existingForAgent; index < minimum; index++)
+        {
+            var timestamp = DateTime.UtcNow.AddMilliseconds(index).ToString("o");
+            var clone = new SessionSummary
+            {
+                Id = Guid.NewGuid().ToString(),
+                AgentId = source.AgentId,
+                Title = $"Memory test conversation {index + 1}",
+                CreatedAt = timestamp,
+                UpdatedAt = timestamp,
+                Mode = source.Mode,
+            };
+            state.Sessions.Add(clone);
+            clones.Add((clone, sourceMessages[source.Id]));
+        }
+
+        await sessions.SaveAsync(state);
+        foreach (var (session, messages) in clones)
+        {
+            await conversations.UpsertMessagesAsync(session.Id, messages);
+        }
     }
 
     private void RunScenarioInFreshProcess(string scenario, int cycles, int warmupCycles, int settleMs)
@@ -129,12 +181,14 @@ public sealed class MemoryLeakTests(ITestOutputHelper output)
     private Action AlternatingConversationAction(Window window)
     {
         var index = 0;
+        var sessionCount = Math.Min(4, FindConversationButtons(window).Length);
+        output.WriteLine($"conversation-alternating cycles through {sessionCount} sessions");
         return () =>
         {
             var buttons = FindConversationButtons(window);
-            Assert.True(buttons.Length >= 2,
-                "Two conversations were available at warmup but not after navigation.");
-            Invoke(buttons[index++ & 1]);
+            Assert.True(buttons.Length >= sessionCount,
+                $"{sessionCount} conversations were available at warmup but not after navigation.");
+            Invoke(buttons[index++ % sessionCount]);
             InvokeByName(window, "ConnectOnion home");
         };
     }
