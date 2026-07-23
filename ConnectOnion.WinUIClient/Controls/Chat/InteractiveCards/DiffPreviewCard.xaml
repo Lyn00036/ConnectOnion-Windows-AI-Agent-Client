@@ -28,7 +28,7 @@
                             Style="{StaticResource InteractiveHelperTextStyle}" TextWrapping="Wrap" />
                     </Grid>
                 </Border>
-                <TextBlock Text="{x:Bind Message.DiffContextPath, Mode=OneWay}" FontFamily="Consolas" FontSize="11"
+                <TextBlock Text="{x:Bind Message.DiffContextPath, Mode=OneWay}" FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="11"
                     Margin="16,8,16,7" TextTrimming="CharacterEllipsis"
                     ToolTipService.ToolTip="{x:Bind Message.EventTitle, Mode=OneWay}"
                     AutomationProperties.Name="{x:Bind Message.EventTitle, Mode=OneWay}"
@@ -53,9 +53,9 @@
                                                 <TextBlock Text="&#xE76C;" FontFamily="Segoe Fluent Icons" FontSize="10"
                                                     Visibility="{x:Bind IsExpanded, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
                                             </Grid>
-                                            <TextBlock Grid.Column="1" Text="{x:Bind DisplayPath}" FontFamily="Consolas" FontSize="12"
+                                            <TextBlock Grid.Column="1" Text="{x:Bind DisplayPath}" FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="12"
                                                 TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{x:Bind FullPath}" />
-                                            <TextBlock Grid.Column="2" Text="{x:Bind ChangeSummary}" FontFamily="Consolas" FontSize="11"
+                                            <TextBlock Grid.Column="2" Text="{x:Bind ChangeSummary}" FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="11"
                                                 Foreground="{ThemeResource TextTertiaryBrush}" />
                                         </Grid>
                                     </Button>
@@ -67,13 +67,13 @@
                                                     AutomationProperties.Name="{x:Bind AccessibilityName}">
                                                     <Grid>
                                                         <Grid.ColumnDefinitions><ColumnDefinition Width="42" /><ColumnDefinition Width="42" /><ColumnDefinition Width="22" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                                        <TextBlock Text="{x:Bind OldLineNumber}" FontFamily="Consolas" FontSize="11" Padding="8,2" TextAlignment="Right" Foreground="{ThemeResource TextTertiaryBrush}" />
-                                                        <TextBlock Grid.Column="1" Text="{x:Bind NewLineNumber}" FontFamily="Consolas" FontSize="11" Padding="8,2" TextAlignment="Right" Foreground="{ThemeResource TextTertiaryBrush}" />
-                                                        <TextBlock Grid.Column="2" Text="{x:Bind Marker}" FontFamily="Consolas" FontSize="12" Padding="6,2" TextAlignment="Center" />
+                                                        <TextBlock Text="{x:Bind OldLineNumber}" FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="11" Padding="8,2" TextAlignment="Right" Foreground="{ThemeResource TextTertiaryBrush}" />
+                                                        <TextBlock Grid.Column="1" Text="{x:Bind NewLineNumber}" FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="11" Padding="8,2" TextAlignment="Right" Foreground="{ThemeResource TextTertiaryBrush}" />
+                                                        <TextBlock Grid.Column="2" Text="{x:Bind Marker}" FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="12" Padding="6,2" TextAlignment="Center" />
                                                         <Grid Grid.Column="3">
-                                                            <TextBlock Text="{x:Bind Content}" FontFamily="Consolas" FontSize="12" Padding="4,2,14,2" TextWrapping="NoWrap" IsTextSelectionEnabled="True"
+                                                            <TextBlock Text="{x:Bind Content}" FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="12" Padding="4,2,14,2" TextWrapping="NoWrap" IsTextSelectionEnabled="True"
                                                                 Visibility="{x:Bind IsWrapped, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
-                                                            <TextBlock Text="{x:Bind Content}" FontFamily="Consolas" FontSize="12" Padding="4,2,14,2" TextWrapping="Wrap" IsTextSelectionEnabled="True"
+                                                            <TextBlock Text="{x:Bind Content}" FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="12" Padding="4,2,14,2" TextWrapping="Wrap" IsTextSelectionEnabled="True"
                                                                 Visibility="{x:Bind IsWrapped, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                                                         </Grid>
                                                     </Grid>

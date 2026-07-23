@@ -50,7 +50,7 @@
                                Foreground="{x:Bind IconTone, Mode=OneWay, Converter={StaticResource InteractiveToneToBrush}}" />
                 </Border>
                 <TextBlock Grid.Column="2" Text="{x:Bind HeaderMeta, Mode=OneWay}"
-                           FontFamily="Consolas" FontSize="12" VerticalAlignment="Top"
+                           FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="12" VerticalAlignment="Top"
                            Foreground="{ThemeResource TextSecondaryBrush}"
                            Visibility="{x:Bind ShowStatusBadge, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
             </Grid>

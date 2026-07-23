@@ -14,7 +14,7 @@
             PreviewKeyDown="CaptureButton_PreviewKeyDown"
             LostFocus="CaptureButton_LostFocus">
         <TextBlock x:Name="ChordText"
-                   FontFamily="Consolas"
+                   FontFamily="{StaticResource JetBrainsMonoFontFamily}"
                    FontSize="12"
                    TextAlignment="Center" />
     </Button>

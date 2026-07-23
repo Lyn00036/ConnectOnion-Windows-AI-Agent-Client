@@ -46,6 +46,11 @@
     <Content Include="Assets\app-icon.ico" />
     <Content Include="Assets\icon.ico" />
     <Content Include="Assets\icon.png" />
+    <Content Include="Assets\Fonts\JetBrainsMonoNerdFontMono-Regular.ttf" />
+    <Content Include="Assets\Fonts\JetBrainsMonoNerdFontMono-Italic.ttf" />
+    <Content Include="Assets\Fonts\JetBrainsMonoNerdFontMono-Bold.ttf" />
+    <Content Include="Assets\Fonts\JetBrainsMonoNerdFontMono-BoldItalic.ttf" />
+    <Content Include="Assets\Fonts\OFL.txt" />
   </ItemGroup>
 
   <!-- Unpackaged publish does not automatically carry loose MSIX assets. Window/tray icons

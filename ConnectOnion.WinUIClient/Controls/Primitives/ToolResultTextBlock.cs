@@ -41,7 +41,8 @@ public sealed class ToolResultTextBlock : UserControl
 
     private readonly TextBlock _textBlock = new()
     {
-        FontFamily = new FontFamily("Consolas"),
+        FontFamily = new FontFamily(
+            "ms-appx:///Assets/Fonts/JetBrainsMonoNerdFontMono-Regular.ttf#JetBrainsMono NFM"),
         FontSize = 12.5,
         IsTextSelectionEnabled = true,
         // Always on: the log region is a fixed-width column, so anything that would overflow folds

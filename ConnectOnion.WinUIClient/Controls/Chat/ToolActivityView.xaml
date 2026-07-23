@@ -268,8 +268,7 @@
                                                            FontSize="13"
                                                            FontWeight="SemiBold"
                                                            Foreground="{Binding Status, Converter={StaticResource ToolStatusToBrush}, ConverterParameter=danger-only}"
-                                                           TextTrimming="CharacterEllipsis"
-                                                           ToolTipService.ToolTip="{Binding DisplayTarget}" />
+                                                           TextTrimming="CharacterEllipsis" />
                                             </StackPanel>
 
                                             <!-- Right-aligned so the column never shifts the name,
@@ -422,7 +421,7 @@
                                 Visibility="{x:Bind Activity.Approval.HasApprovalCommand, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                             <StackPanel Spacing="6">
                                 <TextBlock Text="{x:Bind Activity.Approval.ApprovalCommandText, Mode=OneWay}"
-                                           FontFamily="Consolas" FontSize="12" TextWrapping="Wrap"
+                                           FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="12" TextWrapping="Wrap"
                                            TextTrimming="Clip"
                                            MaxLines="{x:Bind Activity.Approval.ApprovalCommandMaxLines, Mode=OneWay}"
                                            IsTextSelectionEnabled="True"
@@ -456,7 +455,7 @@
                                                IconVariant="Regular" IconSize="Size16"
                                                Foreground="{ThemeResource TextSecondaryBrush}" />
                                 <TextBlock Text="{x:Bind Activity.Approval.ApprovalTargetText, Mode=OneWay}"
-                                           FontFamily="Consolas" FontSize="12"
+                                           FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="12"
                                            TextTrimming="CharacterEllipsis" IsTextSelectionEnabled="True" />
                             </StackPanel>
                         </Border>
