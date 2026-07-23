@@ -1,6 +1,8 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Models;
@@ -10,39 +12,61 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace ConnectOnion.WinUIClient.Views;
 
-/// <summary>
-/// One agent tile on the landing page. A view-only projection of <see cref="AgentConfig"/> —
-/// the display strings are computed once at load, and only <see cref="IsOnline"/> is
-/// observable, because presence is the sole field that changes while the page is open.
-/// </summary>
+/// <summary>A compact, view-only projection of one saved agent.</summary>
 public sealed partial class HomeAgentItem : Common.ObservableObject
 {
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
     public string Initial { get; set; } = "?";
     public string ShortAddress { get; set; } = "";
+    public string FullAddress { get; set; } = "";
+    public int AvatarPaletteIndex { get; set; }
+    public string AutomationName => $"Open {Name}";
 
     [ObservableProperty]
-    public partial bool IsOnline { get; set; }
+    [NotifyPropertyChangedFor(nameof(IsChecking))]
+    [NotifyPropertyChangedFor(nameof(StatusLabel))]
+    [NotifyPropertyChangedFor(nameof(StatusAutomationName))]
+    [NotifyPropertyChangedFor(nameof(IsStandardStatus))]
+    public partial AgentPresence Presence { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StatusLabel))]
+    [NotifyPropertyChangedFor(nameof(StatusAutomationName))]
+    [NotifyPropertyChangedFor(nameof(IsStandardStatus))]
+    public partial bool IsUnavailable { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsOpening { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsInteractionEnabled { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsHighlighted { get; set; }
+
+    public bool IsChecking => Presence is AgentPresence.Unknown or AgentPresence.Checking;
+    public bool IsStandardStatus => !IsChecking && !IsUnavailable;
+
+    public string StatusLabel => IsUnavailable ? "Unavailable" : Presence switch
+    {
+        AgentPresence.Online => "Online",
+        AgentPresence.Offline => "Offline",
+        _ => "Checking",
+    };
+
+    public string StatusAutomationName => $"{Name}: {StatusLabel}";
 }
 
 /// <summary>
-/// The landing page: every configured agent as a tile, plus the inline add-agent form.
-/// Clicking a tile makes that agent current, guarantees it has a conversation, and jumps
-/// to the chat.
-///
-/// Unlike the rest of the app this page has no view model — it predates that convention and
-/// reaches <c>AppServices</c> directly. New pages should take an injected view model instead
-/// (see the DI notes in CLAUDE.md).
+/// Agent picker. The virtualized list owns vertical scrolling; add-agent is a transient dialog.
 /// </summary>
-public sealed partial class HomePage : Page
+public sealed partial class HomePage : Page, IReloadablePage, IDisposable
 {
-    /// <summary>Navigation parameter asking this page to open its add-agent form on arrival.
-    /// Passed by the shell when the sidebar's "Add agent" button is clicked.</summary>
-    public const string OpenAddAgentParameter = "open-add-agent";
-
     private readonly AgentPresenceService _presence = AppServices.Presence;
-    private bool _openAddAgentOnLoad;
+    private readonly CancellationTokenSource _lifetimeCts = new();
+    private bool _isOpeningAgent;
+    private int _disposed;
 
     public ObservableCollection<HomeAgentItem> Agents { get; } = new();
 
@@ -53,132 +77,145 @@ public sealed partial class HomePage : Page
         Unloaded += HomePage_Unloaded;
     }
 
-    protected override void OnNavigatedTo(Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
+    protected override void OnNavigatedFrom(Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
     {
-        base.OnNavigatedTo(e);
-        // Recorded, not acted on: the form is opened after LoadAsync, because the labels it
-        // shows ("Add agent" vs "Add another agent") depend on the agent count, and bringing it
-        // into view before the list above it has rendered would scroll to the wrong offset.
-        _openAddAgentOnLoad = e.Parameter as string == OpenAddAgentParameter;
+        Dispose();
+        base.OnNavigatedFrom(e);
+    }
+
+    public async Task ReloadAsync()
+    {
+        if (_disposed != 0) return;
+        try { await LoadAsync(_lifetimeCts.Token); }
+        catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested) { return; }
+    }
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        _presence.PresenceChanged -= OnPresenceChanged;
+        _lifetimeCts.Cancel();
+        _lifetimeCts.Dispose();
+        Loaded -= HomePage_Loaded;
+        Unloaded -= HomePage_Unloaded;
+
+        Agents.Clear();
     }
 
     private async void HomePage_Loaded(object sender, RoutedEventArgs e)
     {
-        // Unsubscribe-then-subscribe: Loaded fires again every time the user navigates back
-        // to this page, and the presence service outlives the page, so a plain += would stack
-        // a new handler per visit and update each tile N times.
         _presence.PresenceChanged -= OnPresenceChanged;
         _presence.PresenceChanged += OnPresenceChanged;
-        await LoadAsync();
-
-        if (_openAddAgentOnLoad)
-        {
-            // One-shot: navigating back to this page later must not silently re-open the form.
-            _openAddAgentOnLoad = false;
-            OpenAddAgentPanel();
-        }
+        try { await LoadAsync(_lifetimeCts.Token); }
+        catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested) { return; }
     }
 
     private void HomePage_Unloaded(object sender, RoutedEventArgs e)
     {
-        // Detaching here is what keeps the page collectable — the singleton presence service
-        // would otherwise hold every HomePage ever navigated to alive through this handler.
         _presence.PresenceChanged -= OnPresenceChanged;
+        Dispose();
     }
 
-    private async System.Threading.Tasks.Task LoadAsync()
+    private async Task LoadAsync(CancellationToken cancellationToken = default)
     {
-        var state = await AppServices.Agents.LoadAsync();
+        var state = await AppServices.Agents.LoadAsync(cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
         Agents.Clear();
 
         foreach (var agent in state.Agents)
         {
-            Agents.Add(new HomeAgentItem
+            var item = new HomeAgentItem
             {
                 Id = agent.Id,
                 Name = agent.Name,
                 Initial = NameInitial.From(agent.Name),
                 ShortAddress = ShortenAddress(agent),
-                IsOnline = _presence.GetPresence(agent.Id) == AgentPresence.Online,
-            });
-        }
+                FullAddress = GetAddress(agent),
+                AvatarPaletteIndex = AvatarPalette.From(agent.Name),
+                IsInteractionEnabled = true,
+            };
+            ApplyPresence(item);
+            Agents.Add(item);
 
-        UpdateAddAgentLabels();
+            _ = _presence.EnsureCheckedAsync(agent);
+        }
     }
 
-    /// <summary>Presence sweeps run on a background thread, so every touch of the observable
-    /// item has to be marshalled — binding updates off the UI thread throw.</summary>
     private void OnPresenceChanged(string agentId)
     {
-        // TryEnqueue (not the throwing overload): if the window is closing the queue is gone,
-        // and a dropped presence update is the correct outcome, not an exception on a
-        // background thread with no handler.
         DispatcherQueue.TryEnqueue(() =>
         {
             var item = Agents.FirstOrDefault(agent => agent.Id == agentId);
-            if (item is not null)
-            {
-                item.IsOnline = _presence.GetPresence(agentId) == AgentPresence.Online;
-            }
+            if (item is not null) ApplyPresence(item);
         });
+    }
+
+    private void ApplyPresence(HomeAgentItem item)
+    {
+        var presence = _presence.GetPresence(item.Id);
+        item.Presence = presence;
+        item.IsUnavailable = presence == AgentPresence.Offline &&
+            !_presence.GetDetail(item.Id).Contains("currently offline", StringComparison.OrdinalIgnoreCase);
     }
 
     private async void AgentCard_Click(object sender, RoutedEventArgs e)
     {
-        if ((sender as FrameworkElement)?.Tag is not string agentId) return;
+        if (_isOpeningAgent || (sender as FrameworkElement)?.Tag is not string agentId) return;
 
-        // Re-load and re-check rather than trusting the tile: the agent could have been
-        // deleted from another surface (sidebar, settings) since this page last loaded, and
-        // navigating to a chat for a row that no longer exists strands the user on an empty
-        // page. Bailing silently is right — the tile is about to disappear anyway.
-        var agentsState = await AppServices.Agents.LoadAsync();
-        if (agentsState.Agents.All(agent => agent.Id != agentId)) return;
+        _isOpeningAgent = true;
+        PageErrorBar.IsOpen = false;
+        var selected = Agents.FirstOrDefault(agent => agent.Id == agentId);
+        foreach (var item in Agents) item.IsInteractionEnabled = false;
+        if (selected is not null) selected.IsOpening = true;
 
-        agentsState.SelectedAgentId = agentId;
-        await AppServices.Agents.SaveAsync(agentsState);
-        await EnsureSessionAsync(agentId);
-        Frame.Navigate(typeof(ChatPage));
+        try
+        {
+            var agentsState = await AppServices.Agents.LoadAsync(_lifetimeCts.Token);
+            if (agentsState.Agents.All(agent => agent.Id != agentId))
+                throw new InvalidOperationException("This agent is no longer available.");
+
+            agentsState.SelectedAgentId = agentId;
+            await AppServices.Agents.SaveAsync(agentsState, _lifetimeCts.Token);
+            await EnsureSessionAsync(agentId);
+            Frame.Navigate(typeof(ChatPage));
+        }
+        catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (Exception ex)
+        {
+            PageErrorBar.Message = ex.Message;
+            PageErrorBar.IsOpen = true;
+        }
+        finally
+        {
+            _isOpeningAgent = false;
+            if (_disposed == 0)
+            {
+                foreach (var item in Agents) item.IsInteractionEnabled = true;
+                if (selected is not null) selected.IsOpening = false;
+            }
+        }
     }
 
     private void AddAnotherAgent_Click(object sender, RoutedEventArgs e)
-        => OpenAddAgentPanel();
+        => MainWindow.FromXamlRoot(XamlRoot)?.ShowAddAgentOverlay(sender as FrameworkElement);
 
-    /// <summary>
-    /// Reveals the add-agent form and puts the caret in it. The form sits below the agent list,
-    /// so with more than a couple of agents it is off-screen when opened — showing it without
-    /// scrolling looks like the button did nothing.
-    /// </summary>
-    private void OpenAddAgentPanel()
+    public async Task RefreshAfterAgentAddedAsync(string agentId)
     {
-        // Show() also focuses the input, which on its own scrolls the field into view — but only
-        // roughly, and not at all if focus fails. The explicit bring-into-view is what guarantees
-        // the whole form (title and buttons, not just the focused TextBox) ends up visible.
-        AddAgentPanel.Show();
+        if (_disposed != 0) return;
+        try { await LoadAsync(_lifetimeCts.Token); }
+        catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested) { return; }
 
-        // Queued rather than called inline: the panel is Collapsed until Show() returns, so at
-        // this point it still has no size or position and bringing it into view would scroll to
-        // a stale offset. Low priority puts this after the layout pass that Show() triggers.
-        // TryEnqueue (not the throwing overload) because a page unloading in the same frame has
-        // no queue left, and skipping the scroll is the right outcome there.
-        DispatcherQueue?.TryEnqueue(
-            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-            () => AddAgentPanel.StartBringIntoView(new BringIntoViewOptions
-            {
-                AnimationDesired = true,
-            }));
+        var item = Agents.FirstOrDefault(agent => agent.Id == agentId);
+        if (item is null) return;
+        item.IsHighlighted = true;
+        try { await Task.Delay(TimeSpan.FromSeconds(1.6), _lifetimeCts.Token); }
+        finally { if (!_lifetimeCts.IsCancellationRequested) item.IsHighlighted = false; }
     }
 
-    private async void AddAgentForm_AgentAdded(AgentConfig _)
-    {
-        await LoadAsync();
-        Frame.Navigate(typeof(AgentDetailPage));
-    }
-
-    /// <summary>
-    /// Guarantees the agent has a current conversation before the chat page opens, so
-    /// <c>ChatPage</c> never has to handle "selected agent, no session".
-    /// </summary>
-    private static async System.Threading.Tasks.Task EnsureSessionAsync(string agentId)
+    private static async Task EnsureSessionAsync(string agentId)
     {
         var sessionsState = await AppServices.Sessions.LoadAsync();
         var recent = SessionSelection.FindExisting(
@@ -198,30 +235,21 @@ public sealed partial class HomePage : Page
         await AppServices.Sessions.SaveAsync(sessionsState);
     }
 
-    /// <summary>Subtitle for a tile: the relay address if there is one, else the direct URL.
-    /// Both are far too long to show whole, so they are elided in the middle — the leading
-    /// and trailing characters are what a user actually scans to tell two agents apart.</summary>
     private static string ShortenAddress(AgentConfig agent)
     {
-        // An agent is configured by address *or* by direct URL, never neither; the ?? "" is
-        // for a malformed row rather than a real case.
-        var value = string.IsNullOrWhiteSpace(agent.Address)
-            ? agent.DirectUrl ?? ""
-            : agent.Address;
+        var value = GetAddress(agent);
+        if (Uri.TryCreate(value, UriKind.Absolute, out var uri) && !string.IsNullOrWhiteSpace(uri.Host))
+        {
+            var authority = uri.IsDefaultPort ? uri.IdnHost : $"{uri.IdnHost}:{uri.Port}";
+            var path = uri.AbsolutePath.TrimEnd('/');
+            return string.IsNullOrEmpty(path) ? authority : $"{authority}{path}";
+        }
 
-        // 14 is the break-even: the elided form ("8 chars" + "..." + "4 chars") is 15, so
-        // shortening anything at or under 14 would make it longer.
-        if (value.Length <= 14) return value;
-        return $"{value[..8]}...{value[^4..]}";
+        if (value.Length <= 20) return value;
+        return $"{value[..10]}…{value[^6..]}";
     }
 
-    /// <summary>The add-agent affordance is worded for whether this is the user's first
-    /// agent, which is why all three labels are set from one place instead of in XAML.</summary>
-    private void UpdateAddAgentLabels()
-    {
-        var label = Agents.Count > 0 ? "Add another agent" : "Add agent";
-        AddAgentActionLabel.Text = label;
-        AddAgentPanel.FormTitle = label;
-        AddAgentPanel.SubmitLabel = label;
-    }
+    private static string GetAddress(AgentConfig agent)
+        => string.IsNullOrWhiteSpace(agent.Address) ? agent.DirectUrl ?? "" : agent.Address;
+
 }
