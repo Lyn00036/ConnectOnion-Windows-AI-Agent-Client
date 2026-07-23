@@ -58,6 +58,7 @@ public static class ServiceRegistration
         // ---- SQLite repositories ----
         services.AddSingleton<AgentRepository>();
         services.AddSingleton<SessionRepository>();
+        services.AddSingleton<SidebarStateRepository>();
         services.AddSingleton<PreferencesRepository>();
         services.AddSingleton<ConversationRepository>();
         services.AddSingleton<UsageRepository>();
