@@ -5,18 +5,53 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    Width="{x:Bind Size, Mode=OneWay}"
+    Height="{x:Bind Size, Mode=OneWay}"
     mc:Ignorable="d">
 
-    <!-- Monochrome square with the agent's initial: ink-on-white in the light theme, inverted in
-         the dark one (see the Avatar* tokens in Colors.xaml). Size/CornerRadius/FontSize are set
-         per-site; the brushes, centering and bold weight are shared. -->
-    <Border Width="{x:Bind Size, Mode=OneWay}"
-            Height="{x:Bind Size, Mode=OneWay}"
+    <!-- Identity colors are deliberately separate from Online/Warning/Error semantic colors. -->
+    <Border x:Name="AvatarBorder"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch"
             CornerRadius="{x:Bind CornerRadius, Mode=OneWay}"
             Background="{ThemeResource AvatarBackgroundBrush}"
             BorderBrush="{ThemeResource AvatarBorderBrush}"
             BorderThickness="1">
-        <TextBlock Text="{x:Bind Initial, Mode=OneWay}"
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup x:Name="PaletteStates">
+                <VisualState x:Name="Neutral" />
+                <VisualState x:Name="Blue">
+                    <VisualState.Setters>
+                        <Setter Target="AvatarBorder.Background" Value="{ThemeResource AvatarPaletteBlueBackgroundBrush}" />
+                        <Setter Target="AvatarBorder.BorderBrush" Value="{ThemeResource AvatarPaletteBlueForegroundBrush}" />
+                        <Setter Target="InitialText.Foreground" Value="{ThemeResource AvatarPaletteBlueForegroundBrush}" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="Violet">
+                    <VisualState.Setters>
+                        <Setter Target="AvatarBorder.Background" Value="{ThemeResource AvatarPaletteVioletBackgroundBrush}" />
+                        <Setter Target="AvatarBorder.BorderBrush" Value="{ThemeResource AvatarPaletteVioletForegroundBrush}" />
+                        <Setter Target="InitialText.Foreground" Value="{ThemeResource AvatarPaletteVioletForegroundBrush}" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="Teal">
+                    <VisualState.Setters>
+                        <Setter Target="AvatarBorder.Background" Value="{ThemeResource AvatarPaletteTealBackgroundBrush}" />
+                        <Setter Target="AvatarBorder.BorderBrush" Value="{ThemeResource AvatarPaletteTealForegroundBrush}" />
+                        <Setter Target="InitialText.Foreground" Value="{ThemeResource AvatarPaletteTealForegroundBrush}" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="Coral">
+                    <VisualState.Setters>
+                        <Setter Target="AvatarBorder.Background" Value="{ThemeResource AvatarPaletteCoralBackgroundBrush}" />
+                        <Setter Target="AvatarBorder.BorderBrush" Value="{ThemeResource AvatarPaletteCoralForegroundBrush}" />
+                        <Setter Target="InitialText.Foreground" Value="{ThemeResource AvatarPaletteCoralForegroundBrush}" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+        <TextBlock x:Name="InitialText"
+                   Text="{x:Bind Initial, Mode=OneWay}"
                    Foreground="{ThemeResource AvatarForegroundBrush}"
                    FontSize="{x:Bind FontSize, Mode=OneWay}"
                    FontWeight="Bold"

@@ -19,6 +19,7 @@ public sealed partial class ShellAgentItem : RowStateItem
     /// Never persisted — the internal id is unchanged.</summary>
     public string DisplayName => FriendlyAgentName.From(Name);
     public string Initial => NameInitial.From(DisplayName);
+    public int AvatarPaletteIndex => AvatarPalette.From(Name);
     public int SessionCount => Sessions.Count;
     public ObservableCollection<ShellSessionItem> Sessions { get; } = new();
 
