@@ -16,5 +16,5 @@ namespace across every file, and `MainWindow.xaml.cs` must stay in the project r
 | `MainWindow.Shortcuts.cs` | Pushes live chords into the menu items' accelerator text |
 | `MainWindow.Notifications.cs` | In-app toast host wiring |
 | `MainWindow.DragDrop.cs` | Window-wide "drop it on the composer" hint |
-| `MainWindow.Tray.cs` | Tray icon behaviour: show/hide, context menu, close-to-tray |
-| `MainWindow.Tray.Interop.cs` | The Win32 P/Invoke the tray needs (WinUI has no tray API) |
+| `MainWindow.Tray.cs` | H.NotifyIcon-backed tray lifecycle plus show/hide and close-to-tray |
+| `MainWindow.Tray.Interop.cs` | Minimal Win32 window hooks for close/minimize observation and foreground restore |

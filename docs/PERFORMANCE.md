@@ -152,3 +152,13 @@ objects — allocation tuning cannot move it.
   conversation, scrolling, and searching are **not** covered — those still want an ETW capture
   (see `docs/OPTIMIZATION.md`) and remain on the backlog as budgets.
 - Not run in CI: it needs a real desktop session, like the FlaUI smoke test.
+
+## Repeated-navigation memory leak gate
+
+Idle memory and repeated-use retention are different tests. The launch benchmark above samples
+one settled process; `scripts/Test-MemoryLeaks.ps1` repeatedly opens and closes every persistent
+navigation surface and asserts that Private Bytes, handles, and threads plateau after warm-up.
+
+See [MEMORY_LEAK_INVESTIGATION.md](./MEMORY_LEAK_INVESTIGATION.md) for the July 2026 incident,
+the measured before/after curves, why Task Manager does not return to the launch baseline, and the
+test's thresholds and limitations.

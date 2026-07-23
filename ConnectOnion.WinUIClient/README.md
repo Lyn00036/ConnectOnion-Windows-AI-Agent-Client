@@ -79,7 +79,7 @@ ConnectOnion.WinUIClient/
 │   ├── MainWindow.Shortcuts.cs          Live chords → menu accelerator text
 │   ├── MainWindow.Notifications.cs      In-app toast host, activation routing
 │   ├── MainWindow.DragDrop.cs           Window-wide drop hint (not itself a drop target)
-│   └── MainWindow.Tray.cs / .Tray.Interop.cs  Tray icon + the Win32 P/Invoke it needs
+│   └── MainWindow.Tray.cs / .Tray.Interop.cs  H.NotifyIcon tray lifecycle + minimal window hooks
 │
 ├── Views/                              XAML pages
 │   ├── HomePage                         Agent selection (landing)
