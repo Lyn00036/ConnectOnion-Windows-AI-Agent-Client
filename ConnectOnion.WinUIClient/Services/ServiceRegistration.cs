@@ -53,6 +53,7 @@ public static class ServiceRegistration
         services.AddSingleton<HttpClient>(sp =>
             sp.GetRequiredService<IHttpClientFactory>().CreateClient(AgentHttpClient));
         services.AddSingleton<IUriLauncher, SystemUriLauncher>();
+        services.AddSingleton<ConnectionTester>();
 
         // ---- SQLite repositories ----
         services.AddSingleton<AgentRepository>();
@@ -97,6 +98,7 @@ public static class ServiceRegistration
 
         // ---- View models (transient: one per page/dialog, resolved in each view's ctor) ----
         services.AddTransient<ChatViewModel>();
+        services.AddTransient<AddAgentViewModel>();
         services.AddTransient<SessionsViewModel>();
         services.AddTransient<AgentDetailViewModel>();
         services.AddTransient<SettingsViewModel>();

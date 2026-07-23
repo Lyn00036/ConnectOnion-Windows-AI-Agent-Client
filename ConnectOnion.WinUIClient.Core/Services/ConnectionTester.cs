@@ -1,38 +1,41 @@
 using System;
+using System.Net.Http;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-using ConnectOnion.WinUIClient.Models;
 
 namespace ConnectOnion.WinUIClient.Services;
 
 public readonly record struct ConnectionTestResult(
-    bool Ok, string Detail, string? AgentName = null,
-    bool InfoChanged = false, string? InfoJson = null);
+    bool Ok, string Detail, string? AgentName = null);
 
 /// <summary>
 /// Reachability check for an agent target. Port of <c>connectionTest.ts</c>.
 ///
-/// Both Direct URL and relay-address paths probe <c>GET /info</c> so the
-/// online check and metadata fetch happen in a single request.
+/// Direct URL and relay-address paths use the lightweight <c>GET /health</c>
+/// contract. Full metadata is fetched separately when the detail page opens.
 /// </summary>
-public static class ConnectionTester
+public sealed class ConnectionTester
 {
     private const int DefaultTimeoutMs = 6000;
 
     // Relay-address probes make an extra hop through the relay server before the
-    // agent is reached, so they need a longer budget than a direct /info hit.
+    // agent is reached, so they need a longer budget than a direct /health hit.
     private const int RelayTimeoutMs = 12000;
     private static readonly JsonDocumentOptions JsonOptions = new()
     {
         AllowDuplicateProperties = false,
     };
     private static readonly Regex AddressPattern = new("^[a-zA-Z0-9]+$", RegexOptions.Compiled);
+    private readonly HttpClient _http;
 
-    public static async Task<ConnectionTestResult> TestAsync(
+    public ConnectionTester(HttpClient http) => _http = http;
+
+    public async Task<ConnectionTestResult> TestAsync(
         string? address, string? directUrl, int timeoutMs = DefaultTimeoutMs,
-        AgentConfig? existingAgent = null, bool forceRefresh = false)
+        bool forceRefresh = false,
+        CancellationToken cancellationToken = default)
     {
         directUrl = directUrl?.Trim();
 
@@ -40,16 +43,17 @@ public static class ConnectionTester
         {
             // A Direct URL is the most specific target, so prefer it over a relay
             // address when both are present.
-            if (!TryBuildInfoUrl(directUrl, out var infoUrl))
+            if (!TryBuildHealthUrl(directUrl, out var healthUrl))
             {
                 return new ConnectionTestResult(false, "Invalid Direct URL.");
             }
 
             try
             {
-                using var cts = new CancellationTokenSource(timeoutMs);
-                using var response = await AppServices.Http
-                    .GetAsync(infoUrl, cts.Token)
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                cts.CancelAfter(timeoutMs);
+                using var response = await _http
+                    .GetAsync(healthUrl, cts.Token)
                     .ConfigureAwait(false);
 
                 if (!response.IsSuccessStatusCode)
@@ -58,20 +62,18 @@ public static class ConnectionTester
                 }
 
                 var body = await response.Content.ReadAsStringAsync(cts.Token).ConfigureAwait(false);
-                var name = ExtractAgentNameFromJson(body);
-                var suffix = name is null ? "" : $" - {name}";
-
-                // The /info response is already the freshest data — compare
-                // directly instead of making a separate fetch.
-                var infoChanged = false;
-                if (existingAgent is not null)
+                var (healthy, name) = ParseHealth(body);
+                if (!healthy)
                 {
-                    infoChanged = existingAgent.InfoJson != body;
+                    return new ConnectionTestResult(false, "Agent health check reported an unhealthy state.");
                 }
-
+                var suffix = name is null ? "" : $" - {name}";
                 return new ConnectionTestResult(
-                    true, $"Reachable via Direct URL{suffix}.", AgentName: name,
-                    InfoChanged: infoChanged, InfoJson: body);
+                    true, $"Healthy via Direct URL{suffix}.", AgentName: name);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
             }
             catch (OperationCanceledException)
             {
@@ -93,15 +95,20 @@ public static class ConnectionTester
 
             try
             {
-                var info = await ConnectOnion.Protocol.EndpointResolver
-                    .FetchAgentInfoAsync(AppServices.Http, address, ConnectOnion.Protocol.EndpointResolver.DefaultRelay, RelayTimeoutMs, forceRefresh)
+                var health = await ConnectOnion.Protocol.EndpointResolver
+                    .FetchAgentHealthAsync(_http, address, ConnectOnion.Protocol.EndpointResolver.DefaultRelay, RelayTimeoutMs, forceRefresh)
+                    .WaitAsync(cancellationToken)
                     .ConfigureAwait(false);
-                if (info.Online)
+                if (health.Online)
                 {
-                    var suffix = string.IsNullOrEmpty(info.Name) ? "" : $" - {info.Name}";
-                    return new ConnectionTestResult(true, $"Online via relay{suffix}.", AgentName: info.Name);
+                    var suffix = string.IsNullOrEmpty(health.Name) ? "" : $" - {health.Name}";
+                    return new ConnectionTestResult(true, $"Healthy via relay{suffix}.", AgentName: health.Name);
                 }
                 return new ConnectionTestResult(false, "Registered on the relay but currently offline.");
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
             }
             catch
             {
@@ -112,33 +119,58 @@ public static class ConnectionTester
         return new ConnectionTestResult(false, "Enter a Direct URL or agent address first.");
     }
 
-    // Preserve the configured origin/base path, append /info, drop any
+    // Preserve the configured origin/base path, append /health, drop any
     // user-entered query string or fragment.
-    private static bool TryBuildInfoUrl(string directUrl, out Uri infoUrl)
+    private static bool TryBuildHealthUrl(string directUrl, out Uri healthUrl)
     {
-        infoUrl = null!;
+        healthUrl = null!;
         if (!Uri.TryCreate(directUrl, UriKind.Absolute, out var uri)) return false;
 
         var builder = new UriBuilder(uri)
         {
-            Path = uri.AbsolutePath.TrimEnd('/') + "/info",
+            Scheme = uri.Scheme.Equals("wss", StringComparison.OrdinalIgnoreCase)
+                ? Uri.UriSchemeHttps
+                : uri.Scheme.Equals("ws", StringComparison.OrdinalIgnoreCase)
+                    ? Uri.UriSchemeHttp
+                    : uri.Scheme,
+            Path = uri.AbsolutePath.TrimEnd('/') + "/health",
             Query = string.Empty,
             Fragment = string.Empty,
         };
-        infoUrl = builder.Uri;
+        if (uri.IsDefaultPort) builder.Port = -1;
+        if (builder.Scheme is not ("http" or "https")) return false;
+        healthUrl = builder.Uri;
         return true;
     }
 
-    private static string? ExtractAgentNameFromJson(string body)
+    private static (bool Healthy, string? Name) ParseHealth(string body)
     {
         try
         {
             using var doc = JsonDocument.Parse(body, JsonOptions);
-            return ExtractAgentName(doc.RootElement);
+            var root = doc.RootElement;
+            if (root.TryGetProperty("healthy", out var healthy) &&
+                healthy.ValueKind is JsonValueKind.True or JsonValueKind.False &&
+                healthy.ValueKind == JsonValueKind.False)
+            {
+                return (false, ExtractAgentName(root));
+            }
+
+            if (root.TryGetProperty("status", out var status) &&
+                status.ValueKind == JsonValueKind.String &&
+                status.GetString()?.Trim().ToLowerInvariant() is
+                    ("offline" or "unhealthy" or "error" or "failed" or "fail"))
+            {
+                return (false, ExtractAgentName(root));
+            }
+
+            return (true, ExtractAgentName(root));
         }
         catch
         {
-            return null;
+            // A successful HTTP health response is sufficient for older agents that return
+            // plain text or an empty body instead of JSON.
+            return (true, null);
         }
     }
 
