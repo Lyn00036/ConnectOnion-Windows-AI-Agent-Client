@@ -10,6 +10,9 @@ namespace ConnectOnion.Protocol;
 
 public sealed record ResolvedEndpoint(string HttpUrl, string WsUrl);
 
+/// <summary>Lightweight reachability state returned by an agent's <c>/health</c> endpoint.</summary>
+public sealed record AgentHealth(string Address, bool Online, string? Name = null);
+
 /// <summary>A single skill entry from the agent's published profile or /info.</summary>
 public sealed record SkillInfo(string Name, string Description, string? Location = null);
 
@@ -46,7 +49,10 @@ public sealed record AgentInfo(
 public static class EndpointResolver
 {
     public const string DefaultRelay = "wss://oo.openonion.ai";
+    private const int MaxCacheEntriesPerKind = 128;
     private static readonly TimeSpan EndpointCacheTtl = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan HealthOnlineCacheTtl = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan HealthOfflineCacheTtl = TimeSpan.FromSeconds(30);
     // Offline is cached for half as long as online, deliberately: an agent that just came back
     // up should be usable within ~30s, whereas re-confirming a working endpoint is pure cost.
     private static readonly TimeSpan AgentInfoOnlineCacheTtl = TimeSpan.FromMinutes(1);
@@ -55,11 +61,12 @@ public static class EndpointResolver
     /// Longer than the others because it is only a *hint* — it is re-probed before use, and a
     /// miss just falls through to the full parallel sweep.</summary>
     private static readonly TimeSpan DirectInfoCacheTtl = TimeSpan.FromMinutes(5);
-    // One lock over all five dictionaries. They are only ever touched in short, non-awaiting
+    // One lock over all cache and in-flight dictionaries. They are only ever touched in short, non-awaiting
     // critical sections (the network calls happen outside), so finer-grained locking would buy
     // nothing but a chance to get the ordering wrong.
     private static readonly object CacheGate = new();
     private static readonly Dictionary<string, EndpointCacheEntry> EndpointCache = new();
+    private static readonly Dictionary<string, HealthCacheEntry> HealthCache = new();
     private static readonly Dictionary<string, AgentInfoCacheEntry> AgentInfoCache = new();
     private static readonly Dictionary<string, DirectInfoCacheEntry> DirectInfoCache = new();
     // In-flight request coalescing: a second caller asking for the same key while a lookup is
@@ -67,13 +74,38 @@ public static class EndpointResolver
     // sweeps fan out across every agent at once — without it, N sidebar rows for one agent
     // would each open their own relay lookup.
     private static readonly Dictionary<string, Task<ResolvedEndpoint?>> EndpointInflight = new();
+    private static readonly Dictionary<string, Task<AgentHealth>> HealthInflight = new();
     private static readonly Dictionary<string, Task<AgentInfo>> AgentInfoInflight = new();
     private static readonly JsonDocumentOptions JsonOptions = new()
     {
         AllowDuplicateProperties = false,
     };
 
+    internal static (int Endpoints, int Healths, int AgentInfos, int DirectInfos) CacheCountsForTests
+    {
+        get
+        {
+            lock (CacheGate)
+                return (EndpointCache.Count, HealthCache.Count, AgentInfoCache.Count, DirectInfoCache.Count);
+        }
+    }
+
+    internal static void ClearCachesForTests()
+    {
+        lock (CacheGate)
+        {
+            EndpointCache.Clear();
+            HealthCache.Clear();
+            AgentInfoCache.Clear();
+            DirectInfoCache.Clear();
+            EndpointInflight.Clear();
+            HealthInflight.Clear();
+            AgentInfoInflight.Clear();
+        }
+    }
+
     private sealed record EndpointCacheEntry(ResolvedEndpoint? Endpoint, DateTimeOffset CheckedAt);
+    private sealed record HealthCacheEntry(AgentHealth Health, DateTimeOffset CheckedAt);
     private sealed record AgentInfoCacheEntry(AgentInfo Info, DateTimeOffset CheckedAt);
     private sealed record DirectInfoCacheEntry(string EndpointUrl, DateTimeOffset CheckedAt);
 
@@ -137,6 +169,7 @@ public static class EndpointResolver
 
         lock (CacheGate)
         {
+            PruneCachesLocked(DateTimeOffset.UtcNow);
             if (!forceRefresh &&
                 EndpointCache.TryGetValue(key, out var cached) &&
                 DateTimeOffset.UtcNow - cached.CheckedAt < EndpointCacheTtl)
@@ -169,7 +202,11 @@ public static class EndpointResolver
 #pragma warning disable VSTHRD003
             var endpoint = await task.ConfigureAwait(false);
 #pragma warning restore VSTHRD003
-            lock (CacheGate) EndpointCache[key] = new EndpointCacheEntry(endpoint, DateTimeOffset.UtcNow);
+            lock (CacheGate)
+            {
+                EndpointCache[key] = new EndpointCacheEntry(endpoint, DateTimeOffset.UtcNow);
+                PruneCachesLocked(DateTimeOffset.UtcNow);
+            }
             return endpoint;
         }
         finally
@@ -202,14 +239,15 @@ public static class EndpointResolver
         {
             // Many advertised endpoints (localhost, docker IPs, NAT-bound public
             // IPs) fail from the caller's network; one failure must not abort.
-            var info = await GetJsonAsync(http, $"{httpUrl}/info", timeoutMs).ConfigureAwait(false);
-            // The address check is the real gate, not a sanity check: the relay's endpoint list
-            // is only a claim, and a stale or hijacked entry could point at some other agent
-            // (or a machine that reused the address). An endpoint is only accepted once it
-            // identifies itself as the agent we asked for.
-            if (info is not null &&
-                info.Value.TryGetProperty("address", out var addr) &&
-                addr.GetString() == agentAddress)
+            var health = await GetHealthAsync(http, $"{httpUrl.TrimEnd('/')}/health", timeoutMs)
+                .ConfigureAwait(false);
+            // Newer health payloads include the address; require a match when present. Older
+            // agents only return a status field, which is still safe to accept here because the
+            // candidate URL came from this address's relay record.
+            if (health.Success &&
+                (health.Payload is null ||
+                 (HealthMatchesAddress(health.Payload.Value, agentAddress) &&
+                  HealthPayloadIsHealthy(health.Payload.Value))))
             {
                 // Socket scheme follows the endpoint's own: never silently downgrade a
                 // TLS endpoint to ws://.
@@ -223,6 +261,117 @@ public static class EndpointResolver
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Fetches and caches lightweight agent health. Direct endpoints are checked through
+    /// <c>GET /health</c>; no metadata is read from <c>/info</c>. If no announced endpoint is
+    /// directly reachable, an active relay connection is retained as the reachability fallback.
+    /// </summary>
+    public static async Task<AgentHealth> FetchAgentHealthAsync(
+        HttpClient http, string agentAddress, string relayUrl, int timeoutMs = 5000,
+        bool forceRefresh = false)
+    {
+        var key = $"{NormalizeRelayUrl(relayUrl)}|{agentAddress}";
+        Task<AgentHealth> task;
+        var ownsTask = false;
+
+        lock (CacheGate)
+        {
+            PruneCachesLocked(DateTimeOffset.UtcNow);
+            if (!forceRefresh &&
+                HealthCache.TryGetValue(key, out var cached) &&
+                DateTimeOffset.UtcNow - cached.CheckedAt <
+                    (cached.Health.Online ? HealthOnlineCacheTtl : HealthOfflineCacheTtl))
+            {
+                return cached.Health;
+            }
+
+            if (HealthInflight.TryGetValue(key, out var running))
+            {
+                task = running;
+            }
+            else
+            {
+                task = FetchAgentHealthUncachedAsync(http, agentAddress, relayUrl, timeoutMs);
+                HealthInflight[key] = task;
+                ownsTask = true;
+            }
+        }
+
+        if (!ownsTask) return await task.ConfigureAwait(false);
+        try
+        {
+#pragma warning disable VSTHRD003
+            var health = await task.ConfigureAwait(false);
+#pragma warning restore VSTHRD003
+            lock (CacheGate)
+            {
+                HealthCache[key] = new HealthCacheEntry(health, DateTimeOffset.UtcNow);
+                PruneCachesLocked(DateTimeOffset.UtcNow);
+            }
+            return health;
+        }
+        finally
+        {
+            lock (CacheGate) HealthInflight.Remove(key);
+        }
+    }
+
+    private static async Task<AgentHealth> FetchAgentHealthUncachedAsync(
+        HttpClient http, string agentAddress, string relayUrl, int timeoutMs)
+    {
+        var httpsRelay = ToHttps(relayUrl);
+        var record = await GetJsonAsync(
+                http, $"{httpsRelay}/api/relay/agents/{agentAddress}", timeoutMs)
+            .ConfigureAwait(false);
+        if (record is null) return new AgentHealth(agentAddress, false);
+
+        var relayOnline = record.Value.TryGetProperty("relay", out var relayEl) &&
+                          relayEl.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined);
+        var name = TryReadAgentName(record.Value);
+
+        if (!record.Value.TryGetProperty("endpoints", out var endpointsEl) ||
+            endpointsEl.ValueKind != JsonValueKind.Array)
+        {
+            return new AgentHealth(agentAddress, relayOnline, name);
+        }
+
+        var pending = endpointsEl.EnumerateArray()
+            .Select(endpoint => endpoint.GetString())
+            .Where(endpoint => endpoint is not null &&
+                               endpoint.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            .Select(endpoint => endpoint!)
+            .OrderBy(Proximity)
+            .Select(async endpoint =>
+            {
+                var health = await GetHealthAsync(
+                        http, $"{endpoint.TrimEnd('/')}/health", timeoutMs)
+                    .ConfigureAwait(false);
+                return health;
+            })
+            .ToList();
+
+        while (pending.Count > 0)
+        {
+            var completed = await Task.WhenAny(pending).ConfigureAwait(false);
+            pending.Remove(completed);
+            var health = await completed.ConfigureAwait(false);
+            if (!health.Success ||
+                health.Payload is { } payload &&
+                (!HealthMatchesAddress(payload, agentAddress) ||
+                 !HealthPayloadIsHealthy(payload)))
+            {
+                continue;
+            }
+
+            return new AgentHealth(
+                agentAddress,
+                true,
+                health.Payload is { } value ? TryReadAgentName(value) ?? name : name);
+        }
+
+        return new AgentHealth(agentAddress, relayOnline, name);
     }
 
     /// <summary>
@@ -240,6 +389,7 @@ public static class EndpointResolver
 
         lock (CacheGate)
         {
+            PruneCachesLocked(DateTimeOffset.UtcNow);
             if (!forceRefresh &&
                 AgentInfoCache.TryGetValue(key, out var cached) &&
                 DateTimeOffset.UtcNow - cached.CheckedAt < (cached.Info.Online ? AgentInfoOnlineCacheTtl : AgentInfoOfflineCacheTtl))
@@ -271,7 +421,11 @@ public static class EndpointResolver
 #pragma warning disable VSTHRD003
             var info = await task.ConfigureAwait(false);
 #pragma warning restore VSTHRD003
-            lock (CacheGate) AgentInfoCache[key] = new AgentInfoCacheEntry(info, DateTimeOffset.UtcNow);
+            lock (CacheGate)
+            {
+                AgentInfoCache[key] = new AgentInfoCacheEntry(info, DateTimeOffset.UtcNow);
+                PruneCachesLocked(DateTimeOffset.UtcNow);
+            }
             return info;
         }
         finally
@@ -322,6 +476,7 @@ public static class EndpointResolver
         string? cachedEndpoint = null;
         lock (CacheGate)
         {
+            PruneCachesLocked(DateTimeOffset.UtcNow);
             if (DirectInfoCache.TryGetValue(agentAddress, out var cached) &&
                 DateTimeOffset.UtcNow - cached.CheckedAt < DirectInfoCacheTtl)
             {
@@ -367,6 +522,7 @@ public static class EndpointResolver
                 lock (CacheGate)
                 {
                     DirectInfoCache[agentAddress] = new DirectInfoCacheEntry(httpUrl, DateTimeOffset.UtcNow);
+                    PruneCachesLocked(DateTimeOffset.UtcNow);
                 }
                 var directInfo = ParseInfoSource(info.Value);
                 return MergeAgentInfo(fallback, profileInfo, directInfo, online: true);
@@ -374,6 +530,67 @@ public static class EndpointResolver
         }
 
         return fallback;
+    }
+
+    /// <summary>Removes expired entries and caps each independent cache. TTL without removal is
+    /// only a freshness policy: unique agent/relay keys would otherwise remain strongly held for
+    /// the process lifetime even though callers can no longer use their values.</summary>
+    private static void PruneCachesLocked(DateTimeOffset now)
+    {
+        foreach (var key in EndpointCache
+            .Where(pair => now - pair.Value.CheckedAt >= EndpointCacheTtl)
+            .Select(pair => pair.Key)
+            .ToArray())
+        {
+            EndpointCache.Remove(key);
+        }
+
+        foreach (var key in HealthCache
+            .Where(pair => now - pair.Value.CheckedAt >=
+                (pair.Value.Health.Online ? HealthOnlineCacheTtl : HealthOfflineCacheTtl))
+            .Select(pair => pair.Key)
+            .ToArray())
+        {
+            HealthCache.Remove(key);
+        }
+
+        foreach (var key in AgentInfoCache
+            .Where(pair => now - pair.Value.CheckedAt >=
+                (pair.Value.Info.Online ? AgentInfoOnlineCacheTtl : AgentInfoOfflineCacheTtl))
+            .Select(pair => pair.Key)
+            .ToArray())
+        {
+            AgentInfoCache.Remove(key);
+        }
+
+        foreach (var key in DirectInfoCache
+            .Where(pair => now - pair.Value.CheckedAt >= DirectInfoCacheTtl)
+            .Select(pair => pair.Key)
+            .ToArray())
+        {
+            DirectInfoCache.Remove(key);
+        }
+
+        TrimOldestLocked(EndpointCache, entry => entry.CheckedAt);
+        TrimOldestLocked(HealthCache, entry => entry.CheckedAt);
+        TrimOldestLocked(AgentInfoCache, entry => entry.CheckedAt);
+        TrimOldestLocked(DirectInfoCache, entry => entry.CheckedAt);
+    }
+
+    private static void TrimOldestLocked<T>(
+        Dictionary<string, T> cache, Func<T, DateTimeOffset> checkedAt)
+    {
+        var excess = cache.Count - MaxCacheEntriesPerKind;
+        if (excess <= 0) return;
+
+        foreach (var key in cache
+            .OrderBy(pair => checkedAt(pair.Value))
+            .Take(excess)
+            .Select(pair => pair.Key)
+            .ToArray())
+        {
+            cache.Remove(key);
+        }
     }
 
     /// <summary>Parses one metadata source (a relay profile or an <c>/info</c> body) into the
@@ -571,6 +788,87 @@ public static class EndpointResolver
         }
         value = null;
         return false;
+    }
+
+    private static bool HealthMatchesAddress(JsonElement health, string agentAddress)
+    {
+        if (!TryGetString(health, "address", out var reportedAddress) ||
+            string.IsNullOrWhiteSpace(reportedAddress))
+        {
+            return true;
+        }
+
+        return string.Equals(reportedAddress, agentAddress, StringComparison.Ordinal);
+    }
+
+    private static bool HealthPayloadIsHealthy(JsonElement health)
+    {
+        if (health.TryGetProperty("healthy", out var healthy) &&
+            healthy.ValueKind is JsonValueKind.True or JsonValueKind.False)
+        {
+            return healthy.ValueKind == JsonValueKind.True;
+        }
+
+        if (TryGetString(health, "status", out var status))
+        {
+            return status?.Trim().ToLowerInvariant() is not
+                ("offline" or "unhealthy" or "error" or "failed" or "fail");
+        }
+
+        return true;
+    }
+
+    private static string? TryReadAgentName(JsonElement source)
+    {
+        foreach (var key in new[] { "name", "agentName", "agent_name", "alias" })
+        {
+            if (TryGetString(source, key, out var name) && !string.IsNullOrWhiteSpace(name))
+                return name.Trim();
+        }
+
+        foreach (var key in new[] { "agent", "profile" })
+        {
+            if (source.TryGetProperty(key, out var nested) &&
+                nested.ValueKind == JsonValueKind.Object)
+            {
+                var name = TryReadAgentName(nested);
+                if (!string.IsNullOrWhiteSpace(name)) return name;
+            }
+        }
+
+        return null;
+    }
+
+    private readonly record struct HealthProbeResult(bool Success, JsonElement? Payload);
+
+    private static async Task<HealthProbeResult> GetHealthAsync(
+        HttpClient http, string url, int timeoutMs)
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(timeoutMs);
+            using var response = await http.GetAsync(url, cts.Token).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode) return new HealthProbeResult(false, null);
+
+            var body = await response.Content.ReadAsStringAsync(cts.Token).ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(body)) return new HealthProbeResult(true, null);
+
+            try
+            {
+                using var doc = JsonDocument.Parse(body, JsonOptions);
+                return new HealthProbeResult(true, doc.RootElement.Clone());
+            }
+            catch (JsonException)
+            {
+                // A 2xx response is sufficient for older agents whose health endpoint returns
+                // plain text. JSON is optional metadata, not the reachability signal itself.
+                return new HealthProbeResult(true, null);
+            }
+        }
+        catch
+        {
+            return new HealthProbeResult(false, null);
+        }
     }
 
     private static async Task<JsonElement?> GetJsonAsync(HttpClient http, string url, int timeoutMs)
