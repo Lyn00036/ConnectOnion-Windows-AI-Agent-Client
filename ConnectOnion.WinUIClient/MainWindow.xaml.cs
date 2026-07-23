@@ -331,6 +331,7 @@ public sealed partial class MainWindow : Window
         try
         {
             await ShellSidebar.RefreshAsync();
+            await SettingsOverlay.RefreshAgentsAsync();
             if (ContentFrame.Content is HomePage homePage)
                 await homePage.RefreshAfterAgentAddedAsync(agent.Id);
         }
@@ -339,6 +340,9 @@ public sealed partial class MainWindow : Window
             // Persistence has already succeeded. The sidebar/page will recover on its next load.
         }
     }
+
+    internal System.Threading.Tasks.Task<bool> DeleteAgentAsync(string agentId)
+        => ShellSidebar.DeleteAgentAsync(agentId);
 
     private void ShowSettingsOverlay(FrameworkElement? opener = null)
         => SettingsOverlay.Show(opener);
