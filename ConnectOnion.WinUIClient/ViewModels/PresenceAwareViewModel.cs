@@ -64,9 +64,9 @@ public abstract partial class PresenceAwareViewModel : Common.ObservableObject
     public string PresenceLabel => Presence switch
     {
         AgentPresence.Online => "Online",
-        AgentPresence.Checking => "Checking...",
+        AgentPresence.Checking => "Connecting",
         AgentPresence.Offline => "Offline",
-        _ => "Unknown",
+        _ => "Unavailable",
     };
 
     /// <summary>Attention line shown in the offline bar after a manual recheck that resolved to still-offline.</summary>

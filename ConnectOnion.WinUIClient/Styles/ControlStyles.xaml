@@ -49,8 +49,8 @@
          the default Button template's square-cornered background leaking out
          behind an opaque inner Border. Used by the Home page's agent picker. -->
     <Style x:Key="CardButtonStyle" TargetType="Button">
-        <Setter Property="Background" Value="{ThemeResource SurfaceElevatedBrush}" />
-        <Setter Property="BorderBrush" Value="{ThemeResource BorderDefaultBrush}" />
+        <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="8" />
         <Setter Property="Padding" Value="14" />
@@ -78,13 +78,13 @@
                                 <VisualState x:Name="PointerOver">
                                     <VisualState.Setters>
                                         <Setter Target="RootBorder.Background" Value="{ThemeResource SurfaceHoverBrush}" />
-                                        <Setter Target="RootBorder.BorderBrush" Value="{ThemeResource BrandPrimaryBrush}" />
+                                        <Setter Target="RootBorder.BorderBrush" Value="{ThemeResource BorderStrongBrush}" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="Pressed">
                                     <VisualState.Setters>
-                                        <Setter Target="RootBorder.Background" Value="{ThemeResource BrandPrimarySubtleBrush}" />
-                                        <Setter Target="RootBorder.BorderBrush" Value="{ThemeResource BrandPrimaryBrush}" />
+                                        <Setter Target="RootBorder.Background" Value="{ThemeResource SurfacePressedBrush}" />
+                                        <Setter Target="ContentPresenter.Opacity" Value="0.82" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="Disabled">

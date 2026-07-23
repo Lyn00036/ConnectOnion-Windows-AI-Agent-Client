@@ -54,14 +54,18 @@ public sealed partial class ShellSidebar
     private async void DeleteAgent_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.Tag is not string agentId) return;
+        await DeleteAgentAsync(agentId);
+    }
 
+    internal async System.Threading.Tasks.Task<bool> DeleteAgentAsync(string agentId)
+    {
         try
         {
             var agentsState = await AppServices.Agents.LoadAsync();
         var agent = agentsState.Agents.FirstOrDefault(entry => entry.Id == agentId);
-        if (agent is null) return;
+        if (agent is null) return false;
 
-        if (!await ConfirmDeleteAsync($"Delete {agent.Name}?", "This agent and all of its local sessions will be removed.")) return;
+        if (!await ConfirmDeleteAsync($"Delete {agent.DisplayName}?", "This agent and all of its local sessions will be removed.")) return false;
 
         agentsState.Agents.Remove(agent);
         if (agentsState.SelectedAgentId == agentId)
@@ -96,10 +100,15 @@ public sealed partial class ShellSidebar
         }
         await AppServices.Sessions.SaveAsync(sessionsState);
 
+        AppServices.RunManager.ForgetAgent(agentId);
+        AppServices.Presence.Forget(agentId);
+        AppServices.Notifications.NotifyConnectionRestored(agentId);
+
         await RefreshAsync();
         RequestNavigation(typeof(ChatPage), forceReload: true);
+        return true;
         }
-        catch { /* Ignore errors during agent deletion. */ }
+        catch { return false; }
     }
 
     /// <summary>A conversation row inside an agent's branch. Focuses that agent, since the user
@@ -194,7 +203,8 @@ public sealed partial class ShellSidebar
     private async void AddAgent_Click(object sender, RoutedEventArgs e)
     {
         await RefreshAsync();
-        AddAgentRequested?.Invoke();
+        if (sender is FrameworkElement opener)
+            AddAgentRequested?.Invoke(opener);
     }
 
     private async void Settings_Click(object sender, RoutedEventArgs e)

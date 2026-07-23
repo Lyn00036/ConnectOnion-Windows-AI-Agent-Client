@@ -24,7 +24,8 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
     /// <summary>The monospace face used for inline code, fenced blocks, and any search highlight
     /// inside them. One instance: it is immutable, and the descent cache in
     /// <see cref="HighlightedTextBlock"/> keys off its <c>Source</c>.</summary>
-    private static readonly FontFamily CodeFont = new("Consolas");
+    private static readonly FontFamily CodeFont =
+        new("ms-appx:///Assets/Fonts/JetBrainsMonoNerdFontMono-Regular.ttf#JetBrainsMono NFM");
 
     private readonly RichTextBlock _target;
     private readonly Stack<InlineCollection> _inlineScopes = new();

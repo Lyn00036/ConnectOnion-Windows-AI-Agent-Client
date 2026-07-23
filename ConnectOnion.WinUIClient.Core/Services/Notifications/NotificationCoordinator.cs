@@ -101,6 +101,7 @@ public sealed class NotificationCoordinator : IDisposable
         long toolCallCount,
         double durationMs)
     {
+        agentName = Common.FriendlyAgentName.From(agentName);
         var isTask = toolCallCount > 0 || durationMs >= TaskDurationThreshold.TotalMilliseconds;
         var type = isTask ? NotificationType.TaskCompleted : NotificationType.AgentReply;
         var preview = NotificationText.Preview(replyText);
@@ -125,6 +126,7 @@ public sealed class NotificationCoordinator : IDisposable
         string? description,
         string argumentsJson)
     {
+        agentName = Common.FriendlyAgentName.From(agentName);
         var body = string.IsNullOrWhiteSpace(description)
             ? $"{agentName} wants to run \"{tool}\"."
             : NotificationText.Preview(description);
@@ -154,6 +156,7 @@ public sealed class NotificationCoordinator : IDisposable
     public void NotifyConnectionLost(string agentId, string agentName)
     {
         if (string.IsNullOrEmpty(agentId)) return;
+        agentName = Common.FriendlyAgentName.From(agentName);
         lock (_gate)
         {
             if (_disposed) return;

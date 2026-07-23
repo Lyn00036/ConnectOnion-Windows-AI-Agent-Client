@@ -35,21 +35,23 @@ public sealed class LocalPathToImageSourceConverter : IValueConverter
 
     // Converters run on the UI thread, so a plain dictionary + queue is enough. The queue gives
     // FIFO eviction; a strict LRU isn't worth the bookkeeping for a cache this small.
-    private static readonly Dictionary<string, BitmapImage> Cache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<string, WeakReference<BitmapImage>> Cache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Queue<string> CacheOrder = new();
 
     public object? Convert(object value, Type targetType, object parameter, string language)
     {
         if (value is not string path || string.IsNullOrWhiteSpace(path)) return null;
-        if (Cache.TryGetValue(path, out var cached)) return cached;
+        if (Cache.TryGetValue(path, out var cached) && cached.TryGetTarget(out var cachedImage))
+            return cachedImage;
 
         // Handed back empty and filled in asynchronously — the same deal as BitmapImage's own
         // UriSource loading, so the Image control already copes with the source arriving late.
         var image = new BitmapImage();
         _ = LoadAsync(image, path);
 
-        Cache[path] = image;
-        CacheOrder.Enqueue(path);
+        var isNewPath = !Cache.ContainsKey(path);
+        Cache[path] = new WeakReference<BitmapImage>(image);
+        if (isNewPath) CacheOrder.Enqueue(path);
         while (CacheOrder.Count > MaxCachedImages && CacheOrder.TryDequeue(out var evicted))
         {
             Cache.Remove(evicted);

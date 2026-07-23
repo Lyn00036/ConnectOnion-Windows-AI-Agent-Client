@@ -37,7 +37,7 @@ public sealed partial class SessionsPage : Page
         var hasAgent = _currentAgent is not null;
         NewSessionButton.IsEnabled = hasAgent;
         AgentLabel.Text = hasAgent
-            ? $"New conversations use: {_currentAgent!.Name}"
+            ? $"New conversations use: {_currentAgent!.DisplayName}"
             : "Select an agent on the Agents page to start a conversation.";
     }
 

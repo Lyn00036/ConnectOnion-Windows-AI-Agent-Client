@@ -41,6 +41,10 @@ public static class RunErrorCodes
 
 public sealed class ConversationRunRegistry
 {
+    // A terminal snapshot is only a short hand-off aid for a page that opens just after a run
+    // completes. Durable history already lives in SQLite, so retaining one entry for every
+    // conversation ever used would turn ordinary long-term use into process-wide growth.
+    private const int MaxTerminalSnapshots = 64;
     /// <summary>How long a failed turn stays retryable. Long enough that a user who steps away
     /// mid-failure still finds the button live when they come back; short enough that an
     /// abandoned failed turn's attachments do not sit in memory all day. Expiry is lazy — there
@@ -59,6 +63,7 @@ public sealed class ConversationRunRegistry
     /// <summary>The last snapshot per conversation, kept after the run leaves <c>_active</c> so
     /// a page opened moments later can still see how the turn ended instead of finding nothing.</summary>
     private readonly ConcurrentDictionary<string, ConversationRunSnapshot> _lastSnapshots = new();
+    private readonly ConcurrentQueue<(string ConversationId, string RunId)> _terminalSnapshotOrder = new();
     /// <summary>Requests from failed runs, held so the UI can offer a retry without the caller
     /// having to reconstruct the original turn. Cleared when a new run starts, and expired out
     /// after <see cref="RetryableTtl"/> — a <see cref="TurnRequest"/> carries the turn's images
@@ -459,9 +464,32 @@ public sealed class ConversationRunRegistry
         // turn's raw JSON — every LLM call's message history, every base64 image — in memory for
         // the rest of the process's life, once per conversation. Nothing reads the events off a
         // terminal snapshot: GetActiveRun's callers only look at RunId/Status/ErrorMessage.
-        _lastSnapshots[snapshot.ConversationId] = snapshot.IsTerminal
-            ? snapshot with { Events = Array.Empty<AgentStreamEvent>() }
-            : snapshot;
+        if (snapshot.IsTerminal)
+        {
+            // Raw events are durable by this point. PartialContent stays because a page that
+            // attaches in the small completion hand-off window still uses it to finish its live
+            // projection; the capacity below bounds how many such replies remain resident.
+            var retained = snapshot with
+            {
+                Events = Array.Empty<AgentStreamEvent>(),
+            };
+            _lastSnapshots[snapshot.ConversationId] = retained;
+            _terminalSnapshotOrder.Enqueue((snapshot.ConversationId, snapshot.RunId));
+
+            while (_terminalSnapshotOrder.Count > MaxTerminalSnapshots
+                && _terminalSnapshotOrder.TryDequeue(out var oldest)
+                && _lastSnapshots.TryGetValue(oldest.ConversationId, out var candidate)
+                && candidate.IsTerminal
+                && candidate.RunId == oldest.RunId)
+            {
+                _lastSnapshots.TryRemove(
+                    new KeyValuePair<string, ConversationRunSnapshot>(oldest.ConversationId, candidate));
+            }
+        }
+        else
+        {
+            _lastSnapshots[snapshot.ConversationId] = snapshot;
+        }
 
         try { _logger.Log(snapshot, phase, elapsed ?? (DateTimeOffset.UtcNow - createdAt)); }
         catch (Exception ex) { _onError?.Invoke(ex); }

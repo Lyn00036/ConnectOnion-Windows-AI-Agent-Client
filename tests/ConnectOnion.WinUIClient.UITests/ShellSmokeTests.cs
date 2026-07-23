@@ -70,13 +70,52 @@ public sealed class ShellSmokeTests
         Assert.NotNull(overlay);
     }
 
+    [Fact]
+    public void SettingsAgents_Click_ShowsAgentManagementActions()
+    {
+        using var launched = LaunchApp();
+        if (launched is null) return;
+
+        var window = launched.Window;
+        window.FindFirstDescendant(query => query.ByAutomationId("SettingsButton"))?.AsButton().Invoke();
+        Assert.NotNull(WaitForDescendant(window, "GeneralNav"));
+
+        var agentsNav = window.FindFirstDescendant(query => query.ByAutomationId("AgentsNav"));
+        Assert.NotNull(agentsNav);
+        agentsNav.AsRadioButton().Click();
+
+        AutomationElement? addAgent = null;
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (DateTime.UtcNow < deadline && addAgent is null)
+        {
+            try
+            {
+                addAgent = window
+                    .FindAllDescendants(query => query.ByControlType(FlaUI.Core.Definitions.ControlType.Button))
+                    .FirstOrDefault(element =>
+                        string.Equals(element.Properties.Name.ValueOrDefault, "Add agent", StringComparison.Ordinal));
+            }
+            catch (System.Runtime.InteropServices.COMException)
+            {
+                // The settings pane is swapping its visual tree; retry below.
+            }
+
+            if (addAgent is null) Thread.Sleep(150);
+        }
+
+        Assert.NotNull(addAgent);
+        Assert.True(addAgent.IsEnabled);
+        addAgent.AsButton().Invoke();
+        Assert.NotNull(WaitForDescendant(window, "AgentAddressInput"));
+    }
+
     /// <summary>
-    /// The sidebar's "Add agent" button navigates to the landing page *and* opens its add-agent
-    /// form. Clicking it and landing on a page where the form is still collapsed — which is what
-    /// the button used to do — reads as a dead button, so the form's input is the assertion.
+    /// The sidebar's "Add agent" button opens the shell-owned modal over the current page.
+    /// Collapsed overlay content is absent from the UIA tree, so its focused input proves both
+    /// visibility and keyboard readiness.
     /// </summary>
     [Fact]
-    public void SidebarAddAgent_Click_OpensAddAgentFormOnHome()
+    public void SidebarAddAgent_Click_OpensShellOverlayAndFocusesInput()
     {
         using var launched = LaunchApp();
         if (launched is null) return;
@@ -193,6 +232,8 @@ public sealed class ShellSmokeTests
 
         using var launchedProcess = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(executable)
         {
+            // Shell activation is required for the unpackaged Windows App SDK bootstrapper.
+            // The launched process inherits the test host's process-level data-root override.
             UseShellExecute = true,
         });
         Assert.NotNull(launchedProcess);
@@ -205,7 +246,10 @@ public sealed class ShellSmokeTests
         {
             windowProcess = System.Diagnostics.Process
                 .GetProcessesByName("ConnectOnion.WinUIClient")
-                .FirstOrDefault(process => !existingProcessIds.Contains(process.Id) && process.MainWindowHandle != IntPtr.Zero);
+                .FirstOrDefault(process =>
+                    !existingProcessIds.Contains(process.Id)
+                    && process.MainWindowHandle != IntPtr.Zero
+                    && process.MainWindowTitle.Contains("ConnectOnion", StringComparison.OrdinalIgnoreCase));
             if (windowProcess is null)
             {
                 Thread.Sleep(200);
@@ -229,6 +273,7 @@ public sealed class ShellSmokeTests
         Window window) : IDisposable
     {
         public Window Window { get; } = window;
+        public System.Diagnostics.Process Process => process;
 
         public void Dispose()
         {

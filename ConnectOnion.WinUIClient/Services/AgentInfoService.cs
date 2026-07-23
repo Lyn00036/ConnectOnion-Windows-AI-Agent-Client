@@ -107,7 +107,7 @@ public static class AgentInfoService
     {
         try
         {
-            var infoUrl = directUrl.TrimEnd('/') + "/info";
+            if (!TryBuildInfoUrl(directUrl, out var infoUrl)) return null;
             using var cts = new System.Threading.CancellationTokenSource(8000);
             using var response = await AppServices.Http.GetAsync(infoUrl, cts.Token);
             if (!response.IsSuccessStatusCode) return null;
@@ -117,6 +117,28 @@ public static class AgentInfoService
         {
             return null;
         }
+    }
+
+    private static bool TryBuildInfoUrl(string directUrl, out Uri infoUrl)
+    {
+        infoUrl = null!;
+        if (!Uri.TryCreate(directUrl.Trim(), UriKind.Absolute, out var uri)) return false;
+
+        var builder = new UriBuilder(uri)
+        {
+            Scheme = uri.Scheme.Equals("wss", StringComparison.OrdinalIgnoreCase)
+                ? Uri.UriSchemeHttps
+                : uri.Scheme.Equals("ws", StringComparison.OrdinalIgnoreCase)
+                    ? Uri.UriSchemeHttp
+                    : uri.Scheme,
+            Path = uri.AbsolutePath.TrimEnd('/') + "/info",
+            Query = string.Empty,
+            Fragment = string.Empty,
+        };
+        if (uri.IsDefaultPort) builder.Port = -1;
+        if (builder.Scheme is not ("http" or "https")) return false;
+        infoUrl = builder.Uri;
+        return true;
     }
 
     private static async Task<string?> FetchFromRelayAsync(string address, bool forceRefresh = false)

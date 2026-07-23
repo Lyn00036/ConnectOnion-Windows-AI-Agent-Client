@@ -85,7 +85,7 @@
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Text="{x:Bind Model}" FontFamily="Consolas" FontSize="13"
+                                    <TextBlock Text="{x:Bind Model}" FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="13"
                                                TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                                     <TextBlock Grid.Column="1" Text="{x:Bind TotalTokensText}"
                                                FontWeight="SemiBold" VerticalAlignment="Center" />

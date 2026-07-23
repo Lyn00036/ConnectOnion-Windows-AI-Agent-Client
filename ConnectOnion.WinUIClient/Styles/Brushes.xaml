@@ -121,6 +121,14 @@
             <SolidColorBrush x:Key="AvatarBackgroundBrush" Color="{ThemeResource AvatarBackgroundColor}" />
             <SolidColorBrush x:Key="AvatarForegroundBrush" Color="{ThemeResource AvatarForegroundColor}" />
             <SolidColorBrush x:Key="AvatarBorderBrush" Color="{ThemeResource AvatarBorderColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteBlueBackgroundBrush" Color="{ThemeResource AvatarPaletteBlueBackgroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteBlueForegroundBrush" Color="{ThemeResource AvatarPaletteBlueForegroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteVioletBackgroundBrush" Color="{ThemeResource AvatarPaletteVioletBackgroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteVioletForegroundBrush" Color="{ThemeResource AvatarPaletteVioletForegroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteTealBackgroundBrush" Color="{ThemeResource AvatarPaletteTealBackgroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteTealForegroundBrush" Color="{ThemeResource AvatarPaletteTealForegroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteCoralBackgroundBrush" Color="{ThemeResource AvatarPaletteCoralBackgroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteCoralForegroundBrush" Color="{ThemeResource AvatarPaletteCoralForegroundColor}" />
 
             <!-- Usage heatmap ramp. Read by HeatmapLevelToBrushConverter through
                  Application.Current.Resources, so both themes must define all five keys. -->
@@ -297,6 +305,14 @@
             <SolidColorBrush x:Key="AvatarBackgroundBrush" Color="{ThemeResource AvatarBackgroundColor}" />
             <SolidColorBrush x:Key="AvatarForegroundBrush" Color="{ThemeResource AvatarForegroundColor}" />
             <SolidColorBrush x:Key="AvatarBorderBrush" Color="{ThemeResource AvatarBorderColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteBlueBackgroundBrush" Color="{ThemeResource AvatarPaletteBlueBackgroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteBlueForegroundBrush" Color="{ThemeResource AvatarPaletteBlueForegroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteVioletBackgroundBrush" Color="{ThemeResource AvatarPaletteVioletBackgroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteVioletForegroundBrush" Color="{ThemeResource AvatarPaletteVioletForegroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteTealBackgroundBrush" Color="{ThemeResource AvatarPaletteTealBackgroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteTealForegroundBrush" Color="{ThemeResource AvatarPaletteTealForegroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteCoralBackgroundBrush" Color="{ThemeResource AvatarPaletteCoralBackgroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteCoralForegroundBrush" Color="{ThemeResource AvatarPaletteCoralForegroundColor}" />
 
             <!-- Usage heatmap ramp. Read by HeatmapLevelToBrushConverter through
                  Application.Current.Resources, so both themes must define all five keys. -->

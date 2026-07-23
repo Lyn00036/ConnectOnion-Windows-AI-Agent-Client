@@ -9,6 +9,7 @@
 | [GIT_COMMIT_CONVENTION.md](./GIT_COMMIT_CONVENTION.md) | Conventional Commits types and scopes used in this repo | Living |
 | [OPTIMIZATION.md](./OPTIMIZATION.md) | Implemented architecture, performance, reliability, CI, localization, and diagnostics improvements | Living |
 | [PERFORMANCE.md](./PERFORMANCE.md) | Launch-time and memory benchmark: method, budgets, current baseline, and how to run `scripts/Measure-Performance.ps1` | Living — re-ratify budgets when a run sets a new baseline |
+| [MEMORY_LEAK_INVESTIGATION.md](./MEMORY_LEAK_INVESTIGATION.md) | Conversation-navigation leak investigation, root causes, measured before/after data, and the automated plateau test | Living — update when a new leak signature or threshold is established |
 | [CONCURRENCY.md](./CONCURRENCY.md) | Where threads come from, which primitive guards which shared state, and the sharp edges (including the post-`Closed` dispatcher race) | Living |
 
 ## What is *not* here

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Bundled under the SIL Open Font License; see Assets/Fonts/OFL.txt. -->
+    <FontFamily x:Key="JetBrainsMonoFontFamily">ms-appx:///Assets/Fonts/JetBrainsMonoNerdFontMono-Regular.ttf#JetBrainsMono NFM</FontFamily>
+    <FontFamily x:Key="JetBrainsMonoItalicFontFamily">ms-appx:///Assets/Fonts/JetBrainsMonoNerdFontMono-Italic.ttf#JetBrainsMono NFM</FontFamily>
+    <FontFamily x:Key="JetBrainsMonoBoldFontFamily">ms-appx:///Assets/Fonts/JetBrainsMonoNerdFontMono-Bold.ttf#JetBrainsMono NFM</FontFamily>
+    <FontFamily x:Key="JetBrainsMonoBoldItalicFontFamily">ms-appx:///Assets/Fonts/JetBrainsMonoNerdFontMono-BoldItalic.ttf#JetBrainsMono NFM</FontFamily>
+</ResourceDictionary>

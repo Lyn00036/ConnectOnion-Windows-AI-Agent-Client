@@ -25,7 +25,7 @@
                            IsTextSelectionEnabled="True"
                            Foreground="{ThemeResource TextPrimaryBrush}" />
                 <TextBlock Text="{x:Bind Message.AskUserContextPath, Mode=OneWay}"
-                           FontFamily="Consolas" FontSize="11" TextTrimming="CharacterEllipsis"
+                           FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="11" TextTrimming="CharacterEllipsis"
                            Foreground="{ThemeResource TextTertiaryBrush}"
                            ToolTipService.ToolTip="{x:Bind Message.AskUserTargetPath, Mode=OneWay}"
                            AutomationProperties.Name="{x:Bind Message.AskUserTargetPath, Mode=OneWay}"

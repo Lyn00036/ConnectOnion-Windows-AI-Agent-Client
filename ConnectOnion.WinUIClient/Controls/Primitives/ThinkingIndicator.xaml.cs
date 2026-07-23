@@ -31,7 +31,7 @@ namespace ConnectOnion.WinUIClient.Controls;
 /// conversation with a hundred past turns animates nothing. Brushes and stroke styles are created
 /// once per device rather than per frame — see <see cref="EnsureResources"/>.</para>
 /// </summary>
-public sealed partial class ThinkingIndicator : UserControl
+public sealed partial class ThinkingIndicator : UserControl, IDisposable
 {
     // ---- Geometry (device-independent pixels, within an 18x18 box) ----
     private const int RayCount = 8;
@@ -68,6 +68,7 @@ public sealed partial class ThinkingIndicator : UserControl
     private Color _rayColor;
     private bool _isRunning;
     private bool _isUnloaded;
+    private int _disposed;
 
     public ThinkingIndicator()
     {
@@ -165,6 +166,21 @@ public sealed partial class ThinkingIndicator : UserControl
         if (!_isRunning) return;
         Canvas.Paused = true;
         _isRunning = false;
+    }
+
+    /// <summary>Releases the Win2D swap chain when the containing chat page is discarded.</summary>
+    public void Dispose()
+    {
+        if (System.Threading.Interlocked.Exchange(ref _disposed, 1) != 0) return;
+
+        Stop();
+        Canvas.Draw -= Canvas_Draw;
+        Loaded -= OnLoaded;
+        Unloaded -= OnUnloaded;
+        ActualThemeChanged -= OnActualThemeChanged;
+        _strokeStyle?.Dispose();
+        _strokeStyle = null;
+        Canvas.RemoveFromVisualTree();
     }
 
     private void ApplyThemeColor()

@@ -15,10 +15,18 @@ public sealed partial class ShellAgentItem : RowStateItem
     /// verbatim for tooltips and to drive avatar/lookup logic; the sidebar shows
     /// <see cref="DisplayName"/> instead.</summary>
     public string Name { get; set; } = "";
+    public string Address { get; set; } = "";
+    public string? DirectUrl { get; set; }
     /// <summary>User-facing name derived from <see cref="Name"/> (e.g. <c>Remote Admin Agent</c>).
     /// Never persisted — the internal id is unchanged.</summary>
     public string DisplayName => FriendlyAgentName.From(Name);
     public string Initial => NameInitial.From(DisplayName);
+    public int AvatarPaletteIndex => AvatarPalette.From(Name);
+    public string ConnectionTarget
+        => !string.IsNullOrWhiteSpace(Address) ? Address : DirectUrl ?? "";
+    public string CopyAccessibilityName => $"Copy address for {DisplayName}";
+    public string DeleteAccessibilityName => $"Delete {DisplayName}";
+    public string OpenAccessibilityName => $"Open {DisplayName}";
     public int SessionCount => Sessions.Count;
     public ObservableCollection<ShellSessionItem> Sessions { get; } = new();
 

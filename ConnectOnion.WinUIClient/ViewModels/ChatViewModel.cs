@@ -104,8 +104,8 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         CurrentMode = AgentModes.Safe;
 
         // Live-apply message text-size changes made in Settings while this chat is open. The
-        // page is cached (NavigationCacheMode.Required), so this instance and its subscription
-        // live for the session — Cleanup detaches it for genuine disposal. Fired on the UI thread.
+        // subscription lives only as long as this page-owned view model; Cleanup detaches it when
+        // conversation navigation destroys the page. Fired on the UI thread.
         MessageFontService.FontSizeChanged += ApplyLiveFontSize;
 
         // ListView.FontSize does not cascade into ListViewItemPresenter content, so each bubble
@@ -192,6 +192,17 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         MessageFontService.FontSizeChanged -= ApplyLiveFontSize;
         DetachPresence();
         DetachRun();
+
+        // Cached message objects can outlive this page. A live approval responder is an instance
+        // method delegate and therefore otherwise pins this entire ChatViewModel (and its full
+        // ObservableCollection) through ConversationCache after navigation.
+        foreach (var message in Messages)
+        {
+            message.ApprovalResponder = null;
+            if (message.ToolActivity?.Approval is { } embeddedApproval)
+                embeddedApproval.ApprovalResponder = null;
+        }
+        Messages.Clear();
     }
 
     /// <summary>Applies a live message-font-size change from Settings. Assigning the property
@@ -254,6 +265,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         : Common.FriendlyAgentName.From(_agent.Name);
 
     public string SelectedAgentInitial => NameInitial.From(_agent?.Name);
+    public int SelectedAgentAvatarPaletteIndex => AvatarPalette.From(_agent?.Name);
     public string SessionShortId => _session is null ? "" : _session.Id[..Math.Min(8, _session.Id.Length)];
     public string? SessionId => _session?.Id;
     public string? AgentId => _agent?.Id;
@@ -400,12 +412,12 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         OnPropertyChanged(nameof(CanSend));
         if (_session is null)
         {
-            HeaderText = $"{_agent.Name} - No conversation selected";
+            HeaderText = $"{_agent.DisplayName} - No conversation selected";
             RaiseHeaderProperties();
             return;
         }
 
-        HeaderText = $"{_agent.Name} - {_session.Title}";
+        HeaderText = $"{_agent.DisplayName} - {_session.Title}";
         CurrentMode = _session.Mode;
         RaiseHeaderProperties();
 
@@ -624,7 +636,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
             _session.Title = title.Length > 48 ? title[..48] : title;
         }
         _session.UpdatedAt = DateTime.UtcNow.ToString("o");
-        HeaderText = $"{_agent!.Name} - {_session.Title}";
+        HeaderText = $"{_agent!.DisplayName} - {_session.Title}";
         RaiseHeaderProperties();
         // Only this one row changed — no need to reconcile the whole session index on every send.
         _ = _sessions.UpdateSessionAsync(_session);
@@ -635,6 +647,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         OnPropertyChanged(nameof(SelectedAgentName));
         OnPropertyChanged(nameof(SelectedAgentDisplayName));
         OnPropertyChanged(nameof(SelectedAgentInitial));
+        OnPropertyChanged(nameof(SelectedAgentAvatarPaletteIndex));
         OnPropertyChanged(nameof(SessionShortId));
     }
 

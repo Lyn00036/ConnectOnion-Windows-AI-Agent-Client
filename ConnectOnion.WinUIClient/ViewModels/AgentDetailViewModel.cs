@@ -60,22 +60,36 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
         get => _agent;
         private set
         {
+            if (_agent?.Id != value?.Id)
+            {
+                InfoFields.Clear();
+                InfoJson = "";
+                AcceptedInputs = null;
+            }
+
             if (!SetProperty(ref _agent, value)) return;
             OnPropertyChanged(nameof(AgentName));
+            OnPropertyChanged(nameof(AgentDisplayName));
             OnPropertyChanged(nameof(AgentAddress));
             OnPropertyChanged(nameof(DirectUrl));
             OnPropertyChanged(nameof(HasAgent));
             OnPropertyChanged(nameof(AgentInitial));
+            OnPropertyChanged(nameof(AgentAvatarPaletteIndex));
             RaisePresenceProperties();
             RaiseProfileSummaryProperties();
         }
     }
 
     public string AgentName => _agent?.Name ?? "";
-    public string AgentInitial => NameInitial.From(AgentName);
+    public string AgentDisplayName => _agent?.DisplayName ?? "";
+    public string AgentInitial => NameInitial.From(AgentDisplayName);
+    public int AgentAvatarPaletteIndex => AvatarPalette.From(AgentName);
     public string AgentAddress => _agent?.Address ?? "";
     public string? DirectUrl => _agent?.DirectUrl;
     public bool HasAgent => _agent is not null;
+    public string ComposerPlaceholder => string.IsNullOrWhiteSpace(AgentDisplayName)
+        ? "Ask this agent anything"
+        : $"Ask {AgentDisplayName} anything";
 
     public bool CanStartConversation => HasAgent && IsOnline;
 
@@ -108,33 +122,21 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
 
     public bool HasDisplayModel => !string.IsNullOrWhiteSpace(DisplayModel);
 
-    public bool HasToolSummary => !string.IsNullOrWhiteSpace(ToolSummaryLineOne);
-
-    // The tool list is split across two fixed lines rather than wrapped, so the card's height
-    // stays constant no matter how many tools an agent advertises: five on the first line, up
-    // to three on the second, then "+N more". The trailing "·" on line one is the separator
-    // *into* line two, so it is only correct while a second line can follow.
-    public string ToolSummaryLineOne
+    public bool HasToolSummary => ToolNames.Count > 0;
+    public int ToolCount => ToolNames.Count;
+    public string ModelAndToolCount
     {
         get
         {
-            var tools = GetToolNames().Take(5).Select(FormatToolName).ToList();
-            return tools.Count == 0 ? "" : string.Join(" · ", tools) + " ·";
+            var toolLabel = $"{ToolCount} {(ToolCount == 1 ? "tool" : "tools")}";
+            return HasDisplayModel ? $"{DisplayModel} · {toolLabel}" : toolLabel;
         }
     }
 
-    public string ToolSummaryLineTwo
-    {
-        get
-        {
-            var tools = GetToolNames().Skip(5).Select(FormatToolName).ToList();
-            if (tools.Count == 0) return "";
-
-            var line = string.Join(" · ", tools.Take(3));
-            var remaining = tools.Count - 3;
-            return remaining > 0 ? $"{line} +{remaining} more" : line;
-        }
-    }
+    public ObservableCollection<string> ToolNames { get; } = new();
+    public string ToolsDisplayText => $"Tools: {string.Join(" · ", ToolNames)}";
+    public string ToolsToggleLabel
+        => $"View {ToolCount} {(ToolCount == 1 ? "tool" : "tools")}";
 
     public string ShortAddress
         => string.IsNullOrWhiteSpace(AgentAddress)
@@ -164,21 +166,39 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
     /// </summary>
     public async Task<bool> StartConversationAsync(string prompt, bool hasAttachments = false)
     {
-        if (Agent is null || !IsOnline || (string.IsNullOrWhiteSpace(prompt) && !hasAttachments)) return false;
+        if (Agent is null || (string.IsNullOrWhiteSpace(prompt) && !hasAttachments)) return false;
+        if (!IsOnline)
+        {
+            HasError = true;
+            StatusText = "The agent is not online. Recheck the connection before starting a conversation.";
+            return false;
+        }
 
-        // Note what this does *not* do: it creates and selects the session but never sends the
-        // prompt. The caller navigates to ChatPage, which picks up the prompt and sends it —
-        // sending here would race the page that is about to own the conversation.
-        var agentsState = await _agents.LoadAsync();
-        agentsState.SelectedAgentId = Agent.Id;
-        await _agents.SaveAsync(agentsState);
+        try
+        {
+            HasError = false;
+            StatusText = "";
 
-        var sessionsState = await _sessions.LoadAsync();
-        var session = SessionSummary.NewConversation(Agent.Id, sessionsState.Sessions);
-        sessionsState.Sessions.Add(session);
-        sessionsState.ActiveSessionId = session.Id;
-        await _sessions.SaveAsync(sessionsState);
-        return true;
+            // Note what this does *not* do: it creates and selects the session but never sends the
+            // prompt. The caller navigates to ChatPage, which picks up the prompt and sends it —
+            // sending here would race the page that is about to own the conversation.
+            var agentsState = await _agents.LoadAsync();
+            agentsState.SelectedAgentId = Agent.Id;
+            await _agents.SaveAsync(agentsState);
+
+            var sessionsState = await _sessions.LoadAsync();
+            var session = SessionSummary.NewConversation(Agent.Id, sessionsState.Sessions);
+            sessionsState.Sessions.Add(session);
+            sessionsState.ActiveSessionId = session.Id;
+            await _sessions.SaveAsync(sessionsState);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            HasError = true;
+            StatusText = $"Could not start the conversation: {ex.Message}";
+            return false;
+        }
     }
 
     /// <summary>Loads agent info from cache or fetches fresh data.</summary>
@@ -189,6 +209,11 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
         // it. Only the newest load may write to the page; a superseded one drops out here, and
         // its fetch drops out where it would otherwise publish (FetchInfoWithCacheAsync).
         var generation = ++_loadGeneration;
+
+        // Loading belongs to one generation, not to the cached page instance. A previous agent
+        // may still have an /info request in flight; the new load must clear its spinner before
+        // taking an early return for a missing agent or a fresh cache hit.
+        IsLoading = false;
 
         var prefs = await _preferences.LoadAsync();
         if (generation != _loadGeneration) return;
@@ -229,7 +254,18 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
         }
 
         var hadCache = !string.IsNullOrWhiteSpace(agent.InfoJson);
-        var freshJson = await AgentInfoService.FetchAndPersistAsync(agent, forceRefresh: true);
+        string? freshJson;
+        try
+        {
+            freshJson = await AgentInfoService.FetchAndPersistAsync(agent, forceRefresh: true);
+        }
+        catch
+        {
+            // Network helpers already translate ordinary reachability failures to null, but
+            // persistence or shutdown can still throw. Treat those exactly like a failed fetch
+            // so the page leaves its loading state and exposes the retryable error UI.
+            freshJson = null;
+        }
 
         _dispatcher.TryEnqueue(() =>
         {
@@ -237,27 +273,34 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
             // under another's name. IsLoading belongs to the newer load, so don't clear it either.
             if (generation != _loadGeneration) return;
 
-            if (!string.IsNullOrWhiteSpace(freshJson))
+            try
             {
-                HasError = false;
-                PopulateFromCachedJson(freshJson);
-                OnPropertyChanged(nameof(LastUpdated));
-                StatusText = $"Updated - {LastUpdated}";
+                if (!string.IsNullOrWhiteSpace(freshJson))
+                {
+                    HasError = false;
+                    PopulateFromCachedJson(freshJson);
+                    OnPropertyChanged(nameof(LastUpdated));
+                    StatusText = $"Updated - {LastUpdated}";
+                }
+                else if (hadCache)
+                {
+                    HasError = false;
+                    StatusText = $"Cached - {LastUpdated}";
+                }
+                else
+                {
+                    InfoFields.Clear();
+                    InfoJson = "";
+                    HasError = true;
+                    StatusText = "Could not load agent info.";
+                }
             }
-            else if (hadCache)
+            finally
             {
-                HasError = false;
-                StatusText = $"Cached - {LastUpdated}";
+                // Keep this in finally: malformed metadata or a future projection failure must
+                // never strand the capabilities ProgressRing.
+                IsLoading = false;
             }
-            else
-            {
-                InfoFields.Clear();
-                InfoJson = "";
-                HasError = true;
-                StatusText = "Could not load agent info.";
-            }
-
-            IsLoading = false;
         });
     }
 
@@ -349,11 +392,22 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
 
     private void RaiseProfileSummaryProperties()
     {
+        RefreshToolNames();
         OnPropertyChanged(nameof(DisplayModel));
         OnPropertyChanged(nameof(HasDisplayModel));
         OnPropertyChanged(nameof(HasToolSummary));
-        OnPropertyChanged(nameof(ToolSummaryLineOne));
-        OnPropertyChanged(nameof(ToolSummaryLineTwo));
+        OnPropertyChanged(nameof(ToolCount));
+        OnPropertyChanged(nameof(ModelAndToolCount));
+        OnPropertyChanged(nameof(ToolsDisplayText));
+        OnPropertyChanged(nameof(ToolsToggleLabel));
+        OnPropertyChanged(nameof(ComposerPlaceholder));
+    }
+
+    private void RefreshToolNames()
+    {
+        var names = GetToolNames().Select(FormatToolName).ToList();
+        ToolNames.Clear();
+        foreach (var name in names) ToolNames.Add(name);
     }
 
     private string? GetInfoValue(string name)

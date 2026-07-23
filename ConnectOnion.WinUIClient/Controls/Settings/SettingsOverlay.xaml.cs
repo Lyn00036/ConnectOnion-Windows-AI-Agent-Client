@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -68,6 +69,7 @@ public sealed partial class SettingsOverlay : UserControl
         RequestClose();
     }
     private void GeneralNav_Click(object sender, RoutedEventArgs e) => SelectCategory("General");
+    private void AgentsNav_Click(object sender, RoutedEventArgs e) => SelectCategory("Agents");
     private void NotificationsNav_Click(object sender, RoutedEventArgs e) => SelectCategory("Notifications");
     private void AudioNav_Click(object sender, RoutedEventArgs e) => SelectCategory("Audio");
     private void IdentityNav_Click(object sender, RoutedEventArgs e) => SelectCategory("Identity");
@@ -84,12 +86,14 @@ public sealed partial class SettingsOverlay : UserControl
         CategoryTitle.Text = category;
 
         var isIdentity = category == "Identity";
+        var isAgents = category == "Agents";
         var isUsage = category == "Usage";
         var isKeyboard = category == "Keyboard";
-        var isSettingsPage = !isIdentity && !isUsage && !isKeyboard;
+        var isSettingsPage = !isIdentity && !isAgents && !isUsage && !isKeyboard;
 
         SettingsContent.Visibility = isSettingsPage ? Visibility.Visible : Visibility.Collapsed;
         IdentityScrollViewer.Visibility = isIdentity ? Visibility.Visible : Visibility.Collapsed;
+        AgentsScrollViewer.Visibility = isAgents ? Visibility.Visible : Visibility.Collapsed;
         UsageScrollViewer.Visibility = isUsage ? Visibility.Visible : Visibility.Collapsed;
         KeyboardScrollViewer.Visibility = isKeyboard ? Visibility.Visible : Visibility.Collapsed;
 
@@ -100,10 +104,15 @@ public sealed partial class SettingsOverlay : UserControl
         if (isUsage)
             UsageContent.Refresh();
 
+        if (isAgents)
+            AgentsContent.Refresh();
+
         // Bindings can have moved since this pane was last shown — the dialog cannot change them,
         // but a second window's Settings can.
         if (isKeyboard)
             KeyboardContent.Refresh();
     }
+
+    public Task RefreshAgentsAsync() => AgentsContent.RefreshAsync();
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) => SettingsContent.Filter(SearchBox.Text);
 }

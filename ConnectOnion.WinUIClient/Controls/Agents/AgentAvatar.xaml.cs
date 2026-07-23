@@ -1,3 +1,4 @@
+using ConnectOnion.WinUIClient.Common;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
@@ -16,7 +17,7 @@ public sealed partial class AgentAvatar : UserControl
             nameof(Initial),
             typeof(string),
             typeof(AgentAvatar),
-            new PropertyMetadata("?"));
+            new PropertyMetadata("?", OnInitialChanged));
 
     public static readonly DependencyProperty SizeProperty =
         DependencyProperty.Register(
@@ -25,9 +26,17 @@ public sealed partial class AgentAvatar : UserControl
             typeof(AgentAvatar),
             new PropertyMetadata(32.0));
 
+    public static readonly DependencyProperty PaletteIndexProperty =
+        DependencyProperty.Register(
+            nameof(PaletteIndex),
+            typeof(int),
+            typeof(AgentAvatar),
+            new PropertyMetadata(-1, OnPaletteIndexChanged));
+
     public AgentAvatar()
     {
         InitializeComponent();
+        ApplyPalette();
     }
 
     public string Initial
@@ -40,5 +49,27 @@ public sealed partial class AgentAvatar : UserControl
     {
         get => (double)GetValue(SizeProperty);
         set => SetValue(SizeProperty, value);
+    }
+
+    /// <summary>A stable palette slot. Negative values derive a palette from the initial.</summary>
+    public int PaletteIndex
+    {
+        get => (int)GetValue(PaletteIndexProperty);
+        set => SetValue(PaletteIndexProperty, value);
+    }
+
+    private static void OnPaletteIndexChanged(DependencyObject sender, DependencyPropertyChangedEventArgs _)
+        => ((AgentAvatar)sender).ApplyPalette();
+
+    private static void OnInitialChanged(DependencyObject sender, DependencyPropertyChangedEventArgs _)
+        => ((AgentAvatar)sender).ApplyPalette();
+
+    private void ApplyPalette()
+    {
+        var state = PaletteIndex < 0 && string.IsNullOrWhiteSpace(Initial)
+            ? "Neutral"
+            : new[] { "Blue", "Violet", "Teal", "Coral" }[
+                PaletteIndex < 0 ? AvatarPalette.From(Initial) : PaletteIndex % 4];
+        VisualStateManager.GoToState(this, state, useTransitions: false);
     }
 }

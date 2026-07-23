@@ -9,12 +9,13 @@ using ConnectOnion.WinUIClient.Services;
 using ConnectOnion.WinUIClient.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using Windows.System;
 
 namespace ConnectOnion.WinUIClient.Views;
 
-public sealed partial class ChatPage : Page, IFindHost, IReloadablePage, IShutdownDisarmable, IDisposable
+public sealed partial class ChatPage : Page, IFindHost, IShutdownDisarmable, IDisposable
 {
     /// <summary>Width of the centred conversation column; see the ChatColumnWidth resource in App.xaml.</summary>
     private static double ChatColumnMaxWidth => (double)Application.Current.Resources["ChatColumnWidth"];
@@ -25,6 +26,9 @@ public sealed partial class ChatPage : Page, IFindHost, IReloadablePage, IShutdo
     private static readonly ConcurrentDictionary<string, double> ScrollPositions = new();
     private static readonly ConcurrentQueue<string> ScrollPositionOrder = new();
     private const int MaxRememberedScrollPositions = 64;
+    private const int HeavyPageReclaimInterval = 4;
+    private static int _releasedHeavyPages;
+    private static int _nativeReclaimScheduled;
 
     public ChatViewModel Vm { get; } = App.GetService<ChatViewModel>();
     private ScrollViewer? _messageScrollViewer;
@@ -34,23 +38,23 @@ public sealed partial class ChatPage : Page, IFindHost, IReloadablePage, IShutdo
     private ComposerSubmission? _pendingInitialSubmission;
     private MainWindow? _hostWindow;
     private CancellationTokenSource? _loadCts;
+    private readonly CancellationTokenSource _pageLifetimeCts = new();
+    private int _disposed;
 
     public ChatPage()
     {
         InitializeComponent();
 
-        // Reuse this one instance across navigations instead of rebuilding the whole page —
-        // XAML tree, ChatComposer's Win2D canvas, view model, bindings — every time the user
-        // crosses page types (e.g. AgentDetailPage → ChatPage). Without this the same-type
-        // reuse in MainWindow.NavigateTo only covers chat→chat, so an agent→chat switch built a
-        // fresh tree each click and the discarded ones piled up. The Load/Unload wiring below
-        // is symmetric so a reused instance behaves like a fresh one.
-        NavigationCacheMode = NavigationCacheMode.Required;
+        // A conversation owns a heavy ListView containing native RichTextBlock/DataTemplate
+        // containers. Repointing one page with Messages.Clear() leaves those containers in the
+        // ListView recycle pool, so every opened conversation adds another native high-water
+        // allocation. A fresh, uncached page lets the previous list and its pool be destroyed.
+        NavigationCacheMode = NavigationCacheMode.Disabled;
 
         Vm.Messages.CollectionChanged += Messages_CollectionChanged;
         Vm.PropertyChanged += Vm_PropertyChanged;
-        // Permanent, like the two above: this is the single reused instance (the constructor never
-        // runs again), so one hook is correct and OnUnloaded deliberately leaves it attached.
+        // All page-to-view-model hooks are paired with removals in Dispose. A conversation
+        // switch creates a new page, so keeping any of these hooks would retain the old tree.
         Vm.SendCancelled += Vm_SendCancelled;
         Vm.ConversationChanged += Vm_ConversationChanged;
         _findDebounceTimer.Tick += FindDebounceTimer_Tick;
@@ -81,10 +85,73 @@ public sealed partial class ChatPage : Page, IFindHost, IReloadablePage, IShutdo
         StopUiFeedbackLifetime(restoreVisuals: false);
         // Lives on the view model, which outlives this page, so stopping it here is not redundant.
         Vm.StopThinkingTicker();
+        DisposeThinkingIndicators(MessageList);
         Composer.Dispose();
     }
 
-    public void Dispose() => DisarmForShutdown();
+    private static void DisposeThinkingIndicators(DependencyObject root)
+    {
+        for (var index = VisualTreeHelper.GetChildrenCount(root) - 1; index >= 0; index--)
+        {
+            var child = VisualTreeHelper.GetChild(root, index);
+            DisposeThinkingIndicators(child);
+            if (child is ThinkingIndicator indicator) indicator.Dispose();
+        }
+    }
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+
+        DisarmForShutdown();
+        _pageLifetimeCts.Cancel();
+        _loadCts?.Cancel();
+        _loadCts?.Dispose();
+        _loadCts = null;
+        Vm.Messages.CollectionChanged -= Messages_CollectionChanged;
+        Vm.PropertyChanged -= Vm_PropertyChanged;
+        Vm.SendCancelled -= Vm_SendCancelled;
+        Vm.ConversationChanged -= Vm_ConversationChanged;
+        _findDebounceTimer.Tick -= FindDebounceTimer_Tick;
+        ChatRoot.KeyDown -= ChatRoot_KeyDown;
+        Loaded -= OnLoaded;
+        Unloaded -= OnUnloaded;
+        if (_messageScrollViewer is not null)
+            _messageScrollViewer.ViewChanged -= MessageScrollViewer_ViewChanged;
+
+        // Break the ItemsControl -> ObservableCollection -> ChatMessage graph while the old
+        // native containers are still reachable. Waiting for a later XAML/COM collection is what
+        // made rapid session switches retain several complete transcript trees concurrently.
+        MessageList.ItemsSource = null;
+        MessageList.ItemTemplateSelector = null;
+        Vm.Cleanup();
+        _pageLifetimeCts.Dispose();
+
+        // RichTextBlock/ListView native trees can be tens of MiB while their managed wrappers
+        // are small, so native pressure alone may not make the CLR collect for many navigation
+        // cycles. Reclaim occasionally after the graph has been fully severed, on a worker so
+        // the full collection does not run inside the navigation handler.
+        // The one-at-a-time guard prevents a burst from queuing overlapping full collections.
+        if (Interlocked.Increment(ref _releasedHeavyPages) % HeavyPageReclaimInterval == 0
+            && Interlocked.Exchange(ref _nativeReclaimScheduled, 1) == 0)
+        {
+            ThreadPool.QueueUserWorkItem(static _ =>
+            {
+                try
+                {
+                    GC.Collect(
+                        GC.MaxGeneration,
+                        GCCollectionMode.Forced,
+                        blocking: true,
+                        compacting: false);
+                }
+                finally
+                {
+                    Interlocked.Exchange(ref _nativeReclaimScheduled, 0);
+                }
+            });
+        }
+    }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
@@ -96,20 +163,9 @@ public sealed partial class ChatPage : Page, IFindHost, IReloadablePage, IShutdo
         // Persist scroll position so returning to this conversation restores it.
         SaveScrollPosition();
 
-        _findDebounceTimer.Stop();
-        // The elapsed-seconds ticker lives on the view model, which outlives this handler (the
-        // page is cached and reused), so it has to be disarmed explicitly here too.
-        Vm.StopThinkingTicker();
-
-        // The page is cached and reused (NavigationCacheMode.Required above), so only the
-        // per-view work is torn down here: drop the live run subscription so a backgrounded page
-        // stops projecting into a list nobody is looking at — LoadAsync re-subscribes on return.
-        // The presence hook and Vm.PropertyChanged handler are left attached on purpose: this is
-        // the single, reused instance (the constructor never runs again), so one permanent hook
-        // is correct, not a leak. Detaching them here would leave them dead after the first
-        // round-trip.
-        try { Vm.DetachRun(); }
-        catch { /* Best-effort cleanup. */ }
+        // This page is deliberately uncached: fully sever the view-model/event graph so the
+        // ListView and its native element-recycle pool can be reclaimed after navigation.
+        Dispose();
     }
 
     /// <summary>Reports to <c>WindowPresenceService</c> whether this window is
@@ -162,6 +218,17 @@ public sealed partial class ChatPage : Page, IFindHost, IReloadablePage, IShutdo
         };
     }
 
+    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    {
+        // This callback runs while the old visual tree is still reachable. Dispose the Win2D
+        // controls here rather than waiting for GC/Unloaded, where their native swap chains can
+        // already have escaped deterministic teardown.
+        SaveScrollPosition();
+        ReportViewing(active: false);
+        Dispose();
+        base.OnNavigatedFrom(e);
+    }
+
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         StartUiFeedbackLifetime();
@@ -172,20 +239,6 @@ public sealed partial class ChatPage : Page, IFindHost, IReloadablePage, IShutdo
             _messageScrollViewer.ViewChanged += MessageScrollViewer_ViewChanged;
         }
 
-        await LoadConversationAsync();
-    }
-
-    /// <summary>
-    /// Re-points this page at whichever conversation is now active, without rebuilding the page
-    /// (see <see cref="IFindHost"/>'s neighbour, <see cref="IReloadablePage"/>, for why).
-    /// </summary>
-    public async System.Threading.Tasks.Task ReloadAsync()
-    {
-        SaveScrollPosition();
-        _pendingInitialSubmission = null;
-        _stickToBottom = true;
-        ScrollToLatestButton.Visibility = Visibility.Collapsed;
-        LoadingOverlay.Visibility = Visibility.Visible;
         await LoadConversationAsync();
     }
 
@@ -266,7 +319,7 @@ public sealed partial class ChatPage : Page, IFindHost, IReloadablePage, IShutdo
         // before removing the overlay.  A fixed delay cannot account for
         // varying message counts and hardware speed — use ContainerContentChanging
         // to detect when visible items are actually realized.
-        _ = DismissOverlayWhenItemsReadyAsync();
+        _ = DismissOverlayWhenItemsReadyAsync(_pageLifetimeCts.Token);
         Composer.CanSubmit = Vm.CanSend;
         Composer.IsBusy = Vm.IsProcessing;
         Composer.FocusInput();

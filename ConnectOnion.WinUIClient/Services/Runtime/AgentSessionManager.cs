@@ -140,6 +140,7 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         _interactiveAnswers.Reset(conversationId);
         _pendingInteractive.TryRemove(conversationId, out _);
         _interruptRequestedRuns.TryRemove(conversationId, out _);
+        _wiredConnections.TryRemove(conversationId, out _);
 
         List<string>? images = null;
         List<OutgoingFileAttachment>? files = null;
@@ -586,6 +587,10 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         _runs.Forget(conversationId);
         await _connections.RemoveAsync(conversationId).ConfigureAwait(false);
     }
+
+    /// <summary>Forgets the small agent-config lookup after all of that agent's conversations
+    /// have been released. The dictionary is app-scoped and otherwise retains deleted agents.</summary>
+    public void ForgetAgent(string agentId) => _agentsById.TryRemove(agentId, out _);
 
     /// <summary>Records that a run's history is on disk, bounded FIFO so the marker set never
     /// grows past <see cref="MaxPersistedRunMarkers"/> — each entry only matters for the brief

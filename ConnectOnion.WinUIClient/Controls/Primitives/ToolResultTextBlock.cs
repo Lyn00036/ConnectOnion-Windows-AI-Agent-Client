@@ -41,7 +41,8 @@ public sealed class ToolResultTextBlock : UserControl
 
     private readonly TextBlock _textBlock = new()
     {
-        FontFamily = new FontFamily("Consolas"),
+        FontFamily = new FontFamily(
+            "ms-appx:///Assets/Fonts/JetBrainsMonoNerdFontMono-Regular.ttf#JetBrainsMono NFM"),
         FontSize = 12.5,
         IsTextSelectionEnabled = true,
         // Always on: the log region is a fixed-width column, so anything that would overflow folds
@@ -59,6 +60,8 @@ public sealed class ToolResultTextBlock : UserControl
         // render rather than leaving the previous theme's runs on screen — the same contract
         // HighlightedTextBlock follows.
         ActualThemeChanged += (_, _) => Render();
+        Loaded += (_, _) => Render();
+        Unloaded += (_, _) => _textBlock.Inlines.Clear();
     }
 
     private static void OnTextChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -67,6 +70,7 @@ public sealed class ToolResultTextBlock : UserControl
     private void Render()
     {
         _textBlock.Inlines.Clear();
+        if (!IsLoaded) return;
 
         var formatted = ToolResultFormatter.Format(Text);
 

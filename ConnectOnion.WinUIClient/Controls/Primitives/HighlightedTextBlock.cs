@@ -61,6 +61,8 @@ public sealed class HighlightedTextBlock : UserControl
         // re-render on a live theme flip so visible matches don't stay stuck on the
         // old theme's colors.
         ActualThemeChanged += (_, _) => Render();
+        Loaded += (_, _) => Render();
+        Unloaded += (_, _) => _textBlock.Blocks.Clear();
     }
 
     public string Text
@@ -87,6 +89,7 @@ public sealed class HighlightedTextBlock : UserControl
     private void Render()
     {
         _textBlock.Blocks.Clear();
+        if (!IsLoaded) return;
         var paragraph = new Paragraph();
         _textBlock.Blocks.Add(paragraph);
 
@@ -103,6 +106,7 @@ public sealed class HighlightedTextBlock : UserControl
     /// <summary>Measured descents, keyed by font family + size. Measuring is cheap but not free,
     /// and the renderer asks for the same handful of (family, size) pairs on every re-render.</summary>
     private static readonly Dictionary<(string Family, double Size), double> DescentCache = new();
+    private const int MaxDescentCacheEntries = 32;
 
     /// <summary>
     /// The real descender height of <paramref name="fontFamily"/> at <paramref name="fontSize"/>,
@@ -140,6 +144,10 @@ public sealed class HighlightedTextBlock : UserControl
             // approximation above is still far better than no nudge at all.
         }
 
+        // Font families can come from user preferences and font sizes from zoom. This cache is a
+        // rendering accelerator, not durable state; bound it so a long session experimenting
+        // with many combinations cannot leave one entry per combination forever.
+        if (DescentCache.Count >= MaxDescentCacheEntries) DescentCache.Clear();
         DescentCache[key] = descent;
         return descent;
     }

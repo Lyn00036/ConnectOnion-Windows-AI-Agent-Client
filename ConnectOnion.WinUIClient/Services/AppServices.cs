@@ -22,6 +22,7 @@ public static class AppServices
 
     public static AgentRepository Agents => Provider.GetRequiredService<AgentRepository>();
     public static SessionRepository Sessions => Provider.GetRequiredService<SessionRepository>();
+    public static SidebarStateRepository SidebarState => Provider.GetRequiredService<SidebarStateRepository>();
     public static PreferencesRepository Preferences => Provider.GetRequiredService<PreferencesRepository>();
     public static ConversationRepository Conversations => Provider.GetRequiredService<ConversationRepository>();
     public static WindowPlacementStore WindowPlacement => Provider.GetRequiredService<WindowPlacementStore>();

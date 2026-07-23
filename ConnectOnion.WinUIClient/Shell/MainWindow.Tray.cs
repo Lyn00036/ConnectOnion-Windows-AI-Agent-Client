@@ -1,6 +1,4 @@
 using System;
-using System.IO;
-using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
@@ -13,146 +11,39 @@ public sealed partial class MainWindow
     private const int SizeRestored = 0;
     private const int SizeMinimized = 1;
     private const int SizeMaximized = 2;
-    private const int WmCommand = 0x0111;
-    private const int WmLButtonDown = 0x0201;
-    private const int WmLButtonUp = 0x0202;
-    private const int WmLButtonDblClk = 0x0203;
-    private const int WmRButtonUp = 0x0205;
-    private const int NinSelect = 0x0400;
-    private const int WmApp = 0x8000;
-    private const int TrayCallbackMessage = WmApp + 100;
 
     private const int SwHide = 0;
     private const int SwShow = 5;
     private const int SwRestore = 9;
-    private const int TrayIconId = 1;
-    private const int OpenWindowCommandId = 1001;
-    private const int ExitCommandId = 1002;
-
-    private const uint ImageIcon = 1;
-    private const uint LrLoadFromFile = 0x0010;
-    private const uint LrDefaultSize = 0x0040;
-    private const uint MfString = 0x0000;
-    private const uint MfSeparator = 0x0800;
-    private const uint TpmRightButton = 0x0002;
-    private const uint TpmBottomAlign = 0x0020;
-    private const uint TpmReturnCmd = 0x0100;
-    private const int ErrorClassAlreadyExists = 1410;
-
-    // Window styles for the hidden tray helper window.
-    private const uint WsPopUp = 0x80000000;
-    private const int HwndMessage = -3;
-
-    private static readonly IntPtr IdiApplication = new(32512);
-    private static readonly WNDPROC TrayWndProc = TrayHelperWndProc;
     private static bool _isExiting;
 
     private SUBCLASSPROC? _subclassProc;
-    private IntPtr _trayIconHandle;
-    private bool _ownsTrayIconHandle;
-    private bool _isTrayIconVisible;
     private bool _isTrayDisposed;
-    private IntPtr _trayHelperHwnd;
 
     private void InitializeTrayBehavior()
     {
-        // Create a hidden message-only window solely for receiving tray callbacks.
-        // This decouples tray lifecycle from the WinUI HWND, which may be
-        // recreated by the framework on hide/show.
-        _trayHelperHwnd = CreateTrayHelperWindow();
-        if (_trayHelperHwnd == IntPtr.Zero) return;
-
+        // H.NotifyIcon owns the notification-area icon, callback window, icon handle,
+        // context menu, and shell-restart recovery. This remaining subclass only observes
+        // the real app window for close-to-tray and notification-presence semantics.
         _subclassProc = WindowSubclassProc;
-        SetWindowSubclass(_hwnd, _subclassProc, UIntPtr.Zero, UIntPtr.Zero);
-        _trayIconHandle = LoadTrayIcon(out _ownsTrayIconHandle);
-        EnsureTrayIconVisible();
-    }
-
-    private static IntPtr CreateTrayHelperWindow()
-    {
-        var hInstance = GetModuleHandle(null);
-        var wc = new WNDCLASSEXW
+        if (!SetWindowSubclass(_hwnd, _subclassProc, UIntPtr.Zero, UIntPtr.Zero))
         {
-            cbSize = Marshal.SizeOf<WNDCLASSEXW>(),
-            lpfnWndProc = Marshal.GetFunctionPointerForDelegate(TrayWndProc),
-            hInstance = hInstance,
-            lpszClassName = "ConnectOnionTrayHelper",
-        };
-
-        var atom = RegisterClassExW(ref wc);
-        if (atom == 0 && Marshal.GetLastWin32Error() != ErrorClassAlreadyExists)
-        {
-            return IntPtr.Zero;
+            Serilog.Log.Warning("Could not attach close-to-tray window message observer");
         }
 
-        return CreateWindowExW(0, "ConnectOnionTrayHelper", "", WsPopUp,
-            0, 0, 0, 0, new IntPtr(HwndMessage), IntPtr.Zero, hInstance, IntPtr.Zero);
-    }
-
-    private static IntPtr TrayHelperWndProc(IntPtr hwnd, uint msg, UIntPtr wParam, IntPtr lParam)
-    {
         try
         {
-            if (msg == TrayCallbackMessage)
-            {
-                var mouseMessage = (int)(lParam.ToInt64() & 0xFFFF);
-
-                // Left-click (single or double) restores the window.
-                if (mouseMessage is WmLButtonDown or WmLButtonUp
-                    or WmLButtonDblClk or NinSelect)
-                {
-                    if (App.MainWindow is MainWindow mainWindow
-                        && mainWindow.DispatcherQueue is { } dq)
-                    {
-                        _ = dq.TryEnqueue(mainWindow.RestoreFromTray);
-                    }
-                    return IntPtr.Zero;
-                }
-
-                // Right-click shows the context menu.
-                if (mouseMessage == WmRButtonUp)
-                {
-                    if (App.MainWindow is MainWindow mainWindow
-                        && mainWindow.DispatcherQueue is { } dq)
-                    {
-                        _ = dq.TryEnqueue(mainWindow.ShowTrayMenu);
-                    }
-                    return IntPtr.Zero;
-                }
-            }
-
-            if (msg == WmCommand)
-            {
-                var commandId = unchecked((int)wParam.ToUInt64()) & 0xffff;
-                if (commandId == OpenWindowCommandId)
-                {
-                    if (App.MainWindow is MainWindow mainWindow
-                        && mainWindow.DispatcherQueue is { } dq)
-                    {
-                        _ = dq.TryEnqueue(mainWindow.RestoreFromTray);
-                    }
-                    return IntPtr.Zero;
-                }
-
-                if (commandId == ExitCommandId)
-                {
-                    if (App.MainWindow is MainWindow mainWindow
-                        && mainWindow.DispatcherQueue is { } dq)
-                    {
-                        _ = dq.TryEnqueue(mainWindow.ExitApplication);
-                    }
-                    return IntPtr.Zero;
-                }
-            }
+            // Keep the process fully active while background agent turns are running.
+            // H.NotifyIcon defaults this call to Windows 11 Efficiency Mode, which is not
+            // appropriate for an app maintaining live WebSocket work.
+            TrayIcon.ForceCreate(enablesEfficiencyMode: false);
         }
-        catch
+        catch (Exception ex)
         {
-            // Swallow exceptions in the WndProc to prevent crash-to-desktop.
-            // The helper window is a best-effort facility; a single dropped
-            // tray notification is acceptable.
+            // The XAML control will retry creation when it is loaded. A tray failure must
+            // not prevent the primary window from opening.
+            Serilog.Log.Warning(ex, "Could not create the system tray icon immediately");
         }
-
-        return DefWindowProcW(hwnd, msg, wParam, lParam);
     }
 
     private IntPtr WindowSubclassProc(
@@ -247,7 +138,6 @@ public sealed partial class MainWindow
         // the process simply stops writing. A user reporting "the app closed itself" is answered
         // by whether this line or the exit sequence came last.
         Serilog.Log.Information("Window hidden to tray; app still running");
-        EnsureTrayIconVisible();
         ShowWindow(_hwnd, SwHide);
         _windowPresence?.SetVisible(this, false);
     }
@@ -308,125 +198,17 @@ public sealed partial class MainWindow
         Application.Current.Exit();
     }
 
-    private void EnsureTrayIconVisible()
-    {
-        if (_isTrayDisposed || _isTrayIconVisible) return;
-
-        var data = CreateNotifyIconData();
-        if (Shell_NotifyIcon(NotifyIconMessage.Add, ref data))
-        {
-            data.Anonymous.uVersion = 4;
-            Shell_NotifyIcon(NotifyIconMessage.SetVersion, ref data);
-            _isTrayIconVisible = true;
-        }
-    }
-
-    private void RemoveTrayIcon()
-    {
-        if (!_isTrayIconVisible) return;
-
-        var data = CreateNotifyIconData();
-        Shell_NotifyIcon(NotifyIconMessage.Delete, ref data);
-        _isTrayIconVisible = false;
-    }
-
-    private NotifyIconData CreateNotifyIconData()
-        => new()
-        {
-            cbSize = Marshal.SizeOf<NotifyIconData>(),
-            hWnd = _trayHelperHwnd == IntPtr.Zero ? _hwnd : _trayHelperHwnd,
-            uID = TrayIconId,
-            uFlags = NotifyIconFlags.Message | NotifyIconFlags.Icon | NotifyIconFlags.Tip,
-            uCallbackMessage = TrayCallbackMessage,
-            hIcon = _trayIconHandle,
-            szTip = "ConnectOnion",
-            szInfo = string.Empty,
-            szInfoTitle = string.Empty,
-        };
-
-    private void ShowTrayMenu()
-    {
-        if (_isExiting || _isTrayDisposed) return;
-
-        var menu = CreatePopupMenu();
-        if (menu == IntPtr.Zero) return;
-
-        try
-        {
-            AppendMenu(menu, MfString, OpenWindowCommandId, "Open Window");
-            AppendMenu(menu, MfSeparator, 0, null);
-            AppendMenu(menu, MfString, ExitCommandId, "Exit");
-            GetCursorPos(out var point);
-            SetForegroundWindow(_hwnd);
-            var command = TrackPopupMenu(
-                menu,
-                TpmRightButton | TpmBottomAlign | TpmReturnCmd,
-                point.X,
-                point.Y,
-                0,
-                _hwnd,
-                IntPtr.Zero);
-
-            if (command == OpenWindowCommandId)
-            {
-                RestoreFromTray();
-            }
-            else if (command == ExitCommandId)
-            {
-                ExitApplication();
-            }
-        }
-        finally
-        {
-            DestroyMenu(menu);
-        }
-    }
-
-    private static IntPtr LoadTrayIcon(out bool ownsHandle)
-    {
-        ownsHandle = false;
-        var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "app-icon.ico");
-        if (File.Exists(iconPath))
-        {
-            var handle = LoadImage(IntPtr.Zero, iconPath, ImageIcon, 0, 0, LrLoadFromFile | LrDefaultSize);
-            if (handle != IntPtr.Zero)
-            {
-                ownsHandle = true;
-                return handle;
-            }
-        }
-
-        return LoadIcon(IntPtr.Zero, IdiApplication);
-    }
-
     private void DisposeTrayBehavior()
     {
         if (_isTrayDisposed) return;
 
-        RemoveTrayIcon();
         _isTrayDisposed = true;
+        TrayIcon.Dispose();
 
         if (_subclassProc is not null)
         {
             RemoveWindowSubclass(_hwnd, _subclassProc, UIntPtr.Zero);
             _subclassProc = null;
-        }
-
-        if (_trayHelperHwnd != IntPtr.Zero)
-        {
-            DestroyWindow(_trayHelperHwnd);
-            _trayHelperHwnd = IntPtr.Zero;
-        }
-
-        if (_trayIconHandle != IntPtr.Zero && _ownsTrayIconHandle)
-        {
-            DestroyIcon(_trayIconHandle);
-        }
-
-        if (_trayIconHandle != IntPtr.Zero)
-        {
-            _trayIconHandle = IntPtr.Zero;
-            _ownsTrayIconHandle = false;
         }
     }
 }

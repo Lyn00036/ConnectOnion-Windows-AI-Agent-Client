@@ -8,6 +8,8 @@ public sealed partial class AutomationContractTests
     {
         "MainWindow",
         "AgentList",
+        "AgentAvatarButton",
+        "AgentCapabilitiesLoadingIndicator",
         "AddAgentButton",
         "AgentAddressInput",
         "SubmitAgentButton",
@@ -22,6 +24,9 @@ public sealed partial class AutomationContractTests
         "ConnectOnionDocsMenuItem",
         "KeyboardShortcutsMenuItem",
         "SettingsOverlay",
+        "AgentsNav",
+        "SettingsAgentList",
+        "SettingsAddAgentButton",
         "AboutOverlay",
         "KeyboardShortcutsOverlay",
         "AboutOkButton",
@@ -62,6 +67,6 @@ public sealed partial class AutomationContractTests
         throw new DirectoryNotFoundException("Could not locate the ConnectOnion repository root.");
     }
 
-    [GeneratedRegex("AutomationProperties\\.AutomationId=\"([^\"]+)\"")]
+    [GeneratedRegex("(?:AutomationProperties\\.AutomationId=\"|Property=\"AutomationProperties\\.AutomationId\" Value=\")([^\"]+)\"")]
     private static partial Regex AutomationIdRegex();
 }

@@ -55,8 +55,15 @@
                         <StackPanel>
                             <RadioButton x:Name="GeneralNav" GroupName="SettingsCategory" IsChecked="True"
                                 Style="{StaticResource SettingsNavButtonStyle}" Click="GeneralNav_Click"
+                                AutomationProperties.AutomationId="GeneralNav"
                                 AutomationProperties.Name="General settings">
                                 <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Style="{StaticResource SettingsNavIconStyle}" Glyph="&#xE713;"/><TextBlock Text="General"/></StackPanel>
+                            </RadioButton>
+                            <RadioButton x:Name="AgentsNav" GroupName="SettingsCategory"
+                                Style="{StaticResource SettingsNavButtonStyle}" Click="AgentsNav_Click"
+                                AutomationProperties.AutomationId="AgentsNav"
+                                AutomationProperties.Name="Agent settings">
+                                <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Style="{StaticResource SettingsNavIconStyle}" Glyph="&#xE716;"/><TextBlock Text="Agents"/></StackPanel>
                             </RadioButton>
                             <RadioButton GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
                                 Click="NotificationsNav_Click" AutomationProperties.Name="Notification settings">
@@ -99,6 +106,12 @@
                                   VerticalScrollMode="Enabled" VerticalScrollBarVisibility="Auto"
                                   HorizontalContentAlignment="Stretch">
                         <controls:IdentitySettingsContent x:Name="IdentityContent" Margin="28,6,28,28" />
+                    </ScrollViewer>
+                    <ScrollViewer x:Name="AgentsScrollViewer" Grid.Row="1" Visibility="Collapsed"
+                                  HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollMode="Enabled" VerticalScrollBarVisibility="Auto"
+                                  HorizontalContentAlignment="Stretch">
+                        <controls:AgentsSettingsContent x:Name="AgentsContent" Margin="28,6,28,28" />
                     </ScrollViewer>
                     <ScrollViewer x:Name="UsageScrollViewer" Grid.Row="1" Visibility="Collapsed"
                                   HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled"

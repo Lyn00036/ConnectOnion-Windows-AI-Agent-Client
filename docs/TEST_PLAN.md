@@ -661,12 +661,17 @@ Permitted conditions: element appears · element becomes clickable · status tex
 | **PERF-MSG-002** | Thumbnail converter cache | Recycled containers do not re-decode | `LocalPathToImageSourceConverter` (caches `BitmapImage` by path) |
 | **PERF-DB-001** | Per-turn write cost | O(turn), not O(conversation) | Assert the upsert touches exactly N rows |
 | **PERF-STREAM-001** | 1000 events per turn | Nothing dropped; UI does not freeze | — |
-| **STAB-LEAK-001** | 50 page enter/exit cycles | Memory returns to baseline; no retained `ChatPage` / `ChatViewModel` | dotMemory / weak-reference assertions |
-| **STAB-LEAK-002** | 100 overlay open/close cycles | No event-subscription leak | — |
+| **STAB-LEAK-001** | Repeated page enter/exit cycles | Tail Private Bytes slope ≤ 1.5 MB/cycle and tail span ≤ 24 MB; handles/threads plateau | ✅ `MemoryLeakTests` via `scripts/Test-MemoryLeaks.ps1` |
+| **STAB-LEAK-002** | Repeated overlay open/close cycles | Same plateau gate; no event-subscription leak | ✅ Settings scenario in `MemoryLeakTests` |
 | **STAB-LEAK-003** | WebSocket release | No residual socket after a conversation is deleted | `AgentConnectionRegistry` count assertion |
 | **STAB-LEAK-004** | `CancellationTokenSource` release | No leak | — |
 | **STAB-NET-001** | 20 disconnect/reconnect cycles | No handle leak; always recovers | Fake server flapping |
 | **STAB-LONG-001** | 2-hour soak | Memory stays flat | Long-run test |
+
+`STAB-LEAK-001/002` deliberately do not require Task Manager memory to return to the launch
+baseline. CLR/XAML/native allocators retain reusable high-water pages. The regression signal is
+an unbounded tail, independently corroborated by handles and threads; see
+[`MEMORY_LEAK_INVESTIGATION.md`](./MEMORY_LEAK_INVESTIGATION.md).
 
 ---
 

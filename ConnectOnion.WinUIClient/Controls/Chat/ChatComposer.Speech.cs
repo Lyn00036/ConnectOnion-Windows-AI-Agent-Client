@@ -2,10 +2,10 @@ using System;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Graphics.Canvas.Geometry;
-using Microsoft.Graphics.Canvas.UI.Xaml;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Shapes;
 using Windows.Devices.Enumeration;
 using Windows.Media;
 using Windows.Media.Audio;
@@ -13,16 +13,15 @@ using Windows.Media.Capture;
 using Windows.Media.Devices;
 using Windows.Media.Render;
 using Windows.Media.SpeechRecognition;
-using Windows.UI;
 using WinRT;
 using ConnectOnion.WinUIClient.Services;
 
 namespace ConnectOnion.WinUIClient.Controls;
 
 // Voice input for the composer: the microphone speech-recognition session, the
-// audio-meter AudioGraph, and the Win2D scrolling waveform. Split out of
+// audio-meter AudioGraph, and the lightweight XAML scrolling waveform. Split out of
 // ChatComposer.xaml.cs so that file stays focused on text/attachments/submit.
-// The constructor wiring (ApplyWaveformTheme, WaveformCanvas.Draw,
+// The constructor wiring (ApplyWaveformTheme, _waveformTimer.Tick,
 // _recordingElapsedTimer.Tick, ActualThemeChanged) and RefreshSendButtonState()
 // live in ChatComposer.xaml.cs; both partials share this one ChatComposer class.
 public sealed partial class ChatComposer
@@ -84,6 +83,7 @@ public sealed partial class ChatComposer
     /// thread and read by the Win2D draw handler on the UI thread.</summary>
     private readonly object _amplitudeLock = new();
     private readonly DispatcherTimer _recordingElapsedTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    private readonly DispatcherTimer _waveformTimer = new() { Interval = TimeSpan.FromMilliseconds(33) };
     private double _targetAmplitude;
     private double _smoothedAmplitude;
     private DateTimeOffset _recordingStartedAt;
@@ -97,13 +97,8 @@ public sealed partial class ChatComposer
     private int _sampleWritePos;
     private int _sampleCount;
 
-    // ---- Baseline dash style (created once) ----
-    private CanvasStrokeStyle? _dashStyle;
-
-    // ---- Theme-aware colours ----
-    private Color _bgColor;
-    private Color _baselineColor;
-    private Color _barColor;
+    private readonly System.Collections.Generic.List<Rectangle> _waveformBars = new();
+    private readonly SolidColorBrush _waveformBrush = new();
 
     private bool IsRecordingActive => _recordingState is RecordingState.Starting
                                                         or RecordingState.Recording
@@ -378,6 +373,7 @@ public sealed partial class ChatComposer
         _sampleWritePos = 0;
         _sampleCount = 0;
         Array.Clear(_sampleRing);
+        foreach (var bar in _waveformBars) bar.Visibility = Visibility.Collapsed;
     }
 
     private void StartRecordingVisuals()
@@ -388,11 +384,13 @@ public sealed partial class ChatComposer
         ResetRecordingVisuals();
         InputBox.PlaceholderText = "Listening...";
         _recordingElapsedTimer.Start();
+        _waveformTimer.Start();
     }
 
     private void StopRecordingVisuals()
     {
         _recordingElapsedTimer.Stop();
+        _waveformTimer.Stop();
         _sampleCount = 0;
         _sampleWritePos = 0;
         Array.Clear(_sampleRing);
@@ -405,7 +403,7 @@ public sealed partial class ChatComposer
         WaveformTimerText.Text = $"{(int)elapsed.TotalMinutes}:{elapsed.Seconds:00}";
     }
 
-    // ---- Win2D drawing ----
+    // ---- Lightweight XAML waveform ----
 
     /// <summary>Per-frame update: read amplitude, push to ring buffer.</summary>
     private void AdvanceWaveform()
@@ -421,59 +419,65 @@ public sealed partial class ChatComposer
         if (_sampleCount < MaxRingSamples) _sampleCount++;
     }
 
-    /// <summary>GPU-accelerated drawing of the scrolling waveform, driven by the
-    /// control's own ~60fps render loop (runs on the Win2D render thread).</summary>
-    private void WaveformCanvas_Draw(ICanvasAnimatedControl sender, CanvasAnimatedDrawEventArgs args)
+    private void WaveformTimer_Tick(object? sender, object e)
     {
-        var ds = args.DrawingSession;
-        float w = (float)sender.Size.Width;
-        float h = (float)sender.Size.Height;
+        if (_recordingState != RecordingState.Recording) return;
+        AdvanceWaveform();
+        RenderWaveform();
+    }
 
-        if (w <= 0 || h <= 0) return;
+    private void WaveformCanvas_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var centerY = e.NewSize.Height / 2;
+        WaveformBaseline.X1 = 0;
+        WaveformBaseline.X2 = e.NewSize.Width;
+        WaveformBaseline.Y1 = centerY;
+        WaveformBaseline.Y2 = centerY;
+        EnsureWaveformBars((int)(e.NewSize.Width / SampleStride));
+        RenderWaveform();
+    }
 
-        if (_dashStyle is null)
+    private void EnsureWaveformBars(int count)
+    {
+        count = Math.Clamp(count, 0, MaxRingSamples);
+        while (_waveformBars.Count < count)
         {
-            _dashStyle = new CanvasStrokeStyle
+            var bar = new Rectangle
             {
-                DashStyle = CanvasDashStyle.Dash,
-                DashCap = CanvasCapStyle.Round,
+                Width = BarWidth,
+                RadiusX = 1,
+                RadiusY = 1,
+                Fill = _waveformBrush,
+                Visibility = Visibility.Collapsed,
             };
+            _waveformBars.Add(bar);
+            WaveformCanvas.Children.Add(bar);
         }
+    }
 
-        float centerY = h / 2f;
+    private void RenderWaveform()
+    {
+        var width = WaveformCanvas.ActualWidth;
+        var centerY = WaveformCanvas.ActualHeight / 2;
+        if (width <= 0 || centerY <= 2) return;
 
-        // Background + baseline — always drawn, even when idle
-        ds.FillRectangle(0, 0, w, h, _bgColor);
-        ds.DrawLine(0, centerY, w, centerY, _baselineColor, 1, _dashStyle);
-
-        // Only advance and render bars while recording. Note the ring buffer is advanced from
-        // *inside* the draw callback, which ties the scroll speed to the render loop rather
-        // than to real time — deliberate, since the waveform is an activity indicator, not a
-        // measurement, and it keeps the bars evenly spaced whatever the frame rate.
-        if (_recordingState == RecordingState.Recording)
+        var visibleBars = Math.Min(_waveformBars.Count, (int)(width / SampleStride));
+        var count = Math.Min(_sampleCount, visibleBars);
+        for (var index = 0; index < visibleBars; index++)
         {
-            AdvanceWaveform();
-
-            float maxHalf = centerY - 2f;
-            int visibleBars = (int)(w / SampleStride);
-            if (visibleBars <= 0) return;
-
-            int count = Math.Min(_sampleCount, visibleBars);
-            for (int k = 0; k < count; k++)
+            var bar = _waveformBars[index];
+            if (index >= count)
             {
-                float barX = w - BarWidth - k * SampleStride;
-                if (barX < 0) break;
-
-                // Walk backwards from the newest sample so the waveform scrolls right-to-left.
-                // The double modulo is the standard fix for C#'s % returning a negative
-                // remainder for negative operands, which a single % would produce here.
-                int ringIndex = ((_sampleWritePos - 1 - k) % MaxRingSamples + MaxRingSamples) % MaxRingSamples;
-                double amp = _sampleRing[ringIndex];
-                float halfH = Math.Max(1, (float)(amp * maxHalf));
-                float topY = centerY - halfH;
-
-                ds.FillRectangle(barX, topY, BarWidth, halfH * 2, _barColor);
+                bar.Visibility = Visibility.Collapsed;
+                continue;
             }
+
+            var ringIndex = ((_sampleWritePos - 1 - index) % MaxRingSamples + MaxRingSamples) % MaxRingSamples;
+            var halfHeight = Math.Max(1, _sampleRing[ringIndex] * (centerY - 2));
+            bar.Height = halfHeight * 2;
+            Canvas.SetLeft(bar, width - BarWidth - index * SampleStride);
+            Canvas.SetTop(bar, centerY - halfHeight);
+            bar.Visibility = Visibility.Visible;
         }
     }
 
@@ -485,12 +489,7 @@ public sealed partial class ChatComposer
                   || (ActualTheme == ElementTheme.Default
                       && Application.Current.RequestedTheme == ApplicationTheme.Dark);
 
-        // Matches the Border painted behind WaveformCanvas in XAML (SurfaceElevatedColor,
-        // aliased from CardBackgroundFillColorDefaultBrush) — the canvas fills the exact
-        // same rect, so the two must agree or the seam shows.
-        _bgColor = ThemeService.GetColor("SurfaceElevatedColor", isDark);
-        _baselineColor = ThemeService.GetColor("BorderStrongColor", isDark);
-        _barColor = ThemeService.GetColor("TextPrimaryColor", isDark);
+        _waveformBrush.Color = ThemeService.GetColor("TextPrimaryColor", isDark);
     }
 
     // ---- Audio meter ----

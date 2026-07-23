@@ -200,8 +200,6 @@ public sealed partial class ChatMessage
     [JsonIgnore] public string DiffWrapLabel => IsDiffWrapped ? "No wrap" : "Wrap";
     [JsonIgnore] public DiffChangeState DiffState => ParseDiffState(EventResult);
     [JsonIgnore] public bool ShowDiffBody => IsDiffExpanded;
-    [JsonIgnore] public bool ShowDiffCompactAction => !IsDiffExpanded;
-    [JsonIgnore] public bool ShowDiffExpandedActions => IsDiffExpanded;
     [JsonIgnore] public bool CanToggleDiffVisibility => DiffState != DiffChangeState.Pending;
     [JsonIgnore] public bool ShowDiffProblem => DiffState is DiffChangeState.Failed
         or DiffChangeState.PartiallyApplied or DiffChangeState.Disconnected or DiffChangeState.Unconfirmed;
@@ -222,8 +220,7 @@ public sealed partial class ChatMessage
         : DiffState == DiffChangeState.Rejected
             ? DiffFileName
             : DiffPreview.FileSummary;
-    [JsonIgnore] public string DiffHeaderMeta => DiffState == DiffChangeState.Rejected && !IsDiffExpanded
-        ? "" : DiffPreview.ChangeSummary;
+    [JsonIgnore] public string DiffHeaderMeta => DiffPreview.ChangeSummary;
     [JsonIgnore] public string DiffIconGlyph => DiffState switch
     {
         DiffChangeState.Applied => "\uE73E",
@@ -241,7 +238,6 @@ public sealed partial class ChatMessage
     };
     [JsonIgnore] public InteractiveVisualTone DiffChromeTone
         => DiffState == DiffChangeState.Pending ? InteractiveVisualTone.Warning : InteractiveVisualTone.Neutral;
-    [JsonIgnore] public bool IsDiffCompact => !IsDiffExpanded;
     [JsonIgnore] public string DiffToggleLabel => IsDiffExpanded
         ? "Hide changes"
         : DiffState == DiffChangeState.Rejected ? "View proposed changes" : "View changes";
@@ -469,8 +465,6 @@ public sealed partial class ChatMessage
     {
         OnPropertyChanged(nameof(DiffState));
         OnPropertyChanged(nameof(ShowDiffBody));
-        OnPropertyChanged(nameof(ShowDiffCompactAction));
-        OnPropertyChanged(nameof(ShowDiffExpandedActions));
         OnPropertyChanged(nameof(CanToggleDiffVisibility));
         OnPropertyChanged(nameof(ShowDiffProblem));
         OnPropertyChanged(nameof(DiffCardTitle));
@@ -479,7 +473,6 @@ public sealed partial class ChatMessage
         OnPropertyChanged(nameof(DiffIconGlyph));
         OnPropertyChanged(nameof(DiffIconTone));
         OnPropertyChanged(nameof(DiffChromeTone));
-        OnPropertyChanged(nameof(IsDiffCompact));
         OnPropertyChanged(nameof(DiffToggleLabel));
         OnPropertyChanged(nameof(DiffProblemText));
         OnPropertyChanged(nameof(DiffAccessibilityName));

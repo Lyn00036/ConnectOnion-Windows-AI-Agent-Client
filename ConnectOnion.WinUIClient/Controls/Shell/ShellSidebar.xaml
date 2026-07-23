@@ -168,6 +168,7 @@
                                             Style="{StaticResource ShellNavButtonStyle}"
                                             Click="PinnedSession_Click"
                                             Tag="{Binding Id}"
+                                            AutomationProperties.AutomationId="PinnedSessionButton"
                                             VerticalAlignment="Stretch"
                                             HorizontalContentAlignment="Left"
                                             VerticalContentAlignment="Center"
@@ -285,14 +286,25 @@
                                             </ic:FluentIcon>
                                         </Button>
 
-                                        <!-- Avatar -->
-                                        <local:AgentAvatar Grid.Column="1"
-                                                           Size="28"
-                                                           CornerRadius="7"
-                                                           FontSize="12"
-                                                           Margin="4,0,10,0"
-                                                           VerticalAlignment="Center"
-                                                           Initial="{Binding Initial}" />
+                                        <!-- Avatar is a first-class navigation target, matching
+                                             the adjacent name button for mouse, touch and keyboard. -->
+                                        <Button Grid.Column="1"
+                                                Style="{StaticResource ShellNavButtonStyle}"
+                                                Click="Agent_Click"
+                                                Tag="{Binding Id}"
+                                                AutomationProperties.AutomationId="AgentAvatarButton"
+                                                AutomationProperties.Name="{Binding OpenAccessibilityName}"
+                                                ToolTipService.ToolTip="{Binding DisplayName}"
+                                                VerticalAlignment="Stretch"
+                                                VerticalContentAlignment="Center">
+                                            <local:AgentAvatar Size="28"
+                                                               CornerRadius="7"
+                                                               FontSize="12"
+                                                               Margin="4,0,10,0"
+                                                               Initial="{Binding Initial}"
+                                                               PaletteIndex="{Binding AvatarPaletteIndex}"
+                                                               IsHitTestVisible="False" />
+                                        </Button>
 
                                         <!-- Name (friendly display name; raw id in the tooltip). The
                                              name column is * so it shrinks via trimming instead of
@@ -301,6 +313,7 @@
                                                 Style="{StaticResource ShellNavButtonStyle}"
                                                 Click="Agent_Click"
                                                 Tag="{Binding Id}"
+                                                AutomationProperties.AutomationId="AgentButton"
                                                 VerticalAlignment="Stretch"
                                                 HorizontalContentAlignment="Left"
                                                 VerticalContentAlignment="Center"
@@ -438,6 +451,7 @@
                                                         Style="{StaticResource ShellNavButtonStyle}"
                                                         Click="Session_Click"
                                                         Tag="{Binding Id}"
+                                                        AutomationProperties.AutomationId="SessionButton"
                                                         VerticalAlignment="Stretch"
                                                         HorizontalContentAlignment="Left"
                                                         VerticalContentAlignment="Center"

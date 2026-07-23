@@ -38,11 +38,10 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
 
     public event Action<Type, bool>? NavigationRequested;
     public event Action<FrameworkElement>? SettingsRequested;
-    /// <summary>Raised by the sidebar's "Add agent" button. Distinct from a plain
-    /// <see cref="NavigationRequested"/> to <c>HomePage</c> because the click means "I want the
+    /// <summary>The sidebar click means "I want the
     /// add-agent form open", not merely "show me the landing page" — the shell answers it by
-    /// navigating *and* telling the page to open and reveal its form.</summary>
-    public event Action? AddAgentRequested;
+    /// opening the overlay without navigating. The button is passed back for focus restoration.</summary>
+    public event Action<FrameworkElement>? AddAgentRequested;
     public event PropertyChangedEventHandler? PropertyChanged;
 
     private readonly AgentPresenceService _presence = AppServices.Presence;
@@ -57,6 +56,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     /// every agent" from "we have not observed any expansion state yet" — the first refresh
     /// falls back to expanding the selected agent, later ones honour the empty set.</summary>
     private bool _hasExpansionState;
+    private bool _loadedPersistedExpansionState;
     private bool _isPinnedExpanded = true;
 
     public int OnlineAgentCount
@@ -123,6 +123,18 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
 
         // Must run *before* the Clear below, while the old items still hold their expansion.
         RememberExpandedAgentsFromUi();
+        if (!_loadedPersistedExpansionState)
+        {
+            var persisted = await AppServices.SidebarState.LoadAsync();
+            if (!_hasExpansionState && persisted.HasAgentExpansionState)
+            {
+                _expandedAgentIds.Clear();
+                _expandedAgentIds.UnionWith(persisted.ExpandedAgentIds);
+                _hasExpansionState = true;
+            }
+            IsPinnedExpanded = persisted.IsPinnedExpanded;
+            _loadedPersistedExpansionState = true;
+        }
 
         PinnedSessions.Clear();
         ShellAgents.Clear();
@@ -142,6 +154,8 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
             {
                 Id = agent.Id,
                 Name = agent.Name,
+                Address = agent.Address,
+                DirectUrl = agent.DirectUrl,
                 IsSelected = IsAgentSelected(agent.Id, agentsState.SelectedAgentId),
                 // First build: open the selected agent so the app doesn't start fully collapsed.
                 // Afterwards the user's own expansion state is authoritative, including "all
@@ -279,7 +293,39 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     {
         _expandedAgentIds.Clear();
         _expandedAgentIds.Add(agentId);
+        foreach (var agent in ShellAgents)
+        {
+            agent.IsExpanded = agent.Id == agentId;
+        }
         _hasExpansionState = true;
+        QueueSidebarStateSave();
+    }
+
+    /// <summary>
+    /// Snapshots the UI state before leaving the UI thread. The repository coalesces overlapping
+    /// writes so rapid disclosure clicks still persist the last visible state.
+    /// </summary>
+    private void QueueSidebarStateSave()
+    {
+        var expandedAgentIds = _expandedAgentIds.ToArray();
+        var isPinnedExpanded = IsPinnedExpanded;
+        _ = SaveSidebarStateAsync(expandedAgentIds, isPinnedExpanded);
+    }
+
+    private static async System.Threading.Tasks.Task SaveSidebarStateAsync(
+        string[] expandedAgentIds,
+        bool isPinnedExpanded)
+    {
+        try
+        {
+            await AppServices.SidebarState
+                .SaveAsync(expandedAgentIds, isPinnedExpanded)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            // Disclosure remains usable in memory if persistence is temporarily unavailable.
+        }
     }
 
     /// <summary>Guarantees the agent has an active conversation, reusing the current one if it
@@ -410,11 +456,15 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
                 _expandedAgentIds.Remove(agentId);
             }
             _hasExpansionState = true;
+            QueueSidebarStateSave();
         }
     }
 
     private void TogglePinned_Click(object sender, RoutedEventArgs e)
-        => IsPinnedExpanded = !IsPinnedExpanded;
+    {
+        IsPinnedExpanded = !IsPinnedExpanded;
+        QueueSidebarStateSave();
+    }
 
     /// <summary>Honours the OS "show animations" accessibility setting (Reduce Motion). Read once
     /// as a startup constant, matching <c>DisclosureAnimation</c>/<c>ThinkingIndicator</c> — the

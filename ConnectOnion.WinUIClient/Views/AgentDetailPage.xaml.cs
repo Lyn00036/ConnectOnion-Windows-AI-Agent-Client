@@ -3,6 +3,7 @@ using ConnectOnion.WinUIClient.Controls;
 using ConnectOnion.WinUIClient.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media.Animation;
 
 namespace ConnectOnion.WinUIClient.Views;
 
@@ -34,7 +35,11 @@ public sealed partial class AgentDetailPage : Page, IReloadablePage, IShutdownDi
     public System.Threading.Tasks.Task ReloadAsync() => LoadPageAsync();
 
     /// <summary>Synchronously releases the cached composer's Win2D, timer, audio, and speech resources.</summary>
-    public void DisarmForShutdown() => Composer.Dispose();
+    public void DisarmForShutdown()
+    {
+        Vm.Cleanup();
+        Composer.Dispose();
+    }
 
     private async System.Threading.Tasks.Task LoadPageAsync()
     {
@@ -61,6 +66,17 @@ public sealed partial class AgentDetailPage : Page, IReloadablePage, IShutdownDi
     private async void OfflineNotice_RecheckRequested(object? sender, EventArgs e)
         => await Vm.RecheckPresenceAsync();
 
+    private void Suggestion_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is string prompt)
+            Composer.SetDraft(prompt);
+    }
+
+    private void ContentScroll_SizeChanged(object sender, SizeChangedEventArgs e)
+        => ContentLayout.MinHeight = Math.Max(
+            0,
+            e.NewSize.Height - ContentScroll.Padding.Top - ContentScroll.Padding.Bottom);
+
     private async System.Threading.Tasks.Task StartConversationAsync(ComposerSubmission submission)
     {
         var initialPrompt = submission.Text.Trim();
@@ -69,7 +85,10 @@ public sealed partial class AgentDetailPage : Page, IReloadablePage, IShutdownDi
 
         if (await Vm.StartConversationAsync(initialPrompt, hasAttachments))
         {
-            Frame.Navigate(typeof(ChatPage), new ComposerSubmission(initialPrompt, submission.Attachments));
+            Frame.Navigate(
+                typeof(ChatPage),
+                new ComposerSubmission(initialPrompt, submission.Attachments),
+                new DrillInNavigationTransitionInfo());
         }
     }
 }
