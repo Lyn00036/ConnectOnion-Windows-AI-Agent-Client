@@ -412,12 +412,12 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         OnPropertyChanged(nameof(CanSend));
         if (_session is null)
         {
-            HeaderText = $"{_agent.Name} - No conversation selected";
+            HeaderText = $"{_agent.DisplayName} - No conversation selected";
             RaiseHeaderProperties();
             return;
         }
 
-        HeaderText = $"{_agent.Name} - {_session.Title}";
+        HeaderText = $"{_agent.DisplayName} - {_session.Title}";
         CurrentMode = _session.Mode;
         RaiseHeaderProperties();
 
@@ -636,7 +636,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
             _session.Title = title.Length > 48 ? title[..48] : title;
         }
         _session.UpdatedAt = DateTime.UtcNow.ToString("o");
-        HeaderText = $"{_agent!.Name} - {_session.Title}";
+        HeaderText = $"{_agent!.DisplayName} - {_session.Title}";
         RaiseHeaderProperties();
         // Only this one row changed — no need to reconcile the whole session index on every send.
         _ = _sessions.UpdateSessionAsync(_session);

@@ -149,7 +149,9 @@ public sealed partial class AddAgentViewModel : Common.ObservableObject
             _testedInput = input;
             _detectedName = result.AgentName;
             ConnectionState = AddAgentConnectionState.Connected;
-            var name = string.IsNullOrWhiteSpace(result.AgentName) ? "agent" : result.AgentName;
+            var name = string.IsNullOrWhiteSpace(result.AgentName)
+                ? "Agent"
+                : Common.FriendlyAgentName.From(result.AgentName);
             StatusText = $"Connected to {name}";
             RaiseAllStateProperties();
         }

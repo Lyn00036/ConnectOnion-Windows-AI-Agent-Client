@@ -65,6 +65,18 @@ public sealed class NotificationCoordinatorTests
     }
 
     [Fact]
+    public void PublishAgentTurnCompleted_MachineName_UsesFriendlyDisplayName()
+    {
+        var h = new Harness();
+        h.Presence.IsForeground = false;
+
+        h.Coordinator.PublishAgentTurnCompleted(
+            AgentId, "remote-admin-agent", ConvId, "turn-1", "hi", 0, 100);
+
+        Assert.Equal("Remote Admin Agent", h.System.Last!.Title);
+    }
+
+    [Fact]
     public void PublishAgentTurnCompleted_SameTurnTwice_NotifiesOnce()
     {
         var h = new Harness();
@@ -135,6 +147,18 @@ public sealed class NotificationCoordinatorTests
 
         Assert.Equal(1, h.System.Count);
         Assert.Equal(NotificationType.ConnectionLost, h.System.Last!.Type);
+    }
+
+    [Fact]
+    public void NotifyConnectionLost_MachineName_UsesFriendlyDisplayName()
+    {
+        var h = new Harness();
+        h.Presence.IsForeground = false;
+
+        h.Coordinator.NotifyConnectionLost(AgentId, "remote-admin-agent");
+        h.Scheduler.FireAll();
+
+        Assert.Contains("Remote Admin Agent", h.System.Last!.Body);
     }
 
     [Fact]

@@ -69,6 +69,7 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
 
             if (!SetProperty(ref _agent, value)) return;
             OnPropertyChanged(nameof(AgentName));
+            OnPropertyChanged(nameof(AgentDisplayName));
             OnPropertyChanged(nameof(AgentAddress));
             OnPropertyChanged(nameof(DirectUrl));
             OnPropertyChanged(nameof(HasAgent));
@@ -80,14 +81,15 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
     }
 
     public string AgentName => _agent?.Name ?? "";
-    public string AgentInitial => NameInitial.From(AgentName);
+    public string AgentDisplayName => _agent?.DisplayName ?? "";
+    public string AgentInitial => NameInitial.From(AgentDisplayName);
     public int AgentAvatarPaletteIndex => AvatarPalette.From(AgentName);
     public string AgentAddress => _agent?.Address ?? "";
     public string? DirectUrl => _agent?.DirectUrl;
     public bool HasAgent => _agent is not null;
-    public string ComposerPlaceholder => string.IsNullOrWhiteSpace(AgentName)
+    public string ComposerPlaceholder => string.IsNullOrWhiteSpace(AgentDisplayName)
         ? "Ask this agent anything"
-        : $"Ask {AgentName} anything";
+        : $"Ask {AgentDisplayName} anything";
 
     public bool CanStartConversation => HasAgent && IsOnline;
 
@@ -208,6 +210,11 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
         // its fetch drops out where it would otherwise publish (FetchInfoWithCacheAsync).
         var generation = ++_loadGeneration;
 
+        // Loading belongs to one generation, not to the cached page instance. A previous agent
+        // may still have an /info request in flight; the new load must clear its spinner before
+        // taking an early return for a missing agent or a fresh cache hit.
+        IsLoading = false;
+
         var prefs = await _preferences.LoadAsync();
         if (generation != _loadGeneration) return;
         EnterToSend = prefs.EnterToSend;
@@ -247,7 +254,18 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
         }
 
         var hadCache = !string.IsNullOrWhiteSpace(agent.InfoJson);
-        var freshJson = await AgentInfoService.FetchAndPersistAsync(agent, forceRefresh: true);
+        string? freshJson;
+        try
+        {
+            freshJson = await AgentInfoService.FetchAndPersistAsync(agent, forceRefresh: true);
+        }
+        catch
+        {
+            // Network helpers already translate ordinary reachability failures to null, but
+            // persistence or shutdown can still throw. Treat those exactly like a failed fetch
+            // so the page leaves its loading state and exposes the retryable error UI.
+            freshJson = null;
+        }
 
         _dispatcher.TryEnqueue(() =>
         {
@@ -255,27 +273,34 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
             // under another's name. IsLoading belongs to the newer load, so don't clear it either.
             if (generation != _loadGeneration) return;
 
-            if (!string.IsNullOrWhiteSpace(freshJson))
+            try
             {
-                HasError = false;
-                PopulateFromCachedJson(freshJson);
-                OnPropertyChanged(nameof(LastUpdated));
-                StatusText = $"Updated - {LastUpdated}";
+                if (!string.IsNullOrWhiteSpace(freshJson))
+                {
+                    HasError = false;
+                    PopulateFromCachedJson(freshJson);
+                    OnPropertyChanged(nameof(LastUpdated));
+                    StatusText = $"Updated - {LastUpdated}";
+                }
+                else if (hadCache)
+                {
+                    HasError = false;
+                    StatusText = $"Cached - {LastUpdated}";
+                }
+                else
+                {
+                    InfoFields.Clear();
+                    InfoJson = "";
+                    HasError = true;
+                    StatusText = "Could not load agent info.";
+                }
             }
-            else if (hadCache)
+            finally
             {
-                HasError = false;
-                StatusText = $"Cached - {LastUpdated}";
+                // Keep this in finally: malformed metadata or a future projection failure must
+                // never strand the capabilities ProgressRing.
+                IsLoading = false;
             }
-            else
-            {
-                InfoFields.Clear();
-                InfoJson = "";
-                HasError = true;
-                StatusText = "Could not load agent info.";
-            }
-
-            IsLoading = false;
         });
     }
 

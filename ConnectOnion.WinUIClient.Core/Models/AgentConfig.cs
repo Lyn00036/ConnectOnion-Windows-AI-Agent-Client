@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using CommunityToolkit.Mvvm.ComponentModel;
+using ConnectOnion.WinUIClient.Common;
 
 namespace ConnectOnion.WinUIClient.Models;
 
@@ -25,8 +26,14 @@ public sealed partial class AgentConfig : Common.ObservableObject
     public partial string Id { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DisplayName))]
     [JsonPropertyName("name")]
     public partial string Name { get; set; }
+
+    /// <summary>User-facing form of <see cref="Name"/>. The stored and transmitted value remains
+    /// unchanged; every UI surface uses this same projection as the sidebar.</summary>
+    [JsonIgnore]
+    public string DisplayName => FriendlyAgentName.From(Name);
 
     [ObservableProperty]
     [JsonPropertyName("address")]

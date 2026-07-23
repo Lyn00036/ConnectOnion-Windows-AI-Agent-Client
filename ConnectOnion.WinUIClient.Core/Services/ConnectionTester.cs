@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using ConnectOnion.WinUIClient.Common;
 
 namespace ConnectOnion.WinUIClient.Services;
 
@@ -67,7 +68,7 @@ public sealed class ConnectionTester
                 {
                     return new ConnectionTestResult(false, "Agent health check reported an unhealthy state.");
                 }
-                var suffix = name is null ? "" : $" - {name}";
+                var suffix = name is null ? "" : $" - {FriendlyAgentName.From(name)}";
                 return new ConnectionTestResult(
                     true, $"Healthy via Direct URL{suffix}.", AgentName: name);
             }
@@ -101,7 +102,9 @@ public sealed class ConnectionTester
                     .ConfigureAwait(false);
                 if (health.Online)
                 {
-                    var suffix = string.IsNullOrEmpty(health.Name) ? "" : $" - {health.Name}";
+                    var suffix = string.IsNullOrEmpty(health.Name)
+                        ? ""
+                        : $" - {FriendlyAgentName.From(health.Name)}";
                     return new ConnectionTestResult(true, $"Healthy via relay{suffix}.", AgentName: health.Name);
                 }
                 return new ConnectionTestResult(false, "Registered on the relay but currently offline.");

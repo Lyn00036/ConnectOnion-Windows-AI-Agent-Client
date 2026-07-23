@@ -18,6 +18,7 @@ public sealed class ConnectionTesterTests
 
         Assert.True(result.Ok);
         Assert.Equal("test-agent", result.AgentName);
+        Assert.Contains("Test Agent", result.Detail);
         Assert.Equal(expectedUrl, handler.LastRequestUri?.ToString());
     }
 

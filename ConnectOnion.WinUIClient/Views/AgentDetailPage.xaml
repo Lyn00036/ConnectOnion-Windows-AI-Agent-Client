@@ -107,7 +107,7 @@
                         <TextBlock x:Name="AgentNameText"
                                    Grid.Row="0"
                                    Grid.Column="1"
-                                   Text="{x:Bind Vm.AgentName, Mode=OneWay}"
+                                   Text="{x:Bind Vm.AgentDisplayName, Mode=OneWay}"
                                    FontSize="27"
                                    FontWeight="SemiBold"
                                    TextAlignment="Center"
@@ -191,6 +191,7 @@
 
                     <ProgressRing Width="18"
                                   Height="18"
+                                  AutomationProperties.AutomationId="AgentCapabilitiesLoadingIndicator"
                                   IsActive="{x:Bind Vm.IsLoading, Mode=OneWay}"
                                   Visibility="{x:Bind Vm.IsLoading, Mode=OneWay, Converter={StaticResource BoolToVis}}"
                                   HorizontalAlignment="Center"

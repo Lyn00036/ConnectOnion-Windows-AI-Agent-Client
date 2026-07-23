@@ -61,7 +61,7 @@ public sealed partial class ChatViewModel
         Messages.Clear();
         ResetIdCounter();
         _createdAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        HeaderText = $"{_agent.Name} - {_session.Title}";
+        HeaderText = $"{_agent.DisplayName} - {_session.Title}";
         RaiseHeaderProperties();
 
         _runSubscription = SubscribeToRun(_session.Id);
@@ -122,7 +122,7 @@ public sealed partial class ChatViewModel
         _createdAt = prefix.Count > 0
             ? prefix[0].CreatedAtUnixMs
             : DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        HeaderText = $"{_agent.Name} - {_session.Title}";
+        HeaderText = $"{_agent.DisplayName} - {_session.Title}";
         RaiseHeaderProperties();
 
         _runSubscription = SubscribeToRun(_session.Id);

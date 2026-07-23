@@ -1,4 +1,5 @@
 using ConnectOnion.WinUIClient.Common;
+using ConnectOnion.WinUIClient.Models;
 
 namespace ConnectOnion.WinUIClient.UnitTests.Common;
 
@@ -46,5 +47,14 @@ public sealed class FriendlyAgentNameTests
     public void From_AlreadyFriendlyProse_ReturnedUnchanged()
     {
         Assert.Equal("Customer Support", FriendlyAgentName.From("Customer Support"));
+    }
+
+    [Fact]
+    public void AgentConfig_DisplayName_UsesSharedProjectionWithoutChangingStoredName()
+    {
+        var agent = new AgentConfig { Name = "remote-admin-agent" };
+
+        Assert.Equal("remote-admin-agent", agent.Name);
+        Assert.Equal("Remote Admin Agent", agent.DisplayName);
     }
 }

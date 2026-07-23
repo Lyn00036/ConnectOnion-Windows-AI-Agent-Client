@@ -17,11 +17,12 @@ public sealed partial class HomeAgentItem : Common.ObservableObject
 {
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
+    public string DisplayName => FriendlyAgentName.From(Name);
     public string Initial { get; set; } = "?";
     public string ShortAddress { get; set; } = "";
     public string FullAddress { get; set; } = "";
     public int AvatarPaletteIndex { get; set; }
-    public string AutomationName => $"Open {Name}";
+    public string AutomationName => $"Open {DisplayName}";
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsChecking))]
@@ -55,7 +56,7 @@ public sealed partial class HomeAgentItem : Common.ObservableObject
         _ => "Checking",
     };
 
-    public string StatusAutomationName => $"{Name}: {StatusLabel}";
+    public string StatusAutomationName => $"{DisplayName}: {StatusLabel}";
 }
 
 /// <summary>
@@ -128,7 +129,7 @@ public sealed partial class HomePage : Page, IReloadablePage, IDisposable
             {
                 Id = agent.Id,
                 Name = agent.Name,
-                Initial = NameInitial.From(agent.Name),
+                Initial = NameInitial.From(agent.DisplayName),
                 ShortAddress = ShortenAddress(agent),
                 FullAddress = GetAddress(agent),
                 AvatarPaletteIndex = AvatarPalette.From(agent.Name),

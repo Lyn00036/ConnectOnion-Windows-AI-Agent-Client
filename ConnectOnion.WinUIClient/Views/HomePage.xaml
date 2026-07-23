@@ -95,7 +95,7 @@
                                     <StackPanel Grid.Column="1"
                                                 Spacing="3"
                                                 VerticalAlignment="Center">
-                                        <TextBlock Text="{x:Bind Name}"
+                                        <TextBlock Text="{x:Bind DisplayName}"
                                                    FontSize="16"
                                                    FontWeight="SemiBold"
                                                    TextTrimming="CharacterEllipsis" />
