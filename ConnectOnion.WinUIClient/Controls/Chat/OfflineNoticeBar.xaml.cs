@@ -55,7 +55,7 @@ public sealed partial class OfflineNoticeBar : UserControl
         // Loaded (still collapsed at that point, before the first show fires) by clearing it. The
         // card then simply appears, its meaning unchanged.
         if (!AnimationsEnabled)
-            Loaded += (_, _) => Implicit.SetShowAnimations(this, null);
+            Loaded += (_, _) => ClearValue(Implicit.ShowAnimationsProperty);
     }
 
     public string Detail

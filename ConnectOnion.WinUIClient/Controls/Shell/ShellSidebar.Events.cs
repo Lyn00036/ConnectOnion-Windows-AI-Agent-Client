@@ -96,6 +96,10 @@ public sealed partial class ShellSidebar
         }
         await AppServices.Sessions.SaveAsync(sessionsState);
 
+        AppServices.RunManager.ForgetAgent(agentId);
+        AppServices.Presence.Forget(agentId);
+        AppServices.Notifications.NotifyConnectionRestored(agentId);
+
         await RefreshAsync();
         RequestNavigation(typeof(ChatPage), forceReload: true);
         }
@@ -194,7 +198,8 @@ public sealed partial class ShellSidebar
     private async void AddAgent_Click(object sender, RoutedEventArgs e)
     {
         await RefreshAsync();
-        AddAgentRequested?.Invoke();
+        if (sender is FrameworkElement opener)
+            AddAgentRequested?.Invoke(opener);
     }
 
     private async void Settings_Click(object sender, RoutedEventArgs e)

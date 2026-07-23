@@ -470,6 +470,25 @@ public sealed class ConversationRunRegistryTests
     }
 
     [Fact]
+    public async Task TerminalSnapshots_AreCapacityBounded()
+    {
+        var registry = new ConversationRunRegistry(new FakePersistence());
+
+        for (var i = 0; i < 70; i++)
+        {
+            var conversationId = $"bounded-{i}";
+            registry.StartRun(
+                NewRequest(conversationId),
+                new FakeExecutor((_, _) => Task.FromResult($"reply-{i}")));
+            await WaitUntilAsync(() => registry.GetActiveRun(conversationId)?.IsTerminal == true);
+            await WaitUntilAsync(() => !registry.IsRunActive(conversationId));
+        }
+
+        Assert.Null(registry.GetActiveRun("bounded-0"));
+        Assert.NotNull(registry.GetActiveRun("bounded-69"));
+    }
+
+    [Fact]
     public async Task IsRunActive_GoesFalseOnceTerminal_EvenThoughGetActiveRunStillAnswers()
     {
         var persistence = new FakePersistence();

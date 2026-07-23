@@ -89,6 +89,8 @@ public sealed class MarkdownTextBlock : UserControl
         // live or stamped after the markdown first renders) needs a re-render, not just the inner
         // RichTextBlock's bound FontSize update — otherwise those inlines keep the old size.
         RegisterPropertyChangedCallback(FontSizeProperty, (_, _) => RenderMarkdown(Markdown));
+        Loaded += (_, _) => RenderMarkdown(Markdown);
+        Unloaded += (_, _) => ReleaseDocumentTree();
     }
 
     public string Markdown
@@ -128,6 +130,11 @@ public sealed class MarkdownTextBlock : UserControl
     {
         _richTextBlock.Blocks.Clear();
 
+        // Virtualized rows still receive dependency-property updates while detached. Building a
+        // native RichTextBlock document at that point only creates an off-screen tree that stays
+        // alive in the recycle pool. Loaded renders the current value when the row returns.
+        if (!IsLoaded) return;
+
         if (string.IsNullOrWhiteSpace(markdown))
         {
             return;
@@ -154,5 +161,12 @@ public sealed class MarkdownTextBlock : UserControl
             fallback.Inlines.Add(new Run { Text = markdown });
             _richTextBlock.Blocks.Add(fallback);
         }
+    }
+
+    private void ReleaseDocumentTree()
+    {
+        _richTextBlock.Blocks.Clear();
+        _parsedDocument = null;
+        _parsedMarkdown = string.Empty;
     }
 }

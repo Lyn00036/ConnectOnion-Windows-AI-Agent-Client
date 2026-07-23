@@ -59,6 +59,8 @@ public sealed class ToolResultTextBlock : UserControl
         // render rather than leaving the previous theme's runs on screen — the same contract
         // HighlightedTextBlock follows.
         ActualThemeChanged += (_, _) => Render();
+        Loaded += (_, _) => Render();
+        Unloaded += (_, _) => _textBlock.Inlines.Clear();
     }
 
     private static void OnTextChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -67,6 +69,7 @@ public sealed class ToolResultTextBlock : UserControl
     private void Render()
     {
         _textBlock.Inlines.Clear();
+        if (!IsLoaded) return;
 
         var formatted = ToolResultFormatter.Format(Text);
 

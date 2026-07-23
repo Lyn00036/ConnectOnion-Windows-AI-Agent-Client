@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using CommunityToolkit.Mvvm.Input;
 using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Services;
 using ConnectOnion.WinUIClient.Views;
@@ -22,8 +23,13 @@ public sealed partial class MainWindow : Window
     private int _windowPlacementSaved;
     private bool _isSidebarVisible = true;
 
+    public IRelayCommand OpenWindowCommand { get; }
+    public IRelayCommand ExitFromTrayCommand { get; }
+
     public MainWindow()
     {
+        OpenWindowCommand = new RelayCommand(RestoreFromTray);
+        ExitFromTrayCommand = new RelayCommand(ExitApplication);
         InitializeComponent();
         _sessionRepository = AppServices.Sessions;
         // Capture DI-owned services while the host is alive. Closed can run after App.Exit has
@@ -38,7 +44,8 @@ public sealed partial class MainWindow : Window
         InitializeTrayBehavior();
         ShellSidebar.NavigationRequested += NavigateTo;
         ShellSidebar.SettingsRequested += ShowSettingsOverlay;
-        ShellSidebar.AddAgentRequested += ShowAddAgentOnHome;
+        ShellSidebar.AddAgentRequested += ShowAddAgentOverlay;
+        AddAgentOverlay.AgentAdded += AddAgentOverlay_AgentAdded;
         SettingsOverlay.CloseRequested += (_, _) => CloseSettingsOverlay();
         KeyboardShortcutsDialog.CloseRequested += (_, _) => CloseKeyboardShortcutsOverlay();
         AboutOverlay.CloseRequested += (_, _) => CloseAboutOverlay();
@@ -106,6 +113,8 @@ public sealed partial class MainWindow : Window
         DetachNotificationPresence();
         DetachShortcutHints();
         DetachViewMenu();
+        AddAgentOverlay.AgentAdded -= AddAgentOverlay_AgentAdded;
+        AddAgentOverlay.Shutdown();
         InAppNotifications.Shutdown();
         SettingsOverlay.Shutdown();
 
@@ -218,7 +227,10 @@ public sealed partial class MainWindow : Window
     /// up through RootGrid regardless of hit-testing, so they must additionally bail on this to
     /// keep a modal from acting on the content behind it.</summary>
     private bool IsModalOverlayOpen
-        => SettingsOverlay.IsOpen || KeyboardShortcutsDialog.IsOpen || AboutOverlay.IsOpen;
+        => AddAgentOverlay.IsOpen
+            || SettingsOverlay.IsOpen
+            || KeyboardShortcutsDialog.IsOpen
+            || AboutOverlay.IsOpen;
 
     private void UpdateNavigationButtons()
     {
@@ -283,10 +295,9 @@ public sealed partial class MainWindow : Window
     /// page using this must therefore not depend on it arriving on every call.</param>
     private async void NavigateTo(Type page, bool forceReload, object? parameter)
     {
-        // Chat → chat (or agent → agent) is a change of selection, not a change of page. Navigating
-        // would discard the live page and build another — XAML tree, composer + Win2D canvas, view
-        // model, bindings — on every click. Hand the switch to the page already on screen (see
-        // Views.IReloadablePage) and do by hand the two things the Navigated handler would have.
+        // Lightweight pages may reload in place. ChatPage intentionally does not implement
+        // IReloadablePage: each conversation switch must destroy the old ListView and its native
+        // RichTextBlock/DataTemplate recycle pool.
         if (forceReload
             && ContentFrame.CurrentSourcePageType == page
             && ContentFrame.Content is Views.IReloadablePage reloadable)
@@ -311,18 +322,23 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    /// <summary>
-    /// Answers the sidebar's "Add agent" button: go to the landing page with the form already
-    /// open and scrolled to.
-    ///
-    /// <para><c>forceReload</c> is what makes this work when the user is already on HomePage —
-    /// without it <c>NavigateTo</c> would see the page type is unchanged and do nothing, so the
-    /// button would appear dead exactly when the target is already on screen. HomePage does not
-    /// implement <see cref="Views.IReloadablePage"/>, so a force-reload is always a real
-    /// navigation and the parameter always arrives.</para>
-    /// </summary>
-    private void ShowAddAgentOnHome()
-        => NavigateTo(typeof(HomePage), forceReload: true, parameter: HomePage.OpenAddAgentParameter);
+    /// <summary>Opens the shell-owned modal without changing the current page.</summary>
+    internal void ShowAddAgentOverlay(FrameworkElement? opener = null)
+        => AddAgentOverlay.Show(opener);
+
+    private async void AddAgentOverlay_AgentAdded(Models.AgentConfig agent)
+    {
+        try
+        {
+            await ShellSidebar.RefreshAsync();
+            if (ContentFrame.Content is HomePage homePage)
+                await homePage.RefreshAfterAgentAddedAsync(agent.Id);
+        }
+        catch
+        {
+            // Persistence has already succeeded. The sidebar/page will recover on its next load.
+        }
+    }
 
     private void ShowSettingsOverlay(FrameworkElement? opener = null)
         => SettingsOverlay.Show(opener);

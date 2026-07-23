@@ -21,7 +21,7 @@
                  Composer_SizeChanged), so narrow windows shrink both together with no horizontal
                  scroll. Keep the two values equal. -->
             <x:Double x:Key="ChatColumnWidth">880</x:Double>
-            <x:Double x:Key="ChatComposerWidth">880</x:Double>
+            <x:Double x:Key="ChatComposerWidth">820</x:Double>
 
             <presentation:BoolToVisibilityConverter x:Key="BoolToVis" />
             <presentation:StringToVisibilityConverter x:Key="StringToVis" />

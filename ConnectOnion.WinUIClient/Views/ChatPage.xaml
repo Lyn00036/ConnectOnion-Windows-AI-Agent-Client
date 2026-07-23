@@ -727,7 +727,8 @@
                                                   CornerRadius="10"
                                                   FontSize="16"
                                                   VerticalAlignment="Center"
-                                                  Initial="{x:Bind Vm.SelectedAgentInitial, Mode=OneWay}" />
+                                                  Initial="{x:Bind Vm.SelectedAgentInitial, Mode=OneWay}"
+                                                  PaletteIndex="{x:Bind Vm.SelectedAgentAvatarPaletteIndex, Mode=OneWay}" />
                             <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="3">
                                 <TextBlock Text="{x:Bind Vm.SelectedAgentDisplayName, Mode=OneWay}"
                                            FontSize="16"

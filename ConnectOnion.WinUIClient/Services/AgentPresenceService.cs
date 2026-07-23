@@ -39,6 +39,10 @@ public sealed class AgentPresenceService
     private readonly Dictionary<string, string> _details = new();
     private readonly Dictionary<string, DateTimeOffset> _checkedAt = new();
     private readonly Dictionary<string, Task> _inflight = new();
+    private readonly ConnectionTester _connectionTester;
+
+    public AgentPresenceService(ConnectionTester connectionTester)
+        => _connectionTester = connectionTester;
 
     /// <summary>Raised (possibly off the UI thread) when an agent's presence changes. Carries the agent id.</summary>
     public event Action<string>? PresenceChanged;
@@ -51,6 +55,28 @@ public sealed class AgentPresenceService
     public string GetDetail(string agentId)
     {
         lock (_gate) return _details.TryGetValue(agentId, out var d) ? d : "";
+    }
+
+    /// <summary>Drops process-wide status for a deleted agent. If a probe is already in flight,
+    /// remove its result once it completes as well so the late continuation cannot resurrect the
+    /// deleted key.</summary>
+    public void Forget(string agentId)
+    {
+        Task? pending;
+        lock (_gate)
+        {
+            _presence.Remove(agentId);
+            _details.Remove(agentId);
+            _checkedAt.Remove(agentId);
+            _inflight.TryGetValue(agentId, out pending);
+        }
+
+        if (pending is not null)
+            _ = pending.ContinueWith(
+                _ => Forget(agentId),
+                System.Threading.CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
     }
 
     /// <summary>
@@ -112,9 +138,10 @@ public sealed class AgentPresenceService
         Set(agent.Id, AgentPresence.Checking, "Checking if the agent is online…");
         try
         {
-            // A lean reachability probe: no existingAgent, so we skip the extra
-            // /info diff — the detail page fetches /info on its own.
-            var result = await ConnectionTester.TestAsync(agent.Address, agent.DirectUrl, forceRefresh: forceRefresh);
+            // A lean /health reachability probe. The detail page fetches and persists /info
+            // independently, so list/status refreshes never download metadata.
+            var result = await _connectionTester.TestAsync(
+                agent.Address, agent.DirectUrl, forceRefresh: forceRefresh);
             Set(agent.Id, result.Ok ? AgentPresence.Online : AgentPresence.Offline, result.Detail);
         }
         catch (Exception ex)

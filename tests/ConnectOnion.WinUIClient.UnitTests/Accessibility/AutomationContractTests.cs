@@ -62,6 +62,6 @@ public sealed partial class AutomationContractTests
         throw new DirectoryNotFoundException("Could not locate the ConnectOnion repository root.");
     }
 
-    [GeneratedRegex("AutomationProperties\\.AutomationId=\"([^\"]+)\"")]
+    [GeneratedRegex("(?:AutomationProperties\\.AutomationId=\"|Property=\"AutomationProperties\\.AutomationId\" Value=\")([^\"]+)\"")]
     private static partial Regex AutomationIdRegex();
 }

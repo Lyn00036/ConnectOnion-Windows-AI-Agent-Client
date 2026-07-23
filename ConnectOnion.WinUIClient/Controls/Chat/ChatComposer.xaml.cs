@@ -91,6 +91,13 @@ public sealed partial class ChatComposer : UserControl, IDisposable
             typeof(ChatComposer),
             new PropertyMetadata(false, OnIsBusyChanged));
 
+    public static readonly DependencyProperty PlaceholderTextProperty =
+        DependencyProperty.Register(
+            nameof(PlaceholderText),
+            typeof(string),
+            typeof(ChatComposer),
+            new PropertyMetadata("Write a message..."));
+
     public event EventHandler<ComposerSubmission>? SubmitRequested;
 
     /// <summary>The stop button was pressed. The host decides what that can achieve — the composer
@@ -111,7 +118,7 @@ public sealed partial class ChatComposer : UserControl, IDisposable
     {
         InitializeComponent();
         ApplyWaveformTheme();
-        WaveformCanvas.Draw += WaveformCanvas_Draw;
+        _waveformTimer.Tick += WaveformTimer_Tick;
         _recordingElapsedTimer.Tick += RecordingElapsedTimer_Tick;
         ActualThemeChanged += Composer_ActualThemeChanged;
         Loaded += Composer_Loaded;
@@ -120,11 +127,11 @@ public sealed partial class ChatComposer : UserControl, IDisposable
         RefreshSendButtonState();
     }
 
-    /// <summary>The page caches this composer (NavigationCacheMode.Required), so the same
-    /// instance survives unload/reload cycles. Recreate the CTS on each Loaded so operations
-    /// started after a re-entry have a valid token — Dispose permanently breaks it.</summary>
+    /// <summary>Starts a fresh lifetime for work initiated while this composer is loaded.</summary>
     private void Composer_Loaded(object sender, RoutedEventArgs e)
     {
+        _lifetimeCts.Cancel();
+        _lifetimeCts.Dispose();
         _lifetimeCts = new CancellationTokenSource();
     }
 
@@ -203,8 +210,23 @@ public sealed partial class ChatComposer : UserControl, IDisposable
         set => SetValue(CanStopProperty, value);
     }
 
+    public string PlaceholderText
+    {
+        get => (string)GetValue(PlaceholderTextProperty);
+        set => SetValue(PlaceholderTextProperty, value);
+    }
+
     public void FocusInput()
         => InputBox.Focus(FocusState.Programmatic);
+
+    /// <summary>Replaces the current draft and focuses the editor without submitting it.</summary>
+    public void SetDraft(string text)
+    {
+        InputBox.Text = text;
+        InputBox.SelectionStart = InputBox.Text.Length;
+        RefreshSendButtonState();
+        FocusInput();
+    }
 
     /// <summary>
     /// Puts a submitted message back on the composer after the send was cancelled before it
@@ -318,7 +340,7 @@ public sealed partial class ChatComposer : UserControl, IDisposable
         // permanently — every operation using its Token (file picker, drag-drop,
         // attachment encoding) would throw ObjectDisposedException and silently fail.
         _lifetimeCts.Cancel();
-        WaveformCanvas.RemoveFromVisualTree();
+        _waveformTimer.Stop();
         await StopSpeechRecognitionAsync();
     }
 
@@ -330,7 +352,8 @@ public sealed partial class ChatComposer : UserControl, IDisposable
         Loaded -= Composer_Loaded;
         ActualThemeChanged -= Composer_ActualThemeChanged;
         PendingAttachments.CollectionChanged -= PendingAttachments_CollectionChanged;
-        WaveformCanvas.Draw -= WaveformCanvas_Draw;
+        _waveformTimer.Tick -= WaveformTimer_Tick;
+        _waveformTimer.Stop();
         _recordingElapsedTimer.Tick -= RecordingElapsedTimer_Tick;
         _recordingElapsedTimer.Stop();
 
@@ -344,8 +367,8 @@ public sealed partial class ChatComposer : UserControl, IDisposable
         _speechRecognizer?.Dispose();
         _speechRecognizer = null;
         StopAudioMeter();
-        _dashStyle?.Dispose();
-        _dashStyle = null;
+        WaveformCanvas.Children.Clear();
+        _waveformBars.Clear();
     }
 
     // ---- Attachments ----
@@ -554,9 +577,7 @@ public sealed partial class ChatComposer : UserControl, IDisposable
     private void Suggestion_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.Tag is not string prompt) return;
-        InputBox.Text = prompt;
-        FocusInput();
-        SubmitCurrentText();
+        SetDraft(prompt);
     }
 
     private void InputBox_TextChanged(object sender, TextChangedEventArgs e)

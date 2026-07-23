@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:ConnectOnion.WinUIClient.Controls"
     xmlns:ic="using:FluentIcons.WinUI"
+    xmlns:tb="using:H.NotifyIcon"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
@@ -50,6 +51,26 @@
             <RowDefinition Height="32" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
+
+        <tb:TaskbarIcon
+            x:Name="TrayIcon"
+            ToolTipText="ConnectOnion"
+            IconSource="ms-appx:///Assets/app-icon.ico"
+            LeftClickCommand="{x:Bind OpenWindowCommand}"
+            NoLeftClickDelay="True"
+            ContextMenuMode="PopupMenu">
+            <tb:TaskbarIcon.ContextFlyout>
+                <MenuFlyout AreOpenCloseAnimationsEnabled="False">
+                    <MenuFlyoutItem
+                        Text="Open Window"
+                        Command="{x:Bind OpenWindowCommand}" />
+                    <MenuFlyoutSeparator />
+                    <MenuFlyoutItem
+                        Text="Exit"
+                        Command="{x:Bind ExitFromTrayCommand}" />
+                </MenuFlyout>
+            </tb:TaskbarIcon.ContextFlyout>
+        </tb:TaskbarIcon>
 
         <Grid Grid.Row="0"
               x:Name="TitleBarArea"
@@ -235,9 +256,10 @@
               Grid.Row="0"
               Grid.RowSpan="2"
               Canvas.ZIndex="100">
-            <controls:SettingsOverlay x:Name="SettingsOverlay" Canvas.ZIndex="1000" AutomationProperties.AutomationId="SettingsOverlay" />
-            <controls:KeyboardShortcutsDialog x:Name="KeyboardShortcutsDialog" Canvas.ZIndex="1001" AutomationProperties.AutomationId="KeyboardShortcutsOverlay" />
-            <controls:AboutOverlay x:Name="AboutOverlay" Canvas.ZIndex="1002" AutomationProperties.AutomationId="AboutOverlay" />
+            <controls:AddAgentForm x:Name="AddAgentOverlay" Canvas.ZIndex="1000" />
+            <controls:SettingsOverlay x:Name="SettingsOverlay" Canvas.ZIndex="1001" AutomationProperties.AutomationId="SettingsOverlay" />
+            <controls:KeyboardShortcutsDialog x:Name="KeyboardShortcutsDialog" Canvas.ZIndex="1002" AutomationProperties.AutomationId="KeyboardShortcutsOverlay" />
+            <controls:AboutOverlay x:Name="AboutOverlay" Canvas.ZIndex="1003" AutomationProperties.AutomationId="AboutOverlay" />
             <Border x:Name="FindOverlayPanel"
                     Width="380"
                     MinHeight="36"

@@ -152,6 +152,30 @@ public sealed class DiffPreviewModelTests
     }
 
     [Fact]
+    public void TogglingDiffOnlyChangesDisclosureState()
+    {
+        var message = DiffMessage();
+        message.SetDiffState(DiffChangeState.Applied);
+        var title = message.DiffCardTitle;
+        var subtitle = message.DiffCardSubtitle;
+        var headerMeta = message.DiffHeaderMeta;
+        var icon = message.DiffIconGlyph;
+        var iconTone = message.DiffIconTone;
+        var chromeTone = message.DiffChromeTone;
+
+        message.ToggleDiffExpanded();
+
+        Assert.True(message.ShowDiffBody);
+        Assert.Equal("Hide changes", message.DiffToggleLabel);
+        Assert.Equal(title, message.DiffCardTitle);
+        Assert.Equal(subtitle, message.DiffCardSubtitle);
+        Assert.Equal(headerMeta, message.DiffHeaderMeta);
+        Assert.Equal(icon, message.DiffIconGlyph);
+        Assert.Equal(iconTone, message.DiffIconTone);
+        Assert.Equal(chromeTone, message.DiffChromeTone);
+    }
+
+    [Fact]
     public void RejectedFoldsWithoutClaimingTheFileChanged()
     {
         var message = DiffMessage();

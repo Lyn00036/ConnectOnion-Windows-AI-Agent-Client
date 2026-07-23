@@ -11,7 +11,7 @@
         HeaderMeta="{x:Bind Message.DiffHeaderMeta, Mode=OneWay}"
         ShowStatusBadge="False"
         ShowBody="{x:Bind Message.ShowDiffBody, Mode=OneWay}"
-        IsCompact="{x:Bind Message.IsDiffCompact, Mode=OneWay}"
+        IsCompact="False"
         ChromeTone="{x:Bind Message.DiffChromeTone, Mode=OneWay}"
         IconTone="{x:Bind Message.DiffIconTone, Mode=OneWay}"
         AccessibilityName="{x:Bind Message.DiffAccessibilityName, Mode=OneWay}">
@@ -86,13 +86,8 @@
                         </ItemsRepeater.ItemTemplate>
                     </ItemsRepeater>
                 </ScrollViewer>
-            </StackPanel>
-        </local:InteractiveCard.CardBody>
-        <local:InteractiveCard.CardFooter>
-            <Grid>
-                <Grid Padding="12,7" ColumnSpacing="6"
-                    Visibility="{x:Bind Message.ShowDiffExpandedActions, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <Grid Padding="12,7" ColumnSpacing="6">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                     <TextBlock Text="Unified diff · UTF-8" Style="{StaticResource InteractiveHelperTextStyle}" VerticalAlignment="Center" />
                     <Button Grid.Column="1" Content="{x:Bind Message.DiffWrapLabel, Mode=OneWay}" Style="{StaticResource InteractiveCardTertiaryButtonStyle}" Click="ToggleWrap_Click"
                         Visibility="{x:Bind Message.CanWrapDiff, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
@@ -103,17 +98,15 @@
                         ToolTipService.ToolTip="Copy full file path" AutomationProperties.Name="Copy full file path" />
                     <Button x:Name="OpenFileButton" Grid.Column="4" Content="Open" Style="{StaticResource InteractiveCardTertiaryButtonStyle}"
                         Visibility="Collapsed" Click="OpenFile_Click" />
-                    <Button Grid.Column="5" Content="{x:Bind Message.DiffToggleLabel, Mode=OneWay}"
-                        Style="{StaticResource InteractiveCardButtonStyle}" Click="ToggleExpanded_Click"
-                        Visibility="{x:Bind Message.CanToggleDiffVisibility, Mode=OneWay, Converter={StaticResource BoolToVis}}"
-                        AutomationProperties.Name="{x:Bind Message.DiffToggleLabel, Mode=OneWay}" />
                 </Grid>
-                <Button HorizontalAlignment="Right" Margin="8,5" Padding="10,5"
-                    Content="{x:Bind Message.DiffToggleLabel, Mode=OneWay}"
-                    Style="{StaticResource InteractiveCardTertiaryButtonStyle}" Click="ToggleExpanded_Click"
-                    Visibility="{x:Bind Message.ShowDiffCompactAction, Mode=OneWay, Converter={StaticResource BoolToVis}}"
-                    AutomationProperties.Name="{x:Bind Message.DiffToggleLabel, Mode=OneWay}" />
-            </Grid>
+            </StackPanel>
+        </local:InteractiveCard.CardBody>
+        <local:InteractiveCard.CardFooter>
+            <Button HorizontalAlignment="Right" Margin="8,5" Padding="10,5"
+                Content="{x:Bind Message.DiffToggleLabel, Mode=OneWay}"
+                Style="{StaticResource InteractiveCardTertiaryButtonStyle}" Click="ToggleExpanded_Click"
+                Visibility="{x:Bind Message.CanToggleDiffVisibility, Mode=OneWay, Converter={StaticResource BoolToVis}}"
+                AutomationProperties.Name="{x:Bind Message.DiffToggleLabel, Mode=OneWay}" />
         </local:InteractiveCard.CardFooter>
     </local:InteractiveCard>
 </UserControl>

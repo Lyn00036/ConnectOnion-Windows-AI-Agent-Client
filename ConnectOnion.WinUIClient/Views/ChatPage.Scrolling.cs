@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
+using System.Threading;
 using System.Threading.Tasks;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.ViewModels;
@@ -86,8 +87,9 @@ public sealed partial class ChatPage
     /// Uses ContainerContentChanging for precise detection; falls back to a
     /// timeout so the overlay never gets stuck.
     /// </summary>
-    private async System.Threading.Tasks.Task DismissOverlayWhenItemsReadyAsync()
+    private async System.Threading.Tasks.Task DismissOverlayWhenItemsReadyAsync(CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (Vm.Messages.Count == 0)
         {
             LoadingOverlay.Visibility = Visibility.Collapsed;
@@ -99,19 +101,20 @@ public sealed partial class ChatPage
         // restore below, to re-virtualize the fresh (and heavy: markdown, tool
         // timelines, images) bubbles the restore exposes near the bottom. Use one
         // budget that scales with history for both waits instead of a flat timeout.
-        var budget = OverlayReadyBudget();
+        try
+        {
+            var budget = OverlayReadyBudget();
 
         // First wait: enough top-of-list containers to consider the viewport painted
         // (typical viewport holds 8–15 items), bounded by the budget so the overlay
         // never sticks if items are zero-height/collapsed.
-        await WaitForContainersRealizedAsync(Math.Min(Vm.Messages.Count, 12), budget);
+            await WaitForContainersRealizedAsync(
+                Math.Min(Vm.Messages.Count, 12), budget, cancellationToken);
 
         // One frame so the RichTextBlock/Markdown content inside each realized
         // container can finish its first internal layout pass.
-        await NextFrameAsync();
+            await NextFrameAsync(cancellationToken);
 
-        try
-        {
             // Restore scroll position FIRST (while overlay is still visible),
             // then hide the overlay — this way the scroll jump is invisible.
             if (Vm.SessionId is { } sid
@@ -131,15 +134,21 @@ public sealed partial class ChatPage
             // the re-virtualization it causes has begun. That is what lifted the overlay early
             // on longer conversations: the first frame was quiet simply because nothing had
             // started yet.
-            await WaitForScrollSettledAsync();
+            await WaitForScrollSettledAsync(cancellationToken);
 
             // Third wait: the restore re-virtualizes a new set of bubbles at the landing point.
             // Hold the overlay until that churn goes quiet. Several consecutive quiet frames,
             // not one: realization arrives in bursts with gaps between them, and a single quiet
             // frame is as likely to be a gap mid-burst as the end of the work.
-            await WaitForContainerChurnToSettleAsync(budget, requiredQuietFrames: 3);
+            await WaitForContainerChurnToSettleAsync(
+                budget, requiredQuietFrames: 3, cancellationToken: cancellationToken);
 
+            cancellationToken.ThrowIfCancellationRequested();
             LoadingOverlay.Visibility = Visibility.Collapsed;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Navigation owns cancellation; the detached page must not touch its old tree.
         }
         catch
         {
@@ -166,7 +175,8 @@ public sealed partial class ChatPage
 
     /// <summary>Completes once <paramref name="threshold"/> distinct item containers have been
     /// realized, or the timeout elapses — whichever comes first.</summary>
-    private async System.Threading.Tasks.Task WaitForContainersRealizedAsync(int threshold, TimeSpan timeout)
+    private async System.Threading.Tasks.Task WaitForContainersRealizedAsync(
+        int threshold, TimeSpan timeout, CancellationToken cancellationToken)
     {
         var realized = new HashSet<int>();
         var tcs = new TaskCompletionSource<bool>();
@@ -184,7 +194,11 @@ public sealed partial class ChatPage
         };
 
         MessageList.ContainerContentChanging += handler;
-        try { await Task.WhenAny(tcs.Task, Task.Delay(timeout)); }
+        try
+        {
+            await Task.WhenAny(tcs.Task, Task.Delay(timeout, cancellationToken));
+            cancellationToken.ThrowIfCancellationRequested();
+        }
         finally { MessageList.ContainerContentChanging -= handler; }
     }
 
@@ -199,7 +213,7 @@ public sealed partial class ChatPage
     /// longer conversation has more of.
     /// </remarks>
     private async System.Threading.Tasks.Task WaitForContainerChurnToSettleAsync(
-        TimeSpan timeout, int requiredQuietFrames = 1)
+        TimeSpan timeout, int requiredQuietFrames, CancellationToken cancellationToken)
     {
         var churned = false;
         TypedEventHandler<ListViewBase, ContainerContentChangingEventArgs> handler = (_, _) => churned = true;
@@ -212,7 +226,7 @@ public sealed partial class ChatPage
             while (quietFrames < requiredQuietFrames && sw.Elapsed < timeout)
             {
                 churned = false;
-                await NextFrameAsync();
+                await NextFrameAsync(cancellationToken);
                 // A frame that realized anything resets the run — the count is of *consecutive*
                 // quiet frames, not of quiet frames seen.
                 quietFrames = churned ? 0 : quietFrames + 1;
@@ -236,13 +250,14 @@ public sealed partial class ChatPage
     /// the requested offset — no <c>ViewChanged</c> is ever raised. A time-based bound would sit
     /// there for the whole budget in exactly the case that is supposed to be fastest.</para>
     /// </remarks>
-    private async System.Threading.Tasks.Task WaitForScrollSettledAsync(int maxFrames = 4)
+    private async System.Threading.Tasks.Task WaitForScrollSettledAsync(
+        CancellationToken cancellationToken, int maxFrames = 4)
     {
         if (_messageScrollViewer is null)
         {
             // No ScrollViewer yet: still give the layout a frame, so the caller keeps a boundary
             // between queueing the scroll and measuring churn.
-            await NextFrameAsync();
+            await NextFrameAsync(cancellationToken);
             return;
         }
 
@@ -257,7 +272,7 @@ public sealed partial class ChatPage
         {
             for (var frame = 0; frame < maxFrames && !settled; frame++)
             {
-                await NextFrameAsync();
+                await NextFrameAsync(cancellationToken);
             }
         }
         finally { _messageScrollViewer.ViewChanged -= handler; }
@@ -265,12 +280,22 @@ public sealed partial class ChatPage
 
     /// <summary>Yields until the next low-priority dispatcher tick, i.e. after the current
     /// layout/render pass — one "frame".</summary>
-    private System.Threading.Tasks.Task NextFrameAsync()
+    private System.Threading.Tasks.Task NextFrameAsync(CancellationToken cancellationToken)
     {
-        var tcs = new TaskCompletionSource();
+        if (cancellationToken.IsCancellationRequested)
+            return Task.FromCanceled(cancellationToken);
+
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var registration = cancellationToken.Register(() => tcs.TrySetCanceled(cancellationToken));
         if (!DispatcherQueue.TryEnqueue(
-                Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => tcs.TrySetResult()))
+                Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+                () =>
+                {
+                    registration.Dispose();
+                    tcs.TrySetResult();
+                }))
         {
+            registration.Dispose();
             tcs.TrySetResult();
         }
         return tcs.Task;

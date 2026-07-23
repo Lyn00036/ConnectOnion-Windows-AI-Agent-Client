@@ -38,11 +38,10 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
 
     public event Action<Type, bool>? NavigationRequested;
     public event Action<FrameworkElement>? SettingsRequested;
-    /// <summary>Raised by the sidebar's "Add agent" button. Distinct from a plain
-    /// <see cref="NavigationRequested"/> to <c>HomePage</c> because the click means "I want the
+    /// <summary>The sidebar click means "I want the
     /// add-agent form open", not merely "show me the landing page" — the shell answers it by
-    /// navigating *and* telling the page to open and reveal its form.</summary>
-    public event Action? AddAgentRequested;
+    /// opening the overlay without navigating. The button is passed back for focus restoration.</summary>
+    public event Action<FrameworkElement>? AddAgentRequested;
     public event PropertyChangedEventHandler? PropertyChanged;
 
     private readonly AgentPresenceService _presence = AppServices.Presence;

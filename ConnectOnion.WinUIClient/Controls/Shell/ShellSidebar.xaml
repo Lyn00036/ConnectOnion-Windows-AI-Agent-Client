@@ -168,6 +168,7 @@
                                             Style="{StaticResource ShellNavButtonStyle}"
                                             Click="PinnedSession_Click"
                                             Tag="{Binding Id}"
+                                            AutomationProperties.AutomationId="PinnedSessionButton"
                                             VerticalAlignment="Stretch"
                                             HorizontalContentAlignment="Left"
                                             VerticalContentAlignment="Center"
@@ -292,7 +293,8 @@
                                                            FontSize="12"
                                                            Margin="4,0,10,0"
                                                            VerticalAlignment="Center"
-                                                           Initial="{Binding Initial}" />
+                                                           Initial="{Binding Initial}"
+                                                           PaletteIndex="{Binding AvatarPaletteIndex}" />
 
                                         <!-- Name (friendly display name; raw id in the tooltip). The
                                              name column is * so it shrinks via trimming instead of
@@ -301,6 +303,7 @@
                                                 Style="{StaticResource ShellNavButtonStyle}"
                                                 Click="Agent_Click"
                                                 Tag="{Binding Id}"
+                                                AutomationProperties.AutomationId="AgentButton"
                                                 VerticalAlignment="Stretch"
                                                 HorizontalContentAlignment="Left"
                                                 VerticalContentAlignment="Center"
@@ -438,6 +441,7 @@
                                                         Style="{StaticResource ShellNavButtonStyle}"
                                                         Click="Session_Click"
                                                         Tag="{Binding Id}"
+                                                        AutomationProperties.AutomationId="SessionButton"
                                                         VerticalAlignment="Stretch"
                                                         HorizontalContentAlignment="Left"
                                                         VerticalContentAlignment="Center"
