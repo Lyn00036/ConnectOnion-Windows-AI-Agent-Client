@@ -411,6 +411,7 @@ public sealed partial class ChatTurnProjection
                 if (FindEvent(request.Id, "ask_user") is { } existingAsk)
                 {
                     existingAsk.RevalidateInteractiveRequest();
+                    AttachPendingImages(existingAsk);
                     break;
                 }
 
@@ -454,6 +455,9 @@ public sealed partial class ChatTurnProjection
                             StringComparison.OrdinalIgnoreCase));
                 }
                 Add(message);
+                // A QR/login image immediately before ask_user is part of the question. Waiting
+                // until OUTPUT would deadlock the UX: the user cannot scan what is still hidden.
+                AttachPendingImages(message);
                 break;
             }
 

@@ -206,6 +206,20 @@ public sealed class InteractiveResponseBuilderTests
             InteractiveResponseBuilder.BuildAskUserAnswerSummary(message));
     }
 
+    [Theory]
+    [InlineData("password", "Password", null, true)]
+    [InlineData("api_key", "API key", "text", true)]
+    [InlineData("username", "Username", "text", false)]
+    public void AskUserFieldEntry_ExposesSecretPresentation(
+        string name, string label, string? type, bool expected)
+    {
+        var field = Field(Ask(), name, label, false, "");
+        field.Type = type;
+
+        Assert.Equal(expected, field.IsSecret);
+        Assert.Equal(expected, InteractiveResponseBuilder.IsSecretField(field));
+    }
+
     [Fact]
     public void AskUserSummary_JoinsSelectedOptionsAndPassesFreeTextThrough()
     {

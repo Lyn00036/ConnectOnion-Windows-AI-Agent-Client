@@ -13,18 +13,6 @@ public static class InteractiveResponseBuilder
     private const string Mask = "••••••";
 
     /// <summary>
-    /// Field-name fragments that mean the value is a secret. Substrings rather than exact names,
-    /// because agents call the same field <c>password</c>, <c>login_password</c> or
-    /// <c>account.apiKey</c> — the same reasoning as <c>ToolActivityProjector</c>'s key list, which
-    /// this deliberately mirrors.
-    /// </summary>
-    private static readonly string[] SecretNameFragments =
-    [
-        "password", "passwd", "passphrase", "secret", "token", "apikey", "api_key",
-        "private_key", "privatekey", "credential", "otp", "2fa", "mfa",
-    ];
-
-    /// <summary>
     /// Whether a field's value must never be displayed or persisted.
     ///
     /// <para>The agent's own <c>type: "password"</c> is the primary signal, but it is not the only
@@ -32,14 +20,7 @@ public static class InteractiveResponseBuilder
     /// text is exactly as dangerous. The name check is the backstop.</para>
     /// </summary>
     public static bool IsSecretField(AskUserFieldEntry entry)
-    {
-        if (entry is null) return false;
-        if (string.Equals(entry.Type, "password", StringComparison.OrdinalIgnoreCase)) return true;
-
-        var haystack = $"{entry.Name} {entry.Label}".ToLowerInvariant().Replace("-", "").Replace(" ", "");
-        return SecretNameFragments.Any(fragment =>
-            haystack.Contains(fragment.Replace("_", ""), StringComparison.Ordinal));
-    }
+        => entry?.IsSecret == true;
 
     public static object? BuildAskUserAnswer(ChatMessage message)
     {

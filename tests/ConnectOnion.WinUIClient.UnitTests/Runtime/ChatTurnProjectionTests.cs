@@ -490,6 +490,27 @@ public sealed class ChatTurnProjectionTests
         Assert.True(target.Messages[1].IsEvent);
     }
 
+    [Fact]
+    public void AgentImage_ImmediatelyBeforeAskUser_AttachesWhileQuestionIsPending()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+
+        projection.Apply(Event("agent_image",
+            "{\"type\":\"agent_image\",\"image\":\"data:image/png;base64,AAAA\"}"));
+        projection.Apply(Event("ask_user",
+            "{\"id\":\"login\",\"text\":\"Scan this QR code\",\"options\":[\"Done\"]}"));
+
+        var question = Assert.Single(target.Messages);
+        Assert.Equal("ask_user", question.EventKind);
+        Assert.Equal(EventStatus.Running, question.Status);
+        Assert.Single(question.Attachments);
+        Assert.Single(target.ResolvedImages);
+
+        projection.AppendCompletedTurn("");
+        Assert.Single(question.Attachments);
+    }
+
     // ---- Approval embedded in the tool-activity card ----
 
     [Fact]

@@ -51,10 +51,9 @@ public sealed partial class ChatTurnProjection
     // latch rather than a "_currentThinking is open" check, because ApplyParsed clears that field
     // on every non-thinking frame — including the llm_call we are deciding about.
     private bool _sawThinkingText;
-    // Inbound agent images are buffered as they stream in and only projected once the turn's
-    // final output has been appended — the reference behaviour is that a received image belongs
-    // *after* the agent's answer, not floating above the tool activity / summary / reply that
-    // arrive later in the same turn. Flushed by AppendCompletedTurn / CompleteToolActivity.
+    // Inbound agent images are normally buffered until the final output. The one exception is an
+    // ask_user frame: agents use an immediately preceding image for QR sign-in and other visual
+    // questions, so that image is attached to the live question before the host waits for input.
     private readonly List<string> _pendingAgentImages = new();
     private bool _wasInterrupted;
     // plan_review has no protocol id. Keep the one card emitted by this turn so reconnect
@@ -242,6 +241,14 @@ public sealed partial class ChatTurnProjection
             Add(target);
         }
 
+        AttachPendingImages(target);
+    }
+
+    /// <summary>Consumes the turn's buffered images and attaches them to a specific bubble.</summary>
+    private void AttachPendingImages(ChatMessage target)
+    {
+        if (_pendingAgentImages.Count == 0) return;
+
         foreach (var dataUrl in _pendingAgentImages)
         {
             // Attached in the Encoding state and handed to the target, which decodes/caches it
@@ -329,6 +336,13 @@ public sealed partial class ChatTurnProjection
         {
             diff.SetDiffState(state);
         }
+
+        // Whatever outcome each file reached, the runtime is over and the transcript should
+        // return to its compact reading state. This also covers informational previews and diffs
+        // that had already moved to Failed/Disconnected before the terminal callback arrived.
+        // The disclosure remains available, so the user can explicitly reopen any result.
+        foreach (var diff in Messages.Where(message => message.IsDiffPreviewEvent))
+            diff.IsDiffExpanded = false;
     }
 
     private static bool IsWriteFileTool(string toolName)
