@@ -17,9 +17,12 @@ public sealed class MemoryLeakTests(ITestOutputHelper output)
 {
     private const string EnabledVariable = "CONNECTONION_MEMORY_TEST";
     private const string RequireConversationVariable = "CONNECTONION_MEMORY_REQUIRE_CONVERSATION";
+    private const string SnapshotDirectoryVariable = "CONNECTONION_MEMORY_SNAPSHOT_DIR";
+    private const string GcDumpToolVariable = "CONNECTONION_GCDUMP_TOOL";
+    private const string HeapDumpToolVariable = "CONNECTONION_DUMP_TOOL";
 
     [Fact]
-    public void NavigationSurfaces_RepeatedOpenClose_ReachesStableHighWaterMark()
+    public async Task NavigationSurfaces_RepeatedOpenClose_ReachesStableHighWaterMark()
     {
         if (!string.Equals(Environment.GetEnvironmentVariable(EnabledVariable), "1", StringComparison.Ordinal))
             return;
@@ -38,7 +41,7 @@ public sealed class MemoryLeakTests(ITestOutputHelper output)
 
         if (scenarios.Contains("conversation-alternating"))
         {
-            EnsureConversationCountAsync(4).GetAwaiter().GetResult();
+            await EnsureConversationCountAsync(4);
         }
 
         // Each surface gets a fresh process. Otherwise the JIT/XAML/font high-water marks from
@@ -207,6 +210,8 @@ public sealed class MemoryLeakTests(ITestOutputHelper output)
             Thread.Sleep(settleMs);
         }
 
+        CaptureManagedSnapshot(launched.Process, name, "00-baseline");
+
         var samples = new List<MemorySample>(cycles);
         for (var index = 0; index < cycles; index++)
         {
@@ -215,6 +220,13 @@ public sealed class MemoryLeakTests(ITestOutputHelper output)
             var sample = MemorySample.Capture(launched.Process, index);
             samples.Add(sample);
             output.WriteLine($"{name}[{index:D2}] {sample}");
+
+            if (index == 24) CaptureManagedSnapshot(launched.Process, name, "25-cycles");
+            if (index == 49)
+            {
+                CaptureManagedSnapshot(launched.Process, name, "50-cycles");
+                CaptureHeapDump(launched.Process, name, "50-cycles");
+            }
         }
 
         AssertPlateau(name, samples);
@@ -248,6 +260,57 @@ public sealed class MemoryLeakTests(ITestOutputHelper output)
             $"Handle count did not settle. {summary}; limit={maxHandleSpan}.");
         Assert.True(threadSpan <= maxThreadSpan,
             $"Thread count did not settle. {summary}; limit={maxThreadSpan}.");
+    }
+
+    private void CaptureManagedSnapshot(Process process, string scenario, string point)
+    {
+        var directory = Environment.GetEnvironmentVariable(SnapshotDirectoryVariable);
+        var tool = Environment.GetEnvironmentVariable(GcDumpToolVariable);
+        if (string.IsNullOrWhiteSpace(directory) || string.IsNullOrWhiteSpace(tool)) return;
+
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, $"{scenario}-{point}.gcdump");
+        RunDiagnosticTool(
+            tool,
+            ["collect", "-p", process.Id.ToString(
+                System.Globalization.CultureInfo.InvariantCulture), "-o", path, "-t", "120"]);
+        output.WriteLine($"{scenario}: managed snapshot captured at {point}: {path}");
+    }
+
+    private void CaptureHeapDump(Process process, string scenario, string point)
+    {
+        var directory = Environment.GetEnvironmentVariable(SnapshotDirectoryVariable);
+        var tool = Environment.GetEnvironmentVariable(HeapDumpToolVariable);
+        if (string.IsNullOrWhiteSpace(directory) || string.IsNullOrWhiteSpace(tool)) return;
+
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, $"{scenario}-{point}.dmp");
+        RunDiagnosticTool(
+            tool,
+            ["collect", "-p", process.Id.ToString(
+                System.Globalization.CultureInfo.InvariantCulture), "-o", path, "--type", "Heap"]);
+        output.WriteLine($"{scenario}: heap dump captured at {point}: {path}");
+    }
+
+    private static void RunDiagnosticTool(string tool, IReadOnlyList<string> arguments)
+    {
+        var startInfo = new ProcessStartInfo(tool)
+        {
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+        };
+        foreach (var argument in arguments) startInfo.ArgumentList.Add(argument);
+
+        using var capture = Process.Start(startInfo);
+        Assert.NotNull(capture);
+        var stdout = capture.StandardOutput.ReadToEndAsync();
+        var stderr = capture.StandardError.ReadToEndAsync();
+        Assert.True(capture.WaitForExit(180_000), $"{Path.GetFileName(tool)} timed out.");
+        Assert.True(capture.ExitCode == 0,
+            $"{Path.GetFileName(tool)} failed ({capture.ExitCode}). " +
+            $"{stdout.GetAwaiter().GetResult()} {stderr.GetAwaiter().GetResult()}");
     }
 
     private static AutomationElement? FindConversationButton(Window window)

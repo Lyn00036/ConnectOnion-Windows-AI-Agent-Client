@@ -171,6 +171,13 @@
             <SolidColorBrush x:Key="ComposerPlaceholderBrush" Color="{ThemeResource TextTertiaryColor}" />
             <SolidColorBrush x:Key="ComposerMutedControlBrush" Color="{ThemeResource TextSecondaryColor}" />
             <SolidColorBrush x:Key="ComposerControlBorderBrush" Color="{ThemeResource BorderDefaultColor}" />
+            <SolidColorBrush x:Key="ComposerStatusIdleBrush" Color="{ThemeResource ComposerStatusIdleColor}" />
+            <SolidColorBrush x:Key="ComposerStatusConnectingBrush" Color="{ThemeResource ComposerStatusConnectingColor}" />
+            <SolidColorBrush x:Key="ComposerStatusConnectedBrush" Color="{ThemeResource ComposerStatusConnectedColor}" />
+            <SolidColorBrush x:Key="ComposerStatusRunningBrush" Color="{ThemeResource ComposerStatusRunningColor}" />
+            <SolidColorBrush x:Key="ComposerStatusWaitingBrush" Color="{ThemeResource ComposerStatusWaitingColor}" />
+            <SolidColorBrush x:Key="ComposerStatusReconnectingBrush" Color="{ThemeResource ComposerStatusReconnectingColor}" />
+            <SolidColorBrush x:Key="ComposerStatusOfflineBrush" Color="{ThemeResource ComposerStatusOfflineColor}" />
             <SolidColorBrush x:Key="ComposerWaveformBaselineBrush" Color="{ThemeResource BorderStrongColor}" />
             <SolidColorBrush x:Key="ComposerActiveWaveformBrush" Color="{ThemeResource TextPrimaryColor}" />
             <SolidColorBrush x:Key="ComposerRecordingTextBrush" Color="{ThemeResource TextSecondaryColor}" />
@@ -351,6 +358,13 @@
             <SolidColorBrush x:Key="ComposerPlaceholderBrush" Color="{ThemeResource TextTertiaryColor}" />
             <SolidColorBrush x:Key="ComposerMutedControlBrush" Color="{ThemeResource TextSecondaryColor}" />
             <SolidColorBrush x:Key="ComposerControlBorderBrush" Color="{ThemeResource BorderDefaultColor}" />
+            <SolidColorBrush x:Key="ComposerStatusIdleBrush" Color="{ThemeResource ComposerStatusIdleColor}" />
+            <SolidColorBrush x:Key="ComposerStatusConnectingBrush" Color="{ThemeResource ComposerStatusConnectingColor}" />
+            <SolidColorBrush x:Key="ComposerStatusConnectedBrush" Color="{ThemeResource ComposerStatusConnectedColor}" />
+            <SolidColorBrush x:Key="ComposerStatusRunningBrush" Color="{ThemeResource ComposerStatusRunningColor}" />
+            <SolidColorBrush x:Key="ComposerStatusWaitingBrush" Color="{ThemeResource ComposerStatusWaitingColor}" />
+            <SolidColorBrush x:Key="ComposerStatusReconnectingBrush" Color="{ThemeResource ComposerStatusReconnectingColor}" />
+            <SolidColorBrush x:Key="ComposerStatusOfflineBrush" Color="{ThemeResource ComposerStatusOfflineColor}" />
             <SolidColorBrush x:Key="ComposerWaveformBaselineBrush" Color="{ThemeResource BorderStrongColor}" />
             <SolidColorBrush x:Key="ComposerActiveWaveformBrush" Color="{ThemeResource TextPrimaryColor}" />
             <SolidColorBrush x:Key="ComposerRecordingTextBrush" Color="{ThemeResource TextSecondaryColor}" />
@@ -504,6 +518,13 @@
             <SolidColorBrush x:Key="ComposerPlaceholderBrush" Color="{ThemeResource SystemColorGrayTextColor}" />
             <SolidColorBrush x:Key="ComposerMutedControlBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ComposerControlBorderBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="ComposerStatusIdleBrush" Color="{ThemeResource SystemColorGrayTextColor}" />
+            <SolidColorBrush x:Key="ComposerStatusConnectingBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="ComposerStatusConnectedBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="ComposerStatusRunningBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="ComposerStatusWaitingBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="ComposerStatusReconnectingBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="ComposerStatusOfflineBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ComposerWaveformBaselineBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ComposerActiveWaveformBrush" Color="{ThemeResource SystemColorHighlightColor}" />
             <SolidColorBrush x:Key="ComposerRecordingTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />

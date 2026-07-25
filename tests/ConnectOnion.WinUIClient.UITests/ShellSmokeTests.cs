@@ -135,6 +135,7 @@ public sealed class ShellSmokeTests
         var showBackup = WaitForDescendant(window, "ShowIdentityBackupButton");
         Assert.NotNull(showBackup);
         Assert.NotNull(window.FindFirstDescendant(query => query.ByAutomationId("RestoreIdentityButton")));
+        Assert.NotNull(window.FindFirstDescendant(query => query.ByAutomationId("GenerateIdentityButton")));
 
         // The dialog's own content is what proves the reveal worked — the address it says the
         // backup belongs to must be the address the panel is showing.

@@ -101,7 +101,7 @@ jobs:
         shell: pwsh
         run: dotnet test tests/ConnectOnion.WinUIClient.UITests/ConnectOnion.WinUIClient.UITests.csproj --configuration $env:CONFIGURATION
 
-      - name: Publish trimmed unpackaged build
+      - name: Publish ReadyToRun unpackaged build
         shell: pwsh
         run: >
           dotnet publish ConnectOnion.WinUIClient/ConnectOnion.WinUIClient.csproj
@@ -110,7 +110,7 @@ jobs:
           --no-restore
           -p:Platform=$env:BUILD_PLATFORM
           -p:RunUnpackaged=true
-          -p:PublishTrimmed=true
+          -p:PublishTrimmed=false
           -p:PublishReadyToRun=true
           -p:AppxPackageSigningEnabled=false
 

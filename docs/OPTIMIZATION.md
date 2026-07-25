@@ -16,7 +16,7 @@ Last updated: 2026-07-16
 - **Localization:** WinUI `.resw` resources and `x:Uid` are established under `Strings/en-US`; settings, shell menus, search/drop hints, chat approvals, composer suggestions/modes, offline state, and primary entry/empty states are migrated. Keep fallback XAML text when adding resources so development builds remain diagnosable.
 - **Analyzer hygiene:** a clean unpackaged x64 application build completes with zero compiler/analyzer warnings. Hot-path logging uses cached `LoggerMessage` delegates and persisted values use explicit culture semantics.
 - **Testing:** the protocol fake server uses an in-process Kestrel WebSocket endpoint on an OS-assigned port, eliminating `HttpListener` ACL and port-reservation races. FlaUI provides an opt-in real-window shell smoke test.
-- **CI:** restore audits vulnerable packages, test runs emit Cobertura coverage, Release publishes are trimmed/ReadyToRun, and `workflow_dispatch` can opt into the interactive shell smoke test.
+- **CI:** restore audits vulnerable packages, test runs emit Cobertura coverage, Release publishes use ReadyToRun with trimming disabled pending trim-safe JSON coverage, and `workflow_dispatch` can opt into the interactive shell smoke test.
 
 ## Operational checks
 
