@@ -8,4 +8,28 @@
     <FontFamily x:Key="JetBrainsMonoItalicFontFamily">ms-appx:///Assets/Fonts/JetBrainsMonoNerdFontMono-Italic.ttf#JetBrainsMono NFM</FontFamily>
     <FontFamily x:Key="JetBrainsMonoBoldFontFamily">ms-appx:///Assets/Fonts/JetBrainsMonoNerdFontMono-Bold.ttf#JetBrainsMono NFM</FontFamily>
     <FontFamily x:Key="JetBrainsMonoBoldItalicFontFamily">ms-appx:///Assets/Fonts/JetBrainsMonoNerdFontMono-BoldItalic.ttf#JetBrainsMono NFM</FontFamily>
+
+    <!-- Compact product type scale. Page-specific sizes should map to one of these roles instead
+         of introducing another local step. Segoe UI Variable remains the platform default. -->
+    <Style x:Key="ProductCaptionTextStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Foreground" Value="{ThemeResource TextTertiaryBrush}" />
+    </Style>
+    <Style x:Key="ProductBodyTextStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Foreground" Value="{ThemeResource TextPrimaryBrush}" />
+    </Style>
+    <Style x:Key="ProductBodyStrongTextStyle" TargetType="TextBlock" BasedOn="{StaticResource ProductBodyTextStyle}">
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style x:Key="ProductSubtitleTextStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="15" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{ThemeResource TextPrimaryBrush}" />
+    </Style>
+    <Style x:Key="ProductTitleTextStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="24" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{ThemeResource TextPrimaryBrush}" />
+    </Style>
 </ResourceDictionary>

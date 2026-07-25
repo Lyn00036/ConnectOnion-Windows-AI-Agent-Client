@@ -12,7 +12,7 @@ public static class AvatarPalette
             {
                 hash = ((hash << 5) + hash) ^ char.ToUpperInvariant(character);
             }
-            return (int)(hash % 4);
+            return (int)(hash % 12);
         }
     }
 }
