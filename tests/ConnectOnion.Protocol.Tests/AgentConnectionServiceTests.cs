@@ -302,7 +302,7 @@ public sealed class AgentConnectionServiceTests
             watchdogInterval: TimeSpan.FromMilliseconds(25));
         Exception? connectionLoss = null;
         service.ConnectionLost += error => connectionLoss = error;
-        service.OnboardRequired += () => onboardRaised.TrySetResult();
+        service.OnboardRequired += _ => onboardRaised.TrySetResult();
         var send = service.SendInputAsync("start", null);
 
         await onboardRaised.Task.WaitAsync(TimeSpan.FromSeconds(1));
