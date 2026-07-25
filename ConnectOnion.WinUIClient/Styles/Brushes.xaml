@@ -129,6 +129,22 @@
             <SolidColorBrush x:Key="AvatarPaletteTealForegroundBrush" Color="{ThemeResource AvatarPaletteTealForegroundColor}" />
             <SolidColorBrush x:Key="AvatarPaletteCoralBackgroundBrush" Color="{ThemeResource AvatarPaletteCoralBackgroundColor}" />
             <SolidColorBrush x:Key="AvatarPaletteCoralForegroundBrush" Color="{ThemeResource AvatarPaletteCoralForegroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteIndigoBackgroundBrush" Color="{ThemeResource AvatarPaletteIndigoBackgroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteIndigoForegroundBrush" Color="{ThemeResource AvatarPaletteIndigoForegroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteCyanBackgroundBrush" Color="{ThemeResource AvatarPaletteCyanBackgroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteCyanForegroundBrush" Color="{ThemeResource AvatarPaletteCyanForegroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteEmeraldBackgroundBrush" Color="{ThemeResource AvatarPaletteEmeraldBackgroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteEmeraldForegroundBrush" Color="{ThemeResource AvatarPaletteEmeraldForegroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteAmberBackgroundBrush" Color="{ThemeResource AvatarPaletteAmberBackgroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteAmberForegroundBrush" Color="{ThemeResource AvatarPaletteAmberForegroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteRoseBackgroundBrush" Color="{ThemeResource AvatarPaletteRoseBackgroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteRoseForegroundBrush" Color="{ThemeResource AvatarPaletteRoseForegroundColor}" />
+            <SolidColorBrush x:Key="AvatarPalettePlumBackgroundBrush" Color="{ThemeResource AvatarPalettePlumBackgroundColor}" />
+            <SolidColorBrush x:Key="AvatarPalettePlumForegroundBrush" Color="{ThemeResource AvatarPalettePlumForegroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteSlateBackgroundBrush" Color="{ThemeResource AvatarPaletteSlateBackgroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteSlateForegroundBrush" Color="{ThemeResource AvatarPaletteSlateForegroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteOliveBackgroundBrush" Color="{ThemeResource AvatarPaletteOliveBackgroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteOliveForegroundBrush" Color="{ThemeResource AvatarPaletteOliveForegroundColor}" />
 
             <!-- Usage heatmap ramp. Read by HeatmapLevelToBrushConverter through
                  Application.Current.Resources, so both themes must define all five keys. -->
@@ -155,6 +171,13 @@
             <SolidColorBrush x:Key="ComposerPlaceholderBrush" Color="{ThemeResource TextTertiaryColor}" />
             <SolidColorBrush x:Key="ComposerMutedControlBrush" Color="{ThemeResource TextSecondaryColor}" />
             <SolidColorBrush x:Key="ComposerControlBorderBrush" Color="{ThemeResource BorderDefaultColor}" />
+            <SolidColorBrush x:Key="ComposerStatusIdleBrush" Color="{ThemeResource ComposerStatusIdleColor}" />
+            <SolidColorBrush x:Key="ComposerStatusConnectingBrush" Color="{ThemeResource ComposerStatusConnectingColor}" />
+            <SolidColorBrush x:Key="ComposerStatusConnectedBrush" Color="{ThemeResource ComposerStatusConnectedColor}" />
+            <SolidColorBrush x:Key="ComposerStatusRunningBrush" Color="{ThemeResource ComposerStatusRunningColor}" />
+            <SolidColorBrush x:Key="ComposerStatusWaitingBrush" Color="{ThemeResource ComposerStatusWaitingColor}" />
+            <SolidColorBrush x:Key="ComposerStatusReconnectingBrush" Color="{ThemeResource ComposerStatusReconnectingColor}" />
+            <SolidColorBrush x:Key="ComposerStatusOfflineBrush" Color="{ThemeResource ComposerStatusOfflineColor}" />
             <SolidColorBrush x:Key="ComposerWaveformBaselineBrush" Color="{ThemeResource BorderStrongColor}" />
             <SolidColorBrush x:Key="ComposerActiveWaveformBrush" Color="{ThemeResource TextPrimaryColor}" />
             <SolidColorBrush x:Key="ComposerRecordingTextBrush" Color="{ThemeResource TextSecondaryColor}" />
@@ -176,8 +199,6 @@
             <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="{ThemeResource TextPrimaryColor}" />
             <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="{ThemeResource TextSecondaryColor}" />
             <SolidColorBrush x:Key="TextFillColorTertiaryBrush" Color="{ThemeResource TextTertiaryColor}" />
-            <SolidColorBrush x:Key="TextOnAccentFillColorPrimaryBrush" Color="{ThemeResource TextOnBrandColor}" />
-            <SolidColorBrush x:Key="TextOnAccentFillSecondaryBrush" Color="{ThemeResource TextOnBrandColor}" />
             <SolidColorBrush x:Key="ApplicationPageBackgroundThemeBrush" Color="{ThemeResource AppBackgroundColor}" />
             <SolidColorBrush x:Key="CardBackgroundFillColorDefaultBrush" Color="{ThemeResource SurfaceElevatedColor}" />
             <SolidColorBrush x:Key="CardStrokeColorDefaultBrush" Color="{ThemeResource BorderDefaultColor}" />
@@ -186,23 +207,6 @@
             <SolidColorBrush x:Key="SurfaceStrokeColorDefaultBrush" Color="{ThemeResource BorderDefaultColor}" />
             <SolidColorBrush x:Key="SolidBackgroundFillColorBaseBrush" Color="{ThemeResource SurfaceElevatedColor}" />
 
-            <Color x:Key="BrandAccentColorSecondary">#FF444444</Color>
-            <Color x:Key="BrandAccentColorTertiary">#FF1A1A1A</Color>
-            <Color x:Key="BrandAccentColorQuaternary">#FF111111</Color>
-            <Color x:Key="SystemAccentColor">#FF333333</Color>
-            <Color x:Key="SystemAccentColorDark1">#FF444444</Color>
-            <Color x:Key="SystemAccentColorDark2">#FF1A1A1A</Color>
-            <Color x:Key="SystemAccentColorDark3">#FF111111</Color>
-            <Color x:Key="SystemAccentColorLight1">#FF555555</Color>
-            <Color x:Key="SystemAccentColorLight2">#FF999999</Color>
-            <Color x:Key="SystemAccentColorLight3">#FFEBEBEB</Color>
-            <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="{ThemeResource BrandPrimaryColor}" />
-            <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="{ThemeResource BrandPrimaryHoverColor}" />
-            <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="{ThemeResource BrandPrimaryPressedColor}" />
-            <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="{ThemeResource CodeTextColor}" />
-            <SolidColorBrush x:Key="AccentTextFillColorSecondaryBrush" Color="{ThemeResource TextLinkColor}" />
-            <SolidColorBrush x:Key="AccentTextFillColorTertiaryBrush" Color="{ThemeResource BrandPrimaryHoverColor}" />
-
             <!-- Default Button PointerOver/Pressed: unifies every plain-Style toolbar and
                  command button (Toggle Sidebar, Back/Forward, Find, Zoom, Approve/Reject, ...)
                  on SurfaceHover/SurfacePressed without a per-button override. ToggleSwitch,
@@ -210,7 +214,6 @@
                  untouched. -->
             <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="{ThemeResource SurfaceHoverColor}" />
             <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="{ThemeResource SurfacePressedColor}" />
-            <SolidColorBrush x:Key="FocusVisualPrimaryBrush" Color="{ThemeResource FocusBorderColor}" />
 
         </ResourceDictionary>
 
@@ -313,6 +316,22 @@
             <SolidColorBrush x:Key="AvatarPaletteTealForegroundBrush" Color="{ThemeResource AvatarPaletteTealForegroundColor}" />
             <SolidColorBrush x:Key="AvatarPaletteCoralBackgroundBrush" Color="{ThemeResource AvatarPaletteCoralBackgroundColor}" />
             <SolidColorBrush x:Key="AvatarPaletteCoralForegroundBrush" Color="{ThemeResource AvatarPaletteCoralForegroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteIndigoBackgroundBrush" Color="{ThemeResource AvatarPaletteIndigoBackgroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteIndigoForegroundBrush" Color="{ThemeResource AvatarPaletteIndigoForegroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteCyanBackgroundBrush" Color="{ThemeResource AvatarPaletteCyanBackgroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteCyanForegroundBrush" Color="{ThemeResource AvatarPaletteCyanForegroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteEmeraldBackgroundBrush" Color="{ThemeResource AvatarPaletteEmeraldBackgroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteEmeraldForegroundBrush" Color="{ThemeResource AvatarPaletteEmeraldForegroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteAmberBackgroundBrush" Color="{ThemeResource AvatarPaletteAmberBackgroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteAmberForegroundBrush" Color="{ThemeResource AvatarPaletteAmberForegroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteRoseBackgroundBrush" Color="{ThemeResource AvatarPaletteRoseBackgroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteRoseForegroundBrush" Color="{ThemeResource AvatarPaletteRoseForegroundColor}" />
+            <SolidColorBrush x:Key="AvatarPalettePlumBackgroundBrush" Color="{ThemeResource AvatarPalettePlumBackgroundColor}" />
+            <SolidColorBrush x:Key="AvatarPalettePlumForegroundBrush" Color="{ThemeResource AvatarPalettePlumForegroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteSlateBackgroundBrush" Color="{ThemeResource AvatarPaletteSlateBackgroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteSlateForegroundBrush" Color="{ThemeResource AvatarPaletteSlateForegroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteOliveBackgroundBrush" Color="{ThemeResource AvatarPaletteOliveBackgroundColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteOliveForegroundBrush" Color="{ThemeResource AvatarPaletteOliveForegroundColor}" />
 
             <!-- Usage heatmap ramp. Read by HeatmapLevelToBrushConverter through
                  Application.Current.Resources, so both themes must define all five keys. -->
@@ -339,6 +358,13 @@
             <SolidColorBrush x:Key="ComposerPlaceholderBrush" Color="{ThemeResource TextTertiaryColor}" />
             <SolidColorBrush x:Key="ComposerMutedControlBrush" Color="{ThemeResource TextSecondaryColor}" />
             <SolidColorBrush x:Key="ComposerControlBorderBrush" Color="{ThemeResource BorderDefaultColor}" />
+            <SolidColorBrush x:Key="ComposerStatusIdleBrush" Color="{ThemeResource ComposerStatusIdleColor}" />
+            <SolidColorBrush x:Key="ComposerStatusConnectingBrush" Color="{ThemeResource ComposerStatusConnectingColor}" />
+            <SolidColorBrush x:Key="ComposerStatusConnectedBrush" Color="{ThemeResource ComposerStatusConnectedColor}" />
+            <SolidColorBrush x:Key="ComposerStatusRunningBrush" Color="{ThemeResource ComposerStatusRunningColor}" />
+            <SolidColorBrush x:Key="ComposerStatusWaitingBrush" Color="{ThemeResource ComposerStatusWaitingColor}" />
+            <SolidColorBrush x:Key="ComposerStatusReconnectingBrush" Color="{ThemeResource ComposerStatusReconnectingColor}" />
+            <SolidColorBrush x:Key="ComposerStatusOfflineBrush" Color="{ThemeResource ComposerStatusOfflineColor}" />
             <SolidColorBrush x:Key="ComposerWaveformBaselineBrush" Color="{ThemeResource BorderStrongColor}" />
             <SolidColorBrush x:Key="ComposerActiveWaveformBrush" Color="{ThemeResource TextPrimaryColor}" />
             <SolidColorBrush x:Key="ComposerRecordingTextBrush" Color="{ThemeResource TextSecondaryColor}" />
@@ -353,8 +379,6 @@
             <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="{ThemeResource TextPrimaryColor}" />
             <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="{ThemeResource TextSecondaryColor}" />
             <SolidColorBrush x:Key="TextFillColorTertiaryBrush" Color="{ThemeResource TextTertiaryColor}" />
-            <SolidColorBrush x:Key="TextOnAccentFillColorPrimaryBrush" Color="{ThemeResource TextOnBrandColor}" />
-            <SolidColorBrush x:Key="TextOnAccentFillSecondaryBrush" Color="{ThemeResource TextOnBrandColor}" />
             <SolidColorBrush x:Key="ApplicationPageBackgroundThemeBrush" Color="{ThemeResource AppBackgroundColor}" />
             <SolidColorBrush x:Key="CardBackgroundFillColorDefaultBrush" Color="{ThemeResource SurfaceElevatedColor}" />
             <SolidColorBrush x:Key="CardStrokeColorDefaultBrush" Color="{ThemeResource BorderDefaultColor}" />
@@ -363,27 +387,153 @@
             <SolidColorBrush x:Key="SurfaceStrokeColorDefaultBrush" Color="{ThemeResource BorderDefaultColor}" />
             <SolidColorBrush x:Key="SolidBackgroundFillColorBaseBrush" Color="{ThemeResource SurfaceElevatedColor}" />
 
-            <Color x:Key="BrandAccentColorSecondary">#FFBBBBBB</Color>
-            <Color x:Key="BrandAccentColorTertiary">#FF808080</Color>
-            <Color x:Key="BrandAccentColorQuaternary">#FF666666</Color>
-            <Color x:Key="SystemAccentColor">#FFA0A0A0</Color>
-            <Color x:Key="SystemAccentColorDark1">#FFBBBBBB</Color>
-            <Color x:Key="SystemAccentColorDark2">#FF808080</Color>
-            <Color x:Key="SystemAccentColorDark3">#FF666666</Color>
-            <Color x:Key="SystemAccentColorLight1">#FFBBBBBB</Color>
-            <Color x:Key="SystemAccentColorLight2">#FFDDDDDD</Color>
-            <Color x:Key="SystemAccentColorLight3">#FF2A2A2A</Color>
-            <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="{ThemeResource BrandPrimaryColor}" />
-            <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="{ThemeResource BrandPrimaryHoverColor}" />
-            <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="{ThemeResource BrandPrimaryPressedColor}" />
-            <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="{ThemeResource CodeTextColor}" />
-            <SolidColorBrush x:Key="AccentTextFillColorSecondaryBrush" Color="{ThemeResource TextLinkColor}" />
-            <SolidColorBrush x:Key="AccentTextFillColorTertiaryBrush" Color="{ThemeResource BrandPrimaryHoverColor}" />
-
             <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="{ThemeResource SurfaceHoverColor}" />
             <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="{ThemeResource SurfacePressedColor}" />
-            <SolidColorBrush x:Key="FocusVisualPrimaryBrush" Color="{ThemeResource FocusBorderColor}" />
 
+        </ResourceDictionary>
+
+        <!-- Windows High Contrast owns the palette. Custom semantic roles collapse onto system
+             colors so text, focus, selection, cards, code and status remain distinguishable
+             without assuming a black-on-white scheme. -->
+        <ResourceDictionary x:Key="HighContrast">
+            <SolidColorBrush x:Key="BrandPrimaryBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="BrandPrimaryHoverBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="BrandPrimaryPressedBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="BrandPrimarySubtleBrush" Color="{ThemeResource SystemColorButtonFaceColor}" />
+            <SolidColorBrush x:Key="BrandAccentBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="BrandAccentHoverBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="BrandAccentPressedBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="BrandOnPrimaryBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
+
+            <SolidColorBrush x:Key="AppBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="SurfacePrimaryBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="SurfaceSecondaryBrush" Color="{ThemeResource SystemColorButtonFaceColor}" />
+            <SolidColorBrush x:Key="SurfaceTertiaryBrush" Color="{ThemeResource SystemColorButtonFaceColor}" />
+            <SolidColorBrush x:Key="SurfaceElevatedBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="SurfaceHoverBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="SurfacePressedBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="SurfaceSelectedBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+
+            <SolidColorBrush x:Key="TextPrimaryBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="TextSecondaryBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="TextTertiaryBrush" Color="{ThemeResource SystemColorGrayTextColor}" />
+            <SolidColorBrush x:Key="TextDisabledBrush" Color="{ThemeResource SystemColorGrayTextColor}" />
+            <SolidColorBrush x:Key="TextOnBrandBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
+            <SolidColorBrush x:Key="TextLinkBrush" Color="{ThemeResource SystemColorHotlightColor}" />
+            <SolidColorBrush x:Key="TextLinkHoverBrush" Color="{ThemeResource SystemColorHotlightColor}" />
+
+            <SolidColorBrush x:Key="BorderSubtleBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="BorderDefaultBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="BorderStrongBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="DividerBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="FocusBorderBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+
+            <SolidColorBrush x:Key="SuccessBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="WarningBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="DangerBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="InfoBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="StatusRunningBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="AttentionBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="AttentionSubtleBrush" Color="{ThemeResource SystemColorButtonFaceColor}" />
+            <SolidColorBrush x:Key="SuccessSubtleBrush" Color="{ThemeResource SystemColorButtonFaceColor}" />
+            <SolidColorBrush x:Key="DangerSubtleBrush" Color="{ThemeResource SystemColorButtonFaceColor}" />
+
+            <SolidColorBrush x:Key="SearchMatchBackgroundBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="SearchCurrentBackgroundBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="SearchMatchTextBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
+            <SolidColorBrush x:Key="SearchCurrentTextBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
+
+            <SolidColorBrush x:Key="ChatBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="UserMessageBackgroundBrush" Color="{ThemeResource SystemColorButtonFaceColor}" />
+            <SolidColorBrush x:Key="AgentMessageBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="SystemMessageBackgroundBrush" Color="{ThemeResource SystemColorButtonFaceColor}" />
+            <SolidColorBrush x:Key="ChatInputBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="CodeBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="InlineCodeBackgroundBrush" Color="{ThemeResource SystemColorButtonFaceColor}" />
+            <SolidColorBrush x:Key="CodeTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="SyntaxKeyBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="SyntaxStringBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="SyntaxNumberBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="SyntaxKeywordBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="SyntaxPunctuationBrush" Color="{ThemeResource SystemColorGrayTextColor}" />
+            <SolidColorBrush x:Key="SyntaxCommandBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="SyntaxLabelBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="SyntaxFailureBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+
+            <SolidColorBrush x:Key="SidebarBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="SidebarItemHoverBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="SidebarItemPressedBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="SidebarItemSelectedBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="SidebarSelectedAccentBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="SettingsBackdropBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="SettingsNavigationBrush" Color="{ThemeResource SystemColorButtonFaceColor}" />
+            <SolidColorBrush x:Key="SettingsContentBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="SettingsModalBorderBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+
+            <SolidColorBrush x:Key="AvatarBackgroundBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="AvatarForegroundBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
+            <SolidColorBrush x:Key="AvatarBorderBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteBlueBackgroundBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteBlueForegroundBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteVioletBackgroundBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteVioletForegroundBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteTealBackgroundBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteTealForegroundBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteCoralBackgroundBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteCoralForegroundBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteIndigoBackgroundBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteIndigoForegroundBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteCyanBackgroundBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteCyanForegroundBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteEmeraldBackgroundBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteEmeraldForegroundBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteAmberBackgroundBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteAmberForegroundBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteRoseBackgroundBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteRoseForegroundBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
+            <SolidColorBrush x:Key="AvatarPalettePlumBackgroundBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="AvatarPalettePlumForegroundBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteSlateBackgroundBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteSlateForegroundBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteOliveBackgroundBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="AvatarPaletteOliveForegroundBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
+
+            <SolidColorBrush x:Key="HeatmapLevel0Brush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="HeatmapLevel1Brush" Color="{ThemeResource SystemColorButtonFaceColor}" />
+            <SolidColorBrush x:Key="HeatmapLevel2Brush" Color="{ThemeResource SystemColorGrayTextColor}" />
+            <SolidColorBrush x:Key="HeatmapLevel3Brush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="HeatmapLevel4Brush" Color="{ThemeResource SystemColorHighlightColor}" />
+
+            <SolidColorBrush x:Key="ShellBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="ShellSidebarBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="ShellRowBrush" Color="{ThemeResource SystemColorButtonFaceColor}" />
+            <SolidColorBrush x:Key="ShellHoverBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="ShellMutedTextBrush" Color="{ThemeResource SystemColorGrayTextColor}" />
+            <SolidColorBrush x:Key="StatusSuccessTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="StatusErrorTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+
+            <SolidColorBrush x:Key="ComposerBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="ComposerBorderBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="ComposerTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="ComposerPlaceholderBrush" Color="{ThemeResource SystemColorGrayTextColor}" />
+            <SolidColorBrush x:Key="ComposerMutedControlBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="ComposerControlBorderBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="ComposerStatusIdleBrush" Color="{ThemeResource SystemColorGrayTextColor}" />
+            <SolidColorBrush x:Key="ComposerStatusConnectingBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="ComposerStatusConnectedBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="ComposerStatusRunningBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="ComposerStatusWaitingBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="ComposerStatusReconnectingBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="ComposerStatusOfflineBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="ComposerWaveformBaselineBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="ComposerActiveWaveformBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="ComposerRecordingTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="ComposerStopButtonBackgroundBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="ComposerStopButtonForegroundBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
+            <SolidColorBrush x:Key="ComposerPrimaryButtonBackgroundBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="ComposerPrimaryButtonForegroundBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
+            <SolidColorBrush x:Key="ComposerDisabledButtonBackgroundBrush" Color="{ThemeResource SystemColorButtonFaceColor}" />
+            <SolidColorBrush x:Key="ComposerDisabledButtonForegroundBrush" Color="{ThemeResource SystemColorGrayTextColor}" />
         </ResourceDictionary>
 
     </ResourceDictionary.ThemeDictionaries>

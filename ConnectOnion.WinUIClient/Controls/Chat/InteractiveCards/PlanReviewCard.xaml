@@ -17,6 +17,15 @@
                     <TextBlock Text="Review scope, ordering, and risks before approving."
                         Style="{StaticResource InteractiveHelperTextStyle}" VerticalAlignment="Center" />
                 </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Content="Review sections…"
+                            Click="ReviewSections_Click"
+                            IsEnabled="{x:Bind Message.IsInteractiveEditable, Mode=OneWay}"
+                            AutomationProperties.Name="Open full plan and review each section" />
+                    <Button Content="Copy plan"
+                            Click="CopyPlan_Click"
+                            AutomationProperties.Name="Copy execution plan" />
+                </StackPanel>
                 <ScrollViewer MaxHeight="420" VerticalScrollBarVisibility="Auto"
                     HorizontalScrollBarVisibility="Disabled">
                     <local:MarkdownTextBlock Markdown="{x:Bind Message.EventDetail, Mode=OneWay}"
@@ -56,25 +65,35 @@
             </StackPanel>
         </local:InteractiveCard.CardBody>
         <local:InteractiveCard.CardFooter>
-            <Grid Padding="12,10" ColumnSpacing="8">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                <TextBlock Text="{x:Bind Message.InteractiveStateDescription, Mode=OneWay}" Style="{StaticResource InteractiveHelperTextStyle}" VerticalAlignment="Center" />
-                <Button Grid.Column="1" Content="Reject" Style="{StaticResource InteractiveCardTertiaryButtonStyle}"
-                    Visibility="{x:Bind Message.ShowInteractiveActions, Mode=OneWay, Converter={StaticResource BoolToVis}}"
-                    IsEnabled="{x:Bind Message.IsInteractiveEditable, Mode=OneWay}" Click="Reject_Click" />
-                <Button Grid.Column="2" Content="Request changes" Style="{StaticResource InteractiveCardButtonStyle}"
-                    Visibility="{x:Bind Message.ShowInteractiveActions, Mode=OneWay, Converter={StaticResource BoolToVis}}"
-                    IsEnabled="{x:Bind Message.IsInteractiveEditable, Mode=OneWay}" Click="RequestChanges_Click" />
-                <Button Grid.Column="3" Style="{StaticResource InteractiveCardPrimaryButtonStyle}"
-                    Visibility="{x:Bind Message.ShowInteractiveActions, Mode=OneWay, Converter={StaticResource BoolToVis}}"
-                    IsEnabled="{x:Bind Message.IsInteractiveEditable, Mode=OneWay}" Click="Approve_Click">
-                    <StackPanel Orientation="Horizontal" Spacing="7">
-                        <ProgressRing Width="14" Height="14" IsActive="{x:Bind Message.IsInteractiveSubmitting, Mode=OneWay}"
-                            Visibility="{x:Bind Message.IsInteractiveSubmitting, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-                        <TextBlock Text="{x:Bind Message.PlanReviewSubmitLabel, Mode=OneWay}" />
-                    </StackPanel>
-                </Button>
-            </Grid>
+            <StackPanel Padding="12,10" Spacing="8">
+                <TextBlock Text="{x:Bind Message.InteractiveStateDescription, Mode=OneWay}"
+                           Style="{StaticResource InteractiveHelperTextStyle}"
+                           TextWrapping="Wrap"
+                           VerticalAlignment="Center" />
+                <StackPanel Orientation="Horizontal"
+                            Spacing="8"
+                            HorizontalAlignment="Right"
+                            Visibility="{x:Bind Message.ShowInteractiveActions, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                    <Button Content="Reject"
+                            Style="{StaticResource InteractiveCardTertiaryButtonStyle}"
+                            IsEnabled="{x:Bind Message.IsInteractiveEditable, Mode=OneWay}"
+                            Click="Reject_Click" />
+                    <Button Content="Request changes"
+                            Style="{StaticResource InteractiveCardButtonStyle}"
+                            IsEnabled="{x:Bind Message.IsInteractiveEditable, Mode=OneWay}"
+                            Click="RequestChanges_Click" />
+                    <Button Style="{StaticResource InteractiveCardPrimaryButtonStyle}"
+                            IsEnabled="{x:Bind Message.IsInteractiveEditable, Mode=OneWay}"
+                            Click="Approve_Click">
+                        <StackPanel Orientation="Horizontal" Spacing="7">
+                            <ProgressRing Width="14" Height="14"
+                                          IsActive="{x:Bind Message.IsInteractiveSubmitting, Mode=OneWay}"
+                                          Visibility="{x:Bind Message.IsInteractiveSubmitting, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                            <TextBlock Text="{x:Bind Message.PlanReviewSubmitLabel, Mode=OneWay}" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </StackPanel>
         </local:InteractiveCard.CardFooter>
     </local:InteractiveCard>
 </UserControl>

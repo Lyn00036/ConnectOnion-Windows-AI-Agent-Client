@@ -37,4 +37,21 @@ public sealed partial class MainWindow
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool ReleaseCapture();
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr SendMessage(
+        IntPtr hWnd,
+        uint message,
+        UIntPtr wParam,
+        IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern bool RedrawWindow(
+        IntPtr hWnd,
+        IntPtr updateRect,
+        IntPtr updateRegion,
+        uint flags);
 }

@@ -924,6 +924,10 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
                 attachment.Error = "Image could not be loaded.";
             }
         }
+
+        /// <summary>Ignored: this is the headless persistence pass, with nobody watching a live
+        /// readout. The same figures still reach storage through the turn's summary row.</summary>
+        public void ReportUsage(TurnUsage usage) { }
     }
 
     private sealed class DebugRunLogger : IRunLogger

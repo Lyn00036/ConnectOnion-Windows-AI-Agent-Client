@@ -1,3 +1,4 @@
+using System;
 using ConnectOnion.WinUIClient.Models;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -93,6 +94,30 @@ public sealed partial class ToolActivityView : UserControl
         step.JustCopied = true;
         await System.Threading.Tasks.Task.Delay(1500);
         step.JustCopied = false;
+    }
+
+    private async void InvocationCopy_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not ToolStepViewModel { HasInvocation: true } step)
+            return;
+
+        var package = new DataPackage();
+        package.SetText(step.InvocationDisplayText);
+        Clipboard.SetContent(package);
+        step.JustCopied = true;
+        await System.Threading.Tasks.Task.Delay(1200);
+        step.JustCopied = false;
+    }
+
+    private async void InvocationOpen_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not ToolStepViewModel { CanOpenInvocation: true } step
+            || !Uri.TryCreate(step.InvocationText, UriKind.Absolute, out var uri))
+        {
+            return;
+        }
+
+        await Services.AppServices.UriLauncher.LaunchAsync(uri);
     }
 
     private void ApprovalCopyCommand_Click(object sender, RoutedEventArgs e)

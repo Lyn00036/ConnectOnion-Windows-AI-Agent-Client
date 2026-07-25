@@ -26,6 +26,9 @@ public sealed partial class MainWindow
     private async void NewChat_Click(object sender, RoutedEventArgs e)
         => await StartNewChatAsync();
 
+    private async void Sidebar_NewChatRequested()
+        => await StartNewChatAsync();
+
     private async void OpenFolder_Click(object sender, RoutedEventArgs e)
         => await PickAndOpenFolderAsync();
 

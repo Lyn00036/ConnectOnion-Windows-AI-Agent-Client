@@ -1,6 +1,8 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -21,8 +23,13 @@ public sealed partial class HomeAgentItem : Common.ObservableObject
     public string Initial { get; set; } = "?";
     public string ShortAddress { get; set; } = "";
     public string FullAddress { get; set; } = "";
+    public string ConnectionSummary { get; set; } = "";
+    public string LastUsedLabel { get; set; } = "Not used yet";
     public int AvatarPaletteIndex { get; set; }
-    public string AutomationName => $"Open {DisplayName}";
+    public bool IsSelected { get; set; }
+    public bool ShowSelection => IsSelected || IsHighlighted;
+    public string AutomationName
+        => $"Open {DisplayName}. {ConnectionSummary}. {StatusLabel}. Last used {LastUsedLabel}.";
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsChecking))]
@@ -44,6 +51,7 @@ public sealed partial class HomeAgentItem : Common.ObservableObject
     public partial bool IsInteractionEnabled { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowSelection))]
     public partial bool IsHighlighted { get; set; }
 
     public bool IsChecking => Presence is AgentPresence.Unknown or AgentPresence.Checking;
@@ -70,6 +78,7 @@ public sealed partial class HomePage : Page, IReloadablePage, IDisposable
     private int _disposed;
 
     public ObservableCollection<HomeAgentItem> Agents { get; } = new();
+    public bool HasAgents => Agents.Count > 0;
 
     public HomePage()
     {
@@ -120,6 +129,7 @@ public sealed partial class HomePage : Page, IReloadablePage, IDisposable
     private async Task LoadAsync(CancellationToken cancellationToken = default)
     {
         var state = await AppServices.Agents.LoadAsync(cancellationToken);
+        var sessionsState = await AppServices.Sessions.LoadAsync(cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         Agents.Clear();
 
@@ -129,17 +139,26 @@ public sealed partial class HomePage : Page, IReloadablePage, IDisposable
             {
                 Id = agent.Id,
                 Name = agent.Name,
-                Initial = NameInitial.From(agent.DisplayName),
+                Initial = NameInitial.FromPair(agent.DisplayName),
                 ShortAddress = ShortenAddress(agent),
                 FullAddress = GetAddress(agent),
+                ConnectionSummary = BuildConnectionSummary(agent),
+                LastUsedLabel = FormatLastUsed(
+                    sessionsState.Sessions
+                        .Where(session => session.AgentId == agent.Id)
+                        .OrderByDescending(session => session.UpdatedAt, StringComparer.Ordinal)
+                        .FirstOrDefault()?.UpdatedAt),
                 AvatarPaletteIndex = AvatarPalette.From(agent.Name),
                 IsInteractionEnabled = true,
+                IsSelected = agent.Id == state.SelectedAgentId,
             };
             ApplyPresence(item);
             Agents.Add(item);
 
             _ = _presence.EnsureCheckedAsync(agent);
         }
+
+        Bindings.Update();
     }
 
     private void OnPresenceChanged(string agentId)
@@ -177,7 +196,21 @@ public sealed partial class HomePage : Page, IReloadablePage, IDisposable
 
             agentsState.SelectedAgentId = agentId;
             await AppServices.Agents.SaveAsync(agentsState, _lifetimeCts.Token);
-            await EnsureSessionAsync(agentId);
+
+            var sessionsState = await AppServices.Sessions.LoadAsync(_lifetimeCts.Token);
+            var recentSession = SessionSelection.FindExisting(
+                sessionsState.Sessions,
+                activeSessionId: null,
+                agentId: agentId);
+
+            if (recentSession is null)
+            {
+                Frame.Navigate(typeof(AgentDetailPage));
+                return;
+            }
+
+            sessionsState.ActiveSessionId = recentSession.Id;
+            await AppServices.Sessions.SaveAsync(sessionsState);
             Frame.Navigate(typeof(ChatPage));
         }
         catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested)
@@ -216,26 +249,6 @@ public sealed partial class HomePage : Page, IReloadablePage, IDisposable
         finally { if (!_lifetimeCts.IsCancellationRequested) item.IsHighlighted = false; }
     }
 
-    private static async Task EnsureSessionAsync(string agentId)
-    {
-        var sessionsState = await AppServices.Sessions.LoadAsync();
-        var recent = SessionSelection.FindExisting(
-            sessionsState.Sessions, sessionsState.ActiveSessionId, agentId);
-        if (recent?.Id == sessionsState.ActiveSessionId) return;
-
-        if (recent is not null)
-        {
-            sessionsState.ActiveSessionId = recent.Id;
-            await AppServices.Sessions.SaveAsync(sessionsState);
-            return;
-        }
-
-        var session = SessionSummary.NewConversation(agentId, sessionsState.Sessions);
-        sessionsState.Sessions.Add(session);
-        sessionsState.ActiveSessionId = session.Id;
-        await AppServices.Sessions.SaveAsync(sessionsState);
-    }
-
     private static string ShortenAddress(AgentConfig agent)
     {
         var value = GetAddress(agent);
@@ -252,5 +265,52 @@ public sealed partial class HomePage : Page, IReloadablePage, IDisposable
 
     private static string GetAddress(AgentConfig agent)
         => string.IsNullOrWhiteSpace(agent.Address) ? agent.DirectUrl ?? "" : agent.Address;
+
+    private static string BuildConnectionSummary(AgentConfig agent)
+    {
+        var transport = string.IsNullOrWhiteSpace(agent.DirectUrl)
+            ? "Relay connection"
+            : "Direct connection";
+        var model = ReadInfoString(agent.InfoJson, "model");
+        return string.IsNullOrWhiteSpace(model) ? transport : $"{model} · {transport}";
+    }
+
+    private static string? ReadInfoString(string? json, string key)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (document.RootElement.TryGetProperty(key, out var value)
+                && value.ValueKind == JsonValueKind.String)
+            {
+                var text = value.GetString();
+                return string.IsNullOrWhiteSpace(text) ? null : text.Trim();
+            }
+        }
+        catch (JsonException)
+        {
+            // Cached metadata is optional presentation data; an old or partial payload simply
+            // falls back to the transport label.
+        }
+
+        return null;
+    }
+
+    private static string FormatLastUsed(string? timestamp)
+    {
+        if (!DateTimeOffset.TryParse(timestamp, CultureInfo.InvariantCulture, out var parsed))
+            return "Not used yet";
+
+        var local = parsed.ToLocalTime();
+        var elapsed = DateTimeOffset.Now - local;
+        if (elapsed < TimeSpan.Zero || elapsed < TimeSpan.FromMinutes(1)) return "Just now";
+        if (elapsed < TimeSpan.FromHours(1)) return $"{Math.Max(1, (int)elapsed.TotalMinutes)} min ago";
+        if (elapsed < TimeSpan.FromDays(1)) return $"{Math.Max(1, (int)elapsed.TotalHours)} hr ago";
+        if (local.Date == DateTimeOffset.Now.Date.AddDays(-1)) return "Yesterday";
+        if (elapsed < TimeSpan.FromDays(7))
+            return local.ToString("dddd", CultureInfo.CurrentCulture);
+        return local.ToString("MMM d", CultureInfo.CurrentCulture);
+    }
 
 }

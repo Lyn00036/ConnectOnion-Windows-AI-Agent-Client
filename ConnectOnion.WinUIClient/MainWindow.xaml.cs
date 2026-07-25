@@ -24,11 +24,13 @@ public sealed partial class MainWindow : Window
     private bool _isSidebarVisible = true;
 
     public IRelayCommand OpenWindowCommand { get; }
+    public IRelayCommand NewChatFromTrayCommand { get; }
     public IRelayCommand ExitFromTrayCommand { get; }
 
     public MainWindow()
     {
         OpenWindowCommand = new RelayCommand(RestoreFromTray);
+        NewChatFromTrayCommand = new RelayCommand(OpenNewChatFromTray);
         ExitFromTrayCommand = new RelayCommand(ExitApplication);
         InitializeComponent();
         _sessionRepository = AppServices.Sessions;
@@ -43,7 +45,11 @@ public sealed partial class MainWindow : Window
         ConfigureCustomTitleBar();
         InitializeTrayBehavior();
         ShellSidebar.NavigationRequested += NavigateTo;
+        ShellSidebar.NewChatRequested += Sidebar_NewChatRequested;
         ShellSidebar.SettingsRequested += ShowSettingsOverlay;
+        ShellSidebar.KeyboardShortcutsRequested += ShowKeyboardShortcutsOverlay;
+        ShellSidebar.AboutRequested += ShowAboutOverlay;
+        ShellSidebar.ExitRequested += ExitApplication;
         ShellSidebar.AddAgentRequested += ShowAddAgentOverlay;
         AddAgentOverlay.AgentAdded += AddAgentOverlay_AgentAdded;
         SettingsOverlay.CloseRequested += (_, _) => CloseSettingsOverlay();
@@ -57,6 +63,13 @@ public sealed partial class MainWindow : Window
                 UpdateNavigationButtons();
                 CloseFindOverlay();
                 await ShellSidebar.RefreshAsync();
+                if (RootGrid.ActualWidth < 720 && _isSidebarVisible)
+                {
+                    _isSidebarVisible = false;
+                    ShellSidebar.Visibility = Visibility.Collapsed;
+                    ApplySidebarWidth(RootGrid.ActualWidth);
+                    SidebarToggleButton.Opacity = 0.65;
+                }
             }
             catch
             {
@@ -78,6 +91,7 @@ public sealed partial class MainWindow : Window
             try
             {
                 await ShellSidebar.RefreshAsync();
+                await RefreshTrayRecentChatsAsync();
                 NavigateTo(typeof(HomePage));
                 UpdateNavigationButtons();
             }
@@ -92,6 +106,7 @@ public sealed partial class MainWindow : Window
                 // identity that was reset before this window existed to show it.
                 AppServices.NotificationActivation.MarkReady();
                 ReportIdentityResetIfAny();
+                RevealNewRecoveryPhraseIfAny();
             }
         };
     }
@@ -181,9 +196,21 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        // Below the compact breakpoint the sidebar becomes an overlay. Keeping a fixed rail in
+        // the layout at this width squeezed blocking approval controls and the reading column.
+        // The existing title-bar toggle remains the single show/hide interaction.
+        if (windowWidth < 720)
+        {
+            ShellSidebarColumn.Width = new GridLength(0);
+            ShellSidebar.Width = Math.Max(208, Math.Min(264, windowWidth - 48));
+            ShellSidebar.HorizontalAlignment = HorizontalAlignment.Left;
+            return;
+        }
+
+        ShellSidebar.ClearValue(FrameworkElement.WidthProperty);
+        ShellSidebar.HorizontalAlignment = HorizontalAlignment.Stretch;
         ShellSidebarColumn.Width = windowWidth switch
         {
-            < 720 => new GridLength(208),
             < 980 => new GridLength(232),
             _ => new GridLength(264),
         };
@@ -253,6 +280,8 @@ public sealed partial class MainWindow : Window
         {
             try { await ShellSidebar.RefreshAsync(); }
             catch { /* Best-effort refresh on session change. */ }
+            try { await RefreshTrayRecentChatsAsync(); }
+            catch { /* Best-effort tray shortcut refresh. */ }
         });
 
     private void ApplyTitleBarTheme(ElementTheme theme)

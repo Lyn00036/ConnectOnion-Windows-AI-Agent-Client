@@ -32,7 +32,7 @@ public sealed partial class ChatPage
         var edgeInset = e.NewSize.Width < 640 ? 20 : 52;
         var centringInset = (e.NewSize.Width - ChatColumnMaxWidth) / 2;
         var horizontalInset = Math.Max(edgeInset, centringInset);
-        MessageList.Padding = new Thickness(horizontalInset, 18, horizontalInset, 22);
+        MessageList.Padding = new Thickness(horizontalInset, 14, horizontalInset, 26);
     }
 
     private async System.Threading.Tasks.Task SendAsync(string text, IReadOnlyList<PendingAttachment>? attachments = null)

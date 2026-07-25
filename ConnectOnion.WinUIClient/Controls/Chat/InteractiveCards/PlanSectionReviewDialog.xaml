@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="ConnectOnion.WinUIClient.Controls.PlanSectionReviewDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:ConnectOnion.WinUIClient.Controls"
+    Title="Review plan by section"
+    PrimaryButtonText="Approve plan"
+    SecondaryButtonText="Request changes"
+    CloseButtonText="Cancel"
+    DefaultButton="Primary">
+    <Grid Width="620" MaxWidth="760" Height="620" MaxHeight="720">
+        <ListView ItemsSource="{x:Bind Sections}"
+                  SelectionMode="None"
+                  IsItemClickEnabled="False"
+                  HorizontalContentAlignment="Stretch"
+                  AutomationProperties.Name="Plan sections">
+            <ListView.ItemContainerTransitions>
+                <TransitionCollection />
+            </ListView.ItemContainerTransitions>
+            <ListView.ItemTemplate>
+                <DataTemplate x:DataType="local:PlanReviewSectionItem">
+                    <Border Margin="0,0,0,10"
+                            Padding="14"
+                            CornerRadius="10"
+                            BorderBrush="{ThemeResource BorderDefaultBrush}"
+                            BorderThickness="1"
+                            Background="{ThemeResource SurfaceSecondaryBrush}">
+                        <StackPanel Spacing="9">
+                            <TextBlock Text="{x:Bind Heading}"
+                                       FontSize="15"
+                                       FontWeight="SemiBold"
+                                       TextWrapping="Wrap"
+                                       IsTextSelectionEnabled="True" />
+                            <local:MarkdownTextBlock Markdown="{x:Bind Markdown}"
+                                                     FontSize="13"
+                                                     AutomationProperties.Name="{x:Bind Heading}" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <ToggleButton Content="Looks good"
+                                              Tag="{x:Bind}"
+                                              IsChecked="{x:Bind IsApproved, Mode=OneWay}"
+                                              Click="ApproveSection_Click"
+                                              AutomationProperties.Name="{x:Bind ApproveAccessibilityName}" />
+                                <ToggleButton Content="Needs changes"
+                                              Tag="{x:Bind}"
+                                              IsChecked="{x:Bind NeedsChanges, Mode=OneWay}"
+                                              Click="RequestSectionChanges_Click"
+                                              AutomationProperties.Name="{x:Bind ChangesAccessibilityName}" />
+                            </StackPanel>
+                            <TextBox Text="{x:Bind Feedback, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     PlaceholderText="Optional feedback for this section…"
+                                     AcceptsReturn="True"
+                                     TextWrapping="Wrap"
+                                     MinHeight="48"
+                                     MaxHeight="120"
+                                     AutomationProperties.Name="{x:Bind FeedbackAccessibilityName}" />
+                        </StackPanel>
+                    </Border>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+    </Grid>
+</ContentDialog>

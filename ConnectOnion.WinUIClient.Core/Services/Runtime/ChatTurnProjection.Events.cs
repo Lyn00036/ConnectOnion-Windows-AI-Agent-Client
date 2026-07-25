@@ -109,6 +109,10 @@ public sealed partial class ChatTurnProjection
                 if (Num("duration_ms") is { } dur) _turnDurationMs += dur;
                 if (Num("context_percent") is { } ctx) _turnContextPercent = ctx;
                 if (Num("tool_calls_count") is { } tcc) _turnToolCallsCount += (long)tcc;
+                // The only arm that moves these numbers, so it is the only one that publishes them.
+                // Announcing after every event instead would push an unchanged value dozens of
+                // times a turn for no reader.
+                ReportUsage();
                 break;
             }
 
@@ -339,13 +343,25 @@ public sealed partial class ChatTurnProjection
                 // The agent can enter plan mode by itself (triggered_by: "agent"), so this card is
                 // not an echo of the user's own click — it is the only place a mode the *agent*
                 // chose becomes visible.
-                var item = NewActivity(null, $"Mode: {AgentModes.DisplayName(Str("mode"))}", EventStatus.Done);
+                var mode = Str("mode");
+                var item = NewActivity(null, $"Mode: {AgentModes.DisplayName(mode)}", EventStatus.Done);
                 item.EventMeta = Str("triggered_by") switch
                 {
                     "agent" => "by agent",
                     "ulw_checkpoint" => "by checkpoint",
                     _ => null,
                 };
+                // What the switch means for the user, which the mode's name alone does not say —
+                // someone who has never seen plan mode has no way to know a review is coming, or
+                // that nothing will change until they approve it.
+                //
+                // Stated in the third person about the protocol, deliberately. The reference web
+                // client fills this space with invented first-person prose ("I'm designing a
+                // detailed implementation plan…"), which reads as the agent speaking when the
+                // client wrote it — the agent said nothing of the kind.
+                item.EventDetail = mode == AgentModes.Plan
+                    ? "The agent will research first and send a plan for approval before making changes."
+                    : null;
                 Add(item);
                 break;
             }
@@ -363,13 +379,22 @@ public sealed partial class ChatTurnProjection
                 // hasn't answered yet would accumulate a column of identical input boxes.
                 if (!Messages.Any(m => m.IsOnboarding && !m.IsOnboardingSubmitted))
                 {
+                    // The gate says what it accepts. Before this was read, the card always
+                    // demanded an invite code — so an agent gated on payment showed a box for a
+                    // code that does not exist and could never be got past.
+                    var gate = AgentInteractiveParsers.ParseOnboard(WireMessage.Wrap(root));
                     Add(new ChatMessage
                     {
                         Id = NextId(),
                         Role = ChatRole.Agent,
                         AgentName = AgentName,
                         IsOnboarding = true,
-                        Content = "This agent requires an invite code before the conversation can continue.",
+                        OnboardRequest = gate,
+                        Content = gate.AcceptsPayment && !gate.AcceptsInviteCode
+                            ? "This agent requires a payment before the conversation can continue."
+                            : gate.AcceptsPayment
+                                ? "This agent requires an invite code or a payment before the conversation can continue."
+                                : "This agent requires an invite code before the conversation can continue.",
                     });
                 }
                 break;
@@ -386,6 +411,7 @@ public sealed partial class ChatTurnProjection
                 if (FindEvent(request.Id, "ask_user") is { } existingAsk)
                 {
                     existingAsk.RevalidateInteractiveRequest();
+                    AttachPendingImages(existingAsk);
                     break;
                 }
 
@@ -429,6 +455,9 @@ public sealed partial class ChatTurnProjection
                             StringComparison.OrdinalIgnoreCase));
                 }
                 Add(message);
+                // A QR/login image immediately before ask_user is part of the question. Waiting
+                // until OUTPUT would deadlock the UX: the user cannot scan what is still hidden.
+                AttachPendingImages(message);
                 break;
             }
 

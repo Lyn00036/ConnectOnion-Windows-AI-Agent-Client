@@ -127,6 +127,112 @@ public sealed class InteractiveResponseBuilderTests
     public void PlanReview_RequestChangesRequiresFeedback()
         => Assert.Null(InteractiveResponseBuilder.BuildPlanReviewResponse(PlanReviewAction.RequestChanges, "  "));
 
+    // ---- Answer summaries: what reaches the transcript and the messages table -----------------
+    //
+    // The wire answer and the summary are different values on purpose. These tests pin that
+    // difference, because collapsing them back together is what wrote credentials to disk.
+
+    [Fact]
+    public void AskUserSummary_MasksSecretFieldsWhileTheWireAnswerKeepsThem()
+    {
+        var message = Ask();
+        message.AskUserFields.Add(Field(message, "username", "Username", true, "bob"));
+        var password = Field(message, "password", "Password", true, "hunter2");
+        password.Type = "password";
+        message.AskUserFields.Add(password);
+
+        // The agent asked for the password because it needs the password.
+        var wire = Assert.IsType<string>(InteractiveResponseBuilder.BuildAskUserAnswer(message));
+        Assert.Contains("hunter2", wire, StringComparison.Ordinal);
+
+        // The summary is displayed in the transcript and written to event_meta, where it outlives
+        // the session. It must not carry the secret.
+        var summary = InteractiveResponseBuilder.BuildAskUserAnswerSummary(message);
+        Assert.DoesNotContain("hunter2", summary, StringComparison.Ordinal);
+        Assert.Equal("Username=bob · Password=••••••", summary);
+    }
+
+    [Fact]
+    public void AskUserSummary_MaskIsFixedLengthSoItLeaksNothingAboutTheSecret()
+    {
+        var shortSecret = Ask();
+        var a = Field(shortSecret, "password", "Password", true, "x");
+        a.Type = "password";
+        shortSecret.AskUserFields.Add(a);
+
+        var longSecret = Ask();
+        var b = Field(longSecret, "password", "Password", true, "a-very-long-passphrase-indeed");
+        b.Type = "password";
+        longSecret.AskUserFields.Add(b);
+
+        Assert.Equal(
+            InteractiveResponseBuilder.BuildAskUserAnswerSummary(shortSecret),
+            InteractiveResponseBuilder.BuildAskUserAnswerSummary(longSecret));
+    }
+
+    [Theory]
+    // The agent's own type is the primary signal...
+    [InlineData("anything", "Anything", "password", true)]
+    // ...but nothing forces an agent to set it, and these are just as dangerous as plain text.
+    [InlineData("api_key", "API key", null, true)]
+    [InlineData("apiKey", "Key", null, true)]
+    [InlineData("login_password", "Login", null, true)]
+    [InlineData("refresh_token", "Token", null, true)]
+    [InlineData("account_secret", "Secret", null, true)]
+    [InlineData("otp", "One-time code", null, true)]
+    // Ordinary fields must not be masked — an unreadable transcript is its own failure.
+    [InlineData("username", "Username", null, false)]
+    [InlineData("email", "Email", null, false)]
+    [InlineData("invite_code", "Invite code", null, false)]
+    public void IsSecretField_ClassifiesByTypeThenByName(
+        string name, string label, string? type, bool expected)
+    {
+        var message = Ask();
+        var field = Field(message, name, label, false, "value");
+        field.Type = type;
+
+        Assert.Equal(expected, InteractiveResponseBuilder.IsSecretField(field));
+    }
+
+    [Fact]
+    public void AskUserSummary_RendersFieldsAsProseRatherThanJson()
+    {
+        var message = Ask();
+        message.AskUserFields.Add(Field(message, "host", "Host", true, "example.com"));
+        message.AskUserFields.Add(Field(message, "note", "Note", false, ""));
+
+        // The summary is read by a person; {"host":"example.com","note":""} never was.
+        Assert.Equal("Host=example.com · Note=(blank)",
+            InteractiveResponseBuilder.BuildAskUserAnswerSummary(message));
+    }
+
+    [Theory]
+    [InlineData("password", "Password", null, true)]
+    [InlineData("api_key", "API key", "text", true)]
+    [InlineData("username", "Username", "text", false)]
+    public void AskUserFieldEntry_ExposesSecretPresentation(
+        string name, string label, string? type, bool expected)
+    {
+        var field = Field(Ask(), name, label, false, "");
+        field.Type = type;
+
+        Assert.Equal(expected, field.IsSecret);
+        Assert.Equal(expected, InteractiveResponseBuilder.IsSecretField(field));
+    }
+
+    [Fact]
+    public void AskUserSummary_JoinsSelectedOptionsAndPassesFreeTextThrough()
+    {
+        var options = Ask(true, "Agents", "Logs", "Status");
+        options.AskUserOptionEntries[0].Toggle();
+        options.AskUserOptionEntries[2].Toggle();
+        Assert.Equal("Agents, Status", InteractiveResponseBuilder.BuildAskUserAnswerSummary(options));
+
+        var free = Ask();
+        free.AskUserFreeText = "  ship it  ";
+        Assert.Equal("ship it", InteractiveResponseBuilder.BuildAskUserAnswerSummary(free));
+    }
+
     private static ChatMessage Ask(bool multi = false, params string[] options)
     {
         var message = new ChatMessage

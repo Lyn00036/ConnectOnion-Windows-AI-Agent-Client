@@ -158,6 +158,16 @@
             <Color x:Key="SyntaxFailureColor">#FFC0392B</Color>
 
             <!-- Composer -->
+            <!-- The compact connection legend under the input gives every transport phase its
+                 own hue. These are text colors as well as dot colors, so each clears WCAG AA
+                 against ChatInputBackgroundColor rather than relying on the dot alone. -->
+            <Color x:Key="ComposerStatusIdleColor">#FF667085</Color>
+            <Color x:Key="ComposerStatusConnectingColor">#FF2563EB</Color>
+            <Color x:Key="ComposerStatusConnectedColor">#FF16794D</Color>
+            <Color x:Key="ComposerStatusRunningColor">#FF6D28D9</Color>
+            <Color x:Key="ComposerStatusWaitingColor">#FF946200</Color>
+            <Color x:Key="ComposerStatusReconnectingColor">#FFB54708</Color>
+            <Color x:Key="ComposerStatusOfflineColor">#FFB3261E</Color>
             <Color x:Key="ComposerStopButtonBackgroundColor">#FF2E2E2E</Color>
             <Color x:Key="ComposerStopButtonForegroundColor">#FFFFFFFF</Color>
             <Color x:Key="ComposerDisabledButtonBackgroundColor">#FFE6E6E5</Color>
@@ -189,6 +199,22 @@
             <Color x:Key="AvatarPaletteTealForegroundColor">#FF286F68</Color>
             <Color x:Key="AvatarPaletteCoralBackgroundColor">#FFF8ECE8</Color>
             <Color x:Key="AvatarPaletteCoralForegroundColor">#FF9A5545</Color>
+            <Color x:Key="AvatarPaletteIndigoBackgroundColor">#FFECEFFC</Color>
+            <Color x:Key="AvatarPaletteIndigoForegroundColor">#FF4B5E9B</Color>
+            <Color x:Key="AvatarPaletteCyanBackgroundColor">#FFE6F3F6</Color>
+            <Color x:Key="AvatarPaletteCyanForegroundColor">#FF2D6F7A</Color>
+            <Color x:Key="AvatarPaletteEmeraldBackgroundColor">#FFE8F3EA</Color>
+            <Color x:Key="AvatarPaletteEmeraldForegroundColor">#FF39724A</Color>
+            <Color x:Key="AvatarPaletteAmberBackgroundColor">#FFF7F0DF</Color>
+            <Color x:Key="AvatarPaletteAmberForegroundColor">#FF8A641F</Color>
+            <Color x:Key="AvatarPaletteRoseBackgroundColor">#FFF7E9ED</Color>
+            <Color x:Key="AvatarPaletteRoseForegroundColor">#FF985568</Color>
+            <Color x:Key="AvatarPalettePlumBackgroundColor">#FFF2EAF3</Color>
+            <Color x:Key="AvatarPalettePlumForegroundColor">#FF7D527F</Color>
+            <Color x:Key="AvatarPaletteSlateBackgroundColor">#FFEBEEF0</Color>
+            <Color x:Key="AvatarPaletteSlateForegroundColor">#FF52626F</Color>
+            <Color x:Key="AvatarPaletteOliveBackgroundColor">#FFEFF1E3</Color>
+            <Color x:Key="AvatarPaletteOliveForegroundColor">#FF68713C</Color>
 
             <!-- Usage heatmap — a five-step ramp, level 0 = no usage.
 
@@ -312,6 +338,13 @@
             <Color x:Key="SyntaxFailureColor">#FFE8837A</Color>
 
             <!-- Composer (see the light dictionary) -->
+            <Color x:Key="ComposerStatusIdleColor">#FFA7B0C0</Color>
+            <Color x:Key="ComposerStatusConnectingColor">#FF78B3FF</Color>
+            <Color x:Key="ComposerStatusConnectedColor">#FF5DD39E</Color>
+            <Color x:Key="ComposerStatusRunningColor">#FFC4A7FF</Color>
+            <Color x:Key="ComposerStatusWaitingColor">#FFF0C45A</Color>
+            <Color x:Key="ComposerStatusReconnectingColor">#FFFFA45C</Color>
+            <Color x:Key="ComposerStatusOfflineColor">#FFFF8A80</Color>
             <Color x:Key="ComposerStopButtonBackgroundColor">#FF4A4A4A</Color>
             <Color x:Key="ComposerStopButtonForegroundColor">#FFF5F5F4</Color>
             <Color x:Key="ComposerDisabledButtonBackgroundColor">#FF2A2A2A</Color>
@@ -343,6 +376,22 @@
             <Color x:Key="AvatarPaletteTealForegroundColor">#FF74B7AE</Color>
             <Color x:Key="AvatarPaletteCoralBackgroundColor">#FF34231F</Color>
             <Color x:Key="AvatarPaletteCoralForegroundColor">#FFD69A88</Color>
+            <Color x:Key="AvatarPaletteIndigoBackgroundColor">#FF20263B</Color>
+            <Color x:Key="AvatarPaletteIndigoForegroundColor">#FF9BAAE0</Color>
+            <Color x:Key="AvatarPaletteCyanBackgroundColor">#FF173038</Color>
+            <Color x:Key="AvatarPaletteCyanForegroundColor">#FF77B8C4</Color>
+            <Color x:Key="AvatarPaletteEmeraldBackgroundColor">#FF1A2D20</Color>
+            <Color x:Key="AvatarPaletteEmeraldForegroundColor">#FF82BE91</Color>
+            <Color x:Key="AvatarPaletteAmberBackgroundColor">#FF342B18</Color>
+            <Color x:Key="AvatarPaletteAmberForegroundColor">#FFD2AD58</Color>
+            <Color x:Key="AvatarPaletteRoseBackgroundColor">#FF342128</Color>
+            <Color x:Key="AvatarPaletteRoseForegroundColor">#FFD69AAA</Color>
+            <Color x:Key="AvatarPalettePlumBackgroundColor">#FF302234</Color>
+            <Color x:Key="AvatarPalettePlumForegroundColor">#FFC19AC3</Color>
+            <Color x:Key="AvatarPaletteSlateBackgroundColor">#FF242A2E</Color>
+            <Color x:Key="AvatarPaletteSlateForegroundColor">#FF9EACB5</Color>
+            <Color x:Key="AvatarPaletteOliveBackgroundColor">#FF292D1C</Color>
+            <Color x:Key="AvatarPaletteOliveForegroundColor">#FFAFB978</Color>
 
             <!-- Usage heatmap (see the light dictionary for why this is not green).
 

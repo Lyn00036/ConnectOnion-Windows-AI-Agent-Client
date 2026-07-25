@@ -136,7 +136,10 @@ public sealed class AgentConnectionService : IAsyncDisposable
     public event Action<AskUserRequest>? AskUserRequested;
 
     /// <summary>The agent requires onboarding before CONNECT can complete.</summary>
-    public event Action? OnboardRequired;
+    /// <summary>Raised when the agent's trust gate hands the connection to a human. The payload
+    /// says which methods it will accept, so the card can offer them rather than assuming an
+    /// invite code.</summary>
+    public event Action<OnboardRequest>? OnboardRequired;
 
     /// <summary>The agent wants approval to run a tool (approval_needed).</summary>
     public event Action<ApprovalRequest>? ApprovalRequested;
@@ -474,19 +477,34 @@ public sealed class AgentConnectionService : IAsyncDisposable
     public Task SubmitOnboardInviteCodeAsync(string inviteCode, CancellationToken ct = default)
     {
         InviteCode = inviteCode;
-        return SubmitOnboardAsync(inviteCode, ct);
+        return SubmitOnboardAsync(inviteCode, null, ct);
     }
 
-    // Port of signOnboard(): a signed { timestamp, invite_code } envelope.
-    private async Task SubmitOnboardAsync(string inviteCode, CancellationToken ct)
+    /// <summary>
+    /// Answers the payment branch of an onboarding gate: the user says they have transferred
+    /// <paramref name="amount"/>, and the agent verifies it independently.
+    ///
+    /// <para>Not stored the way <see cref="InviteCode"/> is, and deliberately so: an invite code is
+    /// a reusable credential worth re-submitting automatically on the next reconnect, whereas a
+    /// payment claim is a one-off assertion about a transfer that has already happened. Re-asserting
+    /// it on every reconnect would tell the agent about a second payment that was never made.</para>
+    /// </summary>
+    public Task SubmitOnboardPaymentAsync(double amount, CancellationToken ct = default)
+        => SubmitOnboardAsync(null, amount, ct);
+
+    // Port of signOnboard(): a signed { timestamp, invite_code?, payment? } envelope. The two
+    // optional fields are omitted rather than sent null — the host reads presence, and a null
+    // invite_code beside a payment would look like an empty code being offered.
+    private async Task SubmitOnboardAsync(string? inviteCode, double? payment, CancellationToken ct)
     {
         // The human answered; hand the silence budget back to the agent.
         ResumeWatchdogAfterHumanResponse();
         var payload = new List<KeyValuePair<string, object?>>
         {
             new("timestamp", DateTimeOffset.UtcNow.ToUnixTimeSeconds()),
-            new("invite_code", inviteCode),
         };
+        if (!string.IsNullOrEmpty(inviteCode)) payload.Add(new("invite_code", inviteCode));
+        if (payment is > 0) payload.Add(new("payment", payment.Value));
         var envelope = _identity.SignPayload(payload);
         await SendJsonAsync(new Dictionary<string, object?>
         {
@@ -608,9 +626,11 @@ public sealed class AgentConnectionService : IAsyncDisposable
     // Port of _handleMessage: dispatch on the frame's type discriminator.
     private async Task HandleMessageAsync(string json, CancellationToken ct)
     {
-        WireMessage msg;
-        try { msg = WireMessage.Parse(json); }
+        JsonDocument document;
+        try { document = WireMessage.ParseDocument(json); }
         catch { return; }
+        using var documentOwner = document;
+        var msg = WireMessage.Wrap(document.RootElement);
 
         switch (msg.Type)
         {
@@ -625,7 +645,10 @@ public sealed class AgentConnectionService : IAsyncDisposable
                 // Raised before the connect promise resolves so a subscriber that reconciles
                 // history has done so by the time the caller's SendInputAsync continues.
                 if (state.ServerNewer) SessionDiverged?.Invoke(state);
-                _connectTcs?.TrySetResult(msg);
+                // The transient receive document is disposed when this handler returns, while
+                // RunContinuationsAsynchronously means EnsureConnectedAsync reads the message
+                // later. CONNECTED is tiny, so clone only this one cross-boundary frame.
+                _connectTcs?.TrySetResult(WireMessage.Parse(msg.Root.GetRawText()));
                 return;
             }
 
@@ -671,7 +694,11 @@ public sealed class AgentConnectionService : IAsyncDisposable
                 var eventId = msg.GetString("id");
                 if (!string.IsNullOrEmpty(eventId))
                     LastProcessedEventId = eventId;
-                StreamEvent?.Invoke(new AgentStreamEvent(msg.Type, DescribeEvent(msg), eventId, msg.Root.GetRawText()));
+                StreamEvent?.Invoke(new AgentStreamEvent(
+                    msg.Type,
+                    DescribeEvent(msg),
+                    eventId,
+                    BufferedEventJson(msg)));
                 return;
             }
 
@@ -683,7 +710,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
                 StreamEvent?.Invoke(new AgentStreamEvent(msg.Type, DescribeEvent(msg), null, msg.Root.GetRawText()));
                 if (!string.IsNullOrEmpty(InviteCode))
                 {
-                    await SubmitOnboardAsync(InviteCode, ct).ConfigureAwait(false);
+                    await SubmitOnboardAsync(InviteCode, null, ct).ConfigureAwait(false);
                 }
                 else
                 {
@@ -692,7 +719,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
                     // Without this the watchdog kills the connection mid-onboarding and the
                     // user sees "offline / trying to reconnect" instead of their own prompt.
                     _awaitingHumanResponse = true;
-                    OnboardRequired?.Invoke();
+                    OnboardRequired?.Invoke(AgentInteractiveParsers.ParseOnboard(msg));
                 }
                 return;
 
@@ -748,6 +775,57 @@ public sealed class AgentConnectionService : IAsyncDisposable
             default:
                 return;
         }
+    }
+
+    /// <summary>
+    /// Returns the event payload retained by the run runtime. Most event kinds need their full
+    /// frame for projection and trace persistence. <c>session_sync</c> is different: the host
+    /// includes the entire session message history, trace, and permission table on every sync,
+    /// while the client consumes only the current mode. Retaining every full sync makes one long
+    /// turn hold a growing series of near-duplicate session snapshots.
+    /// </summary>
+    private static string BufferedEventJson(WireMessage msg)
+    {
+        if (msg.Type != "session_sync") return msg.Root.GetRawText();
+
+        var compact = new Dictionary<string, object?>
+        {
+            ["type"] = "session_sync",
+        };
+        CopyScalar(msg.Root, compact, "id");
+        CopyScalar(msg.Root, compact, "ts");
+        CopyScalar(msg.Root, compact, "session_id");
+
+        if (msg.TryGet("session", out var session) && session.ValueKind == JsonValueKind.Object)
+        {
+            var sessionState = new Dictionary<string, object?>();
+            CopyScalar(session, sessionState, "session_id");
+            CopyScalar(session, sessionState, "mode");
+            CopyScalar(session, sessionState, "turn");
+            CopyScalar(session, sessionState, "iteration");
+            compact["session"] = sessionState;
+        }
+
+        return JsonSerializer.Serialize(compact);
+    }
+
+    private static void CopyScalar(
+        JsonElement source,
+        Dictionary<string, object?> destination,
+        string name)
+    {
+        if (!source.TryGetProperty(name, out var value)) return;
+
+        destination[name] = value.ValueKind switch
+        {
+            JsonValueKind.String => value.GetString(),
+            JsonValueKind.Number when value.TryGetInt64(out var integer) => integer,
+            JsonValueKind.Number when value.TryGetDouble(out var number) => number,
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.Null => null,
+            _ => null,
+        };
     }
 
     private static string DescribeEvent(WireMessage msg) => msg.Type switch

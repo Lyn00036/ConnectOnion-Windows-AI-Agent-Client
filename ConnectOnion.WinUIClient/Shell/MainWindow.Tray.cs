@@ -1,6 +1,5 @@
 using System;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
 
 namespace ConnectOnion.WinUIClient;
 
@@ -8,6 +7,7 @@ public sealed partial class MainWindow
 {
     private const int WmClose = 0x0010;
     private const int WmSize = 0x0005;
+    private const int WmNcMouseLeave = 0x02A2;
     private const int SizeRestored = 0;
     private const int SizeMinimized = 1;
     private const int SizeMaximized = 2;
@@ -15,6 +15,9 @@ public sealed partial class MainWindow
     private const int SwHide = 0;
     private const int SwShow = 5;
     private const int SwRestore = 9;
+    private const uint RedrawInvalidate = 0x0001;
+    private const uint RedrawUpdateNow = 0x0100;
+    private const uint RedrawFrame = 0x0400;
     private static bool _isExiting;
 
     private SUBCLASSPROC? _subclassProc;
@@ -73,22 +76,10 @@ public sealed partial class MainWindow
 
             if (message == WmClose && !_isExiting)
             {
-                _ = DispatcherQueue.TryEnqueue(async () =>
-                {
-                    try
-                    {
-                        if (await ShowCloseDialogAsync())
-                            MinimizeToTray();
-                    }
-                    catch
-                    {
-                        // If the dialog or minimize fails (e.g. XamlRoot
-                        // unavailable during teardown), let the close proceed
-                        // through the default handler so the window can still
-                        // be dismissed.
-                        DefSubclassProc(hwnd, message, wParam, lParam);
-                    }
-                });
+                // Caption Close and Alt+F4 are both WM_CLOSE. Hide immediately and consume the
+                // message; an explicit Exit command remains the only path that tears down the
+                // host, sockets and tray icon.
+                MinimizeToTray();
                 return IntPtr.Zero;
             }
 
@@ -100,36 +91,6 @@ public sealed partial class MainWindow
         }
     }
 
-    private async System.Threading.Tasks.Task<bool> ShowCloseDialogAsync()
-    {
-        // If the XamlRoot is not available (e.g. window is already tearing
-        // down), skip the dialog and proceed with a normal close.
-        if (Content.XamlRoot is null)
-            return false;
-
-        var dialog = new ContentDialog
-        {
-            Title = "ConnectOnion",
-            Content = "Do you want to minimize to the tray or exit the application?",
-            PrimaryButtonText = "Minimize to tray",
-            SecondaryButtonText = "Exit",
-            CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Primary,
-            XamlRoot = Content.XamlRoot,
-        };
-
-        var result = await dialog.ShowAsync();
-
-        if (result == ContentDialogResult.Secondary)
-        {
-            ExitApplication();
-            return false;
-        }
-
-        // Primary = minimize, Close/Cancel = do nothing (return true for minimize)
-        return result == ContentDialogResult.Primary;
-    }
-
     private void MinimizeToTray()
     {
         if (_isExiting || _isTrayDisposed) return;
@@ -138,6 +99,7 @@ public sealed partial class MainWindow
         // the process simply stops writing. A user reporting "the app closed itself" is answered
         // by whether this line or the exit sequence came last.
         Serilog.Log.Information("Window hidden to tray; app still running");
+        ClearCaptionButtonInteraction();
         ShowWindow(_hwnd, SwHide);
         _windowPresence?.SetVisible(this, false);
     }
@@ -146,10 +108,7 @@ public sealed partial class MainWindow
     {
         if (_isExiting || _isTrayDisposed) return;
 
-        ShowWindow(_hwnd, SwShow);
-        SetForegroundWindow(_hwnd);
-        Activate();
-        _windowPresence?.SetVisible(this, true);
+        BringToForeground();
     }
 
     /// <summary>Restores the window from a minimized or hidden (tray) state and brings it
@@ -168,12 +127,31 @@ public sealed partial class MainWindow
         SetForegroundWindow(_hwnd);
         try { Activate(); }
         catch { /* Activate can throw during teardown; best-effort. */ }
+        RefreshCaptionButtons();
         if (!_isTrayDisposed) _windowPresence?.SetVisible(this, true);
+    }
+
+    private void ClearCaptionButtonInteraction()
+    {
+        // WM_CLOSE is consumed to keep the process alive, so the normal close sequence never
+        // gets a chance to clear the DWM caption button's pressed/hover state.
+        ReleaseCapture();
+        SendMessage(_hwnd, WmNcMouseLeave, UIntPtr.Zero, IntPtr.Zero);
+    }
+
+    private void RefreshCaptionButtons()
+    {
+        ClearCaptionButtonInteraction();
+        RedrawWindow(
+            _hwnd,
+            IntPtr.Zero,
+            IntPtr.Zero,
+            RedrawInvalidate | RedrawFrame | RedrawUpdateNow);
     }
 
     private async void ExitApplication()
     {
-        // The single funnel for a real exit (close dialog's Exit, tray menu Exit, File > Exit).
+        // The single funnel for a real exit (tray menu Exit, File > Exit, sidebar user menu Exit).
         // Logged at entry so the teardown lines that follow — window detach, then the phase
         // timings from App.ShutdownAsync — can be read as one sequence, and so a log that simply
         // stops without this line is recognisable as a crash rather than a clean exit.

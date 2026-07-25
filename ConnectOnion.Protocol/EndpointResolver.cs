@@ -738,6 +738,28 @@ public static class EndpointResolver
         }
     }
 
+    /// <summary>
+    /// Reads the agent's declared skills straight out of a cached <c>/info</c> JSON string, so a
+    /// caller holding a persisted blob does not have to hit the network to get them. Sibling of
+    /// <see cref="ParseAcceptedInputsFromInfoJson"/> and shares its parser, so a skill list means
+    /// the same thing whether it arrived over the wire or came back out of the agent record.
+    /// Returns an empty list for a missing, malformed or unparseable payload — a client that shows
+    /// skill shortcuts must degrade to showing none, never to failing.
+    /// </summary>
+    public static IReadOnlyList<SkillInfo> ParseSkillsFromInfoJson(string? infoJson)
+    {
+        if (string.IsNullOrWhiteSpace(infoJson)) return [];
+        try
+        {
+            using var doc = JsonDocument.Parse(infoJson, JsonOptions);
+            return NormalizeSkills(doc.RootElement) ?? [];
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
     /// <summary>Reads the agent's declared input capabilities. Every field is a nullable
     /// tri-state: null means "the agent said nothing", which is not the same as an explicit
     /// false. Callers must treat unknown as permissive — the server is the real authority, and

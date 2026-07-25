@@ -33,7 +33,7 @@ public sealed class ChatTurnProjectionTests
     }
 
     [Fact]
-    public void AppendCompletedTurn_PutsUsageBeforeStreamedFinalReply()
+    public void AppendCompletedTurn_PutsUsageAfterStreamedFinalReply()
     {
         var target = new FakeTarget();
         var projection = new ChatTurnProjection(target);
@@ -43,16 +43,16 @@ public sealed class ChatTurnProjectionTests
         projection.AppendCompletedTurn("final reply");
 
         Assert.Equal(2, target.Messages.Count);
-        Assert.True(target.Messages[0].IsEvent);
-        Assert.Equal("turn_usage", target.Messages[0].EventKey);
-        Assert.Equal("model-a", target.Messages[0].EventTitle);
-        Assert.Contains("120→30 tok", target.Messages[0].EventMeta);
-        Assert.True(target.Messages[1].IsAgent);
-        Assert.Equal("final reply", target.Messages[1].Content);
+        Assert.True(target.Messages[0].IsAgent);
+        Assert.Equal("final reply", target.Messages[0].Content);
+        Assert.True(target.Messages[1].IsEvent);
+        Assert.Equal("turn_usage", target.Messages[1].EventKey);
+        Assert.Equal("model-a", target.Messages[1].EventTitle);
+        Assert.Contains("120→30 tok", target.Messages[1].EventMeta);
     }
 
     [Fact]
-    public void AppendCompletedTurn_WithoutReportedUsage_StillAddsHonestSummaryFirst()
+    public void AppendCompletedTurn_WithoutReportedUsage_StillAddsHonestSummaryLast()
     {
         var target = new FakeTarget();
         var projection = new ChatTurnProjection(target);
@@ -60,9 +60,9 @@ public sealed class ChatTurnProjectionTests
         projection.AppendCompletedTurn("final reply");
 
         Assert.Equal(2, target.Messages.Count);
-        Assert.Equal("Turn usage", target.Messages[0].EventTitle);
-        Assert.Equal("Usage not reported", target.Messages[0].EventMeta);
-        Assert.Equal("final reply", target.Messages[1].Content);
+        Assert.Equal("final reply", target.Messages[0].Content);
+        Assert.Equal("Turn usage", target.Messages[1].EventTitle);
+        Assert.Equal("Usage not reported", target.Messages[1].EventMeta);
     }
 
     [Fact]
@@ -341,6 +341,69 @@ public sealed class ChatTurnProjectionTests
     }
 
     [Fact]
+    public void Apply_OnboardRequired_OffersWhicheverMethodsTheGateAccepts()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+
+        projection.Apply(Event("ONBOARD_REQUIRED",
+            """{"methods":["invite_code","payment"],"payment_amount":5,"payment_address":"0xabc"}"""));
+
+        var card = target.Messages[0];
+        Assert.True(card.ShowOnboardInviteCode);
+        Assert.True(card.ShowOnboardPayment);
+        Assert.True(card.ShowOnboardMethodDivider);
+        Assert.Equal("0xabc", card.OnboardPaymentAddress);
+        Assert.Contains("invite code or a payment", card.Content, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Apply_OnboardRequired_PaymentOnlyGate_HidesTheInviteCodeBox()
+    {
+        // Before the gate's methods were read, this card demanded an invite code that does not
+        // exist — the agent was simply unreachable.
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+
+        projection.Apply(Event("ONBOARD_REQUIRED", """{"methods":["payment"],"payment_amount":5}"""));
+
+        var card = target.Messages[0];
+        Assert.False(card.ShowOnboardInviteCode);
+        Assert.True(card.ShowOnboardPayment);
+        Assert.False(card.ShowOnboardMethodDivider);
+        // Nothing invented a destination for the transfer.
+        Assert.False(card.HasOnboardPaymentAddress);
+    }
+
+    [Fact]
+    public void Apply_OnboardRequired_WithNoMethods_StillOffersTheInviteCode()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+
+        projection.Apply(Event("ONBOARD_REQUIRED", "{}"));
+
+        var card = target.Messages[0];
+        Assert.True(card.ShowOnboardInviteCode);
+        Assert.False(card.ShowOnboardPayment);
+    }
+
+    [Fact]
+    public void Apply_OnboardRequired_SubmittingCollapsesEveryMethodRow()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+        projection.Apply(Event("ONBOARD_REQUIRED",
+            """{"methods":["invite_code","payment"],"payment_amount":5}"""));
+
+        target.Messages[0].IsOnboardingSubmitted = true;
+
+        // A spent gate must not go on offering a second answer.
+        Assert.False(target.Messages[0].ShowOnboardInviteCode);
+        Assert.False(target.Messages[0].ShowOnboardPayment);
+    }
+
+    [Fact]
     public void Apply_OnboardSuccess_RetiresThePendingInviteCard()
     {
         var target = new FakeTarget();
@@ -401,10 +464,9 @@ public sealed class ChatTurnProjectionTests
         projection.Apply(Event("assistant", "{\"content\":\"here you go\"}"));
         projection.AppendCompletedTurn("here you go");
 
-        // Order: usage summary, then final reply carrying the image — never above the reply.
+        // Order: final reply carrying the image, then its quiet usage summary.
         Assert.Equal(2, target.Messages.Count);
-        Assert.True(target.Messages[0].IsEvent);
-        var reply = target.Messages[1];
+        var reply = target.Messages[0];
         Assert.True(reply.IsAgent);
         Assert.Equal("here you go", reply.Content);
         Assert.Single(reply.Attachments);
@@ -413,7 +475,7 @@ public sealed class ChatTurnProjectionTests
     }
 
     [Fact]
-    public void AgentImage_WithNoTextReply_GetsItsOwnBubbleAfterTheSummary()
+    public void AgentImage_WithNoTextReply_GetsItsOwnBubbleBeforeTheSummary()
     {
         var target = new FakeTarget();
         var projection = new ChatTurnProjection(target);
@@ -421,11 +483,32 @@ public sealed class ChatTurnProjectionTests
         projection.Apply(Event("agent_image", "{\"type\":\"agent_image\",\"image\":\"data:image/png;base64,AAAA\"}"));
         projection.AppendCompletedTurn("");
 
-        // Summary first, then a fresh agent bubble holding the image — still after the output.
+        // The image bubble is the output, followed by the quiet usage summary.
         Assert.Equal(2, target.Messages.Count);
-        Assert.True(target.Messages[0].IsEvent);
-        Assert.True(target.Messages[1].IsAgent);
-        Assert.Single(target.Messages[1].Attachments);
+        Assert.True(target.Messages[0].IsAgent);
+        Assert.Single(target.Messages[0].Attachments);
+        Assert.True(target.Messages[1].IsEvent);
+    }
+
+    [Fact]
+    public void AgentImage_ImmediatelyBeforeAskUser_AttachesWhileQuestionIsPending()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+
+        projection.Apply(Event("agent_image",
+            "{\"type\":\"agent_image\",\"image\":\"data:image/png;base64,AAAA\"}"));
+        projection.Apply(Event("ask_user",
+            "{\"id\":\"login\",\"text\":\"Scan this QR code\",\"options\":[\"Done\"]}"));
+
+        var question = Assert.Single(target.Messages);
+        Assert.Equal("ask_user", question.EventKind);
+        Assert.Equal(EventStatus.Running, question.Status);
+        Assert.Single(question.Attachments);
+        Assert.Single(target.ResolvedImages);
+
+        projection.AppendCompletedTurn("");
+        Assert.Single(question.Attachments);
     }
 
     // ---- Approval embedded in the tool-activity card ----
@@ -580,6 +663,94 @@ public sealed class ChatTurnProjectionTests
         Assert.Null(card.ToolActivity.Approval);
     }
 
+    [Fact]
+    public void Apply_ModeChangedToPlan_SaysWhatPlanModeMeansForTheUser()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+
+        projection.Apply(Event("mode_changed", """{"mode":"plan","triggered_by":"agent"}"""));
+
+        var row = target.Messages[0];
+        Assert.Equal("by agent", row.EventMeta);
+        // Someone who has never seen plan mode has no way to know a review is coming.
+        Assert.Contains("plan for approval", row.EventDetail, StringComparison.Ordinal);
+        // Stated about the protocol, not as the agent speaking — the agent said nothing of the kind.
+        Assert.StartsWith("The agent will", row.EventDetail, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Apply_ModeChangedToAnythingElse_AddsNoExplanation()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+
+        projection.Apply(Event("mode_changed", """{"mode":"safe"}"""));
+
+        Assert.Null(target.Messages[0].EventDetail);
+    }
+
+    // ---- Live usage readout ------------------------------------------------------------------
+
+    [Fact]
+    public void Apply_LlmResult_PublishesTheTurnsRunningTotal()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+
+        projection.Apply(Event("llm_result",
+            """{"usage":{"input_tokens":1000,"output_tokens":50},"context_percent":12.5,"tool_calls_count":1}"""));
+
+        var usage = Assert.Single(target.UsageReports);
+        Assert.Equal(1000, usage.TokensIn);
+        Assert.Equal(50, usage.TokensOut);
+        Assert.Equal(12.5, usage.ContextPercent);
+        Assert.Equal(1, usage.ToolCalls);
+    }
+
+    [Fact]
+    public void Apply_SeveralLlmResults_ReportsTheRunningTotalNotThePerIterationFigure()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+
+        projection.Apply(Event("llm_result", """{"usage":{"input_tokens":100,"output_tokens":10}}"""));
+        projection.Apply(Event("llm_result", """{"usage":{"input_tokens":200,"output_tokens":20}}"""));
+
+        // "This turn has cost me X so far" is the question; a per-iteration figure would flicker
+        // and answer one nobody asks.
+        Assert.Equal(2, target.UsageReports.Count);
+        Assert.Equal(300, target.UsageReports[^1].TokensIn);
+        Assert.Equal(30, target.UsageReports[^1].TokensOut);
+    }
+
+    [Fact]
+    public void Apply_OnlyLlmResultPublishes_SoAnUnchangedValueIsNotRepublished()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+
+        projection.Apply(Event("llm_call", "{}"));
+        projection.Apply(Event("thinking", """{"content":"hmm"}"""));
+        projection.Apply(Event("tool_call", """{"tool_id":"1","name":"bash","args":{}}"""));
+
+        Assert.Empty(target.UsageReports);
+    }
+
+    [Fact]
+    public void CurrentUsage_WithNothingReported_IsEmptySoTheReadoutStaysHidden()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+
+        // An agent that says nothing must leave a clean composer, not a row of zeroes: unreported
+        // is not the same as zero.
+        Assert.True(projection.CurrentUsage.IsEmpty);
+
+        projection.Apply(Event("llm_result", "{}"));
+        Assert.True(target.UsageReports[^1].IsEmpty);
+    }
+
     private static AgentStreamEvent Event(string type, string json) => new(type, type, null, json);
 
     private sealed class FakeTarget : IChatProjectionTarget
@@ -596,5 +767,10 @@ public sealed class ChatTurnProjectionTests
             ResolvedImages.Add(dataUrl);
             attachment.Status = AttachmentStatus.Sent;
         }
+
+        /// <summary>Every report the projection published, so a test can assert what a live
+        /// composer would have shown at each point rather than only the end state.</summary>
+        public List<TurnUsage> UsageReports { get; } = new();
+        public void ReportUsage(TurnUsage usage) => UsageReports.Add(usage);
     }
 }

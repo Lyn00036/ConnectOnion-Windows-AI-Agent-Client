@@ -34,6 +34,36 @@
                            Style="{StaticResource InteractiveHelperTextStyle}"
                            Visibility="{x:Bind Message.IsAwaitingResponse, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
 
+                <ItemsRepeater ItemsSource="{x:Bind Message.Attachments, Mode=OneWay}"
+                               Visibility="{x:Bind Message.HasAttachments, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                    <ItemsRepeater.ItemTemplate>
+                        <DataTemplate x:DataType="models:ChatAttachment">
+                            <StackPanel Spacing="5" Margin="0,0,0,4"
+                                        Visibility="{x:Bind IsImage, Converter={StaticResource BoolToVis}}">
+                                <Border CornerRadius="10"
+                                        MaxWidth="280"
+                                        MaxHeight="280"
+                                        HorizontalAlignment="Left"
+                                        Background="{ThemeResource SurfaceSecondaryBrush}"
+                                        BorderBrush="{ThemeResource BorderDefaultBrush}"
+                                        BorderThickness="1"
+                                        Tag="{x:Bind}"
+                                        Tapped="QuestionImage_Tapped"
+                                        AutomationProperties.Name="Question image. Open in the default viewer.">
+                                    <Image Source="{x:Bind LocalCachePath, Mode=OneWay, Converter={StaticResource PathToImage}}"
+                                           Stretch="Uniform"
+                                           MaxWidth="280"
+                                           MaxHeight="280" />
+                                </Border>
+                                <TextBlock Text="{x:Bind Error, Mode=OneWay}"
+                                           Style="{StaticResource InteractiveHelperTextStyle}"
+                                           Foreground="{ThemeResource DangerBrush}"
+                                           Visibility="{x:Bind HasError, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsRepeater.ItemTemplate>
+                </ItemsRepeater>
+
                 <ItemsRepeater ItemsSource="{x:Bind Message.AskUserFields, Mode=OneWay}"
                               Visibility="{x:Bind Message.ShowAskUserFields, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                     <ItemsRepeater.ItemTemplate>
@@ -49,7 +79,18 @@
                                          AcceptsReturn="True" TextWrapping="Wrap"
                                          MinHeight="44" MaxHeight="120"
                                          IsEnabled="{x:Bind Owner.IsInteractiveEditable, Mode=OneWay}"
+                                         Visibility="{x:Bind IsSecret, Converter={StaticResource BoolToVis}, ConverterParameter=invert}"
+                                         AutomationProperties.Name="{x:Bind Label}"
                                          KeyDown="AnswerTextBox_KeyDown" />
+                                <PasswordBox Tag="{x:Bind}"
+                                             PlaceholderText="{x:Bind Placeholder}"
+                                             MinHeight="44"
+                                             IsEnabled="{x:Bind Owner.IsInteractiveEditable, Mode=OneWay}"
+                                             Visibility="{x:Bind IsSecret, Converter={StaticResource BoolToVis}}"
+                                             PasswordChanged="SecretPasswordBox_PasswordChanged"
+                                             Loaded="SecretPasswordBox_Loaded"
+                                             AutomationProperties.Name="{x:Bind Label}"
+                                             AutomationProperties.HelpText="Sensitive value. Characters are hidden." />
                                 <TextBlock Text="{x:Bind ValidationError, Mode=OneWay}"
                                            Foreground="{ThemeResource DangerBrush}"
                                            FontSize="11" TextWrapping="Wrap"

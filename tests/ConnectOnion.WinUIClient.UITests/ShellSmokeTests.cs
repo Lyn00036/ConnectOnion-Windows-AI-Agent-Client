@@ -110,6 +110,67 @@ public sealed class ShellSmokeTests
     }
 
     /// <summary>
+    /// Settings → Identity offers a way to back the identity up and to restore one.
+    ///
+    /// <para>Worth a real-window test because the whole feature exists to be reachable: an identity
+    /// with no visible backup path is exactly the situation this replaced, and nothing headless can
+    /// tell you the buttons made it onto the page. The reveal is exercised (it only reads), the
+    /// restore is opened but never committed — pressing "Replace identity" would overwrite the
+    /// identity of whatever machine runs the suite.</para>
+    /// </summary>
+    [Fact]
+    public void SettingsIdentity_Click_ShowsBackupAndRestoreActions()
+    {
+        using var launched = LaunchApp();
+        if (launched is null) return;
+
+        var window = launched.Window;
+        window.FindFirstDescendant(query => query.ByAutomationId("SettingsButton"))?.AsButton().Invoke();
+        Assert.NotNull(WaitForDescendant(window, "GeneralNav"));
+
+        var identityNav = window.FindFirstDescendant(query => query.ByAutomationId("IdentityNav"));
+        Assert.NotNull(identityNav);
+        identityNav.AsRadioButton().Click();
+
+        var showBackup = WaitForDescendant(window, "ShowIdentityBackupButton");
+        Assert.NotNull(showBackup);
+        Assert.NotNull(window.FindFirstDescendant(query => query.ByAutomationId("RestoreIdentityButton")));
+        Assert.NotNull(window.FindFirstDescendant(query => query.ByAutomationId("GenerateIdentityButton")));
+
+        // The dialog's own content is what proves the reveal worked — the address it says the
+        // backup belongs to must be the address the panel is showing.
+        showBackup.AsButton().Invoke();
+        var addressLabel = WaitForText(window, "Belongs to address");
+        Assert.NotNull(addressLabel);
+    }
+
+    /// <summary>Polls for a Text element with the given content, tolerating the COMException a
+    /// mutating visual tree throws (see the note in <see cref="SettingsButton_Click_ShowsSettingsOverlay"/>).</summary>
+    private static AutomationElement? WaitForText(AutomationElement window, string text)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                var match = window
+                    .FindAllDescendants(query => query.ByControlType(FlaUI.Core.Definitions.ControlType.Text))
+                    .FirstOrDefault(element =>
+                        string.Equals(element.Properties.Name.ValueOrDefault, text, StringComparison.Ordinal));
+                if (match is not null) return match;
+            }
+            catch (System.Runtime.InteropServices.COMException)
+            {
+                // Tree changed under the query; retry below.
+            }
+
+            Thread.Sleep(150);
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// The sidebar's "Add agent" button opens the shell-owned modal over the current page.
     /// Collapsed overlay content is absent from the UIA tree, so its focused input proves both
     /// visibility and keyboard readiness.

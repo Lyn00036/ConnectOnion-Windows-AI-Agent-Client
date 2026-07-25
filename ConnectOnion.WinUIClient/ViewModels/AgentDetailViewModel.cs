@@ -65,6 +65,9 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
                 InfoFields.Clear();
                 InfoJson = "";
                 AcceptedInputs = null;
+                // Cleared with the rest of the cached /info: showing the previous agent's skills
+                // as this one's shortcuts would offer commands it does not have.
+                Skills = null;
             }
 
             if (!SetProperty(ref _agent, value)) return;
@@ -72,6 +75,7 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
             OnPropertyChanged(nameof(AgentDisplayName));
             OnPropertyChanged(nameof(AgentAddress));
             OnPropertyChanged(nameof(DirectUrl));
+            OnPropertyChanged(nameof(CanShareAgent));
             OnPropertyChanged(nameof(HasAgent));
             OnPropertyChanged(nameof(AgentInitial));
             OnPropertyChanged(nameof(AgentAvatarPaletteIndex));
@@ -86,6 +90,7 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
     public int AgentAvatarPaletteIndex => AvatarPalette.From(AgentName);
     public string AgentAddress => _agent?.Address ?? "";
     public string? DirectUrl => _agent?.DirectUrl;
+    public bool CanShareAgent => _agent?.IsRelayOnly == true;
     public bool HasAgent => _agent is not null;
     public string ComposerPlaceholder => string.IsNullOrWhiteSpace(AgentDisplayName)
         ? "Ask this agent anything"
@@ -121,6 +126,15 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
     public string DisplayModel => GetInfoValue("model") ?? "";
 
     public bool HasDisplayModel => !string.IsNullOrWhiteSpace(DisplayModel);
+    public string Trust => GetInfoValue("trust") ?? "";
+    public string Version => GetInfoValue("version") ?? "";
+    public string ProfileMetadata => string.Join(" · ", new[]
+    {
+        DisplayModel,
+        Trust,
+        string.IsNullOrWhiteSpace(Version) ? "" : $"v{Version}",
+    }.Where(value => !string.IsNullOrWhiteSpace(value)));
+    public bool HasProfileMetadata => !string.IsNullOrWhiteSpace(ProfileMetadata);
 
     public bool HasToolSummary => ToolNames.Count > 0;
     public int ToolCount => ToolNames.Count;
@@ -154,7 +168,45 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
 
     /// <summary>Same purpose as <c>ChatViewModel.AcceptedInputs</c>: gates the composer's attachment UI against the agent's real <c>/info</c> capability.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AcceptedInputsSummary))]
+    [NotifyPropertyChangedFor(nameof(HasAcceptedInputsSummary))]
     public partial AgentAcceptedInputs? AcceptedInputs { get; private set; }
+
+    public string AcceptedInputsSummary
+    {
+        get
+        {
+            if (AcceptedInputs is null) return "";
+            var parts = new List<string>();
+            if (AcceptedInputs.Text == true) parts.Add("text");
+            if (AcceptedInputs.Images == true) parts.Add("images");
+            if (AcceptedInputs.Files is { } files)
+                parts.Add($"files ({files.MaxFileSizeMb} MB, up to {files.MaxFilesPerRequest})");
+            return parts.Count == 0 ? "No declared inputs" : $"Accepts {string.Join(" · ", parts)}";
+        }
+    }
+    public bool HasAcceptedInputsSummary => AcceptedInputs is not null;
+
+    /// <summary>The agent's declared skills, from the same cached <c>/info</c> as
+    /// <see cref="AcceptedInputs"/>. Feeds the composer's slash palette and, through
+    /// <see cref="SkillOffers"/>, this page's opening suggestions.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SkillOffers))]
+    [NotifyPropertyChangedFor(nameof(HasSkillOffers))]
+    public partial IReadOnlyList<SkillInfo>? Skills { get; private set; }
+
+    /// <summary>
+    /// Up to three of the agent's skills phrased as things to ask for — the chips shown instead of
+    /// the generic "What can you do?" starters.
+    ///
+    /// <para>Empty is a normal outcome, not a failure: an agent whose descriptions will not cut
+    /// into clean short offers yields nothing and the static chips stay. A chip is the first thing
+    /// a user reads about an agent, so a bad one is worse than none (see
+    /// <see cref="AgentSkills.BestOffers"/>).</para>
+    /// </summary>
+    public IReadOnlyList<string> SkillOffers => AgentSkills.BestOffers(Skills);
+
+    public bool HasSkillOffers => SkillOffers.Count > 0;
 
     /// <summary>
     /// Starts a new conversation. <paramref name="hasAttachments"/> must be true
@@ -324,6 +376,7 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
         }
 
         AcceptedInputs = EndpointResolver.ParseAcceptedInputsFromInfoJson(json);
+        Skills = EndpointResolver.ParseSkillsFromInfoJson(json);
     }
 
     /// <summary>
@@ -395,6 +448,10 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
         RefreshToolNames();
         OnPropertyChanged(nameof(DisplayModel));
         OnPropertyChanged(nameof(HasDisplayModel));
+        OnPropertyChanged(nameof(Trust));
+        OnPropertyChanged(nameof(Version));
+        OnPropertyChanged(nameof(ProfileMetadata));
+        OnPropertyChanged(nameof(HasProfileMetadata));
         OnPropertyChanged(nameof(HasToolSummary));
         OnPropertyChanged(nameof(ToolCount));
         OnPropertyChanged(nameof(ModelAndToolCount));

@@ -4,6 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:ConnectOnion.WinUIClient.Controls"
     xmlns:views="using:ConnectOnion.WinUIClient.Views"
+    xmlns:ic="using:FluentIcons.WinUI"
     HorizontalAlignment="Stretch"
     VerticalAlignment="Stretch"
     Visibility="Collapsed"
@@ -12,30 +13,81 @@
     <UserControl.Resources>
         <Style x:Key="SettingsNavButtonStyle" TargetType="RadioButton">
             <Setter Property="HorizontalAlignment" Value="Stretch" />
-            <Setter Property="HorizontalContentAlignment" Value="Left" />
             <Setter Property="MinHeight" Value="40" />
-            <Setter Property="Padding" Value="12,8" />
             <Setter Property="Margin" Value="0,2" />
-            <Setter Property="CornerRadius" Value="8" />
             <Setter Property="Background" Value="Transparent" />
+            <Setter Property="UseSystemFocusVisuals" Value="True" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Grid MinHeight="{TemplateBinding MinHeight}"
+                              Background="Transparent">
+                            <Border x:Name="NavBackground"
+                                    Margin="0"
+                                    CornerRadius="8"
+                                    Background="Transparent" />
+                            <Border x:Name="SelectionRail"
+                                    Width="3"
+                                    Height="20"
+                                    Margin="2,0,0,0"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center"
+                                    CornerRadius="1.5"
+                                    Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                    Opacity="0" />
+                            <ContentPresenter Margin="12,0,10,0"
+                                              VerticalAlignment="Center"
+                                              HorizontalAlignment="Left"
+                                              Content="{TemplateBinding Content}"
+                                              ContentTemplate="{TemplateBinding ContentTemplate}" />
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal" />
+                                    <VisualState x:Name="PointerOver">
+                                        <VisualState.Setters>
+                                            <Setter Target="NavBackground.Background" Value="{ThemeResource SurfaceHoverBrush}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed">
+                                        <VisualState.Setters>
+                                            <Setter Target="NavBackground.Background" Value="{ThemeResource SurfacePressedBrush}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Disabled">
+                                        <VisualState.Setters>
+                                            <Setter Target="ContentPresenter.Opacity" Value="0.45" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                </VisualStateGroup>
+                                <VisualStateGroup x:Name="CheckStates">
+                                    <VisualState x:Name="Unchecked" />
+                                    <VisualState x:Name="Checked">
+                                        <VisualState.Setters>
+                                            <Setter Target="NavBackground.Background" Value="{ThemeResource SurfaceSelectedBrush}" />
+                                            <Setter Target="SelectionRail.Opacity" Value="1" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
         <Style x:Key="SettingsCloseButtonStyle" TargetType="Button" BasedOn="{StaticResource SmallIconButtonStyle}">
             <Setter Property="Width" Value="36" /><Setter Property="Height" Value="36" />
             <Setter Property="CornerRadius" Value="8" />
         </Style>
 
-        <!-- Category icons. FontIcon rather than SymbolIcon because SymbolIcon has no FontSize and
-             always renders at 20px, which is oversized next to a 14px nav label. Same Segoe Fluent
-             Icons glyphs the Symbol enum maps to, so nothing changes but the size. -->
-        <Style x:Key="SettingsNavIconStyle" TargetType="FontIcon">
-            <Setter Property="FontFamily" Value="Segoe Fluent Icons" />
-            <Setter Property="FontSize" Value="16" />
+        <Style x:Key="SettingsNavIconStyle" TargetType="ic:FluentIcon">
+            <Setter Property="IconVariant" Value="Regular" />
+            <Setter Property="IconSize" Value="Size16" />
             <Setter Property="Foreground" Value="{ThemeResource TextSecondaryBrush}" />
         </Style>
     </UserControl.Resources>
     <Grid x:Name="OverlayRoot" KeyDown="OverlayRoot_KeyDown">
         <Rectangle Fill="{ThemeResource SettingsBackdropBrush}" Tapped="Backdrop_Tapped" />
-        <Border x:Name="ModalContainer" MaxWidth="1100" MaxHeight="820" Margin="32"
+        <Border x:Name="ModalContainer" MaxWidth="1100" MaxHeight="760" Margin="32"
                 HorizontalAlignment="Center" VerticalAlignment="Center"
                 Background="{ThemeResource SettingsContentBrush}" BorderBrush="{ThemeResource SettingsModalBorderBrush}"
                 BorderThickness="1" CornerRadius="14" Tapped="ModalContainer_Tapped">
@@ -57,33 +109,34 @@
                                 Style="{StaticResource SettingsNavButtonStyle}" Click="GeneralNav_Click"
                                 AutomationProperties.AutomationId="GeneralNav"
                                 AutomationProperties.Name="General settings">
-                                <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Style="{StaticResource SettingsNavIconStyle}" Glyph="&#xE713;"/><TextBlock Text="General"/></StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="Settings"/><TextBlock x:Name="GeneralNavLabel" Text="General"/></StackPanel>
                             </RadioButton>
                             <RadioButton x:Name="AgentsNav" GroupName="SettingsCategory"
                                 Style="{StaticResource SettingsNavButtonStyle}" Click="AgentsNav_Click"
                                 AutomationProperties.AutomationId="AgentsNav"
                                 AutomationProperties.Name="Agent settings">
-                                <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Style="{StaticResource SettingsNavIconStyle}" Glyph="&#xE716;"/><TextBlock Text="Agents"/></StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="Bot"/><TextBlock x:Name="AgentsNavLabel" Text="Agents"/></StackPanel>
                             </RadioButton>
                             <RadioButton GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
                                 Click="NotificationsNav_Click" AutomationProperties.Name="Notification settings">
-                                <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Style="{StaticResource SettingsNavIconStyle}" Glyph="&#xE8BD;"/><TextBlock Text="Notifications"/></StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="Alert"/><TextBlock x:Name="NotificationsNavLabel" Text="Notifications"/></StackPanel>
                             </RadioButton>
                             <RadioButton GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
                                 Click="AudioNav_Click" AutomationProperties.Name="Audio settings">
-                                <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Style="{StaticResource SettingsNavIconStyle}" Glyph="&#xE8D6;"/><TextBlock Text="Audio"/></StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="Speaker2"/><TextBlock x:Name="AudioNavLabel" Text="Audio"/></StackPanel>
                             </RadioButton>
                             <RadioButton GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
                                 Click="KeyboardNav_Click" AutomationProperties.Name="Keyboard shortcuts settings">
-                                <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Style="{StaticResource SettingsNavIconStyle}" Glyph="&#xE765;"/><TextBlock Text="Keyboard"/></StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="Keyboard"/><TextBlock x:Name="KeyboardNavLabel" Text="Keyboard"/></StackPanel>
                             </RadioButton>
                             <RadioButton GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
-                                Click="IdentityNav_Click" AutomationProperties.Name="Identity settings">
-                                <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Style="{StaticResource SettingsNavIconStyle}" Glyph="&#xE77B;"/><TextBlock Text="Identity"/></StackPanel>
+                                Click="IdentityNav_Click" AutomationProperties.AutomationId="IdentityNav"
+                                AutomationProperties.Name="Identity settings">
+                                <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="Key"/><TextBlock x:Name="IdentityNavLabel" Text="Identity"/></StackPanel>
                             </RadioButton>
                             <RadioButton GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
                                 Click="UsageNav_Click" AutomationProperties.Name="Token usage">
-                                <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Style="{StaticResource SettingsNavIconStyle}" Glyph="&#xE8EF;"/><TextBlock Text="Usage"/></StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="DataUsage"/><TextBlock x:Name="UsageNavLabel" Text="Usage"/></StackPanel>
                             </RadioButton>
                         </StackPanel>
                     </ScrollViewer>
@@ -96,7 +149,7 @@
                         <TextBlock x:Name="CategoryTitle" Text="General" Style="{StaticResource TitleTextBlockStyle}" VerticalAlignment="Center" />
                         <Button Grid.Column="1" Style="{StaticResource SettingsCloseButtonStyle}" Click="CloseButton_Click"
                                 AutomationProperties.Name="Close settings" ToolTipService.ToolTip="Close settings (Esc)">
-                            <SymbolIcon Symbol="Cancel" />
+                            <ic:FluentIcon Icon="Dismiss" IconVariant="Regular" IconSize="Size20" />
                         </Button>
                     </Grid>
                     <views:SettingsPage x:Name="SettingsContent" Grid.Row="1" MinWidth="0"
@@ -130,13 +183,42 @@
         </Border>
         <VisualStateManager.VisualStateGroups>
             <VisualStateGroup>
-                <VisualState x:Name="Compact">
+                <VisualState x:Name="Narrow">
                     <VisualState.StateTriggers><AdaptiveTrigger MinWindowWidth="0" /></VisualState.StateTriggers>
-                    <VisualState.Setters><Setter Target="NavigationColumn.Width" Value="156"/><Setter Target="ModalContainer.Margin" Value="24"/></VisualState.Setters>
+                    <VisualState.Setters>
+                        <Setter Target="NavigationColumn.Width" Value="58" />
+                        <Setter Target="ModalContainer.Margin" Value="12" />
+                        <Setter Target="SearchBox.Visibility" Value="Collapsed" />
+                        <Setter Target="GeneralNavLabel.Visibility" Value="Collapsed" />
+                        <Setter Target="AgentsNavLabel.Visibility" Value="Collapsed" />
+                        <Setter Target="NotificationsNavLabel.Visibility" Value="Collapsed" />
+                        <Setter Target="AudioNavLabel.Visibility" Value="Collapsed" />
+                        <Setter Target="KeyboardNavLabel.Visibility" Value="Collapsed" />
+                        <Setter Target="IdentityNavLabel.Visibility" Value="Collapsed" />
+                        <Setter Target="UsageNavLabel.Visibility" Value="Collapsed" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="Compact">
+                    <VisualState.StateTriggers><AdaptiveTrigger MinWindowWidth="640" /></VisualState.StateTriggers>
+                    <VisualState.Setters>
+                        <Setter Target="NavigationColumn.Width" Value="156" />
+                        <Setter Target="ModalContainer.Margin" Value="24" />
+                        <Setter Target="SearchBox.Visibility" Value="Visible" />
+                        <Setter Target="GeneralNavLabel.Visibility" Value="Visible" />
+                        <Setter Target="AgentsNavLabel.Visibility" Value="Visible" />
+                        <Setter Target="NotificationsNavLabel.Visibility" Value="Visible" />
+                        <Setter Target="AudioNavLabel.Visibility" Value="Visible" />
+                        <Setter Target="KeyboardNavLabel.Visibility" Value="Visible" />
+                        <Setter Target="IdentityNavLabel.Visibility" Value="Visible" />
+                        <Setter Target="UsageNavLabel.Visibility" Value="Visible" />
+                    </VisualState.Setters>
                 </VisualState>
                 <VisualState x:Name="Regular">
                     <VisualState.StateTriggers><AdaptiveTrigger MinWindowWidth="860" /></VisualState.StateTriggers>
-                    <VisualState.Setters><Setter Target="NavigationColumn.Width" Value="210"/><Setter Target="ModalContainer.Margin" Value="32"/></VisualState.Setters>
+                    <VisualState.Setters>
+                        <Setter Target="NavigationColumn.Width" Value="210" />
+                        <Setter Target="ModalContainer.Margin" Value="32" />
+                    </VisualState.Setters>
                 </VisualState>
             </VisualStateGroup>
         </VisualStateManager.VisualStateGroups>

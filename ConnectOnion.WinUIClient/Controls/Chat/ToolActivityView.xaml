@@ -26,7 +26,7 @@
         </Style>
     </UserControl.Resources>
 
-    <Grid MaxWidth="{StaticResource ChatColumnWidth}"
+    <Grid MaxWidth="{x:Bind Activity.PresentationMaxWidth, Mode=OneWay}"
           HorizontalAlignment="Stretch"
           Visibility="{x:Bind Activity.IsVisible, Mode=OneWay, Converter={StaticResource BoolToVis}}">
         <Grid.ChildrenTransitions>
@@ -54,11 +54,11 @@
              is all the separation a de-emphasised activity block needs. BorderDefault rather than
              the fainter BorderSubtle precisely because there is no fill behind it now: in dark mode
              a subtle stroke on an identical-coloured background would vanish, and the card with it. -->
-        <Border CornerRadius="10"
-                Background="{ThemeResource ChatBackgroundBrush}"
-                BorderBrush="{ThemeResource BorderDefaultBrush}"
+        <Border CornerRadius="8"
+                Background="{ThemeResource SurfaceSecondaryBrush}"
+                BorderBrush="{ThemeResource BorderSubtleBrush}"
                 BorderThickness="1"
-                Padding="{x:Bind Activity.ShowCardChrome, Mode=OneWay, Converter={StaticResource BoolToThickness}, ConverterParameter='14,10,14,10|12,7,12,5'}">
+                Padding="{x:Bind Activity.ShowCardChrome, Mode=OneWay, Converter={StaticResource BoolToThickness}, ConverterParameter='10,6,10,6|8,4,8,2'}">
         <!-- No Spacing on this panel: StackPanel reserves it between child *slots*, including
              collapsed ones, so a folded card paid 5px for the hidden timeline and another 5px
              for the hidden error line — a blank strip under the header with nothing in it. The
@@ -68,9 +68,9 @@
             <!-- Header row. Gone when the turn ran exactly one tool: the step below says
                  everything this row would have summarised, and the disclosure it carries has
                  nothing left to disclose. -->
-            <Button MinHeight="36"
+            <Button MinHeight="30"
                     Visibility="{x:Bind Activity.ShowCardChrome, Mode=OneWay, Converter={StaticResource BoolToVis}}"
-                    Padding="0,4"
+                    Padding="0,2"
                     Background="Transparent"
                     BorderThickness="0"
                     HorizontalAlignment="Stretch"
@@ -100,7 +100,7 @@
                     <TextBlock x:Name="HeaderTitle"
                                Grid.Column="1"
                                Text="{x:Bind Activity.HeaderTitle, Mode=OneWay}"
-                               FontSize="14"
+                               FontSize="13"
                                FontWeight="SemiBold"
                                Foreground="{ThemeResource TextSecondaryBrush}"
                                VerticalAlignment="Center" />
@@ -195,7 +195,7 @@
                         <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="models:ToolStepViewModel">
                             <Grid x:Name="StepItemRoot"
-                                  Margin="0,1,0,6"
+                                  Margin="0,1,0,4"
                                   ColumnSpacing="10"
                                   PointerEntered="StepItem_PointerEntered"
                                   PointerExited="StepItem_PointerExited">
@@ -238,7 +238,7 @@
                                 </Border>
 
                                 <StackPanel Grid.Column="1"
-                                            Spacing="5">
+                                            Spacing="4">
                                     <!-- Step header -->
                                     <Button MinHeight="0"
                                             Padding="0,1,0,3"
@@ -262,13 +262,46 @@
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
 
-                                            <StackPanel Spacing="0">
+                                            <StackPanel Spacing="1">
                                                 <TextBlock x:Name="StepNameText"
                                                            Text="{Binding DisplayLabel}"
                                                            FontSize="13"
                                                            FontWeight="SemiBold"
                                                            Foreground="{Binding Status, Converter={StaticResource ToolStatusToBrush}, ConverterParameter=danger-only}"
                                                            TextTrimming="CharacterEllipsis" />
+
+                                                <!-- What the tool was actually given: the shell
+                                                     command, the search pattern, the URL. The row
+                                                     used to name the tool and its result and
+                                                     nothing in between, so "Run command · 240 ms"
+                                                     never revealed which command ran — the one
+                                                     fact worth reading at a glance.
+
+                                                     Monospace and single-line: this is a value,
+                                                     not prose, and the row must stay one scan
+                                                     height whatever the agent passed. The full
+                                                     text (plus any second line) is in the expanded
+                                                     block below. The '$' prefix comes from the
+                                                     model, so only a real shell command gets a
+                                                     shell sigil. -->
+                                                <!-- Spacing, not a trailing space in the prefix
+                                                     string: XAML collapses whitespace between
+                                                     adjacent inlines, so a padded string rendered
+                                                     as "$rm". -->
+                                                <StackPanel Orientation="Horizontal"
+                                                            Spacing="5"
+                                                            Visibility="{Binding ShowInlineInvocation, Converter={StaticResource BoolToVis}}">
+                                                    <TextBlock Text="{Binding InvocationPrefix}"
+                                                               FontSize="12"
+                                                               FontFamily="{StaticResource JetBrainsMonoFontFamily}"
+                                                               Foreground="{ThemeResource TextTertiaryBrush}" />
+                                                    <TextBlock Text="{Binding InvocationText}"
+                                                               FontSize="12"
+                                                               FontFamily="{StaticResource JetBrainsMonoFontFamily}"
+                                                               Foreground="{ThemeResource TextSecondaryBrush}"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               TextWrapping="NoWrap" />
+                                                </StackPanel>
                                             </StackPanel>
 
                                             <!-- Right-aligned so the column never shifts the name,
@@ -301,6 +334,71 @@
                                          but deliberately not rendered — see the model comments.) -->
                                     <StackPanel Spacing="6"
                                                 Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}">
+                                        <!-- The invocation in full, above the output it produced.
+                                             The collapsed row shows one trimmed line of this; here
+                                             it wraps, so a long command or prompt is readable
+                                             rather than cut off. Labelled by kind ("Command",
+                                             "Pattern", "URL", "Task") because a bare monospace
+                                             block over a result block would read as two outputs. -->
+                                        <StackPanel Spacing="4"
+                                                    Visibility="{Binding HasInvocation, Converter={StaticResource BoolToVis}}">
+                                            <Grid ColumnSpacing="8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding InvocationLabel}"
+                                                           FontSize="12"
+                                                           FontWeight="SemiBold"
+                                                           VerticalAlignment="Center"
+                                                           Foreground="{ThemeResource TextSecondaryBrush}" />
+                                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2">
+                                                    <Button Style="{StaticResource LogToolbarButtonStyle}"
+                                                            Content="Open"
+                                                            Tag="{Binding}"
+                                                            Click="InvocationOpen_Click"
+                                                            Visibility="{Binding CanOpenInvocation, Converter={StaticResource BoolToVis}}"
+                                                            AutomationProperties.Name="Open tool URL"
+                                                            ToolTipService.ToolTip="Open this URL in the default browser" />
+                                                    <Button Style="{StaticResource LogToolbarButtonStyle}"
+                                                            Content="{Binding CopyInvocationLabel}"
+                                                            Tag="{Binding}"
+                                                            Click="InvocationCopy_Click"
+                                                            AutomationProperties.Name="Copy tool input"
+                                                            ToolTipService.ToolTip="Copy the full command, target, path, or query" />
+                                                </StackPanel>
+                                            </Grid>
+                                            <Border Background="{ThemeResource CodeBackgroundBrush}"
+                                                    BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="8"
+                                                    Padding="12,10">
+                                                <StackPanel Spacing="4">
+                                                    <!-- One TextBlock over prefix + text as a single
+                                                         string. Two Runs would let the prefix be
+                                                         dimmed separately, but XAML collapses the
+                                                         whitespace between them and there is no
+                                                         Spacing on inlines to put it back. -->
+                                                    <TextBlock Text="{Binding InvocationDisplayText}"
+                                                               FontSize="12"
+                                                               FontFamily="{StaticResource JetBrainsMonoFontFamily}"
+                                                               IsTextSelectionEnabled="True"
+                                                               TextWrapping="Wrap" />
+                                                    <!-- The second line is context, not payload: a
+                                                         search's directory, a delegated task's full
+                                                         prompt. Held one step back so it never
+                                                         competes with the value above it. -->
+                                                    <TextBlock Text="{Binding InvocationSecondary}"
+                                                               FontSize="12"
+                                                               FontFamily="{StaticResource JetBrainsMonoFontFamily}"
+                                                               Foreground="{ThemeResource TextTertiaryBrush}"
+                                                               IsTextSelectionEnabled="True"
+                                                               TextWrapping="Wrap"
+                                                               Visibility="{Binding HasInvocationSecondary, Converter={StaticResource BoolToVis}}" />
+                                                </StackPanel>
+                                            </Border>
+                                        </StackPanel>
+
                                         <!-- Toolbar: heading left, low-weight Wrap / Copy / Expand right. -->
                                         <Grid ColumnSpacing="4"
                                               Visibility="{Binding HasDetail, Converter={StaticResource BoolToVis}}">
@@ -338,12 +436,35 @@
                                                 BorderThickness="1"
                                                 CornerRadius="8"
                                                 Padding="12"
-                                                Visibility="{Binding HasDetail, Converter={StaticResource BoolToVis}}">
+                                                Visibility="{Binding RendersDetailAsLog, Converter={StaticResource BoolToVis}}">
                                             <ScrollViewer MaxHeight="{Binding LogMaxHeight}"
                                                           VerticalScrollBarVisibility="Auto"
                                                           HorizontalScrollBarVisibility="Disabled">
                                                 <controls:ToolResultTextBlock
                                                     Text="{Binding DetailText}"
+                                                    SizeChanged="Log_SizeChanged" />
+                                            </ScrollViewer>
+                                        </Border>
+
+                                        <!-- Documentation, not program output. A guide's result is
+                                             markdown written to be read, and the monospace log
+                                             block above renders its headings and lists as literal
+                                             '#' and '-'. Which block appears is the tool's own
+                                             declaration (ToolInvocations.ProducesMarkdown), never a
+                                             guess from the text — a stack trace that happens to
+                                             start with '#' must stay a stack trace. A failed step
+                                             always takes the log branch for the same reason. -->
+                                        <Border Background="{ThemeResource SurfaceSecondaryBrush}"
+                                                BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+                                                BorderThickness="1"
+                                                CornerRadius="8"
+                                                Padding="14,12"
+                                                Visibility="{Binding RendersDetailAsMarkdown, Converter={StaticResource BoolToVis}}">
+                                            <ScrollViewer MaxHeight="{Binding LogMaxHeight}"
+                                                          VerticalScrollBarVisibility="Auto"
+                                                          HorizontalScrollBarVisibility="Disabled">
+                                                <controls:MarkdownTextBlock
+                                                    Markdown="{Binding DetailText}"
                                                     SizeChanged="Log_SizeChanged" />
                                             </ScrollViewer>
                                         </Border>
@@ -401,7 +522,14 @@
                  never another full card. The backing approval message is rendered nowhere else. -->
             <Grid Visibility="{x:Bind Activity.HasApproval, Mode=OneWay, Converter={StaticResource BoolToVis}}"
                   KeyDown="ApprovalRoot_KeyDown">
-                <StackPanel>
+                <Border Width="3"
+                        HorizontalAlignment="Left"
+                        Margin="0,8,0,0"
+                        CornerRadius="1.5"
+                        Background="{ThemeResource AttentionBrush}"
+                        Visibility="{x:Bind Activity.Approval.IsApprovalWaiting, Mode=OneWay, Converter={StaticResource BoolToVis}}"
+                        AutomationProperties.AccessibilityView="Raw" />
+                <StackPanel Margin="{x:Bind Activity.Approval.IsApprovalWaiting, Mode=OneWay, Converter={StaticResource BoolToThickness}, ConverterParameter='12,0,0,0|0'}">
                     <Border Height="1" Margin="0,8,0,12" Background="{ThemeResource BorderSubtleBrush}" />
 
                     <StackPanel Spacing="12"
@@ -537,13 +665,10 @@
                         </Grid>
                     </Border>
 
-                    <Grid Margin="0,12,0,0" ColumnSpacing="12"
-                          Visibility="{x:Bind Activity.Approval.IsApprovalWaiting, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4"
+                    <StackPanel Margin="0,12,0,0"
+                                Spacing="8"
+                           Visibility="{x:Bind Activity.Approval.IsApprovalWaiting, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                        <StackPanel Orientation="Horizontal" Spacing="4"
                                     VerticalAlignment="Center">
                             <Button Content="Explain why" Style="{StaticResource LogToolbarButtonStyle}"
                                     MinHeight="34"
@@ -556,7 +681,7 @@
                                     ToolTipService.ToolTip="This stops the entire agent task, not only this command." />
                         </StackPanel>
 
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"
+                        <StackPanel Orientation="Horizontal" Spacing="8"
                                     HorizontalAlignment="Right">
                             <Button Content="Decline" MinHeight="36" Padding="14,0"
                                     Command="{x:Bind Activity.Approval.RejectCommand, Mode=OneWay}"
@@ -582,7 +707,7 @@
                                 </StackPanel>
                             </Button>
                         </StackPanel>
-                    </Grid>
+                    </StackPanel>
 
                     <StackPanel Spacing="5"
                                 Visibility="{x:Bind Activity.Approval.IsApprovalResolved, Mode=OneWay, Converter={StaticResource BoolToVis}}">

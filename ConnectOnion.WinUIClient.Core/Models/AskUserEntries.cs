@@ -11,6 +11,12 @@ namespace ConnectOnion.WinUIClient.Models;
 /// </summary>
 public sealed partial class AskUserFieldEntry : Common.ObservableObject
 {
+    private static readonly string[] SecretNameFragments =
+    [
+        "password", "passwd", "passphrase", "secret", "token", "apikey", "api_key",
+        "private_key", "privatekey", "credential", "otp", "2fa", "mfa",
+    ];
+
     public AskUserFieldEntry() => Value = "";
 
     public string Name { get; set; } = "";
@@ -18,6 +24,20 @@ public sealed partial class AskUserFieldEntry : Common.ObservableObject
     public string? Placeholder { get; set; }
     public bool Required { get; set; }
     public string? Type { get; set; }
+    public bool IsSecret
+    {
+        get
+        {
+            if (string.Equals(Type, "password", StringComparison.OrdinalIgnoreCase)) return true;
+
+            var haystack = $"{Name} {Label}".ToLowerInvariant()
+                .Replace("-", "", StringComparison.Ordinal)
+                .Replace(" ", "", StringComparison.Ordinal);
+            return SecretNameFragments.Any(fragment =>
+                haystack.Contains(fragment.Replace("_", "", StringComparison.Ordinal),
+                    StringComparison.Ordinal));
+        }
+    }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasValidationError))]

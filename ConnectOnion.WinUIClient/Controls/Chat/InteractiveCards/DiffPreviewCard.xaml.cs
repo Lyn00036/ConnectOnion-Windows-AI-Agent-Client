@@ -18,7 +18,11 @@ public sealed partial class DiffPreviewCard : UserControl
         new PropertyMetadata(null, OnMessageChanged));
     private void FileHeader_Click(object sender, RoutedEventArgs e) { if ((sender as FrameworkElement)?.Tag is DiffFileModel file) file.IsExpanded = !file.IsExpanded; }
     private void ToggleExpanded_Click(object sender, RoutedEventArgs e) => Message.ToggleDiffExpanded();
-    private void ToggleWrap_Click(object sender, RoutedEventArgs e) => Message.ToggleDiffWrap();
+    private void ToggleWrap_Click(object sender, RoutedEventArgs e)
+    {
+        Message.ToggleDiffWrap();
+        ApplyWrapMode(Message.IsDiffWrapped);
+    }
     private void CopyDiff_Click(object sender, RoutedEventArgs e)
         => CopyText(Message.DiffPreview.RawText);
 
@@ -41,11 +45,32 @@ public sealed partial class DiffPreviewCard : UserControl
 
     private static void OnMessageChanged(DependencyObject sender, DependencyPropertyChangedEventArgs args)
     {
-        if (sender is DiffPreviewCard card && card.OpenFileButton is not null)
-            card.OpenFileButton.Visibility = args.NewValue is ChatMessage message
+        if (sender is not DiffPreviewCard card) return;
+
+        var message = args.NewValue as ChatMessage;
+        if (card.OpenFileButton is not null)
+        {
+            card.OpenFileButton.Visibility = message is not null
                 && Path.IsPathFullyQualified(message.EventTitle)
                 && File.Exists(message.EventTitle)
                     ? Visibility.Visible
                     : Visibility.Collapsed;
+        }
+        card.ApplyWrapMode(message?.IsDiffWrapped == true);
+    }
+
+    private void ApplyWrapMode(bool isWrapped)
+    {
+        if (DiffScrollViewer is null) return;
+
+        // A horizontally enabled ScrollViewer measures its content at infinite width, so merely
+        // setting TextWrapping=Wrap cannot wrap anything. Disable horizontal scrolling while
+        // wrapped to give the diff line grid the finite viewport width it needs.
+        DiffScrollViewer.HorizontalScrollMode = isWrapped
+            ? ScrollMode.Disabled
+            : ScrollMode.Enabled;
+        DiffScrollViewer.HorizontalScrollBarVisibility = isWrapped
+            ? ScrollBarVisibility.Disabled
+            : ScrollBarVisibility.Auto;
     }
 }

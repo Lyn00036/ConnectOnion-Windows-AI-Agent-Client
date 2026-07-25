@@ -9,7 +9,7 @@
             MaxWidth="{StaticResource ChatColumnWidth}"
             HorizontalAlignment="Stretch"
             CornerRadius="{StaticResource InteractiveCardCornerRadius}"
-            Background="{ThemeResource SurfaceElevatedBrush}"
+            Background="{ThemeResource SurfacePrimaryBrush}"
             BorderBrush="{x:Bind ChromeTone, Mode=OneWay, Converter={StaticResource InteractiveToneToBrush}}"
             BorderThickness="1"
             AutomationProperties.Name="{x:Bind AccessibilityName, Mode=OneWay}">
@@ -20,7 +20,12 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
-            <Grid Padding="{x:Bind IsCompact, Mode=OneWay, Converter={StaticResource BoolToThickness}, ConverterParameter='12,9|16,14'}" ColumnSpacing="12">
+            <Border Grid.RowSpan="4"
+                    Width="3"
+                    HorizontalAlignment="Left"
+                    Background="{x:Bind ChromeTone, Mode=OneWay, Converter={StaticResource InteractiveToneToBrush}}"
+                    AutomationProperties.AccessibilityView="Raw" />
+            <Grid Padding="{x:Bind IsCompact, Mode=OneWay, Converter={StaticResource BoolToThickness}, ConverterParameter='12,9|14,12'}" ColumnSpacing="12">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="20" />
                     <ColumnDefinition Width="*" />

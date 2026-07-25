@@ -10,179 +10,366 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <Grid Background="{ThemeResource AppBackgroundBrush}">
-        <!-- One ScrollViewer owns the whole page. ItemsRepeater receives its realization rect
-             from this viewer, so cards remain virtualized without a nested vertical scroller. -->
+    <Page.Resources>
+        <!-- A grouped-list row rather than a floating card. The single parent surface establishes
+             the boundary; each row contributes only native hover, pressed and focus feedback. -->
+        <Style x:Key="HomeAgentRowButtonStyle"
+               TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="16,12" />
+            <Setter Property="MinHeight" Value="92" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+            <Setter Property="UseSystemFocusVisuals" Value="True" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid x:Name="RootGrid"
+                              Background="{TemplateBinding Background}"
+                              CornerRadius="{TemplateBinding CornerRadius}">
+                            <ContentPresenter x:Name="ContentPresenter"
+                                              Padding="{TemplateBinding Padding}"
+                                              Content="{TemplateBinding Content}"
+                                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                                              HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal" />
+                                    <VisualState x:Name="PointerOver">
+                                        <VisualState.Setters>
+                                            <Setter Target="RootGrid.Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed">
+                                        <VisualState.Setters>
+                                            <Setter Target="RootGrid.Background" Value="{ThemeResource SubtleFillColorTertiaryBrush}" />
+                                            <Setter Target="ContentPresenter.Opacity" Value="0.82" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Disabled">
+                                        <VisualState.Setters>
+                                            <Setter Target="ContentPresenter.Opacity" Value="0.48" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="HomeMetadataLabelStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="Foreground" Value="{ThemeResource TextTertiaryBrush}" />
+        </Style>
+    </Page.Resources>
+
+    <Grid x:Name="PageRoot"
+          Background="{ThemeResource AppBackgroundBrush}">
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup x:Name="WindowWidthStates">
+                <VisualState x:Name="Adaptive" />
+                <VisualState x:Name="Wide">
+                    <VisualState.StateTriggers>
+                        <!-- AdaptiveTrigger measures the whole window, not this page's frame.
+                             Account for the 264px shell sidebar as well as the 960px reading
+                             column and its 48px side margins; activating this state earlier
+                             forces a wider child into the clipped content viewport. -->
+                        <AdaptiveTrigger MinWindowWidth="1360" />
+                    </VisualState.StateTriggers>
+                    <VisualState.Setters>
+                        <Setter Target="ContentRoot.Width" Value="960" />
+                        <Setter Target="ContentRoot.HorizontalAlignment" Value="Center" />
+                        <Setter Target="ContentRoot.Margin" Value="48,28,48,40" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+
+        <!-- One vertical owner keeps the page predictable at narrow sizes and lets the repeater
+             virtualize against the same viewport. -->
         <ScrollViewer HorizontalScrollMode="Disabled"
                       HorizontalScrollBarVisibility="Disabled"
                       HorizontalContentAlignment="Stretch"
                       VerticalScrollMode="Enabled"
                       VerticalScrollBarVisibility="Auto">
-            <Grid>
-                <StackPanel MaxWidth="700"
-                            Margin="32,0"
-                            Padding="0,36,0,40"
-                            HorizontalAlignment="Stretch">
-                <Border Width="64"
-                        Height="64"
-                        Padding="8"
-                        CornerRadius="12"
-                        HorizontalAlignment="Center"
-                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-                    <Image Source="/Assets/icon.png" Stretch="Uniform" />
-                </Border>
+            <Grid x:Name="ContentRoot"
+                  Margin="32,24,32,36"
+                  HorizontalAlignment="Stretch">
+                <Grid.ChildrenTransitions>
+                    <TransitionCollection>
+                        <EntranceThemeTransition IsStaggeringEnabled="False" />
+                    </TransitionCollection>
+                </Grid.ChildrenTransitions>
 
-                <TextBlock x:Uid="HomeChooseAgent"
-                           Text="Choose an agent"
-                           Margin="0,20,0,0"
-                           FontSize="32"
-                           FontWeight="SemiBold"
-                           TextAlignment="Center"
-                           HorizontalAlignment="Center" />
-                <TextBlock x:Uid="HomeChooseAgentDescription"
-                           Text="Select an agent to start a new conversation"
-                           Margin="0,6,0,16"
-                           FontSize="16"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                           TextAlignment="Center"
-                           TextWrapping="Wrap"
-                           HorizontalAlignment="Center" />
+                <StackPanel>
+                    <!-- The home page is an Agent launcher, so the title is compact and top-aligned.
+                         The list begins immediately below instead of floating under a hero logo. -->
+                    <Grid MinHeight="64">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
 
-                <InfoBar x:Name="PageErrorBar"
-                         Margin="0,0,0,12"
-                         IsOpen="False"
-                         Severity="Error"
-                         Title="Couldn’t open the agent"
-                         AutomationProperties.LiveSetting="Assertive" />
+                        <StackPanel VerticalAlignment="Center"
+                                    Spacing="4">
+                            <TextBlock Text="Agents"
+                                       FontSize="28"
+                                       FontWeight="SemiBold"
+                                       Foreground="{ThemeResource TextPrimaryBrush}" />
+                            <TextBlock Text="Open an agent to continue its most recent conversation."
+                                       FontSize="14"
+                                       Foreground="{ThemeResource TextSecondaryBrush}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
 
-                <ItemsRepeater x:Name="AgentList"
-                               ItemsSource="{x:Bind Agents, Mode=OneWay}"
-                               HorizontalAlignment="Stretch">
-                    <ItemsRepeater.Layout>
-                        <StackLayout Spacing="8" />
-                    </ItemsRepeater.Layout>
-                    <ItemsRepeater.ItemTemplate>
-                        <DataTemplate x:DataType="views:HomeAgentItem">
-                            <Button Height="78"
-                                    Padding="16,14"
-                                    Style="{StaticResource CardButtonStyle}"
-                                    Tag="{x:Bind Id}"
-                                    IsEnabled="{x:Bind IsInteractionEnabled, Mode=OneWay}"
-                                    AutomationProperties.Name="{x:Bind AutomationName}"
-                                    AutomationProperties.HelpText="{x:Bind FullAddress}"
-                                    Click="AgentCard_Click">
-                                <Grid ColumnSpacing="14">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
+                        <Button Grid.Column="1"
+                                MinHeight="36"
+                                Padding="12,0"
+                                VerticalAlignment="Center"
+                                Style="{StaticResource DefaultButtonStyle}"
+                                Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                AutomationProperties.AutomationId="HomeAddAgentButton"
+                                AutomationProperties.Name="Add another agent"
+                                Click="AddAnotherAgent_Click">
+                            <StackPanel Orientation="Horizontal"
+                                        Spacing="8">
+                                <ic:FluentIcon Icon="Add"
+                                               IconVariant="Regular"
+                                               IconSize="Size16"
+                                               VerticalAlignment="Center" />
+                                <TextBlock Text="Add Agent"
+                                           FontSize="13"
+                                           VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                    </Grid>
 
-                                    <Border Grid.ColumnSpan="3"
-                                            Margin="-16"
-                                            CornerRadius="8"
-                                            BorderThickness="2"
-                                            BorderBrush="{ThemeResource BrandPrimaryBrush}"
-                                            IsHitTestVisible="False"
-                                            Visibility="{x:Bind IsHighlighted, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                    <InfoBar x:Name="PageErrorBar"
+                             Margin="0,16,0,0"
+                             IsOpen="False"
+                             Severity="Error"
+                             Title="Couldn’t open the agent"
+                             AutomationProperties.LiveSetting="Assertive" />
 
-                                    <controls:AgentAvatar Size="44"
-                                                          CornerRadius="8"
-                                                          FontSize="16"
-                                                          Initial="{x:Bind Initial}"
-                                                          PaletteIndex="{x:Bind AvatarPaletteIndex}" />
+                    <Grid Margin="0,24,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Available agents"
+                                   FontSize="14"
+                                   FontWeight="SemiBold"
+                                   Foreground="{ThemeResource TextPrimaryBrush}" />
+                        <TextBlock Grid.Column="1"
+                                   Text="Status updates automatically"
+                                   FontSize="11"
+                                   Foreground="{ThemeResource TextTertiaryBrush}"
+                                   VerticalAlignment="Center" />
+                    </Grid>
 
-                                    <StackPanel Grid.Column="1"
-                                                Spacing="3"
-                                                VerticalAlignment="Center">
-                                        <TextBlock Text="{x:Bind DisplayName}"
-                                                   FontSize="16"
-                                                   FontWeight="SemiBold"
-                                                   TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Text="{x:Bind ShortAddress}"
-                                                   FontSize="13"
-                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                   TextTrimming="CharacterEllipsis"
-                                                   ToolTipService.ToolTip="{x:Bind FullAddress}" />
-                                    </StackPanel>
+                    <!-- One restrained grouped surface; Agent rows are not independent cards. -->
+                    <Border Background="{ThemeResource LayerFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="10"
+                            Padding="3"
+                            Visibility="{x:Bind HasAgents, Mode=OneTime, Converter={StaticResource BoolToVis}}">
+                        <ItemsRepeater x:Name="AgentList"
+                                       ItemsSource="{x:Bind Agents, Mode=OneWay}"
+                                       HorizontalAlignment="Stretch">
+                            <ItemsRepeater.Layout>
+                                <StackLayout Spacing="0" />
+                            </ItemsRepeater.Layout>
+                            <ItemsRepeater.ItemTemplate>
+                                <DataTemplate x:DataType="views:HomeAgentItem">
+                                    <Button Style="{StaticResource HomeAgentRowButtonStyle}"
+                                            Margin="1"
+                                            Tag="{x:Bind Id}"
+                                            IsEnabled="{x:Bind IsInteractionEnabled, Mode=OneWay}"
+                                            AutomationProperties.Name="{x:Bind AutomationName}"
+                                            AutomationProperties.HelpText="{x:Bind FullAddress}"
+                                            Click="AgentCard_Click">
+                                        <Grid ColumnSpacing="14">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition x:Name="LastUsedColumn" Width="0" />
+                                                <ColumnDefinition Width="112" />
+                                                <ColumnDefinition Width="16" />
+                                            </Grid.ColumnDefinitions>
 
-                                    <Grid Grid.Column="2"
-                                          MinWidth="108"
-                                          ColumnSpacing="10"
-                                          VerticalAlignment="Center">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="16" />
-                                        </Grid.ColumnDefinitions>
+                                            <VisualStateManager.VisualStateGroups>
+                                                <VisualStateGroup x:Name="AgentRowWidthStates">
+                                                    <VisualState x:Name="CompactRow" />
+                                                    <VisualState x:Name="DetailedRow">
+                                                        <VisualState.StateTriggers>
+                                                            <AdaptiveTrigger MinWindowWidth="920" />
+                                                        </VisualState.StateTriggers>
+                                                        <VisualState.Setters>
+                                                            <Setter Target="LastUsedColumn.Width" Value="116" />
+                                                            <Setter Target="LastUsedPanel.Visibility" Value="Visible" />
+                                                            <Setter Target="EndpointText.Visibility" Value="Visible" />
+                                                        </VisualState.Setters>
+                                                    </VisualState>
+                                                </VisualStateGroup>
+                                            </VisualStateManager.VisualStateGroups>
 
-                                        <StackPanel Orientation="Horizontal"
-                                                    Spacing="7"
-                                                    HorizontalAlignment="Right"
-                                                    AutomationProperties.Name="{x:Bind StatusAutomationName}"
-                                                    Visibility="{x:Bind IsOpening, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}">
-                                            <ProgressRing Width="12"
-                                                          Height="12"
-                                                          IsActive="{x:Bind IsChecking, Mode=OneWay}"
-                                                          AutomationProperties.Name="{x:Bind StatusAutomationName}"
-                                                          Visibility="{x:Bind IsChecking, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-                                            <Ellipse Width="8"
-                                                     Height="8"
-                                                     Fill="{x:Bind Presence, Mode=OneWay, Converter={StaticResource PresenceToBrush}}"
-                                                     AutomationProperties.Name="{x:Bind StatusAutomationName}"
-                                                     Visibility="{x:Bind IsStandardStatus, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-                                            <Ellipse Width="8"
-                                                     Height="8"
-                                                     Fill="{ThemeResource WarningBrush}"
-                                                     AutomationProperties.Name="{x:Bind StatusAutomationName}"
-                                                     Visibility="{x:Bind IsUnavailable, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-                                            <TextBlock Text="{x:Bind StatusLabel, Mode=OneWay}"
-                                                       FontSize="13"
-                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                       VerticalAlignment="Center" />
-                                        </StackPanel>
+                                            <Border Grid.ColumnSpan="5"
+                                                    Margin="-12,-8"
+                                                    CornerRadius="7"
+                                                    Background="{ThemeResource SidebarItemSelectedBrush}"
+                                                    IsHitTestVisible="False"
+                                                    Visibility="{x:Bind ShowSelection, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                                            <Border Grid.ColumnSpan="5"
+                                                    Width="3"
+                                                    Height="30"
+                                                    Margin="-12,0,0,0"
+                                                    HorizontalAlignment="Left"
+                                                    VerticalAlignment="Center"
+                                                    CornerRadius="1.5"
+                                                    Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                                    IsHitTestVisible="False"
+                                                    Visibility="{x:Bind ShowSelection, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
 
-                                        <StackPanel Orientation="Horizontal"
-                                                    Spacing="7"
-                                                    HorizontalAlignment="Right"
-                                                    AutomationProperties.Name="Opening agent"
-                                                    Visibility="{x:Bind IsOpening, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                                            <ProgressRing Width="14"
-                                                          Height="14"
-                                                          IsActive="{x:Bind IsOpening, Mode=OneWay}" />
-                                            <TextBlock Text="Opening" FontSize="13" VerticalAlignment="Center" />
-                                        </StackPanel>
+                                            <controls:AgentAvatar Size="42"
+                                                                  CornerRadius="21"
+                                                                  FontSize="12"
+                                                                  Initial="{x:Bind Initial}"
+                                                                  PaletteIndex="{x:Bind AvatarPaletteIndex}"
+                                                                  IsHitTestVisible="False"
+                                                                  VerticalAlignment="Center" />
 
-                                        <ic:FluentIcon Grid.Column="1"
-                                                       Icon="ChevronRight"
-                                                       IconVariant="Regular"
-                                                       IconSize="Size16"
-                                                       Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                                       VerticalAlignment="Center"
-                                                       Visibility="{x:Bind IsOpening, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
-                                    </Grid>
-                                </Grid>
-                            </Button>
-                        </DataTemplate>
-                    </ItemsRepeater.ItemTemplate>
-                </ItemsRepeater>
+                                            <StackPanel Grid.Column="1"
+                                                        Spacing="3"
+                                                        VerticalAlignment="Center">
+                                                <TextBlock Text="{x:Bind DisplayName}"
+                                                           FontSize="15"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{ThemeResource TextPrimaryBrush}"
+                                                           TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Text="{x:Bind ConnectionSummary}"
+                                                           FontSize="12"
+                                                           Foreground="{ThemeResource TextSecondaryBrush}"
+                                                           TextTrimming="CharacterEllipsis" />
+                                                <TextBlock x:Name="EndpointText"
+                                                           Text="{x:Bind ShortAddress}"
+                                                           FontSize="11"
+                                                           Foreground="{ThemeResource TextTertiaryBrush}"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           ToolTipService.ToolTip="{x:Bind FullAddress}"
+                                                           Visibility="Collapsed" />
+                                            </StackPanel>
 
-                <Button Margin="0,10,0,0"
-                        Padding="12,8"
-                        HorizontalAlignment="Left"
-                        Background="Transparent"
-                        BorderThickness="0"
-                        AutomationProperties.AutomationId="HomeAddAgentButton"
-                        AutomationProperties.Name="Add another agent"
-                        Click="AddAnotherAgent_Click">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <ic:FluentIcon Icon="Add"
-                                       IconVariant="Regular"
-                                       IconSize="Size16"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <TextBlock Text="Add another agent"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                    </StackPanel>
-                </Button>
+                                            <StackPanel x:Name="LastUsedPanel"
+                                                        Grid.Column="2"
+                                                        Spacing="3"
+                                                        VerticalAlignment="Center"
+                                                        Visibility="Collapsed">
+                                                <TextBlock Text="Last used"
+                                                           Style="{StaticResource HomeMetadataLabelStyle}" />
+                                                <TextBlock Text="{x:Bind LastUsedLabel}"
+                                                           FontSize="12"
+                                                           Foreground="{ThemeResource TextSecondaryBrush}"
+                                                           TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
+
+                                            <Grid Grid.Column="3"
+                                                  VerticalAlignment="Center">
+                                                <StackPanel Orientation="Horizontal"
+                                                            Spacing="7"
+                                                            HorizontalAlignment="Right"
+                                                            AutomationProperties.Name="{x:Bind StatusAutomationName}"
+                                                            Visibility="{x:Bind IsOpening, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}">
+                                                    <ProgressRing Width="12"
+                                                                  Height="12"
+                                                                  IsActive="{x:Bind IsChecking, Mode=OneWay}"
+                                                                  AutomationProperties.Name="{x:Bind StatusAutomationName}"
+                                                                  Visibility="{x:Bind IsChecking, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                                                    <Ellipse Width="8"
+                                                             Height="8"
+                                                             Fill="{x:Bind Presence, Mode=OneWay, Converter={StaticResource PresenceToBrush}}"
+                                                             AutomationProperties.Name="{x:Bind StatusAutomationName}"
+                                                             Visibility="{x:Bind IsStandardStatus, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                                                    <Ellipse Width="8"
+                                                             Height="8"
+                                                             Fill="{ThemeResource WarningBrush}"
+                                                             AutomationProperties.Name="{x:Bind StatusAutomationName}"
+                                                             Visibility="{x:Bind IsUnavailable, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                                                    <TextBlock Text="{x:Bind StatusLabel, Mode=OneWay}"
+                                                               FontSize="12"
+                                                               Foreground="{ThemeResource TextSecondaryBrush}"
+                                                               VerticalAlignment="Center" />
+                                                </StackPanel>
+
+                                                <StackPanel Orientation="Horizontal"
+                                                            Spacing="7"
+                                                            HorizontalAlignment="Right"
+                                                            AutomationProperties.Name="Opening agent"
+                                                            Visibility="{x:Bind IsOpening, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                                                    <ProgressRing Width="14"
+                                                                  Height="14"
+                                                                  IsActive="{x:Bind IsOpening, Mode=OneWay}" />
+                                                    <TextBlock Text="Opening"
+                                                               FontSize="12"
+                                                               VerticalAlignment="Center" />
+                                                </StackPanel>
+                                            </Grid>
+
+                                            <ic:FluentIcon Grid.Column="4"
+                                                           Icon="ChevronRight"
+                                                           IconVariant="Regular"
+                                                           IconSize="Size16"
+                                                           Foreground="{ThemeResource TextTertiaryBrush}"
+                                                           VerticalAlignment="Center"
+                                                           Visibility="{x:Bind IsOpening, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
+
+                                            <Rectangle Grid.Column="1"
+                                                       Grid.ColumnSpan="4"
+                                                       Height="1"
+                                                       Margin="0,0,-12,-12"
+                                                       VerticalAlignment="Bottom"
+                                                       Fill="{ThemeResource DividerStrokeColorDefaultBrush}"
+                                                       Opacity="0.55"
+                                                       IsHitTestVisible="False" />
+                                        </Grid>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsRepeater.ItemTemplate>
+                        </ItemsRepeater>
+                    </Border>
+
+                    <Border MinHeight="150"
+                            Padding="24"
+                            Background="{ThemeResource LayerFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="10"
+                            Visibility="{x:Bind HasAgents, Mode=OneTime, Converter={StaticResource BoolToVis}, ConverterParameter=invert}">
+                        <StackPanel HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    Spacing="8">
+                            <ic:FluentIcon Icon="Bot"
+                                           IconVariant="Regular"
+                                           IconSize="Size24"
+                                           Foreground="{ThemeResource TextSecondaryBrush}"
+                                           HorizontalAlignment="Center" />
+                            <TextBlock Text="No agents yet"
+                                       FontSize="15"
+                                       FontWeight="SemiBold"
+                                       HorizontalAlignment="Center" />
+                            <TextBlock Text="Add an agent to start a conversation."
+                                       FontSize="12"
+                                       Foreground="{ThemeResource TextSecondaryBrush}"
+                                       HorizontalAlignment="Center" />
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </Grid>
         </ScrollViewer>

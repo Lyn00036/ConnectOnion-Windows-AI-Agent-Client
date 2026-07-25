@@ -54,4 +54,41 @@ public static class AgentInteractiveParsers
             msg.GetBool("multi_select"),
             fields);
     }
+
+    /// <summary>
+    /// Parses an <c>ONBOARD_REQUIRED</c> frame. Total like <see cref="ParseAskUser"/>, and for a
+    /// sharper reason: this frame stands between the user and the agent entirely, so a parse
+    /// failure that produced nothing would leave them permanently unable to connect. Every field
+    /// degrades — an unreadable <c>methods</c> array becomes empty, which
+    /// <see cref="OnboardRequest.AcceptsInviteCode"/> reads as "offer the invite code".
+    /// </summary>
+    public static OnboardRequest ParseOnboard(WireMessage msg)
+    {
+        var methods = new List<string>();
+        if (msg.TryGet("methods", out var methodsEl) && methodsEl.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var method in methodsEl.EnumerateArray())
+            {
+                if (method.ValueKind == JsonValueKind.String && method.GetString() is { Length: > 0 } name)
+                    methods.Add(name);
+            }
+        }
+
+        double? amount = null;
+        if (msg.TryGet("payment_amount", out var amountEl) && amountEl.ValueKind == JsonValueKind.Number
+            && amountEl.TryGetDouble(out var parsed))
+        {
+            amount = parsed;
+        }
+
+        // Only ever read, never derived. The agent's own address is *not* a safe substitute: we do
+        // not know that payment goes there, and an invented destination for a real transfer loses
+        // the user's money. Absent means the card shows no address.
+        var address = msg.TryGet("payment_address", out var addressEl)
+            && addressEl.ValueKind == JsonValueKind.String
+                ? addressEl.GetString()
+                : null;
+
+        return new OnboardRequest(methods, amount, string.IsNullOrWhiteSpace(address) ? null : address);
+    }
 }

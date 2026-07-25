@@ -51,10 +51,9 @@ public sealed partial class ChatTurnProjection
     // latch rather than a "_currentThinking is open" check, because ApplyParsed clears that field
     // on every non-thinking frame — including the llm_call we are deciding about.
     private bool _sawThinkingText;
-    // Inbound agent images are buffered as they stream in and only projected once the turn's
-    // final output has been appended — the reference behaviour is that a received image belongs
-    // *after* the agent's answer, not floating above the tool activity / summary / reply that
-    // arrive later in the same turn. Flushed by AppendCompletedTurn / CompleteToolActivity.
+    // Inbound agent images are normally buffered until the final output. The one exception is an
+    // ask_user frame: agents use an immediately preceding image for QR sign-in and other visual
+    // questions, so that image is attached to the live question before the host waits for input.
     private readonly List<string> _pendingAgentImages = new();
     private bool _wasInterrupted;
     // plan_review has no protocol id. Keep the one card emitted by this turn so reconnect
@@ -127,9 +126,9 @@ public sealed partial class ChatTurnProjection
     }
 
     /// <summary>
-    /// Completes a successful turn in display order: tool activity, consumption summary, then the
-    /// final output. If the stream already emitted the final assistant bubble, it is temporarily
-    /// removed and reinserted after the summary instead of being duplicated.
+    /// Completes a successful turn in reading order: tool activity, final output, then the quiet
+    /// consumption summary. If the stream already emitted the final assistant bubble, it is moved
+    /// to the end of the process records instead of being duplicated.
     /// </summary>
     public void AppendCompletedTurn(string reply)
     {
@@ -148,8 +147,6 @@ public sealed partial class ChatTurnProjection
         // identity (and its id), so nothing downstream sees it as a new message.
         if (streamedFinal is not null) Messages.Remove(streamedFinal);
 
-        AppendTurnSummary();
-
         if (streamedFinal is not null)
         {
             if (_wasInterrupted) streamedFinal.EventMeta = "Stopped";
@@ -160,10 +157,28 @@ public sealed partial class ChatTurnProjection
             AppendFinalReply(reply);
         }
 
+        // Images belong to the final assistant output. Flush while that output is still the last
+        // message, before the supporting usage row is appended below it.
         FlushPendingImages();
+        AppendTurnSummary();
     }
 
-    /// <summary>One summary bubble before the final output: model + duration/tokens/context/tools.</summary>
+    /// <summary>
+    /// What the turn has spent so far, for the live readout beside the composer.
+    ///
+    /// <para>The same accumulators the summary row is built from, published mid-turn instead of
+    /// only at the end. It is the running total on purpose: a per-iteration figure would flicker
+    /// and answer a question nobody asks, whereas "this turn has cost me 12k tokens and is at 40%
+    /// of context" is exactly what a user watching a long turn wants to know <i>while</i> they can
+    /// still do something about it.</para>
+    /// </summary>
+    public TurnUsage CurrentUsage => new(
+        _turnHasUsage ? _turnTokensIn : null,
+        _turnHasUsage ? _turnTokensOut : null,
+        _turnContextPercent,
+        _turnToolCallsCount);
+
+    /// <summary>One quiet summary row after the final output: model + duration/tokens/context/tools.</summary>
     public void AppendTurnSummary()
     {
         var parts = new List<string>();
@@ -225,6 +240,14 @@ public sealed partial class ChatTurnProjection
             target = new ChatMessage { Id = NextId(), Role = ChatRole.Agent, AgentName = AgentName };
             Add(target);
         }
+
+        AttachPendingImages(target);
+    }
+
+    /// <summary>Consumes the turn's buffered images and attaches them to a specific bubble.</summary>
+    private void AttachPendingImages(ChatMessage target)
+    {
+        if (_pendingAgentImages.Count == 0) return;
 
         foreach (var dataUrl in _pendingAgentImages)
         {
@@ -313,6 +336,13 @@ public sealed partial class ChatTurnProjection
         {
             diff.SetDiffState(state);
         }
+
+        // Whatever outcome each file reached, the runtime is over and the transcript should
+        // return to its compact reading state. This also covers informational previews and diffs
+        // that had already moved to Failed/Disconnected before the terminal callback arrived.
+        // The disclosure remains available, so the user can explicitly reopen any result.
+        foreach (var diff in Messages.Where(message => message.IsDiffPreviewEvent))
+            diff.IsDiffExpanded = false;
     }
 
     private static bool IsWriteFileTool(string toolName)
@@ -355,6 +385,7 @@ public sealed partial class ChatTurnProjection
     private string? AgentName => _target.AgentName;
     private long NextId() => _target.NextId();
     private void Add(ChatMessage message) => _target.Add(message);
+    private void ReportUsage() => _target.ReportUsage(CurrentUsage);
 
     private ChatMessage NewActivity(string? key, string title, EventStatus status) => new()
     {
@@ -425,6 +456,25 @@ public sealed partial class ChatTurnProjection
 /// <c>ObservableCollection&lt;ChatMessage&gt;</c> by the view model and over a plain list by
 /// the persistence path, so both share one projection with different side-effect handling.
 /// </summary>
+/// <summary>
+/// A turn's running spend, published while the turn is still going.
+/// </summary>
+/// <param name="TokensIn">Prompt tokens so far, or null when the agent has reported no usage at
+/// all — which is not the same as zero, and the readout says so by showing nothing.</param>
+/// <param name="TokensOut">Completion tokens so far, same null semantics.</param>
+/// <param name="ContextPercent">How full the context window is, as last reported.</param>
+/// <param name="ToolCalls">Tool calls the agent has made this turn.</param>
+public readonly record struct TurnUsage(
+    long? TokensIn,
+    long? TokensOut,
+    double? ContextPercent,
+    long ToolCalls)
+{
+    /// <summary>Nothing measurable has been reported yet, so there is nothing to show. Keeps the
+    /// composer from reserving space for a readout that may never arrive.</summary>
+    public bool IsEmpty => TokensIn is null && TokensOut is null && ContextPercent is null && ToolCalls == 0;
+}
+
 public interface IChatProjectionTarget
 {
     IList<ChatMessage> Messages { get; }
@@ -444,4 +494,11 @@ public interface IChatProjectionTarget
     /// <summary>Decode/cache an inbound agent image and fill in the attachment's local path.
     /// Live UI kicks this off-thread; persistence awaits it synchronously.</summary>
     void ResolveAgentImage(string dataUrl, ChatAttachment attachment);
+
+    /// <summary>
+    /// The turn's running spend changed. Live views show it beside the composer; the headless
+    /// persistence pass has nobody to show it to and ignores it — the same figures reach storage
+    /// through the summary row either way.
+    /// </summary>
+    void ReportUsage(TurnUsage usage);
 }

@@ -384,6 +384,15 @@ public sealed partial class ChatPage : Page, IFindHost, IShutdownDisarmable, IDi
         }
     }
 
+    private async void SubmitOnboardPayment_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is ChatMessage message)
+        {
+            await Vm.SubmitOnboardPaymentAsync(message);
+            ScrollToEnd();
+        }
+    }
+
 
 
 }

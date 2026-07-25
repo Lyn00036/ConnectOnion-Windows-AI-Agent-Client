@@ -102,6 +102,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         MessageFontSize = 14;
         EnterToSend = true;
         CurrentMode = AgentModes.Safe;
+        LiveUsageText = "";
 
         // Live-apply message text-size changes made in Settings while this chat is open. The
         // subscription lives only as long as this page-owned view model; Cleanup detaches it when
@@ -229,6 +230,13 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     [NotifyPropertyChangedFor(nameof(CanReconnect))]
     public partial bool IsProcessing { get; private set; }
 
+    // Hooked here rather than at the two places that start a turn: this is the one property that
+    // *means* "a turn is running", so a third start path added later gets the reset for free.
+    partial void OnIsProcessingChanged(bool value)
+    {
+        if (value) ResetLiveUsage();
+    }
+
     /// <summary>True only after INPUT reached the socket and before OUTPUT/ERROR.</summary>
     [ObservableProperty]
     public partial bool CanStop { get; private set; }
@@ -273,6 +281,12 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     [ObservableProperty]
     public partial AgentAcceptedInputs? AcceptedInputs { get; private set; }
 
+    /// <summary>The agent's declared skills, for the composer's slash-command palette. Comes from
+    /// the same <c>/info</c> fetch as <see cref="AcceptedInputs"/>, so it costs no extra round trip
+    /// and an agent that declares none simply has no palette.</summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<SkillInfo>? Skills { get; private set; }
+
     [ObservableProperty]
     public partial string HeaderText { get; private set; }
 
@@ -296,13 +310,13 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     public string ConnectionPhaseText => ConnectionPhase switch
     {
         Models.ConnectionPhase.Connecting => "Connecting",
-        Models.ConnectionPhase.Connected => "Connected",
-        Models.ConnectionPhase.Running => "Running",
-        Models.ConnectionPhase.Waiting => "Waiting for you",
+        Models.ConnectionPhase.Connected => "Ready",
+        Models.ConnectionPhase.Running => "Working",
+        Models.ConnectionPhase.Waiting => "Waiting for approval",
         Models.ConnectionPhase.Reconnecting =>
             $"Reconnecting {ReconnectAttempt}/{ReconnectPolicy.MaxAttempts}",
         Models.ConnectionPhase.Offline => "Offline",
-        _ => "Idle",
+        _ => "Ready",
     };
 
     /// <summary>
@@ -529,7 +543,12 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         if (infoJson is null) return;
 
         var parsed = EndpointResolver.ParseAcceptedInputsFromInfoJson(infoJson);
-        _dispatcher.TryEnqueue(() => AcceptedInputs = parsed);
+        var skills = EndpointResolver.ParseSkillsFromInfoJson(infoJson);
+        _dispatcher.TryEnqueue(() =>
+        {
+            AcceptedInputs = parsed;
+            Skills = skills;
+        });
     }
 
     /// <summary>
@@ -697,4 +716,47 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     }
     void IChatProjectionTarget.ResolveAgentImage(string dataUrl, ChatAttachment attachment)
         => _ = ResolveAgentImageAsync(dataUrl, attachment);
+
+    void IChatProjectionTarget.ReportUsage(TurnUsage usage) => LiveUsageText = FormatLiveUsage(usage);
+
+    /// <summary>
+    /// The turn's running spend, shown beside the composer while it works. Empty string means
+    /// "nothing to show" and the readout collapses — an agent that reports no usage should leave a
+    /// clean composer, not a row of dashes.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasLiveUsage))]
+    public partial string LiveUsageText { get; private set; }
+
+    public bool HasLiveUsage => !string.IsNullOrEmpty(LiveUsageText);
+
+    /// <summary>
+    /// Clears the live readout at the start of a turn. Per-turn rather than cumulative because the
+    /// figure is about the turn the user is watching: carrying the last turn's total into the next
+    /// one would read as the new turn having spent it before it began. Every finished turn keeps
+    /// its own total in its summary row, and the Usage panel holds the long-run totals.
+    /// </summary>
+    private void ResetLiveUsage() => LiveUsageText = "";
+
+    /// <summary>
+    /// Renders the running total compactly enough for one line beside the connection status.
+    /// Each part is dropped when the agent has not reported it — a placeholder would claim the
+    /// agent said zero, which is a different thing from saying nothing.
+    /// </summary>
+    private static string FormatLiveUsage(TurnUsage usage)
+    {
+        if (usage.IsEmpty) return "";
+
+        var parts = new List<string>();
+        if (usage.TokensIn is { } tokensIn && usage.TokensOut is { } tokensOut)
+            parts.Add($"{FormatTokens(tokensIn)}→{FormatTokens(tokensOut)} tok");
+        if (usage.ContextPercent is { } context) parts.Add($"ctx {context:0.#}%");
+        if (usage.ToolCalls > 0) parts.Add($"{usage.ToolCalls} tools");
+        return string.Join(" · ", parts);
+    }
+
+    private static string FormatTokens(long tokens)
+        => tokens >= 1000
+            ? $"{tokens / 1000.0:0.#}K"
+            : tokens.ToString(System.Globalization.CultureInfo.InvariantCulture);
 }

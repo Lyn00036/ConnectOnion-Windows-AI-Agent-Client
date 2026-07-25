@@ -66,6 +66,34 @@ public sealed partial class ChatViewModel
         }
     }
 
+    /// <summary>
+    /// Answers the payment branch of an onboarding gate. The button is the user asserting that a
+    /// transfer already happened — this sends that claim and nothing else; no money moves here, and
+    /// the agent verifies it independently before it lets the conversation through.
+    /// </summary>
+    public async Task SubmitOnboardPaymentAsync(ChatMessage message)
+    {
+        var connection = CurrentConnection;
+        if (connection is null) return;
+        if (message.OnboardRequest?.PaymentAmount is not { } amount || amount <= 0) return;
+
+        message.IsOnboardingSubmitted = true;
+        message.Content = "Payment reported. Waiting for the agent to verify it...";
+        OnPropertyChanged(nameof(Messages));
+
+        try
+        {
+            await connection.SubmitOnboardPaymentAsync(amount);
+        }
+        catch (Exception ex)
+        {
+            // Re-arms the whole card, not just the payment row: whichever method the user tries
+            // next, the gate is still standing.
+            message.IsOnboardingSubmitted = false;
+            message.Content = $"Could not report the payment: {ex.Message}";
+        }
+    }
+
     /// <summary>Re-arms an invite-code card whose submission never reached ONBOARD_SUCCESS
     /// (rejected code, dropped socket) so the user can try again. The stored code is dropped
     /// with it — the connection auto-submits <see cref="AgentConnectionService.InviteCode"/>
@@ -99,10 +127,19 @@ public sealed partial class ChatViewModel
             return;
         }
 
-        var answerSummary = answer is IEnumerable<string> values
-            ? string.Join(", ", values)
-            : answer.ToString() ?? "";
-        var outcome = $"Answered: {answerSummary}";
+        // Remember the credentials before they leave: the agent's very next move is usually to type
+        // this password into a browser, and that tool call's arguments are persisted too. Masking
+        // it here only closes the first of the two doors into the database.
+        foreach (var field in message.AskUserFields)
+        {
+            if (Services.Runtime.InteractiveResponseBuilder.IsSecretField(field))
+                Services.Runtime.SessionSecrets.Remember(field.Value);
+        }
+
+        // Never stringify `answer` for this: it is the wire payload, and for a credentials form it
+        // holds the password in plaintext. The summary is what reaches the card and the persisted
+        // event_meta column, so it goes through the builder that masks secret fields.
+        var outcome = $"Answered: {Services.Runtime.InteractiveResponseBuilder.BuildAskUserAnswerSummary(message)}";
         var reservation = BeginInteractiveAnswer(outcome, EventStatus.Done);
         try
         {

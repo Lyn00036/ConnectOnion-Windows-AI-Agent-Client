@@ -266,7 +266,14 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
                     Background = row.IsHeader ? ResolveBrush("SurfaceSecondaryBrush") : null,
                     BorderBrush = ResolveBrush("DividerBrush"),
                     BorderThickness = new Thickness(0, 0, reachesLastColumn ? 0 : 1, reachesLastRow ? 0 : 1),
-                    Padding = new Thickness(10, row.IsHeader ? 7 : 6, 10, row.IsHeader ? 7 : 6),
+                    // RichTextBlock's line box reserves more invisible space above the visible
+                    // glyphs than below them, while inline-code UI containers are nudged down to
+                    // share the prose baseline. Keep the same 12px total body padding but bias it
+                    // downward so the visible text, rather than its asymmetric line box, is
+                    // optically centered between the row dividers.
+                    Padding = row.IsHeader
+                        ? new Thickness(10, 7, 10, 7)
+                        : new Thickness(10, 2, 10, 10),
                     Child = cellText,
                 };
 
@@ -325,6 +332,10 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
             MaxWidth = 320,
             TextAlignment = GetTableTextAlignment(table, columnIndex),
             TextWrapping = TextWrapping.WrapWholeWords,
+            // A neighbouring cell can make the row much taller (for example, multiline prose
+            // beside one inline-code path). Do not stretch this RichTextBlock to that height:
+            // size it to its own document and center the whole block inside the table cell.
+            VerticalAlignment = VerticalAlignment.Center,
         };
 
         foreach (var descendant in cell)

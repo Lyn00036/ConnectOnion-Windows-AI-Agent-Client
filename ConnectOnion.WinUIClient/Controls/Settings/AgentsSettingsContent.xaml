@@ -34,7 +34,7 @@
                                       Height="38"
                                       VerticalAlignment="Center">
                                     <controls:AgentAvatar Size="38"
-                                                          CornerRadius="8"
+                                                          CornerRadius="19"
                                                           FontSize="14"
                                                           Initial="{x:Bind Initial}"
                                                           PaletteIndex="{x:Bind AvatarPaletteIndex}" />
@@ -136,9 +136,10 @@
                     Spacing="8"
                     HorizontalAlignment="Center"
                     Visibility="Collapsed">
-            <FontIcon Glyph="&#xE716;"
-                      FontSize="28"
-                      Foreground="{ThemeResource TextTertiaryBrush}" />
+            <ic:FluentIcon Icon="Bot"
+                           IconVariant="Regular"
+                           IconSize="Size24"
+                           Foreground="{ThemeResource TextTertiaryBrush}" />
             <TextBlock Text="No agents connected"
                        FontWeight="SemiBold"
                        TextAlignment="Center" />
