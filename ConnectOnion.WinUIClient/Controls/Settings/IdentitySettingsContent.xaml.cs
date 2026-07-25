@@ -19,6 +19,7 @@ public sealed partial class IdentitySettingsContent : UserControl, System.IDispo
     // be trimmed or styled, and the clipboard must get the exact value.
     private string _address = "";
     private string _publicKey = "";
+    private bool _showApiKey;
     private readonly System.Threading.CancellationTokenSource _shutdownCts = new();
     private int _disposed;
 
@@ -28,9 +29,13 @@ public sealed partial class IdentitySettingsContent : UserControl, System.IDispo
         Loaded += OnLoaded;
     }
 
-    private void OnLoaded(object sender, RoutedEventArgs e) => Refresh();
+    private async void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        RefreshIdentity();
+        await RefreshAccountAsync(forceAuthentication: false);
+    }
 
-    private void Refresh()
+    private void RefreshIdentity()
     {
         // EnsureIdentity is cheap after first run (it reads the already-decrypted seed) and
         // never generates here in practice — startup has long since created the identity.
@@ -112,7 +117,9 @@ public sealed partial class IdentitySettingsContent : UserControl, System.IDispo
         // is being cut off here.
         await AppServices.RunManager.Connections.DisposeAllAsync();
 
-        Refresh();
+        RefreshIdentity();
+        AppServices.OpenOnionAccount.Clear();
+        await RefreshAccountAsync(forceAuthentication: true);
         MainWindow.FromXamlRoot(XamlRoot)?.ShowInAppToast(new Models.Notifications.InAppToastModel(
             "Identity restored",
             $"This device now signs as {dialog.RestoredAddress}. Agents that authorized the previous "
@@ -120,7 +127,72 @@ public sealed partial class IdentitySettingsContent : UserControl, System.IDispo
             Models.Notifications.NotificationType.TaskCompleted,
             AgentId: null,
             ConversationId: null,
-            ActionId: null));
+                ActionId: null));
+    }
+
+    private async void GenerateIdentity_Click(object sender, RoutedEventArgs e)
+    {
+        IdentityActionErrorBar.IsOpen = false;
+        if (AppServices.RunManager.GetActiveRuns().Count > 0)
+        {
+            IdentityActionErrorBar.Message =
+                "Wait for the running conversation to finish before generating a new identity.";
+            IdentityActionErrorBar.IsOpen = true;
+            return;
+        }
+
+        var confirmation = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "Generate a new identity?",
+            Content = "This replaces your current identity and creates a different OpenOnion "
+                + "account on first sign-in. Your current balance, agent authorizations, and account "
+                + "history do not move to the new address. Back up the current recovery phrase first.",
+            PrimaryButtonText = "Generate",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+        };
+        if (await confirmation.ShowAsync() != ContentDialogResult.Primary) return;
+
+        // Check again after the confirmation: a run may have started while the dialog was open.
+        if (AppServices.RunManager.GetActiveRuns().Count > 0)
+        {
+            IdentityActionErrorBar.Message =
+                "A conversation started while the confirmation was open. Wait for it to finish.";
+            IdentityActionErrorBar.IsOpen = true;
+            return;
+        }
+
+        try
+        {
+            // Idle sockets still authenticate as the old identity. Drop them before replacing the
+            // key so the next connection cannot accidentally reuse an old authenticated channel.
+            await AppServices.RunManager.Connections.DisposeAllAsync();
+            var (identity, _) = IdentityStore.GenerateNewIdentity();
+
+            RefreshIdentity();
+            AppServices.OpenOnionAccount.Clear();
+
+            // The recovery phrase is the only portable copy. Show it before making the optional
+            // network request that creates/signs in to the corresponding OpenOnion account.
+            await ShowBackupDialogAsync(isFirstReveal: true);
+            await RefreshAccountAsync(forceAuthentication: true);
+
+            MainWindow.FromXamlRoot(XamlRoot)?.ShowInAppToast(
+                new Models.Notifications.InAppToastModel(
+                    "New identity created",
+                    $"This device now signs as {identity.Address}. The OpenOnion account is linked "
+                        + "to that address.",
+                    Models.Notifications.NotificationType.TaskCompleted,
+                    AgentId: null,
+                    ConversationId: null,
+                    ActionId: null));
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        {
+            IdentityActionErrorBar.Message = ex.Message;
+            IdentityActionErrorBar.IsOpen = true;
+        }
     }
 
     /// <summary>Copies whichever value the clicked button is tagged with, and flashes
@@ -133,6 +205,7 @@ public sealed partial class IdentitySettingsContent : UserControl, System.IDispo
         {
             "address" => _address,
             "publicKey" => _publicKey,
+            "apiKey" => AppServices.OpenOnionAccount.ApiKey ?? "",
             _ => "",
         };
         if (string.IsNullOrWhiteSpace(value)) return;
@@ -155,6 +228,70 @@ public sealed partial class IdentitySettingsContent : UserControl, System.IDispo
             }
             button.Content = original;
             button.IsHitTestVisible = true;
+        }
+    }
+
+    private async void RefreshAccount_Click(object sender, RoutedEventArgs e)
+        => await RefreshAccountAsync(forceAuthentication: false);
+
+    private async System.Threading.Tasks.Task RefreshAccountAsync(bool forceAuthentication)
+    {
+        AccountProgress.IsActive = true;
+        AccountProgress.Visibility = Visibility.Visible;
+        AccountErrorBar.IsOpen = false;
+        try
+        {
+            var profile = await AppServices.OpenOnionAccount.RefreshAsync(
+                forceAuthentication, _shutdownCts.Token);
+            BalanceText.Text = $"${profile.BalanceUsd:0.00}";
+            PurchasedText.Text = $"${profile.CreditsUsd:0.00}";
+            SpentText.Text = $"${profile.TotalCostUsd:0.00}";
+            AccountSummaryPanel.Visibility = Visibility.Visible;
+            UpdateApiKeyPresentation();
+        }
+        catch (System.OperationCanceledException) when (_shutdownCts.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            AccountErrorBar.Message = ex.Message;
+            AccountErrorBar.IsOpen = true;
+            AccountSummaryPanel.Visibility = AppServices.OpenOnionAccount.Profile is null
+                ? Visibility.Collapsed
+                : Visibility.Visible;
+        }
+        finally
+        {
+            AccountProgress.IsActive = false;
+            AccountProgress.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void RevealApiKey_Click(object sender, RoutedEventArgs e)
+    {
+        _showApiKey = !_showApiKey;
+        UpdateApiKeyPresentation();
+    }
+
+    private void UpdateApiKeyPresentation()
+    {
+        var key = AppServices.OpenOnionAccount.ApiKey ?? "";
+        ApiKeyText.Text = _showApiKey ? key : MaskApiKey(key);
+        RevealApiKeyButton.Content = _showApiKey ? "Hide" : "Reveal";
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
+            ApiKeyText, _showApiKey ? "OpenOnion API key" : "Masked OpenOnion API key");
+    }
+
+    private static string MaskApiKey(string value)
+        => value.Length <= 12 ? "••••••••" : $"{value[..6]}••••••{value[^4..]}";
+
+    private async void TopUp_Click(object sender, RoutedEventArgs e)
+    {
+        if (!await AppServices.UriLauncher.LaunchAsync(
+                new Uri("https://o.openonion.ai/purchase")))
+        {
+            AccountErrorBar.Message = "Windows could not open the OpenOnion purchase page.";
+            AccountErrorBar.IsOpen = true;
         }
     }
 

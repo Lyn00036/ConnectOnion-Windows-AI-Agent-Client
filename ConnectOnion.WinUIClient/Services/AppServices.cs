@@ -41,6 +41,10 @@ public static class AppServices
     /// <summary>Single shared HttpClient for health probes and endpoint resolution.</summary>
     public static HttpClient Http => Provider.GetRequiredService<HttpClient>();
 
+    /// <summary>Process-memory OpenOnion authentication and account balance.</summary>
+    public static OpenOnionAccountService OpenOnionAccount
+        => Provider.GetRequiredService<OpenOnionAccountService>();
+
     // Opens external links. A test can substitute a fake by assigning this override — the
     // underlying Launcher is a static WinRT type that cannot be mocked directly; when unset the
     // container's registered IUriLauncher is used.

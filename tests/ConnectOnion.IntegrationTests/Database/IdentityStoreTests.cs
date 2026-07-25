@@ -164,6 +164,36 @@ public sealed class IdentityStoreTests
             IdentityStore.ExportBackup().Mnemonic);
     }
 
+    [Fact]
+    public async Task GenerateNewIdentity_ReplacesPersistsAndReportsTheNewIdentity()
+    {
+        await DeleteStoredIdentityAsync();
+        ResetStaticState();
+        var original = IdentityStore.EnsureIdentity();
+        string? replacedAddress = null;
+        void OnReplaced(string address) => replacedAddress = address;
+        IdentityStore.IdentityReplaced += OnReplaced;
+
+        try
+        {
+            var (replacement, phrase) = IdentityStore.GenerateNewIdentity();
+
+            Assert.NotEqual(original.Address, replacement.Address);
+            Assert.Equal(replacement.Address, replacedAddress);
+            Assert.True(Bip39.Validate(phrase));
+            Assert.Equal(replacement.Address, AgentIdentity.FromMnemonic(phrase).Address);
+            Assert.Equal(phrase, IdentityStore.ExportBackup().Mnemonic);
+
+            ResetStaticState();
+            Assert.Equal(replacement.Address, IdentityStore.EnsureIdentity().Address);
+            Assert.Equal(phrase, IdentityStore.ExportBackup().Mnemonic);
+        }
+        finally
+        {
+            IdentityStore.IdentityReplaced -= OnReplaced;
+        }
+    }
+
     [Theory]
     [InlineData("legal winner thank year wave sausage worth useful legal winner thank zebra")]
     [InlineData("not even close to a phrase")]

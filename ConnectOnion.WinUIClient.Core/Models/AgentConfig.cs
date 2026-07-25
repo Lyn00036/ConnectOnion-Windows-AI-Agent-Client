@@ -36,12 +36,23 @@ public sealed partial class AgentConfig : Common.ObservableObject
     public string DisplayName => FriendlyAgentName.From(Name);
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsRelayOnly))]
     [JsonPropertyName("address")]
     public partial string Address { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsRelayOnly))]
     [JsonPropertyName("directUrl")]
     public partial string? DirectUrl { get; set; }
+
+    /// <summary>
+    /// True when this saved entry resolves through the relay address rather than a user-supplied
+    /// direct endpoint. Only these agents have a stable public web-chat URL worth sharing.
+    /// </summary>
+    [JsonIgnore]
+    public bool IsRelayOnly
+        => !string.IsNullOrWhiteSpace(Address)
+            && string.IsNullOrWhiteSpace(DirectUrl);
 
     /// <summary>Invite code submitted automatically if the agent's trust gate asks for onboarding.</summary>
     [ObservableProperty]

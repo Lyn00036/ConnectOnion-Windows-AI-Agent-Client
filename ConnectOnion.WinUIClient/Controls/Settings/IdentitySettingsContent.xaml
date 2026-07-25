@@ -44,6 +44,95 @@
 
         <Border Style="{StaticResource SettingsSectionStyle}" HorizontalAlignment="Stretch">
             <StackPanel Spacing="12">
+                <Grid ColumnSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Spacing="3">
+                        <TextBlock Text="OpenOnion account" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                        <TextBlock Text="Signed in with this device identity. The API key remains in memory only."
+                                   TextWrapping="Wrap"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextSecondaryBrush}" />
+                    </StackPanel>
+                    <Button Grid.Column="1"
+                            Content="Refresh"
+                            VerticalAlignment="Center"
+                            Click="RefreshAccount_Click"
+                            AutomationProperties.Name="Refresh OpenOnion balance" />
+                </Grid>
+
+                <ProgressRing x:Name="AccountProgress"
+                              Width="18"
+                              Height="18"
+                              HorizontalAlignment="Left"
+                              IsActive="False"
+                              Visibility="Collapsed"
+                              AutomationProperties.Name="Loading OpenOnion account" />
+                <InfoBar x:Name="AccountErrorBar"
+                         Severity="Warning"
+                         Title="Account unavailable"
+                         IsOpen="False"
+                         IsClosable="False" />
+
+                <StackPanel x:Name="AccountSummaryPanel" Spacing="12" Visibility="Collapsed">
+                    <Grid ColumnSpacing="18">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="Balance" Style="{StaticResource CaptionTextBlockStyle}" />
+                            <TextBlock x:Name="BalanceText" FontSize="20" FontWeight="SemiBold" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Spacing="2">
+                            <TextBlock Text="Purchased" Style="{StaticResource CaptionTextBlockStyle}" />
+                            <TextBlock x:Name="PurchasedText" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" Spacing="2">
+                            <TextBlock Text="Spent" Style="{StaticResource CaptionTextBlockStyle}" />
+                            <TextBlock x:Name="SpentText" />
+                        </StackPanel>
+                    </Grid>
+
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel MinWidth="0" Spacing="3">
+                            <TextBlock Text="API key" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <TextBlock x:Name="ApiKeyText"
+                                       TextTrimming="CharacterEllipsis"
+                                       IsTextSelectionEnabled="True"
+                                       FontFamily="{StaticResource JetBrainsMonoFontFamily}"
+                                       AutomationProperties.Name="Masked OpenOnion API key" />
+                        </StackPanel>
+                        <Button x:Name="RevealApiKeyButton"
+                                Grid.Column="1"
+                                Content="Reveal"
+                                Click="RevealApiKey_Click"
+                                AutomationProperties.Name="Reveal OpenOnion API key" />
+                        <Button Grid.Column="2"
+                                Tag="apiKey"
+                                Content="Copy"
+                                Click="Copy_Click"
+                                AutomationProperties.Name="Copy OpenOnion API key" />
+                    </Grid>
+
+                    <Button Content="Top up balance"
+                            HorizontalAlignment="Left"
+                            Click="TopUp_Click"
+                            AutomationProperties.Name="Open the OpenOnion purchase page" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <Border Style="{StaticResource SettingsSectionStyle}" HorizontalAlignment="Stretch">
+            <StackPanel Spacing="12">
                 <TextBlock Text="Backup and recovery" Style="{StaticResource BodyStrongTextBlockStyle}" />
                 <TextBlock x:Name="BackupDescriptionText" TextWrapping="Wrap" MinWidth="0"
                            Style="{StaticResource CaptionTextBlockStyle}"
@@ -65,7 +154,22 @@
                             <TextBlock Text="Restore..." />
                         </StackPanel>
                     </Button>
+                    <Button x:Name="GenerateIdentityButton"
+                            Click="GenerateIdentity_Click"
+                            Foreground="{ThemeResource DangerBrush}"
+                            AutomationProperties.AutomationId="GenerateIdentityButton"
+                            AutomationProperties.Name="Generate a new ConnectOnion identity">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <ic:FluentIcon Icon="ArrowSync" IconVariant="Regular" IconSize="Size16" />
+                            <TextBlock Text="Generate new..." />
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
+                <InfoBar x:Name="IdentityActionErrorBar"
+                         Severity="Error"
+                         Title="Identity unchanged"
+                         IsOpen="False"
+                         IsClosable="True" />
             </StackPanel>
         </Border>
     </StackPanel>

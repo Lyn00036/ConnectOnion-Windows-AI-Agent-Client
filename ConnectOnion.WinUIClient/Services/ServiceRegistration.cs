@@ -53,6 +53,7 @@ public static class ServiceRegistration
         services.AddSingleton<HttpClient>(sp =>
             sp.GetRequiredService<IHttpClientFactory>().CreateClient(AgentHttpClient));
         services.AddSingleton<IUriLauncher, SystemUriLauncher>();
+        services.AddSingleton<OpenOnionAccountService>();
         services.AddSingleton<ConnectionTester>();
 
         // ---- SQLite repositories ----

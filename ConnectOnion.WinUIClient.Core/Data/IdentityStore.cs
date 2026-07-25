@@ -68,7 +68,7 @@ public static class IdentityStore
     public static event Action<string>? IdentityReset;
 
     /// <summary>
-    /// Raised after <see cref="ImportMnemonic"/> or <see cref="ImportSeed"/> swaps the identity,
+    /// Raised after an import or <see cref="GenerateNewIdentity"/> deliberately swaps the identity,
     /// carrying the new address. Unlike <see cref="IdentityReset"/> this one is deliberate, but it
     /// has the same consequence — every live socket authenticated as the old address is now
     /// authenticated as nobody, so listeners must drop their connections.
@@ -162,6 +162,21 @@ public static class IdentityStore
         var canonical = Bip39.Normalize(mnemonic);
         var identity = AgentIdentity.FromMnemonic(canonical);
         return ReplaceIdentity(identity, canonical);
+    }
+
+    /// <summary>
+    /// Creates and persists a fresh BIP39-backed identity, replacing the current one.
+    /// OpenOnion creates the corresponding account when this identity first authenticates.
+    ///
+    /// <para><b>Destructive and irreversible.</b> The caller must confirm that the current backup
+    /// is safe, refuse the operation while a run is active, disconnect all existing sockets, and
+    /// show the returned phrase immediately.</para>
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The new identity could not be written to disk.</exception>
+    public static (AgentIdentity Identity, string Mnemonic) GenerateNewIdentity()
+    {
+        var (identity, mnemonic) = AgentIdentity.GenerateWithMnemonic();
+        return (ReplaceIdentity(identity, mnemonic), mnemonic);
     }
 
     /// <summary>
