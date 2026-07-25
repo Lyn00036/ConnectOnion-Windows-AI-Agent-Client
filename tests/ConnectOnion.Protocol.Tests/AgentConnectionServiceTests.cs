@@ -186,6 +186,65 @@ public sealed class AgentConnectionServiceTests
     }
 
     [Fact]
+    public async Task SendInputAsync_SessionSync_BuffersOnlyScalarSessionState()
+    {
+        var observed = new TaskCompletionSource<AgentStreamEvent>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var oversizedHistory = new string('x', 200_000);
+        var sessionSync = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            type = "session_sync",
+            id = "sync-1",
+            ts = 1_783_153_058.5,
+            session_id = "session-1",
+            session = new
+            {
+                session_id = "session-1",
+                mode = "plan",
+                turn = 7,
+                iteration = 3,
+                messages = new[] { new { role = "assistant", content = oversizedHistory } },
+                trace = new[] { new { type = "tool_result", result = oversizedHistory } },
+                permissions = new { read = new { allowed = true, reason = oversizedHistory } },
+            },
+        });
+
+        await using var server = new FakeAgentServer(async (socket, ct) =>
+        {
+            await FakeAgentServer.ReceiveTextAsync(socket, ct);
+            await FakeAgentServer.SendTextAsync(socket, "{\"type\":\"CONNECTED\"}", ct);
+            await FakeAgentServer.ReceiveTextAsync(socket, ct);
+            await FakeAgentServer.SendTextAsync(socket, sessionSync, ct);
+            await observed.Task.WaitAsync(ct);
+            await FakeAgentServer.SendTextAsync(socket, "{\"type\":\"OUTPUT\",\"result\":\"done\"}", ct);
+        });
+        await using var service = Service(server);
+        service.StreamEvent += value =>
+        {
+            if (value.Type == "session_sync") observed.TrySetResult(value);
+        };
+
+        Assert.Equal("done", await service.SendInputAsync("start", "session-1"));
+        var streamed = await observed.Task;
+        Assert.Equal("sync-1", streamed.EventId);
+        Assert.True(streamed.RawJson.Length < 512);
+        Assert.DoesNotContain(oversizedHistory, streamed.RawJson, StringComparison.Ordinal);
+
+        using var payload = System.Text.Json.JsonDocument.Parse(streamed.RawJson);
+        var root = payload.RootElement;
+        Assert.Equal("session_sync", root.GetProperty("type").GetString());
+        Assert.Equal("session-1", root.GetProperty("session_id").GetString());
+        var session = root.GetProperty("session");
+        Assert.Equal("plan", session.GetProperty("mode").GetString());
+        Assert.Equal(7, session.GetProperty("turn").GetInt64());
+        Assert.Equal(3, session.GetProperty("iteration").GetInt64());
+        Assert.False(session.TryGetProperty("messages", out _));
+        Assert.False(session.TryGetProperty("trace", out _));
+        Assert.False(session.TryGetProperty("permissions", out _));
+        await server.Completion;
+    }
+
+    [Fact]
     public async Task SendInputAsync_HandshakeError_ThrowsComprehensibleException()
     {
         await using var server = new FakeAgentServer(async (socket, ct) =>

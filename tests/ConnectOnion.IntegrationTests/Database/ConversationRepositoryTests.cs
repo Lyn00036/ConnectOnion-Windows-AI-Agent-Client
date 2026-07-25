@@ -226,13 +226,78 @@ public sealed class ConversationRepositoryTests
         Assert.Equal(expected.IsOnboarding, actual.IsOnboarding);
     }
 
+    [Fact]
+    public async Task UpsertMessagesAsync_ToolActivity_RoundTripsWithTrimSafeMetadata()
+    {
+        const string conversationId = "tool-activity-roundtrip";
+        await _fixture.CreateSessionAsync(conversationId);
+        var activity = new ToolActivityViewModel
+        {
+            TurnId = "turn-1",
+            Status = ToolActivityStatus.Success,
+            DisplayMode = ToolDisplayMode.Compact,
+            Summary = "2 tools completed",
+            IsExpanded = false,
+        };
+        activity.Steps.Add(new ToolStepViewModel
+        {
+            Id = "step-1",
+            Sequence = 1,
+            ToolName = "search",
+            DisplayName = "Search",
+            Summary = "Found files",
+            Status = ToolStepStatus.Success,
+            DurationMs = 12,
+        });
+        activity.Steps.Add(new ToolStepViewModel
+        {
+            Id = "step-2",
+            Sequence = 2,
+            ToolName = "read_file",
+            DisplayName = "Read file",
+            Summary = "Loaded source",
+            Status = ToolStepStatus.Success,
+            DurationMs = 18,
+        });
+
+        await _repository.UpsertMessagesAsync(conversationId,
+        [
+            new ChatMessage
+            {
+                Id = 1,
+                Role = ChatRole.Event,
+                EventKind = "tool_activity",
+                EventTitle = "Tool execution",
+                ToolActivity = activity,
+                Status = EventStatus.Done,
+            },
+        ]);
+
+        var restored = Assert.Single(await _repository.LoadMessagesAsync(conversationId));
+        Assert.Equal("tool_activity", restored.EventKind);
+        Assert.NotNull(restored.ToolActivity);
+        Assert.Equal("turn-1", restored.ToolActivity.TurnId);
+        Assert.Equal(ToolActivityStatus.Success, restored.ToolActivity.Status);
+        Assert.Collection(
+            restored.ToolActivity.Steps,
+            first =>
+            {
+                Assert.Equal("search", first.ToolName);
+                Assert.Equal("Found files", first.Summary);
+            },
+            second =>
+            {
+                Assert.Equal("read_file", second.ToolName);
+                Assert.Equal(18, second.DurationMs);
+            });
+    }
+
     [Theory]
-    [InlineData(DiffChangeState.Applied, false)]
-    [InlineData(DiffChangeState.Rejected, false)]
-    [InlineData(DiffChangeState.Pending, true)]
-    [InlineData(DiffChangeState.Failed, true)]
-    public async Task DiffStateAndContent_RoundTripWithCorrectDefaultExpansion(
-        DiffChangeState state, bool expectedExpanded)
+    [InlineData(DiffChangeState.Applied)]
+    [InlineData(DiffChangeState.Rejected)]
+    [InlineData(DiffChangeState.Pending)]
+    [InlineData(DiffChangeState.Failed)]
+    public async Task HistoricalDiff_RoundTripsFolded(DiffChangeState state)
     {
         var conversationId = $"diff-{state}";
         await _fixture.CreateSessionAsync(conversationId);
@@ -254,7 +319,7 @@ public sealed class ConversationRepositoryTests
         Assert.Equal(state, restored.DiffState);
         Assert.Equal("+ hello world", restored.EventDetail);
         Assert.Equal(1, restored.DiffPreview.Additions);
-        Assert.Equal(expectedExpanded, restored.IsDiffExpanded);
+        Assert.False(restored.IsDiffExpanded);
     }
 
     [Fact]

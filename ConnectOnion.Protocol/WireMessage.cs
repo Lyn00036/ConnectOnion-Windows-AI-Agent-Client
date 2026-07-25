@@ -27,9 +27,18 @@ public sealed class WireMessage
     /// </summary>
     public static WireMessage Parse(string json)
     {
-        using var doc = JsonDocument.Parse(json, JsonOptions);
+        using var doc = ParseDocument(json);
         return new WireMessage(doc.RootElement.Clone());
     }
+
+    /// <summary>
+    /// Parses an inbound frame for scoped, transient handling without cloning its backing bytes.
+    /// The receive loop owns and disposes the returned document after all synchronous event
+    /// consumers finish. Public callers use <see cref="Parse"/>, whose clone remains valid after
+    /// the parse document is gone.
+    /// </summary>
+    internal static JsonDocument ParseDocument(string json)
+        => JsonDocument.Parse(json, JsonOptions);
 
     /// <summary>Wraps an element the caller has already parsed, so a reader that holds a live
     /// <see cref="JsonDocument"/> can reuse the typed accessors without paying for a second parse
@@ -55,9 +64,10 @@ public sealed class WireMessage
 
 /// <summary>
 /// A streamed intermediate event surfaced to the UI while the agent works.
-/// <see cref="RawJson"/> carries the full frame so the client can read the
-/// per-type fields (tool id, status, args, result, timings, …) it needs to merge
-/// running/finished events into a single bubble.
+/// <see cref="RawJson"/> carries the fields the client needs to project and persist the event.
+/// This is normally the full frame; transport-only <c>session_sync</c> frames are compacted before
+/// buffering because their full form repeats the host's complete messages, trace, and permissions
+/// on every iteration while the client consumes only scalar session state.
 /// </summary>
 /// <param name="EventId">Server-assigned event identifier, used as
 /// <c>last_msg_id</c> on reconnect so the server can replay only missed events.</param>

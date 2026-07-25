@@ -626,9 +626,11 @@ public sealed class AgentConnectionService : IAsyncDisposable
     // Port of _handleMessage: dispatch on the frame's type discriminator.
     private async Task HandleMessageAsync(string json, CancellationToken ct)
     {
-        WireMessage msg;
-        try { msg = WireMessage.Parse(json); }
+        JsonDocument document;
+        try { document = WireMessage.ParseDocument(json); }
         catch { return; }
+        using var documentOwner = document;
+        var msg = WireMessage.Wrap(document.RootElement);
 
         switch (msg.Type)
         {
@@ -643,7 +645,10 @@ public sealed class AgentConnectionService : IAsyncDisposable
                 // Raised before the connect promise resolves so a subscriber that reconciles
                 // history has done so by the time the caller's SendInputAsync continues.
                 if (state.ServerNewer) SessionDiverged?.Invoke(state);
-                _connectTcs?.TrySetResult(msg);
+                // The transient receive document is disposed when this handler returns, while
+                // RunContinuationsAsynchronously means EnsureConnectedAsync reads the message
+                // later. CONNECTED is tiny, so clone only this one cross-boundary frame.
+                _connectTcs?.TrySetResult(WireMessage.Parse(msg.Root.GetRawText()));
                 return;
             }
 
@@ -689,7 +694,11 @@ public sealed class AgentConnectionService : IAsyncDisposable
                 var eventId = msg.GetString("id");
                 if (!string.IsNullOrEmpty(eventId))
                     LastProcessedEventId = eventId;
-                StreamEvent?.Invoke(new AgentStreamEvent(msg.Type, DescribeEvent(msg), eventId, msg.Root.GetRawText()));
+                StreamEvent?.Invoke(new AgentStreamEvent(
+                    msg.Type,
+                    DescribeEvent(msg),
+                    eventId,
+                    BufferedEventJson(msg)));
                 return;
             }
 
@@ -766,6 +775,57 @@ public sealed class AgentConnectionService : IAsyncDisposable
             default:
                 return;
         }
+    }
+
+    /// <summary>
+    /// Returns the event payload retained by the run runtime. Most event kinds need their full
+    /// frame for projection and trace persistence. <c>session_sync</c> is different: the host
+    /// includes the entire session message history, trace, and permission table on every sync,
+    /// while the client consumes only the current mode. Retaining every full sync makes one long
+    /// turn hold a growing series of near-duplicate session snapshots.
+    /// </summary>
+    private static string BufferedEventJson(WireMessage msg)
+    {
+        if (msg.Type != "session_sync") return msg.Root.GetRawText();
+
+        var compact = new Dictionary<string, object?>
+        {
+            ["type"] = "session_sync",
+        };
+        CopyScalar(msg.Root, compact, "id");
+        CopyScalar(msg.Root, compact, "ts");
+        CopyScalar(msg.Root, compact, "session_id");
+
+        if (msg.TryGet("session", out var session) && session.ValueKind == JsonValueKind.Object)
+        {
+            var sessionState = new Dictionary<string, object?>();
+            CopyScalar(session, sessionState, "session_id");
+            CopyScalar(session, sessionState, "mode");
+            CopyScalar(session, sessionState, "turn");
+            CopyScalar(session, sessionState, "iteration");
+            compact["session"] = sessionState;
+        }
+
+        return JsonSerializer.Serialize(compact);
+    }
+
+    private static void CopyScalar(
+        JsonElement source,
+        Dictionary<string, object?> destination,
+        string name)
+    {
+        if (!source.TryGetProperty(name, out var value)) return;
+
+        destination[name] = value.ValueKind switch
+        {
+            JsonValueKind.String => value.GetString(),
+            JsonValueKind.Number when value.TryGetInt64(out var integer) => integer,
+            JsonValueKind.Number when value.TryGetDouble(out var number) => number,
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.Null => null,
+            _ => null,
+        };
     }
 
     private static string DescribeEvent(WireMessage msg) => msg.Type switch

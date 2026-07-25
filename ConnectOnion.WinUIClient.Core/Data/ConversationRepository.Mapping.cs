@@ -37,6 +37,12 @@ public sealed partial class ConversationRepository
             IsOnboarding = reader.GetInt32(13) != 0,
             CreatedAtUnixMs = reader.GetInt64(14),
         };
+        // Diff disclosure is presentation-only and is deliberately not persisted. Rows loaded
+        // from SQLite belong to a completed/historical transcript, so keep them compact even
+        // when their durable outcome is Failed, Pending, or another state that expands while a
+        // live runtime is still handling it.
+        if (m.IsDiffPreviewEvent) m.IsDiffExpanded = false;
+
         // Tool activity is stored in the existing event_args payload column. This keeps the
         // schema backward compatible while making the aggregate durable across page teardown
         // and application restart. Legacy per-tool rows still load normally and are upgraded
@@ -45,7 +51,9 @@ public sealed partial class ConversationRepository
         {
             try
             {
-                m.ToolActivity = JsonSerializer.Deserialize<ToolActivityViewModel>(m.EventArgs);
+                m.ToolActivity = JsonSerializer.Deserialize(
+                    m.EventArgs,
+                    ConversationJsonContext.Default.ToolActivityViewModel);
             }
             catch (Exception ex)
             {
@@ -81,7 +89,9 @@ public sealed partial class ConversationRepository
         if (string.IsNullOrWhiteSpace(payload)) return null;
         try
         {
-            return JsonSerializer.Deserialize<List<string>>(payload);
+            return JsonSerializer.Deserialize(
+                payload,
+                ConversationJsonContext.Default.ListString);
         }
         catch (Exception ex)
         {
@@ -196,9 +206,13 @@ public sealed partial class ConversationRepository
         // with. This is the counterpart to the deserialize in RowToMessage — the column does
         // double duty as a generic payload and as this specific aggregate's storage.
         var eventArgs = m.IsToolActivityEvent
-            ? JsonSerializer.Serialize(m.ToolActivity)
+            ? JsonSerializer.Serialize(
+                m.ToolActivity,
+                ConversationJsonContext.Default.ToolActivityViewModel)
             : m.IsThinkingEvent && m.ThoughtSteps.Count > 0
-                ? JsonSerializer.Serialize(m.ThoughtSteps)
+                ? JsonSerializer.Serialize(
+                    m.ThoughtSteps.ToList(),
+                    ConversationJsonContext.Default.ListString)
                 : m.EventArgs;
 
         // Empty strings are stored as NULL throughout. ChatMessage seeds its string properties
