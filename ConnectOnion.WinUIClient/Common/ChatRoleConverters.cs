@@ -142,10 +142,9 @@ public sealed class BoolToResourceBrushConverter : IValueConverter
 }
 
 /// <summary>
-/// Colors the connection dot under the composer. Only the two states the user can act on get a
-/// hue — Reconnecting amber ("something is wrong, it is being handled") and Offline red — while
-/// every healthy state stays on the neutral scale. A dot that is green whenever things are fine
-/// is a dot nobody reads, which defeats the point of having one for the moments they aren't.
+/// Colors the compact connection legend under the composer. Every transport phase has a
+/// dedicated composer-scoped brush so transitions remain distinguishable at a glance without
+/// changing the status language used by tool cards and the rest of the application.
 /// </summary>
 public sealed class ConnectionPhaseToBrushConverter : IValueConverter
 {
@@ -154,14 +153,15 @@ public sealed class ConnectionPhaseToBrushConverter : IValueConverter
         var key = value is ConnectionPhase phase
             ? phase switch
             {
-                ConnectionPhase.Reconnecting => "AttentionBrush",
-                ConnectionPhase.Offline => "DangerBrush",
-                ConnectionPhase.Waiting => "AttentionBrush",
-                ConnectionPhase.Running or ConnectionPhase.Connecting => "StatusRunningBrush",
-                ConnectionPhase.Connected => "TextSecondaryBrush",
-                _ => "TextTertiaryBrush",
+                ConnectionPhase.Connecting => "ComposerStatusConnectingBrush",
+                ConnectionPhase.Connected => "ComposerStatusConnectedBrush",
+                ConnectionPhase.Running => "ComposerStatusRunningBrush",
+                ConnectionPhase.Waiting => "ComposerStatusWaitingBrush",
+                ConnectionPhase.Reconnecting => "ComposerStatusReconnectingBrush",
+                ConnectionPhase.Offline => "ComposerStatusOfflineBrush",
+                _ => "ComposerStatusIdleBrush",
             }
-            : "TextTertiaryBrush";
+            : "ComposerStatusIdleBrush";
         return (Brush)Application.Current.Resources[key];
     }
 

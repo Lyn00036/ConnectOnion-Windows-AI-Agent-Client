@@ -75,6 +75,7 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
             OnPropertyChanged(nameof(AgentDisplayName));
             OnPropertyChanged(nameof(AgentAddress));
             OnPropertyChanged(nameof(DirectUrl));
+            OnPropertyChanged(nameof(CanShareAgent));
             OnPropertyChanged(nameof(HasAgent));
             OnPropertyChanged(nameof(AgentInitial));
             OnPropertyChanged(nameof(AgentAvatarPaletteIndex));
@@ -89,6 +90,7 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
     public int AgentAvatarPaletteIndex => AvatarPalette.From(AgentName);
     public string AgentAddress => _agent?.Address ?? "";
     public string? DirectUrl => _agent?.DirectUrl;
+    public bool CanShareAgent => _agent?.IsRelayOnly == true;
     public bool HasAgent => _agent is not null;
     public string ComposerPlaceholder => string.IsNullOrWhiteSpace(AgentDisplayName)
         ? "Ask this agent anything"
@@ -124,6 +126,15 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
     public string DisplayModel => GetInfoValue("model") ?? "";
 
     public bool HasDisplayModel => !string.IsNullOrWhiteSpace(DisplayModel);
+    public string Trust => GetInfoValue("trust") ?? "";
+    public string Version => GetInfoValue("version") ?? "";
+    public string ProfileMetadata => string.Join(" · ", new[]
+    {
+        DisplayModel,
+        Trust,
+        string.IsNullOrWhiteSpace(Version) ? "" : $"v{Version}",
+    }.Where(value => !string.IsNullOrWhiteSpace(value)));
+    public bool HasProfileMetadata => !string.IsNullOrWhiteSpace(ProfileMetadata);
 
     public bool HasToolSummary => ToolNames.Count > 0;
     public int ToolCount => ToolNames.Count;
@@ -157,7 +168,24 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
 
     /// <summary>Same purpose as <c>ChatViewModel.AcceptedInputs</c>: gates the composer's attachment UI against the agent's real <c>/info</c> capability.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AcceptedInputsSummary))]
+    [NotifyPropertyChangedFor(nameof(HasAcceptedInputsSummary))]
     public partial AgentAcceptedInputs? AcceptedInputs { get; private set; }
+
+    public string AcceptedInputsSummary
+    {
+        get
+        {
+            if (AcceptedInputs is null) return "";
+            var parts = new List<string>();
+            if (AcceptedInputs.Text == true) parts.Add("text");
+            if (AcceptedInputs.Images == true) parts.Add("images");
+            if (AcceptedInputs.Files is { } files)
+                parts.Add($"files ({files.MaxFileSizeMb} MB, up to {files.MaxFilesPerRequest})");
+            return parts.Count == 0 ? "No declared inputs" : $"Accepts {string.Join(" · ", parts)}";
+        }
+    }
+    public bool HasAcceptedInputsSummary => AcceptedInputs is not null;
 
     /// <summary>The agent's declared skills, from the same cached <c>/info</c> as
     /// <see cref="AcceptedInputs"/>. Feeds the composer's slash palette and, through
@@ -420,6 +448,10 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
         RefreshToolNames();
         OnPropertyChanged(nameof(DisplayModel));
         OnPropertyChanged(nameof(HasDisplayModel));
+        OnPropertyChanged(nameof(Trust));
+        OnPropertyChanged(nameof(Version));
+        OnPropertyChanged(nameof(ProfileMetadata));
+        OnPropertyChanged(nameof(HasProfileMetadata));
         OnPropertyChanged(nameof(HasToolSummary));
         OnPropertyChanged(nameof(ToolCount));
         OnPropertyChanged(nameof(ModelAndToolCount));

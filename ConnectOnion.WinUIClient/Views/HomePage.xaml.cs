@@ -196,7 +196,21 @@ public sealed partial class HomePage : Page, IReloadablePage, IDisposable
 
             agentsState.SelectedAgentId = agentId;
             await AppServices.Agents.SaveAsync(agentsState, _lifetimeCts.Token);
-            await EnsureSessionAsync(agentId);
+
+            var sessionsState = await AppServices.Sessions.LoadAsync(_lifetimeCts.Token);
+            var recentSession = SessionSelection.FindExisting(
+                sessionsState.Sessions,
+                activeSessionId: null,
+                agentId: agentId);
+
+            if (recentSession is null)
+            {
+                Frame.Navigate(typeof(AgentDetailPage));
+                return;
+            }
+
+            sessionsState.ActiveSessionId = recentSession.Id;
+            await AppServices.Sessions.SaveAsync(sessionsState);
             Frame.Navigate(typeof(ChatPage));
         }
         catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested)
@@ -233,26 +247,6 @@ public sealed partial class HomePage : Page, IReloadablePage, IDisposable
         item.IsHighlighted = true;
         try { await Task.Delay(TimeSpan.FromSeconds(1.6), _lifetimeCts.Token); }
         finally { if (!_lifetimeCts.IsCancellationRequested) item.IsHighlighted = false; }
-    }
-
-    private static async Task EnsureSessionAsync(string agentId)
-    {
-        var sessionsState = await AppServices.Sessions.LoadAsync();
-        var recent = SessionSelection.FindExisting(
-            sessionsState.Sessions, sessionsState.ActiveSessionId, agentId);
-        if (recent?.Id == sessionsState.ActiveSessionId) return;
-
-        if (recent is not null)
-        {
-            sessionsState.ActiveSessionId = recent.Id;
-            await AppServices.Sessions.SaveAsync(sessionsState);
-            return;
-        }
-
-        var session = SessionSummary.NewConversation(agentId, sessionsState.Sessions);
-        sessionsState.Sessions.Add(session);
-        sessionsState.ActiveSessionId = session.Id;
-        await AppServices.Sessions.SaveAsync(sessionsState);
     }
 
     private static string ShortenAddress(AgentConfig agent)

@@ -99,13 +99,33 @@
                         </StackPanel>
                     </StackPanel>
 
-                    <TextBlock Text="{x:Bind Vm.DisplayModel, Mode=OneWay}"
+                    <TextBlock Text="{x:Bind Vm.ProfileMetadata, Mode=OneWay}"
                                FontSize="12"
                                Foreground="{ThemeResource TextSecondaryBrush}"
                                HorizontalAlignment="Center"
                                TextAlignment="Center"
                                TextTrimming="CharacterEllipsis"
-                               Visibility="{x:Bind Vm.HasDisplayModel, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                               Visibility="{x:Bind Vm.HasProfileMetadata, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                    <TextBlock Text="{x:Bind Vm.AcceptedInputsSummary, Mode=OneWay}"
+                               FontSize="11"
+                               Foreground="{ThemeResource TextTertiaryBrush}"
+                               HorizontalAlignment="Center"
+                               TextAlignment="Center"
+                               TextWrapping="Wrap"
+                               Visibility="{x:Bind Vm.HasAcceptedInputsSummary, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal"
+                            HorizontalAlignment="Center"
+                            Spacing="8">
+                    <Button Content="Share"
+                            Click="Share_Click"
+                            Visibility="{x:Bind Vm.CanShareAgent, Mode=OneWay, Converter={StaticResource BoolToVis}}"
+                            AutomationProperties.Name="Share this relay agent" />
+                    <Button x:Name="BalanceButton"
+                            Visibility="Collapsed"
+                            Click="Balance_Click"
+                            AutomationProperties.Name="View balance and top up for this agent" />
                 </StackPanel>
 
                 <Button Content="What can you do?"

@@ -169,6 +169,24 @@ public sealed class ToolStepInvocationTests
     }
 
     [Fact]
+    public void OpenAction_IsLimitedToHttpUrls()
+    {
+        var web = new ToolStepViewModel
+        {
+            ToolName = "go_to",
+            Arguments = """{"url":"https://example.test/path"}""",
+        };
+        var file = new ToolStepViewModel
+        {
+            ToolName = "read_file",
+            Arguments = """{"path":"C:\\temp\\notes.txt"}""",
+        };
+
+        Assert.True(web.CanOpenInvocation);
+        Assert.False(file.CanOpenInvocation);
+    }
+
+    [Fact]
     public void InlineInvocation_StandsDownOnceTheStepIsExpanded()
     {
         // The expanded block prints the same value in full; showing both put the command on screen

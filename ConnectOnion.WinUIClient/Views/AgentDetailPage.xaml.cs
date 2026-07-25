@@ -53,6 +53,9 @@ public sealed partial class AgentDetailPage : Page, IReloadablePage, IShutdownDi
 
         Composer.CanSubmit = Vm.CanStartConversation;
         Composer.FocusInput();
+        // Account balance is useful secondary information, never a gate on the first interactive
+        // frame. The resilient HTTP pipeline may retry, so refresh only after the composer works.
+        _ = RefreshBalanceAsync();
     }
 
     // This composer starts a fresh conversation before navigating to ChatPage.
@@ -70,6 +73,35 @@ public sealed partial class AgentDetailPage : Page, IReloadablePage, IShutdownDi
     {
         if ((sender as FrameworkElement)?.Tag is string prompt)
             Composer.SetDraft(prompt);
+    }
+
+    private async void Share_Click(object sender, RoutedEventArgs e)
+    {
+        if (!Vm.CanShareAgent || string.IsNullOrWhiteSpace(Vm.AgentAddress)) return;
+        var dialog = new AgentShareDialog(Vm.AgentAddress) { XamlRoot = XamlRoot };
+        await dialog.ShowAsync();
+    }
+
+    private async System.Threading.Tasks.Task RefreshBalanceAsync()
+    {
+        try
+        {
+            var profile = await Services.AppServices.OpenOnionAccount.RefreshAsync();
+            if (!IsLoaded) return;
+            BalanceButton.Content = $"Balance ${profile.BalanceUsd:0.00} · Top up";
+            BalanceButton.Visibility = Visibility.Visible;
+        }
+        catch
+        {
+            if (IsLoaded) BalanceButton.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private async void Balance_Click(object sender, RoutedEventArgs e)
+    {
+        var address = Uri.EscapeDataString(Vm.AgentAddress);
+        await Services.AppServices.UriLauncher.LaunchAsync(
+            new Uri($"https://o.openonion.ai/purchase?agent={address}"));
     }
 
     private async System.Threading.Tasks.Task StartConversationAsync(ComposerSubmission submission)
