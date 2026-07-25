@@ -1,3 +1,4 @@
+using System;
 using ConnectOnion.WinUIClient.Models;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -15,6 +16,33 @@ public sealed partial class PlanReviewCard : UserControl
     public event RoutedEventHandler? ChangesRequested;
     public event RoutedEventHandler? RejectRequested;
     private void Approve_Click(object sender, RoutedEventArgs e) => ApproveRequested?.Invoke(this, e);
+    private async void ReviewSections_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new PlanSectionReviewDialog(Message.EventDetail ?? "") { XamlRoot = XamlRoot };
+        var result = await dialog.ShowAsync();
+        if (result == ContentDialogResult.None) return;
+
+        Message.PlanFeedback = dialog.BuildFeedback();
+        if (result == ContentDialogResult.Primary)
+            ApproveRequested?.Invoke(this, new RoutedEventArgs());
+        else
+        {
+            if (string.IsNullOrWhiteSpace(Message.PlanFeedback))
+                Message.PlanFeedback = "Please revise the plan.";
+            ChangesRequested?.Invoke(this, new RoutedEventArgs());
+        }
+    }
+    private async void CopyPlan_Click(object sender, RoutedEventArgs e)
+    {
+        Services.ClipboardService.CopyText(Message.EventDetail ?? "");
+        if (sender is not Button button) return;
+        var original = button.Content;
+        button.Content = "Copied";
+        button.IsEnabled = false;
+        await System.Threading.Tasks.Task.Delay(800);
+        button.Content = original;
+        button.IsEnabled = true;
+    }
     private void RequestChanges_Click(object sender, RoutedEventArgs e) => Message.OpenPlanFeedback();
     private void SendFeedback_Click(object sender, RoutedEventArgs e) => ChangesRequested?.Invoke(this, e);
     private void CancelFeedback_Click(object sender, RoutedEventArgs e) => Message.ClosePlanFeedback();

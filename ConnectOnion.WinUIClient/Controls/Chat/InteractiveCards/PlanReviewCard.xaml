@@ -17,6 +17,15 @@
                     <TextBlock Text="Review scope, ordering, and risks before approving."
                         Style="{StaticResource InteractiveHelperTextStyle}" VerticalAlignment="Center" />
                 </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Content="Review sections…"
+                            Click="ReviewSections_Click"
+                            IsEnabled="{x:Bind Message.IsInteractiveEditable, Mode=OneWay}"
+                            AutomationProperties.Name="Open full plan and review each section" />
+                    <Button Content="Copy plan"
+                            Click="CopyPlan_Click"
+                            AutomationProperties.Name="Copy execution plan" />
+                </StackPanel>
                 <ScrollViewer MaxHeight="420" VerticalScrollBarVisibility="Auto"
                     HorizontalScrollBarVisibility="Disabled">
                     <local:MarkdownTextBlock Markdown="{x:Bind Message.EventDetail, Mode=OneWay}"
