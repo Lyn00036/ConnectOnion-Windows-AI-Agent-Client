@@ -5,7 +5,7 @@
     xmlns:ic="using:FluentIcons.WinUI"
     MinWidth="0" HorizontalAlignment="Stretch">
     <StackPanel MinWidth="0" HorizontalAlignment="Stretch" Spacing="16">
-        <TextBlock Text="This desktop client uses an Ed25519 identity to sign ConnectOnion messages. The private seed is stored locally and is not shown here."
+        <TextBlock Text="This desktop client uses an Ed25519 identity to sign ConnectOnion messages. Agents recognize you by the address below."
                    TextWrapping="Wrap" Foreground="{ThemeResource TextSecondaryBrush}" />
         <Border Style="{StaticResource SettingsSectionStyle}" HorizontalAlignment="Stretch">
             <StackPanel Spacing="18">
@@ -36,9 +36,36 @@
                     <TextBlock x:Name="StorageText" TextWrapping="Wrap" IsTextSelectionEnabled="True"
                                FontFamily="{StaticResource JetBrainsMonoFontFamily}" Foreground="{ThemeResource TextSecondaryBrush}" />
                 </StackPanel>
-                <TextBlock Text="Private seed is stored DPAPI-encrypted in the local SQLite identity_keys table and is intentionally hidden."
+                <TextBlock Text="Your private identity is encrypted on this device with your Windows account, which is what keeps the database safe — and also why a copy of it cannot be opened anywhere else. Use the backup below to move this identity to another machine."
                            TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
                            Foreground="{ThemeResource TextSecondaryBrush}" />
+            </StackPanel>
+        </Border>
+
+        <Border Style="{StaticResource SettingsSectionStyle}" HorizontalAlignment="Stretch">
+            <StackPanel Spacing="12">
+                <TextBlock Text="Backup and recovery" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <TextBlock x:Name="BackupDescriptionText" TextWrapping="Wrap" MinWidth="0"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextSecondaryBrush}" />
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <Button x:Name="ShowBackupButton" Click="ShowBackup_Click"
+                            AutomationProperties.AutomationId="ShowIdentityBackupButton"
+                            AutomationProperties.Name="Show recovery phrase">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <ic:FluentIcon Icon="Key" IconVariant="Regular" IconSize="Size16" />
+                            <TextBlock x:Name="ShowBackupButtonText" Text="Show recovery phrase" />
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="RestoreButton" Click="Restore_Click"
+                            AutomationProperties.AutomationId="RestoreIdentityButton"
+                            AutomationProperties.Name="Restore an identity from a recovery phrase">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <ic:FluentIcon Icon="ArrowClockwise" IconVariant="Regular" IconSize="Size16" />
+                            <TextBlock Text="Restore..." />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
             </StackPanel>
         </Border>
     </StackPanel>

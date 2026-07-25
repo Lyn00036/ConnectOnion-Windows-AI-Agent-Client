@@ -60,8 +60,8 @@ public sealed class AgentTurnExecutor : ITurnExecutor
                 if (!string.IsNullOrEmpty(content)) sink.UpdatePartial(content!);
             }
         }
-        void OnOnboard() => sink.Publish(new AgentStreamEvent(
-            "ONBOARD_REQUIRED", "Agent requires onboarding", null, "{\"type\":\"ONBOARD_REQUIRED\"}"));
+        void OnOnboard(OnboardRequest r) => sink.Publish(new AgentStreamEvent(
+            "ONBOARD_REQUIRED", "Agent requires onboarding", null, BuildOnboardFrame(r)));
         void OnAsk(AskUserRequest r)
         {
             sink.Publish(new AgentStreamEvent("ask_user", r.Text, r.Id, BuildAskUserFrame(r)));
@@ -146,6 +146,19 @@ public sealed class AgentTurnExecutor : ITurnExecutor
         };
         return JsonSerializer.Serialize(frame);
     }
+
+    /// <summary>Re-serializes the onboarding gate so the projection sees the same shape whether it
+    /// is reading the live frame or replaying this one. The keys are the host's own
+    /// (<c>methods</c>/<c>payment_amount</c>/<c>payment_address</c>) so
+    /// <c>AgentInteractiveParsers.ParseOnboard</c> round-trips it.</summary>
+    private static string BuildOnboardFrame(OnboardRequest r)
+        => JsonSerializer.Serialize(new Dictionary<string, object?>
+        {
+            ["type"] = "ONBOARD_REQUIRED",
+            ["methods"] = r.Methods,
+            ["payment_amount"] = r.PaymentAmount,
+            ["payment_address"] = r.PaymentAddress,
+        });
 
     private static string BuildApprovalFrame(ApprovalRequest r)
     {

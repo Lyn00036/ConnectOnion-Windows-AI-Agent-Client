@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using System.Threading.Tasks;
 using ConnectOnion.WinUIClient.Data;
@@ -57,6 +58,42 @@ public sealed partial class MainWindow : IChatWindow
         // IdentityStore itself can only reach Debug output, which Release builds compile away.
         Serilog.Log.Warning("Agent identity was reset and regenerated: {Reason}", reason);
         ShowIdentityResetToast(reason);
+    }
+
+    /// <summary>
+    /// Shows the recovery phrase of an identity this run just minted, once.
+    ///
+    /// <para>An identity is created the first time anything needs to connect, which is normally
+    /// before a window exists — so the phrase is latched in <see cref="IdentityStore"/> and
+    /// presented here, at the first moment there is somewhere to present it. A phrase the user never
+    /// sees is not a backup, which is the whole reason the identity is derived from one.</para>
+    ///
+    /// <para>Acknowledged as soon as it has been shown, not when the user confirms: dismissing the
+    /// dialog loses nothing, because Settings → Identity can show it again at any time. Re-raising
+    /// it on every launch until someone clicks the right button would just train people to dismiss
+    /// it faster.</para>
+    /// </summary>
+    private async void RevealNewRecoveryPhraseIfAny()
+    {
+        if (IdentityStore.NewlyCreatedMnemonic is null) return;
+        if (Content?.XamlRoot is not { } xamlRoot) return;
+
+        IdentityStore.AcknowledgeNewMnemonic();
+
+        try
+        {
+            var dialog = new Controls.RecoveryPhraseDialog(IdentityStore.ExportBackup(), isFirstReveal: true)
+            {
+                XamlRoot = xamlRoot,
+            };
+            await dialog.ShowAsync();
+        }
+        catch (System.Exception ex)
+        {
+            // A dialog that cannot open (another one already up, window closing) must not take the
+            // shell down with it — the phrase is still reachable from Settings.
+            Serilog.Log.Warning(ex, "Could not show the new recovery phrase dialog");
+        }
     }
 
     private void ShowIdentityResetToast(string reason)

@@ -60,10 +60,23 @@
             NoLeftClickDelay="True"
             ContextMenuMode="PopupMenu">
             <tb:TaskbarIcon.ContextFlyout>
-                <MenuFlyout AreOpenCloseAnimationsEnabled="False">
+                <MenuFlyout x:Name="TrayContextMenu"
+                            AreOpenCloseAnimationsEnabled="False"
+                            Opening="TrayContextMenu_Opening">
                     <MenuFlyoutItem
-                        Text="Open Window"
-                        Command="{x:Bind OpenWindowCommand}" />
+                        x:Name="RecentChatsHeader"
+                        Text="Recent chats"
+                        IsEnabled="False" />
+                    <MenuFlyoutSeparator x:Name="RecentChatsEndSeparator" />
+                    <MenuFlyoutItem
+                        Text="New Chat"
+                        Command="{x:Bind NewChatFromTrayCommand}">
+                        <MenuFlyoutItem.Icon>
+                            <ic:FluentIcon Icon="Add"
+                                           IconVariant="Regular"
+                                           IconSize="Size16" />
+                        </MenuFlyoutItem.Icon>
+                    </MenuFlyoutItem>
                     <MenuFlyoutSeparator />
                     <MenuFlyoutItem
                         Text="Exit"
@@ -228,7 +241,8 @@
             </Grid.ColumnDefinitions>
 
             <controls:ShellSidebar x:Name="ShellSidebar"
-                                   Grid.Column="0" />
+                                   Grid.Column="0"
+                                   Canvas.ZIndex="10" />
 
             <Frame Grid.Column="1"
                    x:Name="ContentFrame"
