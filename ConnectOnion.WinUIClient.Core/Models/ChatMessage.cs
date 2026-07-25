@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Text.Json.Serialization;
 using CommunityToolkit.Mvvm.ComponentModel;
+using ConnectOnion.Protocol;
 
 namespace ConnectOnion.WinUIClient.Models;
 
@@ -199,8 +200,63 @@ public sealed partial class ChatMessage : Common.ObservableObject
     [JsonIgnore]
     public partial string OnboardInviteCode { get; set; }
 
+    /// <summary>
+    /// The trust gate this card is answering: which methods the agent accepts and, for payment,
+    /// how much and where.
+    ///
+    /// <para><c>[JsonIgnore]</c> like the rest of the live interactive state — a persisted card is
+    /// a record that a gate happened, and its controls are meaningless once the socket is gone.
+    /// Null on a reloaded card, which is why every reader below tolerates it.</para>
+    /// </summary>
+    [JsonIgnore]
+    public OnboardRequest? OnboardRequest { get; set; }
+
     [JsonIgnore]
     public bool IsOnboardingInputEnabled => IsOnboarding && !IsOnboardingSubmitted;
+
+    /// <summary>Show the invite-code row. A gate with no parsed request still shows it: that is the
+    /// near-universal method, and offering nothing would strand the user on a card they cannot
+    /// answer (see <see cref="ConnectOnion.Protocol.OnboardRequest.AcceptsInviteCode"/>).</summary>
+    [JsonIgnore]
+    public bool ShowOnboardInviteCode
+        => IsOnboardingInputEnabled && (OnboardRequest?.AcceptsInviteCode ?? true);
+
+    /// <summary>Show the payment row. Requires both an offered method and a quoted amount — a
+    /// payment gate with no amount is not something a user can act on.</summary>
+    [JsonIgnore]
+    public bool ShowOnboardPayment
+        => IsOnboardingInputEnabled && OnboardRequest is { AcceptsPayment: true };
+
+    /// <summary>Separator between the two options, shown only when both are on offer.</summary>
+    [JsonIgnore]
+    public bool ShowOnboardMethodDivider => ShowOnboardInviteCode && ShowOnboardPayment;
+
+    /// <summary>Where to transfer, when the host said. Absent far more often than not, and never
+    /// guessed — an invented destination for a real transfer loses the user's money.</summary>
+    [JsonIgnore]
+    public string? OnboardPaymentAddress => OnboardRequest?.PaymentAddress;
+
+    [JsonIgnore]
+    public bool HasOnboardPaymentAddress => !string.IsNullOrWhiteSpace(OnboardPaymentAddress);
+
+    /// <summary>
+    /// The payment button's label, which states the amount because the button is an <i>assertion</i>
+    /// the user is making ("I've transferred $5"), not a request. The agent verifies it
+    /// independently; clicking it does not move any money.
+    /// </summary>
+    [JsonIgnore]
+    public string OnboardPaymentLabel => OnboardRequest?.PaymentAmount is { } amount
+        ? $"I've transferred {amount:0.##}"
+        : "I've paid";
+
+    [JsonIgnore]
+    public string OnboardPaymentPrompt => OnboardRequest?.PaymentAmount is { } amount
+        ? (HasOnboardPaymentAddress
+            ? $"Transfer {amount:0.##} to the address below, then confirm."
+            // Without an address there is nothing to instruct, so the card states the amount and
+            // leaves the arrangement to whatever the agent told the user out of band.
+            : $"This agent asks for {amount:0.##} before it will talk.")
+        : "";
 
     [JsonIgnore]
     public bool IsUser => Role == ChatRole.User;
@@ -524,6 +580,11 @@ public sealed partial class ChatMessage : Common.ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsOnboardingInputEnabled))]
+    // Both method rows collapse with the input they belong to; a spent gate must not keep
+    // offering a second answer.
+    [NotifyPropertyChangedFor(nameof(ShowOnboardInviteCode))]
+    [NotifyPropertyChangedFor(nameof(ShowOnboardPayment))]
+    [NotifyPropertyChangedFor(nameof(ShowOnboardMethodDivider))]
     [JsonIgnore]
     public partial bool IsOnboardingSubmitted { get; set; }
 

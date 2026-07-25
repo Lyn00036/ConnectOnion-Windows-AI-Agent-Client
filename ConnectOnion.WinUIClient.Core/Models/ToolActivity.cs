@@ -233,6 +233,9 @@ public sealed partial class ToolActivityViewModel : Common.ObservableObject
     /// unified card keeps its "Tool activity · Waiting for approval" header even over a single
     /// tool.</summary>
     [JsonIgnore] public bool ShowCardChrome => !IsSingleStep || HasApproval;
+    /// <summary>Single-step tool records use the reading measure; multi-step and approval
+    /// workflows retain the wider operational track.</summary>
+    [JsonIgnore] public double PresentationMaxWidth => ShowCardChrome ? 920 : 760;
 
     // Only IsExpanded gates the timeline. Status and DisplayMode choose the *default* expansion
     // (see ToolActivityProjector), never override it — ORing "Failed" in here left the header
@@ -295,6 +298,7 @@ public sealed partial class ToolActivityViewModel : Common.ObservableObject
         OnPropertyChanged(nameof(IsVisible));
         OnPropertyChanged(nameof(IsSingleStep));
         OnPropertyChanged(nameof(ShowCardChrome));
+        OnPropertyChanged(nameof(PresentationMaxWidth));
         OnPropertyChanged(nameof(IsTimelineVisible));
         OnPropertyChanged(nameof(IsDetailed));
         OnPropertyChanged(nameof(StatusGlyph));
@@ -347,13 +351,66 @@ public sealed partial class ToolStepViewModel : Common.ObservableObject
     public partial string? Summary { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Invocation))]
+    [NotifyPropertyChangedFor(nameof(HasInvocation))]
+    [NotifyPropertyChangedFor(nameof(ShowInlineInvocation))]
+    [NotifyPropertyChangedFor(nameof(InvocationLabel))]
+    [NotifyPropertyChangedFor(nameof(InvocationText))]
+    [NotifyPropertyChangedFor(nameof(InvocationPrefix))]
+    [NotifyPropertyChangedFor(nameof(InvocationDisplayText))]
+    [NotifyPropertyChangedFor(nameof(InvocationSecondary))]
+    [NotifyPropertyChangedFor(nameof(HasInvocationSecondary))]
+    // The row title drops its target digest once an invocation carries the real value.
+    [NotifyPropertyChangedFor(nameof(ShowDisplayTarget))]
+    [NotifyPropertyChangedFor(nameof(DisplayLabel))]
     public partial string? Arguments { get; set; }
+
+    partial void OnArgumentsChanged(string? value) => _invocation = null;
+
+    // ---- What the tool was asked to do ----
+    //
+    // Derived from the persisted Arguments rather than stored, for the same reason IconKind is
+    // derived from ToolName: it costs no column, needs no migration, and conversations recorded
+    // before invocations were rendered show their commands as soon as they are reopened.
+    //
+    // Memoized because the getter parses JSON and the row binds several of these; the cache is
+    // dropped whenever Arguments changes (see OnArgumentsChanged), which in practice is once, at
+    // projection time.
+
+    private ToolInvocation? _invocation;
+
+    /// <summary>The shell command, search pattern, URL or task this step was given. See
+    /// <see cref="ToolInvocations"/>.</summary>
+    [JsonIgnore] public ToolInvocation Invocation => _invocation ??= ToolInvocations.Read(ToolName, Arguments);
+
+    /// <summary>Whether there is an invocation worth a line. False leaves the row exactly as it
+    /// looked before — a tool taking no readable arguments must not gain an empty block.</summary>
+    [JsonIgnore] public bool HasInvocation => Invocation.HasValue;
+
+    /// <summary>The trimmed one-liner under the step's name, shown only while the step is folded.
+    /// Once it is open the labelled block below carries the same value in full, and printing both
+    /// left the command on screen twice — the same redundancy the single Result/Error block exists
+    /// to avoid.</summary>
+    [JsonIgnore] public bool ShowInlineInvocation => HasInvocation && !IsExpanded;
+    [JsonIgnore] public string InvocationLabel => Invocation.Label;
+    [JsonIgnore] public string InvocationText => Invocation.Text;
+    /// <summary>Rendered before the text: a shell <c>$</c> for a command, empty otherwise. The gap
+    /// after it is layout (the row panel's spacing), never a trailing space — XAML collapses
+    /// whitespace between adjacent inlines, which rendered the command as <c>$rm</c>.</summary>
+    [JsonIgnore] public string InvocationPrefix => Invocation.Prefix;
+    /// <summary>Prefix and text as one string, for the wrapping block that cannot split them.</summary>
+    [JsonIgnore] public string InvocationDisplayText => Invocation.DisplayText;
+    [JsonIgnore] public string? InvocationSecondary => Invocation.Secondary;
+    [JsonIgnore] public bool HasInvocationSecondary => Invocation.HasSecondary;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasResult))]
     [NotifyPropertyChangedFor(nameof(DetailText))]
     [NotifyPropertyChangedFor(nameof(HasDetail))]
     [NotifyPropertyChangedFor(nameof(DetailLabel))]
+    // Which of the two output blocks renders depends on both fields: an error forces the log.
+    [NotifyPropertyChangedFor(nameof(RendersDetailAsMarkdown))]
+    [NotifyPropertyChangedFor(nameof(RendersDetailAsLog))]
     public partial string? Result { get; set; }
 
     [ObservableProperty]
@@ -361,6 +418,9 @@ public sealed partial class ToolStepViewModel : Common.ObservableObject
     [NotifyPropertyChangedFor(nameof(DetailText))]
     [NotifyPropertyChangedFor(nameof(HasDetail))]
     [NotifyPropertyChangedFor(nameof(DetailLabel))]
+    // Which of the two output blocks renders depends on both fields: an error forces the log.
+    [NotifyPropertyChangedFor(nameof(RendersDetailAsMarkdown))]
+    [NotifyPropertyChangedFor(nameof(RendersDetailAsLog))]
     public partial string? Error { get; set; }
 
     [ObservableProperty]
@@ -374,6 +434,7 @@ public sealed partial class ToolStepViewModel : Common.ObservableObject
     public partial double? DurationMs { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowInlineInvocation))]
     public partial bool IsExpanded { get; set; }
 
     // ---- Per-step expanded-log UI state ----
@@ -421,7 +482,15 @@ public sealed partial class ToolStepViewModel : Common.ObservableObject
     /// before icons existed draw them the moment they are reopened.</summary>
     [JsonIgnore] public ToolIconKind IconKind => ToolIcons.ForTool(ToolName);
     [JsonIgnore] public bool HasDisplayTarget => !string.IsNullOrWhiteSpace(DisplayTarget);
-    [JsonIgnore] public string DisplayLabel => HasDisplayTarget ? $"{DisplayName} · {DisplayTarget}" : DisplayName;
+
+    /// <summary>
+    /// The target is a <i>digest</i> of the arguments — a URL's host, a query's first words — so it
+    /// stands down once the invocation line below prints the real thing. Otherwise a grep row read
+    /// "Grep · Search: TODO" over a line that said "TODO", and a navigation named its host twice.
+    /// Kept when there is no invocation: then the digest is all the row has.
+    /// </summary>
+    [JsonIgnore] public bool ShowDisplayTarget => HasDisplayTarget && !HasInvocation;
+    [JsonIgnore] public string DisplayLabel => ShowDisplayTarget ? $"{DisplayName} · {DisplayTarget}" : DisplayName;
     /// <summary>Still true (and still fed to <see cref="AccessibilityName"/>) even though the
     /// collapsed row no longer prints the summary — the result digest reads usefully to a screen
     /// reader, which has no pointer to expand the step with.</summary>
@@ -449,6 +518,19 @@ public sealed partial class ToolStepViewModel : Common.ObservableObject
     [JsonIgnore] public string? DetailText => HasError ? Error : Result;
 
     [JsonIgnore] public bool HasDetail => !string.IsNullOrWhiteSpace(DetailText);
+
+    /// <summary>
+    /// Render this step's output as markdown prose rather than as a monospace log.
+    ///
+    /// <para>True only for tools that return documentation (<c>load_guide</c> and friends), and
+    /// never for a failed step: an error is a diagnostic whose exact characters matter, and running
+    /// a traceback through a markdown renderer mangles it — underscores turn into emphasis, and a
+    /// leading <c>#</c> becomes a heading.</para>
+    /// </summary>
+    [JsonIgnore] public bool RendersDetailAsMarkdown => HasDetail && !HasError && ToolInvocations.ProducesMarkdown(ToolName);
+
+    /// <summary>The monospace log block, which is everything the markdown block is not.</summary>
+    [JsonIgnore] public bool RendersDetailAsLog => HasDetail && !RendersDetailAsMarkdown;
 
     /// <summary>Heading over the block. The accent colour beside it comes from
     /// <see cref="Status"/> via <c>ToolStatusToBrushConverter</c>, so a failed step reads as an

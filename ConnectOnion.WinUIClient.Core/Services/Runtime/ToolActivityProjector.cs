@@ -319,14 +319,47 @@ public sealed class ToolActivityProjector
 
     /// <summary>Human label for a tool. The table covers the tools the reference agents ship
     /// with; anything else falls back to title-casing the raw name, so a custom tool still
-    /// reads as words rather than an identifier.</summary>
+    /// reads as words rather than an identifier.
+    ///
+    /// <para>These are <i>verbs</i>, not descriptions, because the row now prints the tool's
+    /// actual argument beneath them (see <see cref="ToolInvocations"/>) — "Click" over "the Sign in
+    /// button" reads as a sentence, where the older "Click element" left the row saying what kind
+    /// of thing it clicked but never which one. The browser block mirrors the reference web
+    /// client's <c>describeAction</c> table so the same run reads the same way in both clients.</para></summary>
     public static string DisplayName(string toolName) => toolName.ToLowerInvariant() switch
     {
-        "open_browser" => "Open browser", "go_to" or "navigate" => "Navigate to page", "get_text" => "Read page content",
-        "click" => "Click element", "type_text" or "type" => "Type text", "take_screenshot" => "Take screenshot",
-        "search_web" or "search" => "Search web", "read_file" => "Read file", "write_file" => "Write file",
-        "send_email" => "Send email", "delete_file" => "Delete file", "run_command" or "execute_command" => "Run command",
-        "upload_file" => "Upload file", "download_file" => "Download file", _ => ToReadableName(toolName),
+        // ---- browser: navigation ----
+        "open_browser" => "Open browser", "go_to" or "navigate" => "Open page", "newtab" => "New tab",
+        "close_tab" => "Close tab", "get_current_url" => "Get URL",
+        // ---- browser: pointer ----
+        "click" or "click_element_by_selector" or "click_element_near_selector" => "Click",
+        "double_click" => "Double-click", "right_click" => "Right-click", "hover" => "Hover",
+        "mouse_click" => "Click at point", "scroll" => "Scroll", "wait" => "Wait",
+        "set_viewport" => "Set viewport",
+        // ---- browser: reading ----
+        "get_text" => "Read page text", "extract_data" => "Extract data",
+        "extract_items_by_selector" => "Extract items", "get_links_from_page" => "Extract links",
+        "get_element_text_by_selector" => "Read element", "count_elements_by_selector" => "Count elements",
+        "find_element_by_description" => "Find element",
+        // ---- browser: input ----
+        "type_text" or "type" or "type_text_by_selector" or "keyboard_type" => "Type text",
+        "keyboard_press" => "Press key", "select_option" => "Select option", "check_checkbox" => "Check box",
+        "upload_file_by_selector" or "upload_file_after_click_by_selector" => "Upload file",
+        // ---- browser: capture / scripting ----
+        "take_screenshot" => "Take screenshot", "save_page_context" => "Save page context",
+        "save_state" => "Save login state", "run_page_script" or "run_frame_script" => "Run script",
+        // ---- shell, files, search ----
+        "search_web" or "web_search" or "search" => "Search web", "grep" => "Search files",
+        "glob" => "Match files", "find" => "Find files",
+        "read" or "read_file" => "Read file", "write" or "write_file" => "Write file", "edit" => "Edit file",
+        "send_email" => "Send email", "delete_file" => "Delete file",
+        "bash" or "shell" or "run" or "run_command" or "execute_command" => "Run command",
+        "run_background" => "Run in background",
+        "upload_file" => "Upload file", "download_file" => "Download file",
+        // ---- delegated work ----
+        "call_omo_agent" => "Delegate to agent", "background_output" => "Read background output",
+        "background_cancel" => "Cancel background task",
+        _ => ToReadableName(toolName),
     };
 
     public static bool IsHighRisk(string toolName)
@@ -343,10 +376,30 @@ public sealed class ToolActivityProjector
         try
         {
             using var doc = JsonDocument.Parse(raw);
-            return JsonSerializer.Serialize(Redact(doc.RootElement));
+            return JsonSerializer.Serialize(Redact(doc.RootElement), DisplayJsonOptions);
         }
         catch { return SanitizeText(raw); }
     }
+
+    /// <summary>
+    /// Serializer settings for arguments that will be <i>read by a person</i>.
+    ///
+    /// <para><b>The relaxed encoder is the point.</b> <see cref="JsonSerializer"/>'s default escapes
+    /// far more than JSON requires — not only non-ASCII, but <c>+</c>, <c>&amp;</c>, <c>&lt;</c> and
+    /// <c>&gt;</c> — so a perfectly ordinary search URL reached the timeline as
+    /// <c>google.com/search?q=Sydney+weather&ia=web</c>, and any Chinese argument arrived
+    /// as a wall of <c>\uXXXX</c>. Nothing was wrong with the data; it was unreadable purely because
+    /// of how it was re-encoded for display.</para>
+    ///
+    /// <para><b>"Unsafe" names an HTML/JS-injection concern that does not exist on this path.</b>
+    /// The result is rendered into a XAML <c>TextBlock</c> (which interprets no markup), written
+    /// through a parameterized SQLite command, and re-parsed as JSON — never interpolated into a
+    /// page or a script. Do not copy this encoder to somewhere that <i>is</i> such a context.</para>
+    /// </summary>
+    private static readonly JsonSerializerOptions DisplayJsonOptions = new()
+    {
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
 
     /// <summary>How much of a tool result the card keeps in memory. Generous next to what the
     /// scroller shows, small next to what a scrape returns.</summary>
@@ -360,9 +413,18 @@ public sealed class ToolActivityProjector
     /// <summary>Scrubs <c>key: value</c> / <c>key=value</c> secrets out of free-form text (log
     /// lines, stack traces, HTML). Best-effort by construction — it only catches the labelled
     /// form, so a bare token in prose survives; treat it as reducing accidental exposure in the
-    /// UI, not as a guarantee.</summary>
+    /// UI, not as a guarantee.
+    ///
+    /// <para>Then a second, exact pass over anything the user typed into a credentials form this
+    /// run (<see cref="SessionSecrets"/>). The labelled-form regex above cannot help there: an
+    /// agent typing a password into a browser sends it as <c>{"text": "hunter2"}</c>, where nothing
+    /// names it a secret and only knowing the value gives it away.</para></summary>
     public static string SanitizeText(string value)
-        => Regex.Replace(value ?? "", "(?i)(authorization|cookie|token|api[_-]?key|password|secret)\\s*[:=]\\s*([^\\s,;]+)", "$1=[hidden]");
+    {
+        var scrubbed = Regex.Replace(value ?? "", "(?i)(authorization|cookie|token|api[_-]?key|password|secret)\\s*[:=]\\s*([^\\s,;]+)", "$1=[hidden]");
+        // Skipped entirely when no credential has ever been entered, which is the usual case.
+        return SessionSecrets.IsEmpty ? scrubbed : SessionSecrets.Redact(scrubbed);
+    }
 
     /// <summary>Rebuilds a JSON tree with sensitive values replaced and every string scrubbed.
     /// Reconstructing rather than string-editing is what makes the redaction total: a secret

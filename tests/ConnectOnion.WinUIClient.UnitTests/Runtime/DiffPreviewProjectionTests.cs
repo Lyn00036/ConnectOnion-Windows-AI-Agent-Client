@@ -232,5 +232,6 @@ public class DiffPreviewProjectionTests
         public void Add(ChatMessage message) => Messages.Add(message);
         public void ResolveAgentImage(string dataUrl, ChatAttachment attachment)
             => attachment.Status = AttachmentStatus.Sent;
+        public void ReportUsage(TurnUsage usage) { }
     }
 }

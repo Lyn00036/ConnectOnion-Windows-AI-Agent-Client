@@ -26,4 +26,14 @@ public sealed class NameInitialTests
     {
         Assert.Equal("?", NameInitial.From(null));
     }
+
+    [Theory]
+    [InlineData("Pan Kai", "PK")]
+    [InlineData("Remote Admin Agent", "RA")]
+    [InlineData("connectonion", "C")]
+    [InlineData("", "?")]
+    public void FromPair_Name_ReturnsStableMonogram(string name, string expected)
+    {
+        Assert.Equal(expected, NameInitial.FromPair(name));
+    }
 }
