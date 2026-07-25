@@ -65,6 +65,9 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
                 InfoFields.Clear();
                 InfoJson = "";
                 AcceptedInputs = null;
+                // Cleared with the rest of the cached /info: showing the previous agent's skills
+                // as this one's shortcuts would offer commands it does not have.
+                Skills = null;
             }
 
             if (!SetProperty(ref _agent, value)) return;
@@ -155,6 +158,27 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
     /// <summary>Same purpose as <c>ChatViewModel.AcceptedInputs</c>: gates the composer's attachment UI against the agent's real <c>/info</c> capability.</summary>
     [ObservableProperty]
     public partial AgentAcceptedInputs? AcceptedInputs { get; private set; }
+
+    /// <summary>The agent's declared skills, from the same cached <c>/info</c> as
+    /// <see cref="AcceptedInputs"/>. Feeds the composer's slash palette and, through
+    /// <see cref="SkillOffers"/>, this page's opening suggestions.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SkillOffers))]
+    [NotifyPropertyChangedFor(nameof(HasSkillOffers))]
+    public partial IReadOnlyList<SkillInfo>? Skills { get; private set; }
+
+    /// <summary>
+    /// Up to three of the agent's skills phrased as things to ask for — the chips shown instead of
+    /// the generic "What can you do?" starters.
+    ///
+    /// <para>Empty is a normal outcome, not a failure: an agent whose descriptions will not cut
+    /// into clean short offers yields nothing and the static chips stay. A chip is the first thing
+    /// a user reads about an agent, so a bad one is worse than none (see
+    /// <see cref="AgentSkills.BestOffers"/>).</para>
+    /// </summary>
+    public IReadOnlyList<string> SkillOffers => AgentSkills.BestOffers(Skills);
+
+    public bool HasSkillOffers => SkillOffers.Count > 0;
 
     /// <summary>
     /// Starts a new conversation. <paramref name="hasAttachments"/> must be true
@@ -324,6 +348,7 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
         }
 
         AcceptedInputs = EndpointResolver.ParseAcceptedInputsFromInfoJson(json);
+        Skills = EndpointResolver.ParseSkillsFromInfoJson(json);
     }
 
     /// <summary>

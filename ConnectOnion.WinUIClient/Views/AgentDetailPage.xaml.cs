@@ -72,11 +72,6 @@ public sealed partial class AgentDetailPage : Page, IReloadablePage, IShutdownDi
             Composer.SetDraft(prompt);
     }
 
-    private void ContentScroll_SizeChanged(object sender, SizeChangedEventArgs e)
-        => ContentLayout.MinHeight = Math.Max(
-            0,
-            e.NewSize.Height - ContentScroll.Padding.Top - ContentScroll.Padding.Bottom);
-
     private async System.Threading.Tasks.Task StartConversationAsync(ComposerSubmission submission)
     {
         var initialPrompt = submission.Text.Trim();

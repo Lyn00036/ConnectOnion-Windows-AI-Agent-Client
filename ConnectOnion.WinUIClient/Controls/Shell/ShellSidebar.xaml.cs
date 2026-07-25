@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Globalization;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using ConnectOnion.WinUIClient.Models;
@@ -37,7 +38,11 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     public ObservableCollection<ShellSessionItem> PinnedSessions { get; } = new();
 
     public event Action<Type, bool>? NavigationRequested;
+    public event Action? NewChatRequested;
     public event Action<FrameworkElement>? SettingsRequested;
+    public event Action<FrameworkElement>? KeyboardShortcutsRequested;
+    public event Action<FrameworkElement>? AboutRequested;
+    public event Action? ExitRequested;
     /// <summary>The sidebar click means "I want the
     /// add-agent form open", not merely "show me the landing page" — the shell answers it by
     /// opening the overlay without navigating. The button is passed back for focus restoration.</summary>
@@ -50,6 +55,8 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     /// <see cref="RefreshAsync"/> discards and rebuilds every item — without this, any refresh
     /// (a rename, a new conversation, a presence sweep) would collapse the whole tree.</summary>
     private readonly HashSet<string> _expandedAgentIds = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (string UpdatedAt, string Preview)> _sessionPreviewCache =
+        new(StringComparer.Ordinal);
     private Type? _currentPageType;
     private int _onlineAgentCount;
     /// <summary>False until the first refresh completes. Distinguishes "the user has collapsed
@@ -58,6 +65,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     private bool _hasExpansionState;
     private bool _loadedPersistedExpansionState;
     private bool _isPinnedExpanded = true;
+    private string _newChatTargetText = "Start a new chat";
 
     public int OnlineAgentCount
     {
@@ -68,12 +76,29 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
             _onlineAgentCount = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(OnlineAgentCountText));
+            OnPropertyChanged(nameof(HasOnlineAgents));
         }
     }
 
-    public string OnlineAgentCountText => $"{OnlineAgentCount} online";
+    public bool HasOnlineAgents => OnlineAgentCount > 0;
+    public string OnlineAgentCountText => OnlineAgentCount switch
+    {
+        0 => "No agents online",
+        1 => "1 agent online",
+        _ => $"{OnlineAgentCount} agents online",
+    };
     public bool HasPinnedSessions => PinnedSessions.Count > 0;
     public double PinnedChevronAngle => IsPinnedExpanded ? 0 : 270;
+    public string NewChatTargetText
+    {
+        get => _newChatTargetText;
+        private set
+        {
+            if (_newChatTargetText == value) return;
+            _newChatTargetText = value;
+            OnPropertyChanged();
+        }
+    }
 
     public bool IsPinnedExpanded
     {
@@ -120,6 +145,12 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     {
         var agentsState = await AppServices.Agents.LoadAsync();
         var sessionsState = await AppServices.Sessions.LoadAsync();
+        var newChatAgent = agentsState.Agents.FirstOrDefault(agent => agent.Id == agentsState.SelectedAgentId)
+            ?? agentsState.Agents.FirstOrDefault();
+        NewChatTargetText = newChatAgent is null
+            ? "Add an agent to start a new chat"
+            : $"Start a new chat with {newChatAgent.Name}";
+        await RefreshSessionPreviewCacheAsync(sessionsState.Sessions);
 
         // Must run *before* the Clear below, while the old items still hold their expansion.
         RememberExpandedAgentsFromUi();
@@ -145,7 +176,11 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
                      .Where(session => session.IsPinned)
                      .OrderByDescending(session => session.UpdatedAt, StringComparer.Ordinal))
         {
-            PinnedSessions.Add(CreateShellSessionItem(session, sessionsState.ActiveSessionId, agentNames));
+            PinnedSessions.Add(CreateShellSessionItem(
+                session,
+                sessionsState.ActiveSessionId,
+                agentNames,
+                isPinnedShortcut: true));
         }
 
         foreach (var agent in agentsState.Agents)
@@ -172,6 +207,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
             {
                 item.Sessions.Add(CreateShellSessionItem(session, sessionsState.ActiveSessionId, agentNames));
             }
+            item.RebuildSessionGroups();
 
             ShellAgents.Add(item);
         }
@@ -246,23 +282,102 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     private ShellSessionItem CreateShellSessionItem(
         SessionSummary session,
         string? activeSessionId,
-        IReadOnlyDictionary<string, string> agentNames)
-        => new()
+        IReadOnlyDictionary<string, string> agentNames,
+        bool isPinnedShortcut = false)
+    {
+        var updatedAt = ParseUpdatedAt(session.UpdatedAt);
+        var preview = _sessionPreviewCache.TryGetValue(session.Id, out var cached)
+            ? cached.Preview
+            : "No messages yet";
+
+        return new()
         {
             Id = session.Id,
             Title = session.Title,
+            Preview = preview,
+            UpdatedAt = session.UpdatedAt,
+            RelativeTime = FormatRelativeTime(updatedAt),
+            TimeGroup = FormatTimeGroup(updatedAt),
             AgentName = agentNames.TryGetValue(session.AgentId, out var agentName) ? agentName : "",
             IsPinned = session.IsPinned,
-            IsSelected = IsSessionSelected(session.Id, activeSessionId),
+            // The pinned section is a shortcut to the same destination rendered in the agent
+            // tree. Only the canonical tree row carries the current-location accent.
+            IsSelected = !isPinnedShortcut && IsSessionSelected(session.Id, activeSessionId),
         };
+    }
+
+    private async System.Threading.Tasks.Task RefreshSessionPreviewCacheAsync(
+        IReadOnlyCollection<SessionSummary> sessions)
+    {
+        var currentIds = sessions.Select(session => session.Id).ToHashSet(StringComparer.Ordinal);
+        foreach (var staleId in _sessionPreviewCache.Keys.Where(id => !currentIds.Contains(id)).ToArray())
+        {
+            _sessionPreviewCache.Remove(staleId);
+        }
+
+        foreach (var session in sessions)
+        {
+            if (_sessionPreviewCache.TryGetValue(session.Id, out var cached)
+                && string.Equals(cached.UpdatedAt, session.UpdatedAt, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var lastMessage = await AppServices.Conversations.LoadLastMessageAsync(session.Id);
+            _sessionPreviewCache[session.Id] = (session.UpdatedAt, BuildMessagePreview(lastMessage));
+        }
+    }
+
+    private static string BuildMessagePreview(ChatMessage? message)
+    {
+        if (message is null) return "No messages yet";
+
+        var value = !string.IsNullOrWhiteSpace(message.Content)
+            ? message.Content
+            : !string.IsNullOrWhiteSpace(message.EventTitle)
+                ? message.EventTitle
+                : message.EventDetail;
+        if (string.IsNullOrWhiteSpace(value)) return "Activity update";
+
+        var normalized = string.Join(
+            " ",
+            value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        return normalized.Length <= 72 ? normalized : $"{normalized[..71]}…";
+    }
+
+    private static DateTimeOffset? ParseUpdatedAt(string value)
+        => DateTimeOffset.TryParse(value, out var parsed) ? parsed.ToLocalTime() : null;
+
+    private static string FormatTimeGroup(DateTimeOffset? updatedAt)
+    {
+        if (updatedAt is null) return "Earlier";
+
+        var date = updatedAt.Value.Date;
+        var today = DateTimeOffset.Now.Date;
+        if (date == today) return "Today";
+        if (date == today.AddDays(-1)) return "Yesterday";
+        return "Earlier";
+    }
+
+    private static string FormatRelativeTime(DateTimeOffset? updatedAt)
+    {
+        if (updatedAt is null) return "";
+
+        var elapsed = DateTimeOffset.Now - updatedAt.Value;
+        if (elapsed < TimeSpan.Zero || elapsed < TimeSpan.FromMinutes(1)) return "Now";
+        if (elapsed < TimeSpan.FromHours(1)) return $"{Math.Max(1, (int)elapsed.TotalMinutes)} min ago";
+        if (elapsed < TimeSpan.FromDays(1)) return $"{Math.Max(1, (int)elapsed.TotalHours)} hr ago";
+        if (elapsed < TimeSpan.FromDays(7))
+            return updatedAt.Value.ToString("ddd", CultureInfo.CurrentCulture);
+        return updatedAt.Value.ToString("MMM d", CultureInfo.CurrentCulture);
+    }
 
     /// <summary>Whether an agent row renders as selected. Selection is page-dependent: an agent
     /// is only "current" while the user is on a page that is actually about an agent, so
     /// Settings or Home leaves the tree with nothing highlighted rather than pointing at
     /// whichever agent happened to be selected last.</summary>
     private bool IsAgentSelected(string agentId, string? selectedAgentId)
-        => _currentPageType == typeof(ChatPage)
-            || _currentPageType == typeof(AgentDetailPage)
+        => _currentPageType == typeof(AgentDetailPage)
             || _currentPageType == typeof(SessionsPage)
             ? agentId == selectedAgentId
             : false;

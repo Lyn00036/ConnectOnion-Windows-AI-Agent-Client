@@ -31,6 +31,9 @@ public sealed partial class ShellSidebar
         }
     }
 
+    private void NewChatButton_Click(object sender, RoutedEventArgs e)
+        => NewChatRequested?.Invoke();
+
     /// <summary>
     /// Opens the agent's start-a-chat surface instead of creating a conversation outright.
     ///
@@ -67,15 +70,10 @@ public sealed partial class ShellSidebar
 
         if (!await ConfirmDeleteAsync($"Delete {agent.DisplayName}?", "This agent and all of its local sessions will be removed.")) return false;
 
-        agentsState.Agents.Remove(agent);
-        if (agentsState.SelectedAgentId == agentId)
-        {
-            agentsState.SelectedAgentId = agentsState.Agents.FirstOrDefault()?.Id;
-        }
-        await AppServices.Agents.SaveAsync(agentsState);
-
         var sessionsState = await AppServices.Sessions.LoadAsync();
-        // Tear each of this agent's conversations down completely before its sessions rows go.
+        // Tear each of this agent's conversations down completely before its sessions rows go,
+        // and remove the agent only after that transaction succeeds. Deleting the agent first
+        // used to leave invisible orphan sessions whenever a later child cleanup failed.
         // Releasing the socket/run leaves no live WebSocket behind; deleting the child rows
         // (messages, attachments, executions, traces) is what actually makes the removal work:
         // the session FKs declare no ON DELETE cascade, so SessionRepository.SaveAsync's
@@ -99,6 +97,13 @@ public sealed partial class ShellSidebar
             sessionsState.ActiveSessionId = sessionsState.Sessions.FirstOrDefault()?.Id;
         }
         await AppServices.Sessions.SaveAsync(sessionsState);
+
+        agentsState.Agents.Remove(agent);
+        if (agentsState.SelectedAgentId == agentId)
+        {
+            agentsState.SelectedAgentId = agentsState.Agents.FirstOrDefault()?.Id;
+        }
+        await AppServices.Agents.SaveAsync(agentsState);
 
         AppServices.RunManager.ForgetAgent(agentId);
         AppServices.Presence.Forget(agentId);
@@ -212,5 +217,40 @@ public sealed partial class ShellSidebar
         await RefreshAsync();
         if (sender is FrameworkElement opener)
             SettingsRequested?.Invoke(opener);
+    }
+
+    private async void BottomAddAgent_Click(object sender, RoutedEventArgs e)
+    {
+        await RefreshAsync();
+        AddAgentRequested?.Invoke(BottomAccountButton);
+    }
+
+    private async void BottomSettings_Click(object sender, RoutedEventArgs e)
+    {
+        await RefreshAsync();
+        SettingsRequested?.Invoke(BottomAccountButton);
+    }
+
+    private void BottomKeyboardShortcuts_Click(object sender, RoutedEventArgs e)
+        => KeyboardShortcutsRequested?.Invoke(BottomAccountButton);
+
+    private void BottomAbout_Click(object sender, RoutedEventArgs e)
+        => AboutRequested?.Invoke(BottomAccountButton);
+
+    private void BottomExit_Click(object sender, RoutedEventArgs e)
+        => ExitRequested?.Invoke();
+
+    private async void BottomTheme_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not string value
+            || !Enum.TryParse<ThemeMode>(value, ignoreCase: true, out var theme))
+        {
+            return;
+        }
+
+        var preferences = await AppServices.Preferences.LoadAsync();
+        preferences.Theme = theme;
+        await AppServices.Preferences.SaveAsync(preferences);
+        ThemeService.Apply(theme);
     }
 }

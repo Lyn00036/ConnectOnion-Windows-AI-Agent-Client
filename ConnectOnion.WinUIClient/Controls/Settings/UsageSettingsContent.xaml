@@ -7,6 +7,46 @@
     MinWidth="0" HorizontalAlignment="Stretch">
 
     <StackPanel MinWidth="0" HorizontalAlignment="Stretch" Spacing="16">
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup x:Name="UsageWidthStates">
+                <VisualState x:Name="CompactUsage">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="0" />
+                    </VisualState.StateTriggers>
+                    <VisualState.Setters>
+                        <Setter Target="TotalsGrid.RowSpacing" Value="12" />
+                        <Setter Target="TotalColumn0.Width" Value="*" />
+                        <Setter Target="TotalColumn1.Width" Value="*" />
+                        <Setter Target="TotalColumn2.Width" Value="0" />
+                        <Setter Target="TotalColumn3.Width" Value="0" />
+                        <Setter Target="InputTotal.(Grid.Row)" Value="0" />
+                        <Setter Target="InputTotal.(Grid.Column)" Value="1" />
+                        <Setter Target="OutputTotal.(Grid.Row)" Value="1" />
+                        <Setter Target="OutputTotal.(Grid.Column)" Value="0" />
+                        <Setter Target="CallsTotal.(Grid.Row)" Value="1" />
+                        <Setter Target="CallsTotal.(Grid.Column)" Value="1" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="WideUsage">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="1000" />
+                    </VisualState.StateTriggers>
+                    <VisualState.Setters>
+                        <Setter Target="TotalsGrid.RowSpacing" Value="0" />
+                        <Setter Target="TotalColumn0.Width" Value="*" />
+                        <Setter Target="TotalColumn1.Width" Value="*" />
+                        <Setter Target="TotalColumn2.Width" Value="*" />
+                        <Setter Target="TotalColumn3.Width" Value="*" />
+                        <Setter Target="InputTotal.(Grid.Row)" Value="0" />
+                        <Setter Target="InputTotal.(Grid.Column)" Value="1" />
+                        <Setter Target="OutputTotal.(Grid.Row)" Value="0" />
+                        <Setter Target="OutputTotal.(Grid.Column)" Value="2" />
+                        <Setter Target="CallsTotal.(Grid.Row)" Value="0" />
+                        <Setter Target="CallsTotal.(Grid.Column)" Value="3" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
         <TextBlock Text="Token usage recorded on this device, grouped by model. Usage is kept even after you delete a conversation — the tokens were still spent — and never leaves your machine."
                    TextWrapping="Wrap" Foreground="{ThemeResource TextSecondaryBrush}" />
 
@@ -40,10 +80,16 @@
         <!-- Totals for the window -->
         <Border Style="{StaticResource SettingsSectionStyle}" HorizontalAlignment="Stretch"
                 Visibility="{x:Bind Vm.ShowContent, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-            <Grid ColumnSpacing="12">
+            <Grid x:Name="TotalsGrid" ColumnSpacing="12">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" /><ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="*" /><ColumnDefinition Width="*" />
+                    <ColumnDefinition x:Name="TotalColumn0" Width="*" />
+                    <ColumnDefinition x:Name="TotalColumn1" Width="*" />
+                    <ColumnDefinition x:Name="TotalColumn2" Width="*" />
+                    <ColumnDefinition x:Name="TotalColumn3" Width="*" />
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0" Spacing="2">
@@ -51,17 +97,17 @@
                     <TextBlock Text="Total tokens" Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextSecondaryBrush}" />
                 </StackPanel>
-                <StackPanel Grid.Column="1" Spacing="2">
+                <StackPanel x:Name="InputTotal" Grid.Column="1" Spacing="2">
                     <TextBlock Text="{x:Bind Vm.TotalInputTokensText, Mode=OneWay}" FontSize="20" FontWeight="SemiBold" />
                     <TextBlock Text="Input" Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextSecondaryBrush}" />
                 </StackPanel>
-                <StackPanel Grid.Column="2" Spacing="2">
+                <StackPanel x:Name="OutputTotal" Grid.Column="2" Spacing="2">
                     <TextBlock Text="{x:Bind Vm.TotalOutputTokensText, Mode=OneWay}" FontSize="20" FontWeight="SemiBold" />
                     <TextBlock Text="Output" Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextSecondaryBrush}" />
                 </StackPanel>
-                <StackPanel Grid.Column="3" Spacing="2">
+                <StackPanel x:Name="CallsTotal" Grid.Column="3" Spacing="2">
                     <TextBlock Text="{x:Bind Vm.TotalCallsText, Mode=OneWay}" FontSize="20" FontWeight="SemiBold" />
                     <TextBlock Text="LLM calls" Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextSecondaryBrush}" />

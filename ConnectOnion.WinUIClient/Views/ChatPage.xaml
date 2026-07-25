@@ -13,7 +13,7 @@
     mc:Ignorable="d">
 
     <Grid x:Name="ChatRoot"
-          Background="{ThemeResource AppBackgroundBrush}"
+          Background="{ThemeResource ChatBackgroundBrush}"
           SizeChanged="ChatRoot_SizeChanged">
         <Grid.Resources>
 
@@ -130,9 +130,9 @@
                      conversation turns (a user message always starts a new turn); intra-turn rows
                      keep the tighter item spacing. -->
                 <StackPanel MaxWidth="{StaticResource ChatColumnWidth}"
-                            Margin="0,28,0,0"
-                            HorizontalAlignment="Right"
-                            Spacing="8"
+                            Margin="0,24,0,2"
+                            HorizontalAlignment="Stretch"
+                            Spacing="6"
                             Background="Transparent"
                             PointerEntered="MessageActions_PointerEntered"
                             PointerExited="MessageActions_PointerExited"
@@ -148,10 +148,10 @@
                         <!-- A right-aligned chat bubble, capped narrow so it reads as a discrete user
                              utterance against the wider agent track. Borderless: the soft neutral
                              fill alone carries it so it reads as a message, not a button or input. -->
-                        <Border MaxWidth="440"
+                        <Border MaxWidth="520"
                                 HorizontalAlignment="Right"
-                                CornerRadius="18"
-                                Padding="15,11"
+                                CornerRadius="14"
+                                Padding="14,10"
                                 Background="{ThemeResource UserMessageBackgroundBrush}"
                                 BorderThickness="0"
                                 Visibility="{x:Bind Content, Converter={StaticResource StringToVis}}">
@@ -161,22 +161,28 @@
                                                            FontSize="{x:Bind MessageFontSize, Mode=OneWay}"
                                                            Foreground="{ThemeResource TextPrimaryBrush}" />
                         </Border>
-                        <!-- This row always owns its height. Hover only changes the inner opacity,
-                             so showing actions never pushes the transcript down. -->
-                        <Grid Height="28" HorizontalAlignment="Right">
-                            <StackPanel Orientation="Horizontal"
-                                        HorizontalAlignment="Right"
-                                        Spacing="2"
-                                        Opacity="{x:Bind UserActionsOpacity, Mode=OneWay}"
+                        <!-- The reserved row now carries useful time metadata at rest. Actions
+                             fade into the adjacent slot without moving the transcript. -->
+                        <Grid MinHeight="24"
+                              HorizontalAlignment="Right"
+                              ColumnSpacing="4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock VerticalAlignment="Center"
+                                       Text="{x:Bind TimeLabel, Mode=OneWay}"
+                                       FontSize="11"
+                                       Foreground="{ThemeResource TextTertiaryBrush}" />
+                            <StackPanel Grid.Column="1"
+                                        Orientation="Horizontal"
+                                         HorizontalAlignment="Right"
+                                         Spacing="2"
+                                         Opacity="{x:Bind UserActionsOpacity, Mode=OneWay}"
                                         IsHitTestVisible="{x:Bind ShowUserActions, Mode=OneWay}">
                                 <StackPanel.OpacityTransition>
                                     <ScalarTransition Duration="0:0:0.16" />
                                 </StackPanel.OpacityTransition>
-                                <TextBlock Margin="0,0,4,0"
-                                           VerticalAlignment="Center"
-                                           Text="{x:Bind TimeLabel, Mode=OneWay}"
-                                           FontSize="11"
-                                           Foreground="{ThemeResource TextSecondaryBrush}" />
                                 <Button Tag="{x:Bind}"
                                         Padding="3"
                                         MinWidth="24"
@@ -286,8 +292,8 @@
 
             <DataTemplate x:Key="ChatAgentTemplate" x:DataType="models:ChatMessage">
                 <StackPanel MaxWidth="{StaticResource ChatColumnWidth}"
-                            HorizontalAlignment="Left"
-                            Spacing="8"
+                            HorizontalAlignment="Stretch"
+                            Spacing="6"
                             Background="Transparent"
                             PointerEntered="MessageActions_PointerEntered"
                             PointerExited="MessageActions_PointerExited"
@@ -299,6 +305,8 @@
                          persisted — notifications title themselves with it, and the CONNECT
                          history import needs it — this only drops the label. -->
                     <controls:MarkdownTextBlock Markdown="{x:Bind Content, Mode=OneWay}"
+                                                MaxWidth="{StaticResource ChatReadingWidth}"
+                                                HorizontalAlignment="Left"
                                                 SearchQuery="{x:Bind FindQuery, Mode=OneWay}"
                                                 ActiveMatchIndex="{x:Bind ActiveFindMatchIndex, Mode=OneWay}"
                                                 FontSize="{x:Bind MessageFontSize, Mode=OneWay}"
@@ -325,7 +333,7 @@
                          box is dead UI, and IsOnboarding alone is not observable so it could
                          never take the row away. -->
                     <Grid ColumnSpacing="8"
-                          Visibility="{x:Bind IsOnboardingInputEnabled, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                          Visibility="{x:Bind ShowOnboardInviteCode, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
@@ -340,8 +348,66 @@
                                 Click="SubmitOnboard_Click"
                                 IsEnabled="{x:Bind IsOnboardingInputEnabled, Mode=OneWay}" />
                     </Grid>
-                    <Grid Height="28" HorizontalAlignment="Left">
-                        <StackPanel Orientation="Horizontal"
+
+                    <!-- "or", shown only when the gate really offers both ways through. -->
+                    <Grid ColumnSpacing="10"
+                          Visibility="{x:Bind ShowOnboardMethodDivider, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Border Grid.Column="0" Height="1" VerticalAlignment="Center"
+                                Background="{ThemeResource BorderSubtleBrush}" />
+                        <TextBlock Grid.Column="1" Text="or"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextTertiaryBrush}" />
+                        <Border Grid.Column="2" Height="1" VerticalAlignment="Center"
+                                Background="{ThemeResource BorderSubtleBrush}" />
+                    </Grid>
+
+                    <!-- Payment branch. The button is an assertion the user makes ("I've
+                         transferred X"), not a transaction: nothing here moves money, and the
+                         agent verifies the claim itself before letting the conversation through. -->
+                    <StackPanel Spacing="8"
+                                Visibility="{x:Bind ShowOnboardPayment, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="{x:Bind OnboardPaymentPrompt, Mode=OneWay}"
+                                   TextWrapping="Wrap" MinWidth="0"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextSecondaryBrush}" />
+                        <!-- Only ever rendered when the host actually named a destination. The
+                             agent's own address is not a safe stand-in — paying the wrong place
+                             loses real money — so an absent address shows no address. -->
+                        <Border Background="{ThemeResource CodeBackgroundBrush}"
+                                BorderBrush="{ThemeResource BorderSubtleBrush}"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="10,8"
+                                Visibility="{x:Bind HasOnboardPaymentAddress, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="{x:Bind OnboardPaymentAddress, Mode=OneWay}"
+                                       TextWrapping="Wrap" MinWidth="0"
+                                       IsTextSelectionEnabled="True"
+                                       FontFamily="{StaticResource JetBrainsMonoFontFamily}"
+                                       Style="{StaticResource CaptionTextBlockStyle}" />
+                        </Border>
+                        <Button Content="{x:Bind OnboardPaymentLabel, Mode=OneWay}"
+                                HorizontalAlignment="Left"
+                                Click="SubmitOnboardPayment_Click"
+                                IsEnabled="{x:Bind IsOnboardingInputEnabled, Mode=OneWay}" />
+                    </StackPanel>
+                    <Grid MinHeight="24"
+                          HorizontalAlignment="Left"
+                          ColumnSpacing="4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock VerticalAlignment="Center"
+                                   Text="{x:Bind TimeLabel, Mode=OneWay}"
+                                   FontSize="11"
+                                   Foreground="{ThemeResource TextTertiaryBrush}" />
+                        <StackPanel Grid.Column="1"
+                                    Orientation="Horizontal"
                                     Spacing="2"
                                     Opacity="{x:Bind UserActionsOpacity, Mode=OneWay}"
                                     IsHitTestVisible="{x:Bind ShowUserActions, Mode=OneWay}">
@@ -686,11 +752,69 @@
         </Grid.Resources>
 
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <ListView Grid.Row="0"
+        <!-- Compact, persistent workspace identity. It shares the transcript measure and keeps
+             agent context visible through long tool runs without becoming a heavy title bar. -->
+        <Border Grid.Row="0"
+                MinHeight="58"
+                Padding="24,0"
+                Background="{ThemeResource ChatBackgroundBrush}"
+                BorderBrush="{ThemeResource BorderSubtleBrush}"
+                BorderThickness="0,0,0,1"
+                Visibility="{x:Bind Vm.HasAgent, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+            <Grid MaxWidth="{StaticResource ChatColumnWidth}"
+                  HorizontalAlignment="Stretch"
+                  ColumnSpacing="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <controls:AgentAvatar Size="32"
+                                      CornerRadius="16"
+                                      FontSize="11"
+                                      VerticalAlignment="Center"
+                                      Initial="{x:Bind Vm.SelectedAgentInitial, Mode=OneWay}"
+                                      PaletteIndex="{x:Bind Vm.SelectedAgentAvatarPaletteIndex, Mode=OneWay}" />
+                <StackPanel Grid.Column="1"
+                            VerticalAlignment="Center"
+                            Spacing="1">
+                    <TextBlock Text="{x:Bind Vm.SelectedAgentDisplayName, Mode=OneWay}"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               Foreground="{ThemeResource TextPrimaryBrush}"
+                               TextTrimming="CharacterEllipsis" />
+                    <StackPanel Orientation="Horizontal"
+                                Spacing="6"
+                                VerticalAlignment="Center">
+                        <Ellipse Width="6"
+                                 Height="6"
+                                 VerticalAlignment="Center"
+                                 Fill="{x:Bind Vm.Presence, Mode=OneWay, Converter={StaticResource PresenceToBrush}}" />
+                        <TextBlock Text="{x:Bind Vm.PresenceLabel, Mode=OneWay}"
+                                   FontSize="11"
+                                   VerticalAlignment="Center"
+                                   Foreground="{ThemeResource TextSecondaryBrush}" />
+                        <TextBlock Text="·"
+                                   FontSize="11"
+                                   VerticalAlignment="Center"
+                                   Foreground="{ThemeResource TextTertiaryBrush}"
+                                   Visibility="{x:Bind Vm.PresenceDetail, Mode=OneWay, Converter={StaticResource StringToVis}}" />
+                        <TextBlock Text="{x:Bind Vm.PresenceDetail, Mode=OneWay}"
+                                   FontSize="11"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis"
+                                   Foreground="{ThemeResource TextTertiaryBrush}"
+                                   Visibility="{x:Bind Vm.PresenceDetail, Mode=OneWay, Converter={StaticResource StringToVis}}" />
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <ListView Grid.Row="1"
                   x:Name="MessageList"
                   AutomationProperties.AutomationId="MessageList"
                   ItemsSource="{x:Bind Vm.Messages, Mode=OneWay}"
@@ -699,7 +823,7 @@
                   SelectionMode="None"
                   Background="Transparent"
                   BorderThickness="0"
-                  Padding="24,18,24,22"
+                  Padding="24,14,24,26"
                   HorizontalAlignment="Stretch"
                   HorizontalContentAlignment="Stretch">
             <!-- Conversation identity belongs to the transcript, not permanent page chrome.
@@ -712,7 +836,8 @@
             <ListView.Header>
                 <Grid MaxWidth="{StaticResource ChatColumnWidth}"
                       Margin="0,0,0,16"
-                      HorizontalAlignment="Stretch">
+                      HorizontalAlignment="Stretch"
+                      Visibility="Collapsed">
                     <Border BorderBrush="{ThemeResource BorderSubtleBrush}"
                             BorderThickness="0,0,0,1"
                             Padding="0,2,0,14"
@@ -724,7 +849,7 @@
                             </Grid.ColumnDefinitions>
                             <controls:AgentAvatar Grid.Column="0"
                                                   Size="40"
-                                                  CornerRadius="10"
+                                                  CornerRadius="20"
                                                   FontSize="16"
                                                   VerticalAlignment="Center"
                                                   Initial="{x:Bind Vm.SelectedAgentInitial, Mode=OneWay}"
@@ -783,7 +908,7 @@
              composer's right edge. Its empty areas paint nothing and so pass the pointer through to
              the transcript. Show/hide stays driven by the scroll offset in ChatPage.Scrolling.cs
              (it sets ScrollToLatestButton.Visibility directly). -->
-        <Grid Grid.Row="0"
+        <Grid Grid.Row="1"
               Canvas.ZIndex="20"
               MaxWidth="{StaticResource ChatColumnWidth}"
               Margin="24,0,24,12"
@@ -816,7 +941,7 @@
 
         <!-- Failure bar: appears when the last run failed and is still retryable. Mutually
              exclusive with the offline bar (see Vm.ShowRetryBar) so the two never stack. -->
-        <Border Grid.Row="0"
+        <Border Grid.Row="1"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Bottom"
                 Margin="0,0,0,16"
@@ -840,7 +965,7 @@
             </StackPanel>
         </Border>
 
-        <controls:OfflineNoticeBar Grid.Row="0"
+        <controls:OfflineNoticeBar Grid.Row="1"
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Bottom"
                                    Margin="20,0,20,18"
@@ -858,11 +983,13 @@
             </animations:Implicit.ShowAnimations>
         </controls:OfflineNoticeBar>
 
-        <StackPanel Grid.Row="1">
-            <!-- Transient run feedback (progress, errors) is no longer a separate line here:
-                 progress is carried by the composer's busy state and the connection-phase line
-                 below it, and client-side failures (send / stop / reconnect) now surface inline
-                 in the conversation as Error activity bubbles (see ChatViewModel.AddErrorActivity). -->
+        <Border Grid.Row="2"
+                Padding="0,10,0,0"
+                Background="{ThemeResource ChatBackgroundBrush}"
+                BorderBrush="{ThemeResource BorderSubtleBrush}"
+                BorderThickness="0,1,0,0">
+            <!-- Transport state belongs to the composer surface; client-side failures
+                 still surface inline in the conversation as Error activity bubbles. -->
             <controls:ChatComposer x:Name="Composer"
                                    CanSubmit="{x:Bind Vm.CanSend, Mode=OneWay}"
                                    EnterToSubmit="{x:Bind Vm.EnterToSend, Mode=OneWay}"
@@ -871,46 +998,21 @@
                                    IsStopping="{x:Bind Vm.IsStopping, Mode=OneWay}"
                                    Mode="{x:Bind Vm.CurrentMode, Mode=OneWay}"
                                    ShowModeSelector="True"
+                                   ShowConnectionStatus="True"
+                                   ConnectionPhase="{x:Bind Vm.ConnectionPhase, Mode=OneWay}"
+                                   ConnectionStatusText="{x:Bind Vm.ConnectionPhaseText, Mode=OneWay}"
+                                   UsageText="{x:Bind Vm.LiveUsageText, Mode=OneWay}"
                                    AcceptedInputs="{x:Bind Vm.AcceptedInputs, Mode=OneWay}"
+                                   Skills="{x:Bind Vm.Skills, Mode=OneWay}"
                                    ShowSuggestions="False"
                                    StopRequested="Composer_StopRequested"
                                    ModeChangeRequested="Composer_ModeChangeRequested"
                                    SubmitRequested="Composer_SubmitRequested" />
-
-            <!-- Status line below the composer: the live socket phase (dot + label) leads, then the
-                 session. Agent identity lives in the transcript header up top, so this line is only
-                 the always-visible "is it connected, which session" pair. Caption size (12px) and a
-                 ~28px slot so it reads as a deliberate status strip rather than tiny debug text. -->
-            <StackPanel Orientation="Horizontal"
-                        Spacing="6"
-                        HorizontalAlignment="Center"
-                        Margin="0,6,0,12">
-                <Ellipse Width="7" Height="7"
-                         VerticalAlignment="Center"
-                         Fill="{x:Bind Vm.ConnectionPhase, Mode=OneWay, Converter={StaticResource ConnectionPhaseToBrush}}" />
-                <TextBlock Text="{x:Bind Vm.ConnectionPhaseText, Mode=OneWay}"
-                           AutomationProperties.AutomationId="ConnectionStatus"
-                           FontSize="12"
-                           VerticalAlignment="Center"
-                           Foreground="{x:Bind Vm.ConnectionPhase, Mode=OneWay, Converter={StaticResource ConnectionPhaseToBrush}}" />
-
-                <TextBlock Text="·"
-                           FontSize="12"
-                           VerticalAlignment="Center"
-                           Foreground="{ThemeResource TextTertiaryBrush}" />
-
-                <TextBlock FontSize="12"
-                           VerticalAlignment="Center"
-                           Foreground="{ThemeResource TextTertiaryBrush}">
-                        <Run Text="Session " />
-                        <Run Text="{x:Bind Vm.SessionShortId, Mode=OneWay}" />
-                </TextBlock>
-            </StackPanel>
-        </StackPanel>
+        </Border>
 
         <!-- Empty state: shown after loading completes when no messages exist -->
         <StackPanel x:Name="EmptyStatePanel"
-                    Grid.Row="0"
+                    Grid.Row="1"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center"
                     Spacing="8"
@@ -926,8 +1028,8 @@
 
         <!-- Loading overlay hides the empty-state flash before conversation data arrives -->
         <Border x:Name="LoadingOverlay"
-                Grid.Row="0"
-                Background="{ThemeResource AppBackgroundBrush}"
+                Grid.Row="1"
+                Background="{ThemeResource ChatBackgroundBrush}"
                 Visibility="Visible">
             <ProgressRing Width="28"
                           Height="28"

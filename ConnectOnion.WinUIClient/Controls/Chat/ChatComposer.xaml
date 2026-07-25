@@ -12,7 +12,7 @@
 
     <StackPanel x:Name="ComposerPanel"
                 MaxWidth="{StaticResource ChatComposerWidth}"
-                Margin="24,0,24,12"
+                Margin="24,0,24,14"
                 HorizontalAlignment="Center"
                 Spacing="6"
                 Width="{StaticResource ChatComposerWidth}">
@@ -114,6 +114,34 @@
             </ItemsControl>
         </ScrollViewer>
 
+        <!-- The agent's own best skills, phrased as offers. Shown instead of the generic starters
+             below whenever there are any, because "Publish a post to your feed" tells a user what
+             this agent is for and "What can you do?" tells them nothing. -->
+        <ItemsControl x:Name="SkillSuggestionList"
+                      Visibility="Collapsed"
+                      HorizontalAlignment="Center">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal" Spacing="8" />
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Button Content="{Binding}"
+                            Tag="{Binding}"
+                            Padding="14,6"
+                            CornerRadius="16"
+                            Background="{ThemeResource SurfaceElevatedBrush}"
+                            BorderBrush="{ThemeResource BorderDefaultBrush}"
+                            BorderThickness="1"
+                            Click="Suggestion_Click" />
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!-- Generic fallback for an agent that declares no usable skills. Kept as literal buttons
+             rather than folded into the list above because each carries an x:Uid, and a templated
+             item cannot. -->
         <StackPanel x:Name="SuggestionPanel"
                     Orientation="Horizontal"
                     HorizontalAlignment="Center"
@@ -144,12 +172,80 @@
                     Click="Suggestion_Click" />
         </StackPanel>
 
+        <!-- Slash-command palette: the agent's own skills, filtered as the user types after "/".
+             Sits directly above the input because it completes what is being typed there, and it
+             is the reason /info's `skills` are fetched at all — until now nothing consumed them.
+
+             Classic {Binding}, not {x:Bind}: SkillInfo is a positional record, so its properties
+             have `init` accessors, and those break the generated XamlTypeInfo metadata with a
+             CS9035 (see the WinUI gotchas in CLAUDE.md). -->
+        <Border x:Name="SkillPalette"
+                Visibility="Collapsed"
+                CornerRadius="12"
+                Background="{ThemeResource SurfaceElevatedBrush}"
+                BorderBrush="{ThemeResource BorderDefaultBrush}"
+                BorderThickness="1">
+            <StackPanel>
+                <ListView x:Name="SkillList"
+                          MaxHeight="240"
+                          SelectionMode="Single"
+                          IsItemClickEnabled="True"
+                          ItemClick="SkillList_ItemClick"
+                          Padding="4"
+                          AutomationProperties.Name="Agent skills">
+                    <ListView.ItemContainerStyle>
+                        <Style TargetType="ListViewItem">
+                            <Setter Property="MinHeight" Value="0" />
+                            <Setter Property="Padding" Value="10,6" />
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        </Style>
+                    </ListView.ItemContainerStyle>
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <!-- Named explicitly: without it the item's automation name falls back
+                                 to the data object's ToString(), and SkillInfo is a record — a
+                                 screen reader would read out "SkillInfo { Name = post,
+                                 Description = ... }" for every row. -->
+                            <Grid ColumnSpacing="10"
+                                  AutomationProperties.Name="{Binding Name}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock FontSize="13"
+                                           FontWeight="SemiBold"
+                                           FontFamily="{StaticResource JetBrainsMonoFontFamily}"
+                                           VerticalAlignment="Center"><Run Text="/" /><Run Text="{Binding Name}" /></TextBlock>
+                                <TextBlock Grid.Column="1"
+                                           Text="{Binding Description}"
+                                           FontSize="12"
+                                           VerticalAlignment="Center"
+                                           Foreground="{ThemeResource TextSecondaryBrush}"
+                                           TextTrimming="CharacterEllipsis"
+                                           TextWrapping="NoWrap" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+                <!-- The keys are stated because none of them are discoverable: the palette steals
+                     Enter and Tab while it is open, and a user who cannot see that has no way to
+                     know why Enter stopped sending. -->
+                <Border BorderBrush="{ThemeResource BorderSubtleBrush}"
+                        BorderThickness="0,1,0,0"
+                        Padding="14,5">
+                    <TextBlock Text="↑↓ navigate · Tab or Enter to complete · Esc to dismiss"
+                               FontSize="11"
+                               Foreground="{ThemeResource TextTertiaryBrush}" />
+                </Border>
+            </StackPanel>
+        </Border>
+
         <!-- AllowDrop lives on this Border rather than on InputBox or the outer panel:
              the drag events are routed, so every child (input box, buttons) bubbles up
              to one handler, and the drop region visually matches the rounded surface
              the DropOverlay paints over. -->
         <Border x:Name="ComposerSurface"
-                CornerRadius="18"
+                CornerRadius="12"
                 Background="{ThemeResource ComposerBackgroundBrush}"
                 BorderBrush="{ThemeResource ComposerBorderBrush}"
                 BorderThickness="1"
@@ -158,7 +254,7 @@
                 DragOver="Composer_DragOver"
                 DragLeave="Composer_DragLeave"
                 Drop="Composer_Drop">
-            <Grid MinHeight="82" Padding="14,10">
+            <Grid MinHeight="76" Padding="12,8">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
@@ -178,7 +274,7 @@
                          PlaceholderText="{x:Bind PlaceholderText, Mode=OneWay}"
                          PlaceholderForeground="{ThemeResource ComposerPlaceholderBrush}"
                          Foreground="{ThemeResource ComposerTextBrush}"
-                         FontSize="16"
+                         FontSize="15"
                          FontWeight="Normal"
                          AcceptsReturn="True"
                          TextWrapping="Wrap"
@@ -230,6 +326,36 @@
                                        IconSize="Size20"
                                        Foreground="{ThemeResource TextPrimaryBrush}" />
                     </Button>
+
+                    <StackPanel Grid.Column="1"
+                                Orientation="Horizontal"
+                                Spacing="6"
+                                Margin="4,0,0,0"
+                                VerticalAlignment="Center"
+                                Visibility="{x:Bind ShowConnectionStatus, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                        <Ellipse Width="7"
+                                 Height="7"
+                                 VerticalAlignment="Center"
+                                 Fill="{x:Bind ConnectionPhase, Mode=OneWay, Converter={StaticResource ConnectionPhaseToBrush}}" />
+                        <TextBlock Text="{x:Bind ConnectionStatusText, Mode=OneWay}"
+                                   AutomationProperties.AutomationId="ConnectionStatus"
+                                   FontSize="12"
+                                   VerticalAlignment="Center"
+                                   Foreground="{x:Bind ConnectionPhase, Mode=OneWay, Converter={StaticResource ConnectionPhaseToBrush}}" />
+
+                        <!-- The turn's running spend, beside the connection state rather than in
+                             its own row: both answer "what is happening right now", and a second
+                             row would push the input down every time a turn starts. Tertiary and
+                             unpunctuated by a separator when absent — it collapses entirely for an
+                             agent that reports no usage. -->
+                        <TextBlock Text="{x:Bind UsageText, Mode=OneWay}"
+                                   AutomationProperties.AutomationId="LiveUsage"
+                                   FontSize="12"
+                                   Margin="4,0,0,0"
+                                   VerticalAlignment="Center"
+                                   Foreground="{ThemeResource TextTertiaryBrush}"
+                                   Visibility="{x:Bind HasUsageText, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                    </StackPanel>
 
                     <!-- Approval mode. Stays enabled mid-turn: the host applies a mode_change at
                          the agent's next iteration boundary, so switching to Safe while it works
@@ -430,15 +556,15 @@
                 <Grid x:Name="DropOverlay"
                       Grid.Row="0"
                       Grid.RowSpan="2"
-                      Margin="-16,-14,-16,-14"
+                      Margin="-12,-8,-12,-8"
                       IsHitTestVisible="False"
                       Visibility="Collapsed">
-                    <Border CornerRadius="22"
+                    <Border CornerRadius="12"
                             Background="{ThemeResource ComposerBackgroundBrush}"
                             Opacity="0.92" />
                     <Rectangle Margin="2"
-                               RadiusX="20"
-                               RadiusY="20"
+                               RadiusX="10"
+                               RadiusY="10"
                                Fill="Transparent"
                                Stroke="{ThemeResource BrandPrimaryBrush}"
                                StrokeThickness="2"

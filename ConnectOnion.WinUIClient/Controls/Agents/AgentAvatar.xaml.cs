@@ -5,7 +5,7 @@ using Microsoft.UI.Xaml.Controls;
 namespace ConnectOnion.WinUIClient.Controls;
 
 /// <summary>
-/// Brand-colored square avatar showing an agent's initial. Shared across the
+/// Stable palette avatar showing an agent's initial. Shared across the
 /// home cards, agent detail, chat header and sidebar. The visual size is set
 /// per-site via <see cref="Size"/>; corner radius and font size reuse the
 /// inherited <see cref="Control.CornerRadius"/>/<see cref="Control.FontSize"/>.
@@ -68,8 +68,12 @@ public sealed partial class AgentAvatar : UserControl
     {
         var state = PaletteIndex < 0 && string.IsNullOrWhiteSpace(Initial)
             ? "Neutral"
-            : new[] { "Blue", "Violet", "Teal", "Coral" }[
-                PaletteIndex < 0 ? AvatarPalette.From(Initial) : PaletteIndex % 4];
+            : new[]
+            {
+                "Blue", "Violet", "Teal", "Coral",
+                "Indigo", "Cyan", "Emerald", "Amber",
+                "Rose", "Plum", "Slate", "Olive",
+            }[PaletteIndex < 0 ? AvatarPalette.From(Initial) : PaletteIndex % 12];
         VisualStateManager.GoToState(this, state, useTransitions: false);
     }
 }

@@ -48,13 +48,69 @@
                         <Setter Target="InitialText.Foreground" Value="{ThemeResource AvatarPaletteCoralForegroundBrush}" />
                     </VisualState.Setters>
                 </VisualState>
+                <VisualState x:Name="Indigo">
+                    <VisualState.Setters>
+                        <Setter Target="AvatarBorder.Background" Value="{ThemeResource AvatarPaletteIndigoBackgroundBrush}" />
+                        <Setter Target="AvatarBorder.BorderBrush" Value="{ThemeResource AvatarPaletteIndigoForegroundBrush}" />
+                        <Setter Target="InitialText.Foreground" Value="{ThemeResource AvatarPaletteIndigoForegroundBrush}" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="Cyan">
+                    <VisualState.Setters>
+                        <Setter Target="AvatarBorder.Background" Value="{ThemeResource AvatarPaletteCyanBackgroundBrush}" />
+                        <Setter Target="AvatarBorder.BorderBrush" Value="{ThemeResource AvatarPaletteCyanForegroundBrush}" />
+                        <Setter Target="InitialText.Foreground" Value="{ThemeResource AvatarPaletteCyanForegroundBrush}" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="Emerald">
+                    <VisualState.Setters>
+                        <Setter Target="AvatarBorder.Background" Value="{ThemeResource AvatarPaletteEmeraldBackgroundBrush}" />
+                        <Setter Target="AvatarBorder.BorderBrush" Value="{ThemeResource AvatarPaletteEmeraldForegroundBrush}" />
+                        <Setter Target="InitialText.Foreground" Value="{ThemeResource AvatarPaletteEmeraldForegroundBrush}" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="Amber">
+                    <VisualState.Setters>
+                        <Setter Target="AvatarBorder.Background" Value="{ThemeResource AvatarPaletteAmberBackgroundBrush}" />
+                        <Setter Target="AvatarBorder.BorderBrush" Value="{ThemeResource AvatarPaletteAmberForegroundBrush}" />
+                        <Setter Target="InitialText.Foreground" Value="{ThemeResource AvatarPaletteAmberForegroundBrush}" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="Rose">
+                    <VisualState.Setters>
+                        <Setter Target="AvatarBorder.Background" Value="{ThemeResource AvatarPaletteRoseBackgroundBrush}" />
+                        <Setter Target="AvatarBorder.BorderBrush" Value="{ThemeResource AvatarPaletteRoseForegroundBrush}" />
+                        <Setter Target="InitialText.Foreground" Value="{ThemeResource AvatarPaletteRoseForegroundBrush}" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="Plum">
+                    <VisualState.Setters>
+                        <Setter Target="AvatarBorder.Background" Value="{ThemeResource AvatarPalettePlumBackgroundBrush}" />
+                        <Setter Target="AvatarBorder.BorderBrush" Value="{ThemeResource AvatarPalettePlumForegroundBrush}" />
+                        <Setter Target="InitialText.Foreground" Value="{ThemeResource AvatarPalettePlumForegroundBrush}" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="Slate">
+                    <VisualState.Setters>
+                        <Setter Target="AvatarBorder.Background" Value="{ThemeResource AvatarPaletteSlateBackgroundBrush}" />
+                        <Setter Target="AvatarBorder.BorderBrush" Value="{ThemeResource AvatarPaletteSlateForegroundBrush}" />
+                        <Setter Target="InitialText.Foreground" Value="{ThemeResource AvatarPaletteSlateForegroundBrush}" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="Olive">
+                    <VisualState.Setters>
+                        <Setter Target="AvatarBorder.Background" Value="{ThemeResource AvatarPaletteOliveBackgroundBrush}" />
+                        <Setter Target="AvatarBorder.BorderBrush" Value="{ThemeResource AvatarPaletteOliveForegroundBrush}" />
+                        <Setter Target="InitialText.Foreground" Value="{ThemeResource AvatarPaletteOliveForegroundBrush}" />
+                    </VisualState.Setters>
+                </VisualState>
             </VisualStateGroup>
         </VisualStateManager.VisualStateGroups>
         <TextBlock x:Name="InitialText"
                    Text="{x:Bind Initial, Mode=OneWay}"
                    Foreground="{ThemeResource AvatarForegroundBrush}"
                    FontSize="{x:Bind FontSize, Mode=OneWay}"
-                   FontWeight="Bold"
+                   FontWeight="SemiBold"
                    HorizontalAlignment="Center"
                    VerticalAlignment="Center" />
     </Border>

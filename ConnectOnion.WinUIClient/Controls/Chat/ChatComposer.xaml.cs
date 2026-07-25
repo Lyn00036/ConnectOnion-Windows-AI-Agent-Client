@@ -18,6 +18,7 @@ using Windows.System;
 using Windows.UI.Core;
 using ConnectOnion.Protocol;
 using ConnectOnion.WinUIClient.Models;
+using ConnectOnion.WinUIClient.Services;
 using ConnectOnion.WinUIClient.Services.Attachments;
 
 namespace ConnectOnion.WinUIClient.Controls;
@@ -63,6 +64,39 @@ public sealed partial class ChatComposer : UserControl, IDisposable
             typeof(ChatComposer),
             new PropertyMetadata(true, OnShowSuggestionsChanged));
 
+    /// <summary>
+    /// The agent's declared skills, from its <c>/info</c>. Set it and the composer offers them as
+    /// slash-command completions; leave it null and nothing about the composer changes.
+    /// </summary>
+    public static readonly DependencyProperty SkillsProperty =
+        DependencyProperty.Register(
+            nameof(Skills),
+            typeof(IReadOnlyList<SkillInfo>),
+            typeof(ChatComposer),
+            new PropertyMetadata(null, OnSkillsChanged));
+
+    /// <summary>
+    /// The running turn's spend, rendered beside the connection status. Empty collapses the slot.
+    /// </summary>
+    public static readonly DependencyProperty UsageTextProperty =
+        DependencyProperty.Register(
+            nameof(UsageText),
+            typeof(string),
+            typeof(ChatComposer),
+            new PropertyMetadata("", OnUsageTextChanged));
+
+    /// <summary>
+    /// Ready-made prompts to offer above the input, replacing the generic starters. Separate from
+    /// <see cref="Skills"/> because these are already-phrased sentences the caller chose (see
+    /// <c>AgentSkills.BestOffers</c>), not names to complete.
+    /// </summary>
+    public static readonly DependencyProperty SuggestionPromptsProperty =
+        DependencyProperty.Register(
+            nameof(SuggestionPrompts),
+            typeof(IReadOnlyList<string>),
+            typeof(ChatComposer),
+            new PropertyMetadata(null, OnShowSuggestionsChanged));
+
     public static readonly DependencyProperty ShowModeSelectorProperty =
         DependencyProperty.Register(
             nameof(ShowModeSelector),
@@ -97,6 +131,27 @@ public sealed partial class ChatComposer : UserControl, IDisposable
             typeof(string),
             typeof(ChatComposer),
             new PropertyMetadata("Write a message..."));
+
+    public static readonly DependencyProperty ShowConnectionStatusProperty =
+        DependencyProperty.Register(
+            nameof(ShowConnectionStatus),
+            typeof(bool),
+            typeof(ChatComposer),
+            new PropertyMetadata(false));
+
+    public static readonly DependencyProperty ConnectionPhaseProperty =
+        DependencyProperty.Register(
+            nameof(ConnectionPhase),
+            typeof(ConnectOnion.WinUIClient.Models.ConnectionPhase),
+            typeof(ChatComposer),
+            new PropertyMetadata(ConnectOnion.WinUIClient.Models.ConnectionPhase.Idle));
+
+    public static readonly DependencyProperty ConnectionStatusTextProperty =
+        DependencyProperty.Register(
+            nameof(ConnectionStatusText),
+            typeof(string),
+            typeof(ChatComposer),
+            new PropertyMetadata(""));
 
     public event EventHandler<ComposerSubmission>? SubmitRequested;
 
@@ -181,6 +236,48 @@ public sealed partial class ChatComposer : UserControl, IDisposable
         set => SetValue(ShowSuggestionsProperty, value);
     }
 
+    /// <summary>The agent's declared skills, offered as <c>/</c> completions. Null or empty leaves
+    /// the composer exactly as it behaves without a palette.</summary>
+    public IReadOnlyList<SkillInfo>? Skills
+    {
+        get => (IReadOnlyList<SkillInfo>?)GetValue(SkillsProperty);
+        set => SetValue(SkillsProperty, value);
+    }
+
+    /// <summary>Prompts shown as chips above the input in place of the generic starters. Empty or
+    /// null falls back to those starters.</summary>
+    public IReadOnlyList<string>? SuggestionPrompts
+    {
+        get => (IReadOnlyList<string>?)GetValue(SuggestionPromptsProperty);
+        set => SetValue(SuggestionPromptsProperty, value);
+    }
+
+    /// <summary>The running turn's spend ("3.1K→157 tok · ctx 1.3% · 1 tools"). Empty hides it.</summary>
+    public string UsageText
+    {
+        get => (string)GetValue(UsageTextProperty);
+        set => SetValue(UsageTextProperty, value);
+    }
+
+    /// <summary>Whether there is anything to show. A separate property rather than a
+    /// string-to-visibility converter so the slot's rule lives beside the value it describes.</summary>
+    public bool HasUsageText => !string.IsNullOrEmpty(UsageText);
+
+    private static void OnUsageTextChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        // HasUsageText is derived, and a plain CLR property raises nothing on its own — without
+        // this the slot would never appear after the first usage report.
+        if (d is ChatComposer composer) composer.Bindings.Update();
+    }
+
+    private static void OnSkillsChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        // Skills usually arrive after the page loads (the /info fetch is async), so a draft the
+        // user already started typing has to be re-evaluated rather than waiting for the next
+        // keystroke to open the palette.
+        if (d is ChatComposer composer) composer.RefreshSkillPalette();
+    }
+
     /// <summary>Whether the approval-mode pill is shown. Off by default: it belongs to an ongoing
     /// conversation (ChatPage), not to the agent-detail page's one-shot first message.</summary>
     public bool ShowModeSelector
@@ -214,6 +311,27 @@ public sealed partial class ChatComposer : UserControl, IDisposable
     {
         get => (string)GetValue(PlaceholderTextProperty);
         set => SetValue(PlaceholderTextProperty, value);
+    }
+
+    /// <summary>Whether the compact connection indicator is rendered inside the composer.</summary>
+    public bool ShowConnectionStatus
+    {
+        get => (bool)GetValue(ShowConnectionStatusProperty);
+        set => SetValue(ShowConnectionStatusProperty, value);
+    }
+
+    /// <summary>The current transport phase used to color the composer's status indicator.</summary>
+    public ConnectionPhase ConnectionPhase
+    {
+        get => (ConnectionPhase)GetValue(ConnectionPhaseProperty);
+        set => SetValue(ConnectionPhaseProperty, value);
+    }
+
+    /// <summary>The user-facing transport status shown beside the indicator.</summary>
+    public string ConnectionStatusText
+    {
+        get => (string)GetValue(ConnectionStatusTextProperty);
+        set => SetValue(ConnectionStatusTextProperty, value);
     }
 
     public void FocusInput()
@@ -323,8 +441,24 @@ public sealed partial class ChatComposer : UserControl, IDisposable
         StopRequested?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>
+    /// Picks which suggestion row is on screen: the agent's own skill offers when it has any,
+    /// otherwise the generic starters. Never both — they answer the same question, and two rows of
+    /// chips above an empty input reads as a menu rather than a nudge.
+    ///
+    /// <para>The 620px floor is unchanged: below it the chips wrap into a second row and push the
+    /// input down, which costs more than the suggestion is worth.</para>
+    /// </summary>
     private void ApplySuggestionVisibility(double width)
-        => SuggestionPanel.Visibility = ShowSuggestions && width >= 620 ? Visibility.Visible : Visibility.Collapsed;
+    {
+        var room = ShowSuggestions && width >= 620;
+        var offers = SuggestionPrompts;
+        var hasOffers = offers is { Count: > 0 };
+
+        SkillSuggestionList.ItemsSource = hasOffers ? offers : null;
+        SkillSuggestionList.Visibility = room && hasOffers ? Visibility.Visible : Visibility.Collapsed;
+        SuggestionPanel.Visibility = room && !hasOffers ? Visibility.Visible : Visibility.Collapsed;
+    }
 
     private async void Send_Click(object sender, RoutedEventArgs e)
     {
@@ -581,10 +715,18 @@ public sealed partial class ChatComposer : UserControl, IDisposable
     }
 
     private void InputBox_TextChanged(object sender, TextChangedEventArgs e)
-        => RefreshSendButtonState();
+    {
+        RefreshSendButtonState();
+        RefreshSkillPalette();
+    }
 
     private void InputBox_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
+        // The palette gets first refusal on every key it uses. It has to: while it is open, Enter
+        // means "complete this command", and letting the submit rule below see that key first
+        // would send "/pos" as a message the moment the user tried to accept "/post".
+        if (IsSkillPaletteOpen && HandleSkillPaletteKey(e.Key)) { e.Handled = true; return; }
+
         var isShiftDown = InputKeyboardSource
             .GetKeyStateForCurrentThread(VirtualKey.Shift)
             .HasFlag(CoreVirtualKeyStates.Down);
@@ -594,6 +736,100 @@ public sealed partial class ChatComposer : UserControl, IDisposable
             e.Handled = true;
             SubmitCurrentText();
         }
+    }
+
+    // ---- Slash-command palette ---------------------------------------------
+    //
+    // The agent's declared skills, offered as completions while the user is typing a "/" command.
+    // The matching rules live in Core (AgentSkills) because they are the testable half; this is
+    // only the keyboard and visibility plumbing.
+
+    private bool IsSkillPaletteOpen => SkillPalette.Visibility == Visibility.Visible;
+
+    /// <summary>Opens, filters or closes the palette for the current draft text.</summary>
+    private void RefreshSkillPalette()
+    {
+        if (Skills is not { Count: > 0 } skills
+            || !AgentSkills.TryGetSlashQuery(InputBox.Text, out var query))
+        {
+            CloseSkillPalette();
+            return;
+        }
+
+        var matches = AgentSkills.Match(skills, query);
+        if (matches.Count == 0)
+        {
+            // A query that matches nothing closes the palette rather than showing an empty box:
+            // an empty popup over the input says less than the input itself, and keeping it open
+            // would go on stealing Enter for a command that does not exist.
+            CloseSkillPalette();
+            return;
+        }
+
+        SkillList.ItemsSource = matches;
+        // Reset to the top on every keystroke: the list has just been re-ranked, so a preserved
+        // index would point at whatever happens to sit in that slot now.
+        SkillList.SelectedIndex = 0;
+        SkillPalette.Visibility = Visibility.Visible;
+    }
+
+    private void CloseSkillPalette()
+    {
+        if (SkillPalette.Visibility == Visibility.Collapsed) return;
+        SkillPalette.Visibility = Visibility.Collapsed;
+        // Dropped rather than left in place: the list holds the agent's skills, and a closed
+        // palette has no reason to keep a realized item container per skill alive.
+        SkillList.ItemsSource = null;
+    }
+
+    /// <summary>Handles the keys the palette owns while it is open. Returns false for anything
+    /// else, so ordinary typing (and the Enter-to-submit rule) is untouched.</summary>
+    private bool HandleSkillPaletteKey(VirtualKey key)
+    {
+        var count = SkillList.Items.Count;
+        if (count == 0) return false;
+
+        switch (key)
+        {
+            case VirtualKey.Down:
+                SkillList.SelectedIndex = (SkillList.SelectedIndex + 1) % count;
+                SkillList.ScrollIntoView(SkillList.SelectedItem);
+                return true;
+
+            case VirtualKey.Up:
+                SkillList.SelectedIndex = (SkillList.SelectedIndex - 1 + count) % count;
+                SkillList.ScrollIntoView(SkillList.SelectedItem);
+                return true;
+
+            case VirtualKey.Tab:
+            case VirtualKey.Enter:
+                CompleteSkill(SkillList.SelectedItem as SkillInfo);
+                return true;
+
+            case VirtualKey.Escape:
+                // Closes the palette and leaves the text alone. The reference client clears the
+                // draft here; discarding what someone typed because they dismissed a popup is a
+                // worse trade than making them press Backspace.
+                CloseSkillPalette();
+                return true;
+
+            default:
+                return false;
+        }
+    }
+
+    private void SkillList_ItemClick(object sender, ItemClickEventArgs e)
+        => CompleteSkill(e.ClickedItem as SkillInfo);
+
+    /// <summary>Completes the draft to <c>/name </c> — with the trailing space, which is what
+    /// closes the palette (see <c>AgentSkills.TryGetSlashQuery</c>) and puts the caret where the
+    /// command's arguments go.</summary>
+    private void CompleteSkill(SkillInfo? skill)
+    {
+        if (skill is null) return;
+        SetDraft($"/{skill.Name} ");
+        CloseSkillPalette();
+        InputBox.Focus(FocusState.Programmatic);
     }
 
     private void SubmitCurrentText()

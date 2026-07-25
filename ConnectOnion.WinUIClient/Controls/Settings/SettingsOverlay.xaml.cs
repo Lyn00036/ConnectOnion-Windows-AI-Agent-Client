@@ -55,7 +55,7 @@ public sealed partial class SettingsOverlay : UserControl
         if (width <= 0 || height <= 0) return;
         var safeMargin = width >= 860 ? 64d : 48d;
         ModalContainer.Width = Math.Max(0, Math.Min(1100, Math.Min(width * 0.82, width - safeMargin)));
-        ModalContainer.Height = Math.Max(0, Math.Min(820, Math.Min(height * 0.86, height - safeMargin)));
+        ModalContainer.Height = Math.Max(520, Math.Min(760, Math.Min(height * 0.82, height - safeMargin)));
     }
 
     private void RequestClose() => CloseRequested?.Invoke(this, EventArgs.Empty);
