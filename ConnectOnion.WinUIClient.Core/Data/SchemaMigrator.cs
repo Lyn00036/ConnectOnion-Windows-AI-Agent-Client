@@ -29,7 +29,7 @@ internal static class SchemaMigrator
     private const int BaselineVersion = 1;
 
     /// <summary>The schema version this build expects. Bump when you append to <see cref="Migrations"/>.</summary>
-    internal const int LatestVersion = 3;
+    internal const int LatestVersion = 5;
 
     /// <summary>
     /// Ordered forward migrations. Each runs exactly once, in its own transaction, on databases
@@ -76,6 +76,103 @@ internal static class SchemaMigrator
         // conversation's mode is ours to remember and re-assert on every turn.
         new(3, """
             ALTER TABLE sessions ADD COLUMN mode TEXT NOT NULL DEFAULT 'safe';
+            """),
+
+        // v4 — repair and prevent sessions whose owning agent no longer exists.
+        //
+        // Older builds deleted the agent row before tearing down its conversations. If any child
+        // cleanup then failed, the session row survived with no owner: the sidebar hid it because
+        // it builds under existing agents, while global surfaces such as the tray still found it.
+        // Clean the full conversation graph in the same child-before-parent order as the runtime
+        // delete path. usage_events is intentionally untouched — it is an immutable spend ledger.
+        //
+        // Rebuilding `sessions` merely to add a foreign key would be risky because four existing
+        // tables already reference it. These guards provide the same integrity boundary without a
+        // table rebuild: a session cannot name a missing agent, and an agent cannot disappear
+        // while sessions still belong to it.
+        new(4, """
+            DELETE FROM message_attachments
+            WHERE conversation_id IN (
+                SELECT sessions.id
+                FROM sessions
+                LEFT JOIN agents ON agents.id = sessions.agent_id
+                WHERE agents.id IS NULL
+            );
+
+            DELETE FROM messages
+            WHERE conversation_id IN (
+                SELECT sessions.id
+                FROM sessions
+                LEFT JOIN agents ON agents.id = sessions.agent_id
+                WHERE agents.id IS NULL
+            );
+
+            DELETE FROM trace_events
+            WHERE conversation_id IN (
+                SELECT sessions.id
+                FROM sessions
+                LEFT JOIN agents ON agents.id = sessions.agent_id
+                WHERE agents.id IS NULL
+            );
+
+            DELETE FROM executions
+            WHERE conversation_id IN (
+                SELECT sessions.id
+                FROM sessions
+                LEFT JOIN agents ON agents.id = sessions.agent_id
+                WHERE agents.id IS NULL
+            );
+
+            DELETE FROM sessions
+            WHERE NOT EXISTS (
+                SELECT 1 FROM agents WHERE agents.id = sessions.agent_id
+            );
+
+            DELETE FROM app_meta
+            WHERE key = 'active_session_id'
+              AND NOT EXISTS (
+                  SELECT 1 FROM sessions WHERE sessions.id = app_meta.value
+              );
+
+            CREATE TRIGGER IF NOT EXISTS sessions_agent_insert_guard
+            BEFORE INSERT ON sessions
+            FOR EACH ROW
+            WHEN NOT EXISTS (SELECT 1 FROM agents WHERE agents.id = NEW.agent_id)
+            BEGIN
+                SELECT RAISE(ABORT, 'session references a missing agent');
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS sessions_agent_update_guard
+            BEFORE UPDATE OF agent_id ON sessions
+            FOR EACH ROW
+            WHEN NOT EXISTS (SELECT 1 FROM agents WHERE agents.id = NEW.agent_id)
+            BEGIN
+                SELECT RAISE(ABORT, 'session references a missing agent');
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS agents_delete_guard
+            BEFORE DELETE ON agents
+            FOR EACH ROW
+            WHEN EXISTS (SELECT 1 FROM sessions WHERE sessions.agent_id = OLD.id)
+            BEGIN
+                SELECT RAISE(ABORT, 'delete agent sessions before deleting the agent');
+            END;
+            """),
+
+        // v5 — the BIP39 recovery phrase for the local identity.
+        //
+        // Nullable on purpose, and it will stay null forever for anyone who installed before this:
+        // their seed came from a raw CSPRNG draw, and no phrase encodes it (BIP39 runs the other
+        // way — phrase to seed). Those identities are not regenerated, because that would change
+        // the address and every agent that authorized it; they simply export the raw seed instead.
+        // Identities minted from here on are derived from a phrase, so they can be restored on
+        // another machine or in any other ConnectOnion client.
+        //
+        // Stored the same way private_seed is: DPAPI-protected (CurrentUser) then base64. The
+        // phrase and the seed are equivalent secrets — one derives the other — so protecting the
+        // seed while writing the phrase in the clear right beside it would defeat the point.
+        new(5, """
+            ALTER TABLE identity_keys ADD COLUMN mnemonic TEXT NULL;
             """),
     };
 
