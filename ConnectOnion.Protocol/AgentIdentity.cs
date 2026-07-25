@@ -55,6 +55,56 @@ public sealed class AgentIdentity
         return FromSeed(seed);
     }
 
+    /// <summary>
+    /// Mints a new identity together with the BIP39 recovery phrase that reproduces it. This is
+    /// the path new identities should take: <see cref="Generate"/> produces a seed that exists
+    /// nowhere but the local database, so losing that database loses the address forever, while a
+    /// phrase can be written down and re-entered here or in any other ConnectOnion client.
+    /// </summary>
+    /// <param name="wordCount">12 (the ecosystem default), 15, 18, 21 or 24.</param>
+    public static (AgentIdentity Identity, string Mnemonic) GenerateWithMnemonic(int wordCount = 12)
+    {
+        var mnemonic = Bip39.Generate(wordCount);
+        return (FromMnemonic(mnemonic), mnemonic);
+    }
+
+    /// <summary>
+    /// Recovers the identity a BIP39 phrase encodes.
+    ///
+    /// <para>The derivation — first 32 bytes of the BIP39 seed, used directly as the Ed25519 seed —
+    /// is shared with the Python SDK and oo-chat, so the same phrase yields the same address in all
+    /// three. See <see cref="Bip39"/> before changing anything about it.</para>
+    /// </summary>
+    /// <exception cref="ArgumentException">The phrase is not a valid BIP39 mnemonic.</exception>
+    public static AgentIdentity FromMnemonic(string mnemonic, string passphrase = "")
+    {
+        ArgumentNullException.ThrowIfNull(mnemonic);
+        if (!Bip39.Validate(mnemonic))
+            throw new ArgumentException(
+                "Not a valid BIP39 recovery phrase (check the word count and spelling).", nameof(mnemonic));
+
+        var bip39Seed = Bip39.ToSeed(mnemonic, passphrase);
+        try
+        {
+            var seed = new byte[32];
+            Array.Copy(bip39Seed, seed, 32);
+            try
+            {
+                return FromSeed(seed);
+            }
+            finally
+            {
+                // FromSeed clones, so this buffer is ours to wipe — key material must not be left
+                // for the GC to hand to whoever gets the reused array next.
+                System.Security.Cryptography.CryptographicOperations.ZeroMemory(seed);
+            }
+        }
+        finally
+        {
+            System.Security.Cryptography.CryptographicOperations.ZeroMemory(bip39Seed);
+        }
+    }
+
     /// <summary>Reconstructs an identity from its stored 32-byte private seed.</summary>
     public static AgentIdentity FromSeed(byte[] seed)
     {
