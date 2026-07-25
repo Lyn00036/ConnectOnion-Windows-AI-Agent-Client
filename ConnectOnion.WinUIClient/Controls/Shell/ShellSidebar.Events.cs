@@ -227,18 +227,28 @@ public sealed partial class ShellSidebar
 
     private async void BottomSettings_Click(object sender, RoutedEventArgs e)
     {
+        CloseAccountFlyout();
         await RefreshAsync();
         SettingsRequested?.Invoke(BottomAccountButton);
     }
 
     private void BottomKeyboardShortcuts_Click(object sender, RoutedEventArgs e)
-        => KeyboardShortcutsRequested?.Invoke(BottomAccountButton);
+    {
+        CloseAccountFlyout();
+        KeyboardShortcutsRequested?.Invoke(BottomAccountButton);
+    }
 
     private void BottomAbout_Click(object sender, RoutedEventArgs e)
-        => AboutRequested?.Invoke(BottomAccountButton);
+    {
+        CloseAccountFlyout();
+        AboutRequested?.Invoke(BottomAccountButton);
+    }
 
     private void BottomExit_Click(object sender, RoutedEventArgs e)
-        => ExitRequested?.Invoke();
+    {
+        CloseAccountFlyout();
+        ExitRequested?.Invoke();
+    }
 
     private async void BottomTheme_Click(object sender, RoutedEventArgs e)
     {
@@ -248,9 +258,13 @@ public sealed partial class ShellSidebar
             return;
         }
 
+        CloseAccountFlyout();
         var preferences = await AppServices.Preferences.LoadAsync();
         preferences.Theme = theme;
         await AppServices.Preferences.SaveAsync(preferences);
         ThemeService.Apply(theme);
     }
+
+    private void CloseAccountFlyout()
+        => BottomAccountButton.Flyout?.Hide();
 }

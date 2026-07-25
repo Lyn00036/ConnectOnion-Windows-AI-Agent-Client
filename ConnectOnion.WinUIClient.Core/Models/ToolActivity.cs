@@ -360,6 +360,7 @@ public sealed partial class ToolStepViewModel : Common.ObservableObject
     [NotifyPropertyChangedFor(nameof(InvocationDisplayText))]
     [NotifyPropertyChangedFor(nameof(InvocationSecondary))]
     [NotifyPropertyChangedFor(nameof(HasInvocationSecondary))]
+    [NotifyPropertyChangedFor(nameof(CanOpenInvocation))]
     // The row title drops its target digest once an invocation carries the real value.
     [NotifyPropertyChangedFor(nameof(ShowDisplayTarget))]
     [NotifyPropertyChangedFor(nameof(DisplayLabel))]
@@ -386,6 +387,10 @@ public sealed partial class ToolStepViewModel : Common.ObservableObject
     /// <summary>Whether there is an invocation worth a line. False leaves the row exactly as it
     /// looked before — a tool taking no readable arguments must not gain an empty block.</summary>
     [JsonIgnore] public bool HasInvocation => Invocation.HasValue;
+    [JsonIgnore] public bool CanOpenInvocation
+        => Invocation.Kind == ToolInvocationKind.Url
+            && Uri.TryCreate(Invocation.Text, UriKind.Absolute, out var uri)
+            && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
 
     /// <summary>The trimmed one-liner under the step's name, shown only while the step is folded.
     /// Once it is open the labelled block below carries the same value in full, and printing both
@@ -464,6 +469,7 @@ public sealed partial class ToolStepViewModel : Common.ObservableObject
     /// view sets it and clears it on a short delay.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CopyLabel))]
+    [NotifyPropertyChangedFor(nameof(CopyInvocationLabel))]
     public partial bool JustCopied { get; set; }
 
     /// <summary>Default height cap for the log; ~280px keeps a long result from pushing the final
@@ -472,6 +478,7 @@ public sealed partial class ToolStepViewModel : Common.ObservableObject
     /// step with <c>ToolActivityView.DefaultLogMaxHeight</c>, which decides when Expand even appears.</summary>
     [JsonIgnore] public double LogMaxHeight => IsLogEnlarged ? 560 : 280;
     [JsonIgnore] public string CopyLabel => JustCopied ? "Copied" : "Copy";
+    [JsonIgnore] public string CopyInvocationLabel => JustCopied ? "Copied" : "Copy";
     [JsonIgnore] public string EnlargeLabel => IsLogEnlarged ? "Collapse" : "Expand";
 
     [RelayCommand] private void ToggleLogSize() => IsLogEnlarged = !IsLogEnlarged;

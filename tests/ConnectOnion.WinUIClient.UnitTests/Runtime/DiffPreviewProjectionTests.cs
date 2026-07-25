@@ -105,7 +105,7 @@ public class DiffPreviewProjectionTests
     }
 
     [Fact]
-    public void CompletedWithoutToolResult_IsUnconfirmedAndExpanded()
+    public void CompletedWithoutToolResult_IsUnconfirmedAndFolded()
     {
         var (projection, _, diff, ask) = ProjectWriteApproval();
         ask.EventMeta = "Answered: Yes, apply this change";
@@ -113,8 +113,27 @@ public class DiffPreviewProjectionTests
         projection.AppendCompletedTurn("");
 
         Assert.Equal(DiffChangeState.Unconfirmed, diff.DiffState);
-        Assert.True(diff.IsDiffExpanded);
+        Assert.False(diff.IsDiffExpanded);
         Assert.DoesNotContain("Changes applied", diff.DiffCardTitle, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CompletedTurn_FoldsInformationalPreview()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+        projection.Apply(Event("diff_preview",
+            """{"type":"diff_preview","path":"/tmp/test.txt","preview":"@@ -1 +1 @@\n-old\n+new","file_exists":true}"""));
+
+        var diff = Assert.Single(target.Messages);
+        Assert.True(diff.IsDiffExpanded);
+
+        projection.AppendCompletedTurn("");
+
+        Assert.Equal(DiffChangeState.Preview, diff.DiffState);
+        Assert.False(diff.IsDiffExpanded);
+        diff.ToggleDiffExpanded();
+        Assert.True(diff.IsDiffExpanded);
     }
 
     [Fact]

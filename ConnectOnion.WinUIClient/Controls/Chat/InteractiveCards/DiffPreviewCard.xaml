@@ -37,7 +37,8 @@
                     ToolTipService.ToolTip="{x:Bind Message.EventTitle, Mode=OneWay}"
                     AutomationProperties.Name="{x:Bind Message.EventTitle, Mode=OneWay}"
                     Foreground="{ThemeResource TextTertiaryBrush}" />
-                <ScrollViewer MaxHeight="{x:Bind Message.DiffViewportHeight, Mode=OneWay}"
+                <ScrollViewer x:Name="DiffScrollViewer"
+                    MaxHeight="{x:Bind Message.DiffViewportHeight, Mode=OneWay}"
                     HorizontalScrollBarVisibility="Auto" HorizontalScrollMode="Enabled"
                     VerticalScrollBarVisibility="Auto" VerticalScrollMode="Enabled">
                     <ItemsRepeater ItemsSource="{x:Bind Message.DiffPreview.Files, Mode=OneWay}">
@@ -74,10 +75,10 @@
                                                         <TextBlock Text="{x:Bind OldLineNumber}" FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="11" Padding="8,2" TextAlignment="Right" Foreground="{ThemeResource TextTertiaryBrush}" />
                                                         <TextBlock Grid.Column="1" Text="{x:Bind NewLineNumber}" FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="11" Padding="8,2" TextAlignment="Right" Foreground="{ThemeResource TextTertiaryBrush}" />
                                                         <TextBlock Grid.Column="2" Text="{x:Bind Marker}" FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="12" Padding="6,2" TextAlignment="Center" />
-                                                        <Grid Grid.Column="3">
+                                                        <Grid Grid.Column="3" MinWidth="0">
                                                             <TextBlock Text="{x:Bind Content}" FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="12" Padding="4,2,14,2" TextWrapping="NoWrap" IsTextSelectionEnabled="True"
                                                                 Visibility="{x:Bind IsWrapped, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
-                                                            <TextBlock Text="{x:Bind Content}" FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="12" Padding="4,2,14,2" TextWrapping="Wrap" IsTextSelectionEnabled="True"
+                                                            <TextBlock Text="{x:Bind Content}" MinWidth="0" FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="12" Padding="4,2,14,2" TextWrapping="Wrap" IsTextSelectionEnabled="True"
                                                                 Visibility="{x:Bind IsWrapped, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                                                         </Grid>
                                                     </Grid>

@@ -899,115 +899,99 @@
             </ListView.ItemContainerStyle>
         </ListView>
 
-        <!-- Claude-style continuation affordance. It is controlled by the real ScrollViewer
-             offset, so it appears only while transcript content remains below the viewport. -->
-        <!-- Jump-to-latest: pinned to the content track's bottom-right, just above the composer,
-             so it never covers the transcript or a turn's hover actions the way a centred button
-             did. The wrapper centres the 880 track (Stretch + MaxWidth) with the same 24px gutters
-             as the list and composer, and the button right-aligns within it, so it lands on the
-             composer's right edge. Its empty areas paint nothing and so pass the pointer through to
-             the transcript. Show/hide stays driven by the scroll offset in ChatPage.Scrolling.cs
-             (it sets ScrollToLatestButton.Visibility directly). -->
-        <Grid Grid.Row="1"
-              Canvas.ZIndex="20"
-              MaxWidth="{StaticResource ChatColumnWidth}"
-              Margin="24,0,24,12"
-              HorizontalAlignment="Stretch"
-              VerticalAlignment="Bottom">
-            <Button x:Name="ScrollToLatestButton"
-                    Width="40"
-                    Height="40"
-                    Padding="0"
-                    CornerRadius="20"
-                    HorizontalAlignment="Right"
-                    VerticalAlignment="Bottom"
-                    Background="{ThemeResource SurfaceElevatedBrush}"
-                    BorderBrush="{ThemeResource BorderDefaultBrush}"
-                    BorderThickness="1"
-                    Translation="0,0,12"
-                    Visibility="Collapsed"
-                    Click="ScrollToLatest_Click"
-                    AutomationProperties.Name="Jump to latest message"
-                    ToolTipService.ToolTip="Jump to latest">
-                <Button.Shadow>
-                    <ThemeShadow />
-                </Button.Shadow>
-                <ic:FluentIcon Icon="ArrowDown"
-                               IconVariant="Regular"
-                               IconSize="Size20"
-                               Foreground="{ThemeResource TextPrimaryBrush}" />
-            </Button>
-        </Grid>
-
-        <!-- Failure bar: appears when the last run failed and is still retryable. Mutually
-             exclusive with the offline bar (see Vm.ShowRetryBar) so the two never stack. -->
-        <Border Grid.Row="1"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Bottom"
-                Margin="0,0,0,16"
-                MaxWidth="520"
-                CornerRadius="14"
-                Padding="14,8"
-                Background="{ThemeResource SurfaceElevatedBrush}"
-                BorderBrush="{ThemeResource BorderDefaultBrush}"
-                BorderThickness="1"
-                Visibility="{x:Bind Vm.ShowRetryBar, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-                <TextBlock x:Uid="ChatConnectionFailure" Text="Couldn't reach the agent."
-                           FontSize="12"
-                           VerticalAlignment="Center"
-                           Foreground="{ThemeResource TextSecondaryBrush}" />
-                <Button Command="{x:Bind Vm.RetryCommand}"
-                        Padding="12,5"
-                        CornerRadius="8">
-                    <controls:IconText x:Uid="ChatRetry" Glyph="ArrowClockwise" IconSize="Size16" Spacing="6" FontSize="12" Text="Retry" />
-                </Button>
-            </StackPanel>
-        </Border>
-
-        <controls:OfflineNoticeBar Grid.Row="1"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Bottom"
-                                   Margin="20,0,20,18"
-                                   MaxWidth="620"
-                                   Detail="{x:Bind Vm.PresenceDetail, Mode=OneWay}"
-                                   CanRecheck="{x:Bind Vm.CanReconnect, Mode=OneWay}"
-                                   IsChecking="{x:Bind Vm.IsCheckingPresence, Mode=OneWay}"
-                                   StatusMessage="{x:Bind Vm.RecheckFailedMessage, Mode=OneWay}"
-                                   RecheckRequested="OfflineNotice_RecheckRequested"
-                                   Visibility="{x:Bind Vm.ShowOfflineNotice, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-            <!-- Slide + fade up when the offline card appears, instead of popping in. -->
-            <animations:Implicit.ShowAnimations>
-                <animations:OpacityAnimation From="0" To="1" Duration="0:0:0.2" />
-                <animations:TranslationAnimation From="0,14,0" To="0,0,0" Duration="0:0:0.2" />
-            </animations:Implicit.ShowAnimations>
-        </controls:OfflineNoticeBar>
-
         <Border Grid.Row="2"
                 Padding="0,10,0,0"
                 Background="{ThemeResource ChatBackgroundBrush}"
                 BorderBrush="{ThemeResource BorderSubtleBrush}"
                 BorderThickness="0,1,0,0">
-            <!-- Transport state belongs to the composer surface; client-side failures
-                 still surface inline in the conversation as Error activity bubbles. -->
-            <controls:ChatComposer x:Name="Composer"
-                                   CanSubmit="{x:Bind Vm.CanSend, Mode=OneWay}"
-                                   EnterToSubmit="{x:Bind Vm.EnterToSend, Mode=OneWay}"
-                                   IsBusy="{x:Bind Vm.IsProcessing, Mode=OneWay}"
-                                   CanStop="{x:Bind Vm.CanStop, Mode=OneWay}"
-                                   IsStopping="{x:Bind Vm.IsStopping, Mode=OneWay}"
-                                   Mode="{x:Bind Vm.CurrentMode, Mode=OneWay}"
-                                   ShowModeSelector="True"
-                                   ShowConnectionStatus="True"
-                                   ConnectionPhase="{x:Bind Vm.ConnectionPhase, Mode=OneWay}"
-                                   ConnectionStatusText="{x:Bind Vm.ConnectionPhaseText, Mode=OneWay}"
-                                   UsageText="{x:Bind Vm.LiveUsageText, Mode=OneWay}"
-                                   AcceptedInputs="{x:Bind Vm.AcceptedInputs, Mode=OneWay}"
-                                   Skills="{x:Bind Vm.Skills, Mode=OneWay}"
-                                   ShowSuggestions="False"
-                                   StopRequested="Composer_StopRequested"
-                                   ModeChangeRequested="Composer_ModeChangeRequested"
-                                   SubmitRequested="Composer_SubmitRequested" />
+            <StackPanel Spacing="8">
+                <!-- Jump-to-latest belongs to the composer surface instead of floating over the
+                     transcript. It appears centred above the input only while newer content
+                     remains below the viewport; ChatPage.Scrolling.cs owns that visibility. -->
+                <Button x:Name="ScrollToLatestButton"
+                        Width="40"
+                        Height="40"
+                        Padding="0"
+                        CornerRadius="20"
+                        HorizontalAlignment="Center"
+                        Background="{ThemeResource SurfaceElevatedBrush}"
+                        BorderBrush="{ThemeResource BorderDefaultBrush}"
+                        BorderThickness="1"
+                        Translation="0,0,12"
+                        Visibility="Collapsed"
+                        Click="ScrollToLatest_Click"
+                        AutomationProperties.Name="Jump to latest message"
+                        ToolTipService.ToolTip="Jump to latest">
+                    <Button.Shadow>
+                        <ThemeShadow />
+                    </Button.Shadow>
+                    <ic:FluentIcon Icon="ArrowDown"
+                                   IconVariant="Regular"
+                                   IconSize="Size20"
+                                   Foreground="{ThemeResource TextPrimaryBrush}" />
+                </Button>
+
+                <!-- Connection recovery is part of the conversation surface rather than a
+                     floating overlay: it takes layout space above the composer and never covers
+                     the transcript. Retry and offline are mutually exclusive via Vm.ShowRetryBar. -->
+                <Border HorizontalAlignment="Center"
+                        Margin="24,0"
+                        MaxWidth="520"
+                        CornerRadius="10"
+                        Padding="14,8"
+                        Background="{ThemeResource SurfaceElevatedBrush}"
+                        BorderBrush="{ThemeResource BorderDefaultBrush}"
+                        BorderThickness="1"
+                        Visibility="{x:Bind Vm.ShowRetryBar, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                    <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                        <TextBlock x:Uid="ChatConnectionFailure" Text="Couldn't reach the agent."
+                                   FontSize="12"
+                                   VerticalAlignment="Center"
+                                   Foreground="{ThemeResource TextSecondaryBrush}" />
+                        <Button Command="{x:Bind Vm.RetryCommand}"
+                                Padding="12,5"
+                                CornerRadius="8">
+                            <controls:IconText x:Uid="ChatRetry" Glyph="ArrowClockwise" IconSize="Size16" Spacing="6" FontSize="12" Text="Retry" />
+                        </Button>
+                    </StackPanel>
+                </Border>
+
+                <controls:OfflineNoticeBar HorizontalAlignment="Center"
+                                           Margin="24,0"
+                                           MaxWidth="620"
+                                           Detail="{x:Bind Vm.PresenceDetail, Mode=OneWay}"
+                                           CanRecheck="{x:Bind Vm.CanReconnect, Mode=OneWay}"
+                                           IsChecking="{x:Bind Vm.IsCheckingPresence, Mode=OneWay}"
+                                           StatusMessage="{x:Bind Vm.RecheckFailedMessage, Mode=OneWay}"
+                                           RecheckRequested="OfflineNotice_RecheckRequested"
+                                           Visibility="{x:Bind Vm.ShowOfflineNotice, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                    <animations:Implicit.ShowAnimations>
+                        <animations:OpacityAnimation From="0" To="1" Duration="0:0:0.2" />
+                        <animations:TranslationAnimation From="0,8,0" To="0,0,0" Duration="0:0:0.2" />
+                    </animations:Implicit.ShowAnimations>
+                </controls:OfflineNoticeBar>
+
+                <!-- Transport state belongs to the composer surface; client-side failures
+                     still surface inline in the conversation as Error activity bubbles. -->
+                <controls:ChatComposer x:Name="Composer"
+                                       CanSubmit="{x:Bind Vm.CanSend, Mode=OneWay}"
+                                       EnterToSubmit="{x:Bind Vm.EnterToSend, Mode=OneWay}"
+                                       IsBusy="{x:Bind Vm.IsProcessing, Mode=OneWay}"
+                                       CanStop="{x:Bind Vm.CanStop, Mode=OneWay}"
+                                       IsStopping="{x:Bind Vm.IsStopping, Mode=OneWay}"
+                                       Mode="{x:Bind Vm.CurrentMode, Mode=OneWay}"
+                                       ShowModeSelector="True"
+                                       ShowConnectionStatus="True"
+                                       ConnectionPhase="{x:Bind Vm.ConnectionPhase, Mode=OneWay}"
+                                       ConnectionStatusText="{x:Bind Vm.ConnectionPhaseText, Mode=OneWay}"
+                                       UsageText="{x:Bind Vm.LiveUsageText, Mode=OneWay}"
+                                       AcceptedInputs="{x:Bind Vm.AcceptedInputs, Mode=OneWay}"
+                                       Skills="{x:Bind Vm.Skills, Mode=OneWay}"
+                                       ShowSuggestions="False"
+                                       StopRequested="Composer_StopRequested"
+                                       ModeChangeRequested="Composer_ModeChangeRequested"
+                                       SubmitRequested="Composer_SubmitRequested" />
+            </StackPanel>
         </Border>
 
         <!-- Empty state: shown after loading completes when no messages exist -->

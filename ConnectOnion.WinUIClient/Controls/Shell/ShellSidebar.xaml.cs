@@ -444,10 +444,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     }
 
     /// <summary>Guarantees the agent has an active conversation, reusing the current one if it
-    /// already belongs to this agent, else its most recent, else creating one.
-    /// <para>NOTE: this rule is a third copy of the same logic — see
-    /// <c>SessionSelection.FindExisting</c> (the testable one) and
-    /// <c>HomePage.EnsureSessionAsync</c>. They should all call the shared helper.</para></summary>
+    /// already belongs to this agent, else its most recent, else creating one.</summary>
     private async System.Threading.Tasks.Task<string> EnsureSessionAsync(string agentId)
     {
         var sessionsState = await AppServices.Sessions.LoadAsync();

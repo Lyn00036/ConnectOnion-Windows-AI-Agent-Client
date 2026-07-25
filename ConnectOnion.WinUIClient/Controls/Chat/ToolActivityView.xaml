@@ -342,10 +342,32 @@
                                              block over a result block would read as two outputs. -->
                                         <StackPanel Spacing="4"
                                                     Visibility="{Binding HasInvocation, Converter={StaticResource BoolToVis}}">
-                                            <TextBlock Text="{Binding InvocationLabel}"
-                                                       FontSize="12"
-                                                       FontWeight="SemiBold"
-                                                       Foreground="{ThemeResource TextSecondaryBrush}" />
+                                            <Grid ColumnSpacing="8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding InvocationLabel}"
+                                                           FontSize="12"
+                                                           FontWeight="SemiBold"
+                                                           VerticalAlignment="Center"
+                                                           Foreground="{ThemeResource TextSecondaryBrush}" />
+                                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2">
+                                                    <Button Style="{StaticResource LogToolbarButtonStyle}"
+                                                            Content="Open"
+                                                            Tag="{Binding}"
+                                                            Click="InvocationOpen_Click"
+                                                            Visibility="{Binding CanOpenInvocation, Converter={StaticResource BoolToVis}}"
+                                                            AutomationProperties.Name="Open tool URL"
+                                                            ToolTipService.ToolTip="Open this URL in the default browser" />
+                                                    <Button Style="{StaticResource LogToolbarButtonStyle}"
+                                                            Content="{Binding CopyInvocationLabel}"
+                                                            Tag="{Binding}"
+                                                            Click="InvocationCopy_Click"
+                                                            AutomationProperties.Name="Copy tool input"
+                                                            ToolTipService.ToolTip="Copy the full command, target, path, or query" />
+                                                </StackPanel>
+                                            </Grid>
                                             <Border Background="{ThemeResource CodeBackgroundBrush}"
                                                     BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
                                                     BorderThickness="1"
