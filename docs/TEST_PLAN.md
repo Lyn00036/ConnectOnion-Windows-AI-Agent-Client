@@ -1,7 +1,7 @@
 # ConnectOnion Desktop — Test Plan & Test Cases
 
-> Version 1.1 · Branch `main` · Implementation status refreshed 2026-07-13 against working tree based on commit `79872fe`
-> Every class, page, method, table, and constant cited below exists in this repository. Status markers describe the current working tree; planned files are explicitly labelled as planned.
+> Version 2.0 · Branch `main` · Architecture and test-infrastructure status refreshed 2026-07-25 against commit `239e329`
+> Test counts are a dated generated snapshot, not a permanent constant. Protocol Conformance and real-window UI tests are reported separately from the headless xUnit total.
 
 ---
 
@@ -32,18 +32,15 @@
 
 ---
 
-> Optimization implementation refresh: 2026-07-16. The Core project,
-> ArchUnitNET boundaries, Kestrel fake server, and opt-in FlaUI smoke test are
-> implemented. See [OPTIMIZATION.md](./OPTIMIZATION.md) for the current state.
+> Verification refresh: 2026-07-25. The Core seam, CommunityToolkit.Mvvm, Generic Host dependency injection, ArchUnitNET boundaries, fake-agent fixtures, SQLite fixtures, and the FlaUI real-window project are implemented. See [AGENTS.md](../AGENTS.md), [PERFORMANCE.md](./PERFORMANCE.md), and [PERFORMANCE_AUDIT_2026-07-25_EN.md](./PERFORMANCE_AUDIT_2026-07-25_EN.md) for the authoritative architecture and measured evidence.
 
 ## 1. Document Goals
 
-- Establish a **layered test architecture** for ConnectOnion Desktop — solving *testability* at the architectural level, not just piling up test cases.
-- Produce a test case table usable **directly as a development backlog** (Test ID, priority, code location, automatable yes/no).
-- Name the concrete gaps in the current test infrastructure and give a **phased rollout order**.
-- Define release gates so that "can we ship?" becomes a decidable question.
-
----
+- Describe the **current** test architecture, Core/App boundary, project layout, and CI behavior.
+- Record reproducible Release commands and a dated snapshot for volatile test counts.
+- Keep headless xUnit, real-window UI tests, performance/memory evidence, and Protocol Conformance as distinct gates.
+- Define release criteria and manual evidence requirements for desktop-, hardware-, and OS-dependent behavior.
+- Map every unfinished coverage theme to an owned GitHub Issue; this document must not become a second untracked backlog.
 
 ## 2. Project Analysis (grounded in real code)
 
@@ -61,7 +58,7 @@ Production projects sit at the repo root, test projects under `tests/`. Everythi
 | `tests/ConnectOnion.Protocol.Tests` | ✅ | ✅ | xunit unit tests for the wire protocol |
 | `tests/ConnectOnion.WinUIClient.UnitTests` | ✅ | ✅ | Headless xunit tests over `Core`, plus the ArchUnitNET layer-boundary gate |
 | `tests/ConnectOnion.IntegrationTests` | ✅ | ✅ | xunit tests against a real SQLite file (schema, migrations, repositories, identity) |
-| `tests/ConnectOnion.WinUIClient.UITests` | ✅ | ⚠️ compile-only | FlaUI (UIA3) real-window shell smoke test; *runs* only on a `workflow_dispatch` opt-in |
+| `tests/ConnectOnion.WinUIClient.UITests` | ✅ | ✅ compile/discover; optional execution | xUnit + FlaUI (UIA3) real-window tests. CI discovers all 8; real-window execution requires a published executable and is opt-in. |
 
 The test projects can't reference the app project (`net10.0-windows` + Windows App SDK won't load in a headless test host), so they take a `ProjectReference` on `ConnectOnion.WinUIClient.Core`, which holds every WinUI-free surface of the client. **Moving a production file into `Core` is how it comes under test.** (This replaces the older `<Compile Include>` link lists — those are gone.)
 
@@ -76,30 +73,38 @@ The test projects can't reference the app project (`net10.0-windows` + Windows A
 
 ### 2.3 Main ViewModels
 
-Hand-rolled MVVM: `Common/ObservableObject.cs` + `Common/RelayCommand.cs` (no CommunityToolkit.Mvvm, no DI container).
+MVVM is implemented with **CommunityToolkit.Mvvm 8.4.2** source generators. Models and view models are `partial` classes deriving from the repository's `Common/ObservableObject.cs` bridge over `CommunityToolkit.Mvvm.ComponentModel.ObservableObject`.
 
-| ViewModel | Key members (real signatures) |
+- `[ObservableProperty]` is applied to partial properties.
+- `[NotifyPropertyChangedFor]`, partial `On<Property>Changed` hooks, and `[RelayCommand]` are used for generated notification and command plumbing.
+- A property remains hand-written only when its setter transforms or normalizes the incoming value.
+- View models receive dependencies through constructor injection and are registered as transient services in the Generic Host.
+- Framework-created pages obtain their view model through `App.GetService<T>()` because WinUI creates pages through parameterless constructors and `Frame.Navigate`.
+
+| ViewModel | Main responsibility |
 |---|---|
-| `ChatViewModel` (+`.StreamEvents`) | `Messages`, `LoadAsync()`, `SendAsync(text, attachments)`, `NewConversationAsync()`, `ReconnectAsync()`, `Retry()`, `Cleanup()`, `CanSend`, `CanReconnect`, `CanRetry`, `IsProcessing`, `IsConnecting`, `SubmitAskUserAnswerAsync`, `SubmitApprovalAsync`, `SubmitPlanReviewAsync` |
-| `SessionsViewModel` | Session list, ordering, deletion |
-| `SettingsViewModel` | Theme, font size, sidebar, microphone, notification settings |
-| `AgentDetailViewModel` | Agent detail, `/info` capabilities |
-| `KeyboardShortcutsViewModel` | `Groups`, `SearchText`, `IsEmpty`, `Reset()` |
-| `PresenceAwareViewModel` | Online-presence base class |
+| `ChatViewModel` (`.Run`, `.Conversation`, `.StreamEvents`) | Conversation loading, sending/stopping, run subscription, stream projection, and interactive responses |
+| `SessionsViewModel` | Session list, selection, ordering, and deletion |
+| `SettingsViewModel` | Theme, font, sidebar, microphone, notification, shortcut, identity, and usage settings |
+| `AgentDetailViewModel` | Agent details, capabilities, sharing, and presence |
+| `KeyboardShortcutsViewModel` | Shortcut groups, search, rebinding, conflict handling, and reset |
+| `PresenceAwareViewModel` | Shared online-presence behavior |
 
 ### 2.4 Main Services
 
-- **Runtime (core)** `Services/Runtime/`: `AgentSessionManager` (app-level owner of connections and turns; implements `IRunPersistence`), `AgentConnectionRegistry` (per-conversation WebSocket + idle eviction), `ChatTurnProjection` (**the single** stream-event → `ChatMessage` mapping), `ToolActivityProjector`, `ToolActivityMigration`, `AgentTurnExecutor`
-- **Notifications** `Services/Notifications/`: `NotificationCoordinator` (the one decision point), `NotificationPolicy` (`Decide()` → Suppress / InApp / System), `DedupCache`, `WindowPresenceService`, `WindowsNotificationService`, `InAppNotificationService`, `ConversationNavigationService`, `NotificationActivationRouter`, `NotificationSettingsStore`, `ThreadingScheduler`
-- **Attachments** `Services/Attachments/`: `AttachmentPickerService`, `AttachmentDropService`, `AttachmentValidationService`, `AttachmentEncoder`, `AttachmentImageCacheService`, `AttachmentIntake`
-- **Others**: `AppServices` (static service locator / composition root), `AgentInfoService`, `AgentPresenceService`, `ConnectionTester`, `ThemeService`, `ClipboardService`, `MimeTypeResolver`, `ConversationCache` (LRU of 4 idle conversations), `AppVersionService`, `KeyboardShortcutCatalog`
+- **Composition and dependency injection**: `App` builds a .NET Generic Host; `Services/ServiceRegistration.AddAppServices` registers singletons, hosted services, resilient HTTP, logging, and transient view models. `App.Services` is the composition root. `Services/AppServices.cs` is a typed, get-only accessor used by framework-created code-behind, not a second container.
+- **Runtime (Core)** `Services/Runtime/`: `AgentSessionManager`, `AgentConnectionRegistry`, `ConversationRunRegistry`, `ChatTurnProjection`, `ToolActivityProjector`, `ToolActivityMigration`, and related run/persistence services.
+- **Notifications** `Services/Notifications/`: `NotificationCoordinator`, `NotificationPolicy`, `DedupCache`, window-presence and navigation abstractions, activation routing, settings, and scheduling.
+- **Attachments** `Services/Attachments/`: validation, encoding, intake, image caching, file picking, and drag/drop handling. WinUI-bound picker/drop services remain in the app project; platform-free logic lives in Core.
+- **HTTP resilience**: the named `agent` client is created by `IHttpClientFactory` and uses Polly retry plus per-attempt timeout. Protocol code receives the configured `HttpClient` and remains package-agnostic.
+- **Other shared services**: `AgentInfoService`, `AgentPresenceService`, `ConnectionTester`, `ThemeService`, `ClipboardService`, `MimeTypeResolver`, `ConversationCache` (four-entry idle LRU), `AppVersionService`, `KeyboardShortcutService`, and `KeyboardShortcutCatalog`.
 
 ### 2.5 Persistence
 
 SQLite (`Microsoft.Data.Sqlite.Core` + `SQLitePCLRaw.provider.winsqlite3`), WAL journal, `foreign_keys = ON`.
 Path: unpackaged → `%AppData%\ConnectOnion\connectonion.db`; packaged → MSIX LocalState.
 
-**Tables**: `app_meta`, `agents`, `sessions`, `preferences`, `messages` (one row per rendered bubble, *not* a JSON blob), `message_attachments` (**metadata + local cache path only — never the base64 payload**), `executions`, `trace_events`, `identity_keys` (`private_seed` is a DPAPI-protected, base64-encoded blob).
+**Tables**: `app_meta`, `agents`, `sessions`, `preferences`, `messages` (one row per rendered bubble, not a JSON blob), `message_attachments` (metadata + local cache path only), `executions`, `trace_events`, `identity_keys` (DPAPI-protected seed), and `usage_events` (the non-cascading token-usage ledger).
 
 **Migration status:** `SchemaMigrator` versions the database with `PRAGMA user_version`, applies ordered forward migrations transactionally, and rejects databases created by a newer app version. Schema evolution remains high-risk, so every migration must add an old-snapshot integration test (see §10.4 and `DB-MIGRATION-*`).
 
@@ -118,42 +123,72 @@ Write path: `ConversationRepository.UpsertMessagesAsync` is the **only** writer 
 
 ### 2.7 Application lifecycle
 
-- `Program.cs` — **custom entry point** (`DISABLE_XAML_GENERATED_MAIN`). `AppInstance.FindOrRegisterForKey("ConnectOnion.Main")`; a non-primary instance calls `RedirectActivationToAsync` and **exits before WinUI starts**, so a second `Application` is never constructed.
-- `App.xaml.cs` — `OnLaunched` → `AppStorage.EnsureDirectories()` → `AppServices.InitializeNotifications()` → construct the one `MainWindow` → `HandleColdStartActivation()` → `FlushPendingActivation()`
-- `App.ActivateMainWindow()` / `_pendingActivation` (`Interlocked`) — **cold-start race**: a redirected second launch can arrive *before* the main window exists; the request is buffered and replayed once the window is ready.
-- `Shell/MainWindow.Tray.cs` — minimize-to-tray, `BringToForeground`, `RestoreFromTray`
-- `AgentSessionManager.ShutdownAsync()` — drains in-flight runs within 8s, then releases all sockets
+- `Program.cs` owns the custom entry point (`DISABLE_XAML_GENERATED_MAIN`) and enforces the single-instance contract with `AppInstance.FindOrRegisterForKey("ConnectOnion.Main")`. A secondary process redirects activation and exits before constructing a second WinUI `Application`.
+- The `App` constructor configures Serilog, builds the Generic Host, and exposes the service provider through `App.Services`.
+- `OnLaunched` ensures application storage exists, starts hosted services, creates and activates the single `MainWindow`, and then flushes pending activation work.
+- Cold-start activation can arrive before the window exists, so the request is buffered and replayed after window creation.
+- `AgentSessionManager` owns runs and sockets at application scope; page navigation does not cancel an active turn.
+- `App.ShutdownAsync` is idempotent, drains the run manager, stops the Generic Host under bounded timeouts, logs each phase, and flushes Serilog last.
+- Tray, notification, and activation behavior remain desktop-session-sensitive and therefore need a mix of headless integration tests, FlaUI tests, and manual checks.
 
-### 2.8 Existing tests
+### 2.8 Existing tests and verified snapshot
 
-**Current automated baseline (2026-07-13): 247 passing tests** — 66 protocol, 139 headless WinUI-client unit tests, and 42 SQLite/Windows integration tests. `ConnectOnion.Protocol.Conformance` is an additional executable CI gate and is not included in the xunit count.
+**Verified feature-branch snapshot (2026-07-25, Release): 978 passing headless xUnit tests.** The three suites are deliberately counted separately so future changes can identify where drift occurred:
 
-| Location | Content | Framework | In CI |
-|---|---|---|---|
-| `tests/ConnectOnion.Protocol.Tests/InputMessageBuilderTests.cs` | INPUT wire shape (text / images / files / mixed) | xunit 2.9.3 | ✅ |
-| `tests/ConnectOnion.Protocol.Tests/DataUrlCodecTests.cs` | data-URL encode/decode + malformed input | xunit | ✅ |
-| `tests/ConnectOnion.Protocol.Tests/AttachmentWireEventsTests.cs` | `agent_image` / `files_received` parsing | xunit | ✅ |
-| `tests/ConnectOnion.Protocol.Tests/ConversationRunRegistryTests.cs` | Run registry state machine | xunit | ✅ |
-| `tests/ConnectOnion.Protocol.Tests/AgentConnectionServiceTests.cs` | Handshake, input/output, ping/pong, timeout, watchdog pause, disconnect and disposal against `FakeAgentServer` | xunit | ✅ |
-| `tests/ConnectOnion.WinUIClient.UnitTests/Runtime/` | `ChatTurnProjection`, `ToolActivityProjector`, legacy tool-message migration | xunit | ✅ |
-| `tests/ConnectOnion.WinUIClient.UnitTests/Services/Notifications/` | `NotificationPolicy.Decide`, `NotificationCoordinator` (turn dedup, approval dedup, disconnect grace period), `DedupCache`, preview text | xunit | ✅ |
-| `tests/ConnectOnion.WinUIClient.UnitTests/Services/` | Attachment validation/encoding, `ConversationCache`, keyboard shortcuts, MIME resolution | xunit | ✅ |
-| `tests/ConnectOnion.WinUIClient.UnitTests/Models/`, `ViewModels/`, `Common/` | Attachment state/formatting, usage models, `ChatMessage`, preferences, notification models, shortcuts, grapheme-safe initials | xunit | ✅ |
-| `tests/ConnectOnion.WinUIClient.UnitTests/Accessibility/` | Critical `AutomationId` XAML contract and Help-menu source contract | xunit | ✅ |
-| `tests/ConnectOnion.IntegrationTests/Database/` | Schema + migrations, agent/session/conversation/usage/preferences repositories, `IdentityStore` reset detection, app version | xunit | ✅ |
-| `tests/ConnectOnion.IntegrationTests/Runtime/` | `AgentConnectionRegistry` concurrency, conversation isolation, removal, LRU idle eviction and cleanup | xunit | ✅ |
-| `ConnectOnion.Protocol.Conformance/Program.cs` | Signing / canonical JSON vs. Node reference | console asserts | ✅ **the signing gate** |
+| Suite | Project | Passing tests | CI behavior |
+|---|---|---:|---|
+| Protocol xUnit | `tests/ConnectOnion.Protocol.Tests` | **161** | Runs on every push and pull request |
+| Core unit + architecture | `tests/ConnectOnion.WinUIClient.UnitTests` | **703** | Runs on every push and pull request; includes the ArchUnitNET boundary gate |
+| SQLite integration | `tests/ConnectOnion.IntegrationTests` | **114** | Runs on every push and pull request against temporary real SQLite files |
+| **Headless xUnit total** | — | **978** | Sum of the three rows above |
 
-> **Note on frameworks**: the brief asks for MSTest, but the repo already standardizes on **xunit**. This plan uses **xunit** for all headless testing and MSTest *only* for the WinUI Unit Test App (whose template mandates it). Rationale in §6.
+`ConnectOnion.Protocol.Conformance` is a separate Release gate. It cross-checks address derivation, canonical JSON, signatures, and verification against the Node.js reference and is **not** included in the 978 xUnit total.
 
-### 2.9 Missing tests
+The real-window project currently discovers **8 xUnit/FlaUI tests**:
 
-Closed since this plan was written: all headless test projects run in CI; database repositories and migrations have real-file integration coverage; `AgentConnectionService` now runs against `FakeAgentServer`; and 24 critical XAML controls have stable `AutomationId`s guarded by a static contract test. What remains open:
+| File | Test | Execution requirement |
+|---|---|---|
+| `ShellSmokeTests.cs` | `Launch_ShowsResponsiveConnectOnionWindow` | Published unpackaged executable via `CONNECTONION_UI_TEST_EXE` |
+| `ShellSmokeTests.cs` | `SettingsButton_Click_ShowsSettingsOverlay` | Same |
+| `ShellSmokeTests.cs` | `SettingsAgents_Click_ShowsAgentManagementActions` | Same |
+| `ShellSmokeTests.cs` | `SettingsIdentity_Click_ShowsBackupAndRestoreActions` | Same |
+| `ShellSmokeTests.cs` | `SidebarAddAgent_Click_OpensShellOverlayAndFocusesInput` | Same |
+| `ShellSmokeTests.cs` | `UsageHeatmap_RendersDaySquares_WithAccessibleDescriptions` | Same |
+| `MemoryLeakTests.cs` | `NavigationSurfaces_RepeatedOpenClose_ReachesStableHighWaterMark` | Opt-in: `CONNECTONION_MEMORY_TEST=1`; normally run through `scripts/Test-MemoryLeaks.ps1` |
+| `PerformanceAuditTests.cs` | `ReleaseUiOperations_AreMeasuredAgainstSyntheticLargeHistories` | Opt-in: set `CONNECTONION_UI_PERF_OUT` to an output JSON path |
 
-- Converters and `ChatMessageTemplateSelector` still need a WinUI-capable test host.
-- `AgentSessionManager`, reconnect behavior, shutdown draining, and activation buffering need additional seams or integration coverage. `AgentConnectionRegistry` concurrency and idle eviction are covered.
-- **No WinUI Unit Test App or FlaUI project exists yet**, so navigation, drag-and-drop, focus behavior, rendered Markdown, tray behavior, and the 15 end-to-end flows remain manual.
-- Automation IDs cover the critical first slice, not the complete E2E locator set; remaining IDs are tracked in §13.1.
+The six shell/settings tests and both opt-in tests have passed separately against a published unpackaged executable. CI always compiles and discovers the UI project; ordinary push/PR runs do not create a real desktop session. A manually dispatched workflow can execute the shell suite after publishing the Release x64 executable.
+
+#### Reproducible count snapshot
+
+Run from the repository root with a .NET 10 feature-band SDK. The verified snapshot used Release configuration; do not combine UI tests or Protocol Conformance into the xUnit total.
+
+```powershell
+dotnet --version
+
+dotnet test tests\ConnectOnion.Protocol.Tests\ConnectOnion.Protocol.Tests.csproj --configuration Release
+dotnet test tests\ConnectOnion.WinUIClient.UnitTests\ConnectOnion.WinUIClient.UnitTests.csproj --configuration Release
+dotnet test tests\ConnectOnion.IntegrationTests\ConnectOnion.IntegrationTests.csproj --configuration Release
+
+dotnet test tests\ConnectOnion.WinUIClient.UITests\ConnectOnion.WinUIClient.UITests.csproj --configuration Release --list-tests
+dotnet run --project ConnectOnion.Protocol.Conformance\ConnectOnion.Protocol.Conformance.csproj --configuration Release
+```
+
+This is a **generated snapshot dated 2026-07-25**. When counts change, update the three suite values, the total, verification date, SDK/build mode, and the evidence commit in the same pull request. Issue [#17](https://github.com/unsw-cse-comp99-3900/capstone-project-26t2-9900-t09c-almond/issues/17) tracks automatic coverage thresholds; count changes alone are not a quality signal.
+
+### 2.9 Remaining gaps
+
+The test infrastructure itself is implemented: the Core seam, ArchUnitNET boundary tests, fake-agent server, temporary SQLite fixtures, FlaUI project, startup/performance harnesses, and memory-leak gate all exist. The remaining work is expansion and hardening rather than creating those projects from scratch.
+
+- Real-window coverage is still a first slice: six shell/settings smoke tests plus two opt-in audit tests. Broader chat, reconnect, notification, tray, keyboard-only, and error-recovery flows are tracked by [#12](https://github.com/unsw-cse-comp99-3900/capstone-project-26t2-9900-t09c-almond/issues/12).
+- Connection lifecycle, cold-start races, reconnect, and shutdown integration coverage are tracked by [#13](https://github.com/unsw-cse-comp99-3900/capstone-project-26t2-9900-t09c-almond/issues/13).
+- Long-conversation baselines and budgets are tracked by [#14](https://github.com/unsw-cse-comp99-3900/capstone-project-26t2-9900-t09c-almond/issues/14).
+- Accessibility automation, keyboard reachability, names, focus, scaling, and contrast gates are tracked by [#16](https://github.com/unsw-cse-comp99-3900/capstone-project-26t2-9900-t09c-almond/issues/16).
+- Coverage thresholds are not yet enforced; [#17](https://github.com/unsw-cse-comp99-3900/capstone-project-26t2-9900-t09c-almond/issues/17) owns that work.
+- Release trimming remains disabled after the 2026-07-25 audit found a real restoration defect and additional IL2026 risks; [#19](https://github.com/unsw-cse-comp99-3900/capstone-project-26t2-9900-t09c-almond/issues/19) owns trim safety.
+- The startup harness has a stale graceful-shutdown path and true cold-start evidence remains incomplete; [#20](https://github.com/unsw-cse-comp99-3900/capstone-project-26t2-9900-t09c-almond/issues/20) owns the repair and explicit milestones.
+- Signed MSIX publishing, installation, upgrade, and uninstall verification remain open under [#11](https://github.com/unsw-cse-comp99-3900/capstone-project-26t2-9900-t09c-almond/issues/11).
+- Hardware/external-state scenarios—real-agent high-throughput streaming, speech, notifications, packaged activation, and native/XAML profiling—remain manual until suitable automation evidence exists.
 
 ### 2.10 High-risk modules and flows
 
@@ -192,99 +227,97 @@ Ranked by *probability × blast radius*:
 
 ## 4. Out of Scope
 
-- Browser compatibility, SEO, cookies, DOM selectors, cross-browser CSS, web responsive breakpoints — **all irrelevant to a desktop app**
-- Correctness of the remote agent server itself (we test only how the *client* reacts, using a fake server)
-- Windows' own notification delivery reliability (we test our registration, payloads, and routing)
-- LLM answer quality (not decidable, not a test target)
-- MSIX packaging and installation (not yet wired into CI — see CLAUDE.md "Not implemented yet")
+- Browser compatibility, SEO, cookies, DOM selectors, cross-browser CSS, and web breakpoints — this is a native Windows application.
+- Correctness or answer quality of a remote agent/LLM. Client tests verify protocol handling and user-visible behavior using controlled agents or fakes.
+- Reliability guarantees for Windows itself; tests cover registration, payload construction, routing, and the client response to failures.
+- Hardware-dependent speech/audio quality without a controlled device lab.
+- Treating Task Manager Working Set alone as proof of a memory leak.
 
----
+MSIX is **not generally out of scope** anymore: an unsigned x64 package has been produced and audited. Signed publishing, clean-machine installation, upgrade/uninstall behavior, and packaged cold-start remain unfinished release work tracked by Issue #11.
 
 ## 5. Test Strategy
 
-1. **Infrastructure before cases.** A test that isn't in CI protects nothing. Step zero — wiring every test project into the `.sln` and the workflow — is **done**; keep it that way by adding new test projects to both in the same commit that creates them.
-2. **Push logic out of the UI.** The protocol layer already has zero WinUI dependency and is headless-testable. The WinUI layer should copy that: anything worth testing gets extracted into a pure class. `NotificationPolicy.Decide`, `ChatTurnProjection`, and `AppVersionService` are already good examples.
-3. **Invert the pyramid by cost**: xunit headless (fast, stable, many) → WinUI Unit Test App (slow, needs a UI thread, few) → UI automation (slowest, most brittle, exactly 15 E2E flows).
-4. **Failure paths before happy paths.** Somebody has manually clicked "send a message". Nobody manually tests reconnect-after-drop, background-run-survives-page-close, or restart-restores-history.
-5. **Regressions follow defects.** Every fixed P0/P1 defect gets a regression case tagged with its issue number (§16).
-
----
+1. **Keep the architecture testable.** Protocol and Core remain free of WinUI dependencies; the ArchUnitNET gate enforces the Core/App boundary.
+2. **Prefer the cheapest reliable layer.** Pure behavior belongs in headless xUnit; SQLite behavior uses real temporary databases; wire behavior uses the fake WebSocket server; rendered desktop behavior uses FlaUI; OS/hardware-only evidence remains manual.
+3. **Run comparable gates separately.** Headless xUnit counts, real-window tests, performance/memory audits, and Protocol Conformance must never be merged into one misleading number.
+4. **Failure paths before polish.** Connection loss, restart/restore, background completion, interactive-card resolution, migration failure, and Release-only serialization are higher priority than another happy-path click test.
+5. **Regressions follow defects.** Every fixed P0/P1 defect receives a reproducible regression test or a documented manual gate when automation is not feasible.
+6. **Backlog lives in GitHub Issues.** This document describes coverage and evidence; every unfinished theme must link to an open Issue rather than existing only as prose here.
 
 ## 6. Test Layers
 
-| Layer | Framework | Environment | Target count | Runtime |
-|---|---|---|---|---|
-| **A. Unit (headless)** | **xunit** (matches the repo) | `net10.0`, no UI thread | ~180 | < 10s |
-| **B. WinUI control tests** | **MSTest** (mandated by the WinUI Unit Test App template) | UI thread + XAML runtime | ~40 | < 90s |
-| **C. Service / integration** | xunit + fake WebSocket server | headless | ~50 | < 60s |
-| **D. Database** | xunit + temp `.db` file | headless | ~35 | < 30s |
-| **E. UI automation / E2E** | **FlaUI** (recommended) or WinAppDriver/Appium | real process | 15 flows | < 10min |
-| **F. Manual** | checklist | human | ~30 | — |
+| Layer | Framework / method | Environment | Current role |
+|---|---|---|---|
+| **A. Protocol unit** | xUnit | Headless `net10.0` | Wire schema, encoding, identity, connection state, and run registry |
+| **B. Core unit + architecture** | xUnit + ArchUnitNET | Headless, no `Microsoft.UI` | View models, projections, policies, caches, services, and enforced layer boundaries |
+| **C. SQLite integration** | xUnit + real temporary SQLite | Headless Windows | Schema, migrations, repositories, persistence, identity, and lifecycle integration |
+| **D. Static UI contracts** | xUnit source/XAML checks | Headless | Automation IDs, source contracts, resource and accessibility invariants |
+| **E. Real-window UI / E2E** | xUnit + FlaUI UIA3 | Published unpackaged process in a real desktop session | Six shell/settings smoke tests plus opt-in memory and performance audits |
+| **F. Protocol Conformance** | Console release gate + Node reference | Release | Cryptographic/canonical-JSON compatibility; reported separately |
+| **G. Manual** | Checklist and profiler evidence | Real hardware/OS state | Narrator, high contrast, speech/audio, packaged install, notifications, ETW/WPR, real-agent stress |
 
-> **Why xunit at layer A but MSTest at layer B**: the WinUI 3 "Unit Test App" template supports only MSTest and must run as a packaged app to get a XAML runtime. Mixing is a platform constraint, not a design flaw. **The correct response is to push as much logic as possible down to layer A so you rarely pay layer B's cost.**
+There is **no separate MSTest WinUI Unit Test App** in the current solution. UI-bound behavior is either pushed into Core/static contracts or exercised against the real published process with FlaUI.
 
----
-
-## 7. Test Environment
+## 7. Test Environment and CI
 
 | Item | Value |
 |---|---|
-| OS | Windows 11 22H2+ (CI: `windows-latest`) |
-| SDK | .NET 10 (`global.json` pins `10.0.100`, `rollForward: latestFeature`) |
-| Platform | **Must be x64 / x86 / ARM64** — `Any CPU` does not work for the WinUI project |
-| DB | Temp `.db` per test. **Never** point at `%AppData%\ConnectOnion\connectonion.db` |
-| Fake agent | Local `HttpListener` + `WebSocket` (see §9) |
-| DPI | 100% / 150% / 200% (UI and A11Y layers) |
-| Theme | Light and Dark, both (control and A11Y layers) |
+| OS | Windows 11 for desktop evidence; CI uses `windows-latest` |
+| SDK | .NET 10; `global.json` pins `10.0.100` with `rollForward: latestFeature` |
+| CI build | `Release`, `x64`, packaging disabled during solution build |
+| UI publish | `win-x64`, unpackaged, ReadyToRun enabled, trimming disabled |
+| Node | Node.js 22 for Protocol Conformance |
+| Database | One temporary real SQLite file/profile per test; never the user's `%AppData%` database |
+| UI test executable | `CONNECTONION_UI_TEST_EXE` must point to the published unpackaged executable |
+| Performance evidence | Release/x64 on a real desktop session; machine/build/date recorded in the report |
+| Accessibility matrix | Light/Dark, keyboard-only, Narrator/manual checks, and increased Windows text scaling |
 
-`.github/workflows/ci.yml` builds the `.sln` and then runs, in order:
+`.github/workflows/ci.yml` performs the following sequence:
 
-```yaml
-- run: dotnet test tests/ConnectOnion.Protocol.Tests/ConnectOnion.Protocol.Tests.csproj -c Release
-- run: dotnet test tests/ConnectOnion.WinUIClient.UnitTests/ConnectOnion.WinUIClient.UnitTests.csproj -c Release
-- run: dotnet test tests/ConnectOnion.IntegrationTests/ConnectOnion.IntegrationTests.csproj -c Release
-- run: dotnet run --project ConnectOnion.Protocol.Conformance/... -c Release --no-build
-```
+1. Checkout, .NET 10 setup, Node 22 setup, and NuGet cache.
+2. Restore `ConnectOnion.WinUIClient/ConnectOnion.WinUIClient.sln` for x64.
+3. Audit vulnerable direct and transitive NuGet packages.
+4. Build the solution in Release/x64 with package generation, signing, ReadyToRun, and trimming disabled for the build step.
+5. Run the Protocol, Core/architecture, and SQLite integration xUnit suites with Cobertura collection.
+6. Compile and discover the UI test project.
+7. Publish an untrimmed ReadyToRun `win-x64` unpackaged executable.
+8. On a manual `workflow_dispatch` with `run_ui_smoke=true`, execute the real-window shell tests against that published executable.
+9. Upload coverage artifacts.
+10. Finish with Protocol Conformance as a separate gate.
 
-Note the test steps pass no `-p:Platform`. The solution build maps the conformance project to `Any CPU`, so pushing `x64` through to a standalone `dotnet test`/`dotnet run` makes it look for output under `bin\x64\...` that the solution never produced.
+The standalone `dotnet test` and Conformance commands intentionally do not receive `-p:Platform=x64`; the solution maps some projects to `Any CPU`, and leaking a Windows `PLATFORM` environment variable into MSBuild produces incorrect output-path lookups.
 
----
+## 8. Test Data and Fixtures
 
-## 8. Test Data
+The current suites prefer generated or isolated fixtures over long-lived mutable files.
 
-| Dataset | Contents | Used by |
+| Fixture / evidence | Current implementation | Used by |
 |---|---|---|
-| `agents.valid.json` | 3 agents: 0x address only, direct URL only, both | Agent management |
-| `agents.invalid.json` | Empty name, empty address, malformed URL, duplicate address | Form validation |
-| `conversation.100.json` | 100 messages (mixed user / agent / tool_activity) | List performance |
-| `conversation.1000.json` | 1000 messages | Virtualization / scrolling |
-| `markdown.torture.md` | Headings, bold/italic, strikethrough, inline code, fenced code, nested lists, quotes, tables, rules, escapes, **unclosed code fence**, very long lines, bare URLs | Markdown rendering |
-| `stream.happy.jsonl` | thinking → tool_call → tool_result → assistant → OUTPUT | Streaming happy path |
-| `stream.malformed.jsonl` | Out-of-order, duplicate `event_key`, empty payloads, unknown kinds | Streaming robustness |
-| `stream.interactive.jsonl` | ask_user / approval_needed / plan_review | Interactive cards |
-| `images/*` | 1KB, 5MB, over-limit, non-image with image extension | Attachment validation |
-| `db/v0.db` | **Snapshot of today's schema** — the "old database" baseline for the day someone adds a column | Migration |
+| Fake agent server | Scriptable local HTTP/WebSocket server in the test code | Protocol handshake, timeouts, interactive events, disconnects, and lifecycle failures |
+| Temporary SQLite profile | One isolated real database/data root per test or scenario | Schema, migrations, repositories, identity, usage, and runtime integration |
+| Static XAML/source contracts | Repository XAML and C# source inspected by headless tests | Automation IDs, accessibility names, help-menu and architecture contracts |
+| Synthetic performance conversations | Generated by `PerformanceAuditTests` at 100, 500, and 2,000 messages | First-open, cache-reopen, virtualization, Tool Activity expansion, and memory samples |
+| Isolated memory profiles | Created by `MemoryLeakTests` / `scripts/Test-MemoryLeaks.ps1` | Repeated Settings, Add Agent, Agent Detail, conversation, and alternating-session scenarios |
+| Published unpackaged executable | Release `win-x64` output selected through `CONNECTONION_UI_TEST_EXE` | All real-window FlaUI tests |
+| Performance evidence | `TestResults/perf-audit/**` plus the dated audit document | Release decisions and before/after comparisons |
 
----
+Any persistent binary or database fixture added later must document its schema/version, creation command, expected use, and owning Issue. Tests must never point at the developer's real `%AppData%\ConnectOnion` profile.
 
 ## 9. Mock and Fake Strategy
 
 | Dependency | Strategy | Rationale |
 |---|---|---|
-| Remote agent WebSocket | **Fake server** (local `HttpListener` + `WebSocket`, scriptable responses) | Exercises the real protocol path; catches wire-format regressions a mocked interface would hide |
-| `HttpClient` (`/info`, health probes) | `HttpMessageHandler` stub | No network needed |
-| SQLite | **Real SQLite on a temp file** (do *not* mock) | The SQL *is* the thing under test; an in-memory fake cannot validate WAL/FK behavior |
-| `WindowsNotificationService` | **Fake** implementing `INotificationAbstractions` | OS notifications are not assertable |
-| `WindowPresenceService` | Fake (programmable focus / visibility / current conversation) | These are `NotificationPolicy`'s decision inputs |
-| `DispatcherQueue` / `ThreadingScheduler` | Fake (execute synchronously) | Makes async UI orchestration headless-testable |
-| `IChatWindow` | Fake (records `ShowConversationAsync` calls) | Asserts notification-click routing |
-| DPAPI (`IdentityStore`) | Not mocked — real, against a temp DB | `CurrentUser` scope works on CI |
-| `Launcher.LaunchUriAsync` | **Cannot be mocked (static WinRT)** → **requires refactor**: extract `IUriLauncher` | See UT-HELP-002 risk note |
+| Remote agent WebSocket | Scriptable local fake server | Exercises the real protocol and failure paths without an external deployment |
+| Agent HTTP (`/health`, `/info`, relay) | Stub `HttpMessageHandler` or controlled local endpoint | Deterministic retry, timeout, and capability tests |
+| SQLite | Real SQLite on a temporary file/profile | SQL, migrations, FK behavior, WAL, and DPAPI-adjacent persistence are the behavior under test |
+| Windows notifications | Notification abstractions/fakes for headless decisions; real activation remains desktop/manual | OS delivery is not deterministic in a headless runner |
+| Window presence/navigation | Programmable fakes | Makes notification policy and routing headlessly testable |
+| Dispatcher/scheduling | Injected scheduling abstractions where available | Avoids timing sleeps and keeps orchestration deterministic |
+| URI launch | `IUriLauncher` fake | The static WinRT call has already been wrapped and is testable |
+| DPAPI identity | Real CurrentUser DPAPI against isolated test data | Validates the actual protection/reset contract |
+| Real-window UI | Published executable + isolated data root + FlaUI | Verifies the real XAML/UIA surface instead of a mocked visual tree |
 
-> **Important**: `AppServices` is a **static service locator** — `AgentSessionManager` and friends are `new`'d during static initialization, so tests cannot inject fakes through it.
-> **Good news**: `AgentSessionManager` already exposes `public AgentSessionManager(HttpClient, ConversationRepository)`. Tests should construct instances **directly** and bypass `AppServices` entirely. The repositories are the same. No large refactor required.
-
----
+The Generic Host is the production composition root. Tests normally construct the smallest subject graph directly or use registered abstractions; they do not mutate a parallel container. `AppServices` is a typed accessor for framework-created code-behind, while view models use constructor injection.
 
 ## 10. Per-Module Test Checklist
 
@@ -293,7 +326,7 @@ Note the test steps pass no `-p:Platform`. The solution build maps the conforman
 | 10.1 | Startup & lifecycle | First launch, existing data, DB init failure, second instance, cold-start activation replay, tray restore, exit with in-flight runs |
 | 10.2 | Agent management | CRUD, empty state, validation (blank address, untested connection), deleting the selected agent, deleting a connected agent, avatar initial |
 | 10.3 | Agent connection | Handshake, 30s timeout, 60s silence watchdog, user disconnect, abnormal drop, reconnect, duplicate connect, agent switch mid-connect, dispose |
-| 10.4 | Database | Idempotent schema, incremental upsert, attachment delete+insert, message ordering, concurrent writes, FK cascade, **schema evolution (no migration → critical)**, corrupt file |
+| 10.4 | Database | Idempotent schema, ordered versioned migrations, legacy snapshots, incremental upsert, attachment replacement, message ordering, concurrent writes, deletion ordering, usage-ledger retention, and corrupt/newer-schema failure |
 | 10.5 | Chat & streaming | Send validation, duplicate-send guard, event projection, interrupt/cancel/timeout, survives page switch, correct persistence, interactive card answers |
 | 10.6 | Markdown | Full syntax, unclosed fences, search highlight (**known crash**), baseline alignment, both themes |
 | 10.7 | Notifications | `NotificationPolicy.Decide` all branches, dedup, foreground suppression, click routing, cold-start activation |
@@ -313,7 +346,7 @@ Note the test steps pass no `-p:Platform`. The solution build maps the conforman
 | **LC-START-002** | Launch with existing data loses nothing | D | **P0** | Seed DB with 2 agents / 3 sessions | Launch | Schema creation is idempotent; all data readable | ✅ | xunit | `AppDatabase.EnsureInitializedAsync` |
 | **LC-START-003** | DB init failure does not crash the app | C | **P0** | Make `.db` read-only / directory unwritable | Launch | A comprehensible error is surfaced; no silent crash | ✅ | xunit | `AppDatabase.OpenAsync` — **Risk: there is no try/catch today; this will likely crash. The expected result documents what *should* happen.** |
 | **LC-INST-001** | Second instance redirects and exits | E | **P0** | App already running | Launch the exe again | Second process exits; no second window; existing window comes forward | ✅ | FlaUI + process assertions | `Program.Main`, `AppInstance.FindOrRegisterForKey` |
-| **LC-INST-002** | Cold-start activation is buffered and replayed | A | **P1** | — | Call `App.ActivateMainWindow()` *before* the window exists, then create it and `FlushPendingActivation()` | Activation is honored exactly once, not dropped | ⚠️ partial | xunit (after extracting the buffer) | `App._pendingActivation` / `FlushPendingActivation` — **Risk: coupled to static `App`; extract `PendingActivationBuffer` to make it testable (INFRA-5)** |
+| **LC-INST-002** | Cold-start activation is buffered and replayed | A | **P1** | — | Call `App.ActivateMainWindow()` *before* the window exists, then create it and `FlushPendingActivation()` | Activation is honored exactly once, not dropped | ⚠️ partial | xUnit/integration test (tracked by #13) | `App._pendingActivation` / `FlushPendingActivation` — lifecycle integration coverage is tracked by Issue #13 |
 | **LC-TRAY-001** | Tray click restores the window | E | P1 | Minimized to tray | Click tray icon | Window restores to foreground | ⚠️ | FlaUI | `Shell/MainWindow.Tray.cs` `RestoreFromTray` |
 | **LC-EXIT-001** | Graceful shutdown drains in-flight runs | C | **P0** | A run is streaming | Call `ShutdownAsync()` | Completes within 8s; all sockets released; no unhandled exception | ✅ | xunit + fake server | `AgentSessionManager.ShutdownAsync` |
 | **LC-EXIT-002** | Shutdown still releases when a run hangs | C | P1 | Fake server never replies | `ShutdownAsync()` | Returns after the 8s bound; sockets disposed anyway | ✅ | xunit | same |
@@ -322,13 +355,13 @@ Note the test steps pass no `-p:Platform`. The solution build maps the conforman
 
 | ID | Title | Layer | Pri | Steps | Expected | Auto | Framework | Code location |
 |---|---|---|---|---|---|---|---|---|
-| **UT-AGENT-001** | Reject submit when address and direct URL are both empty | A | **P0** | Submit empty form | Shows "Enter a 0x address or Direct URL."; nothing written | ⚠️ (logic lives in code-behind) | MSTest (B), or xunit after extraction | `AddAgentForm.xaml.cs:96` |
+| **UT-AGENT-001** | Reject submit when address and direct URL are both empty | A | **P0** | Submit empty form | Shows "Enter a 0x address or Direct URL."; nothing written | ⚠️ (logic lives in code-behind) | xUnit after extraction, or FlaUI for rendered behavior | `AddAgentForm.xaml.cs:96` |
 | **UT-AGENT-002** | Reject add before a successful connection test | A | **P0** | Fill address, skip Test | Shows "Test connection successfully before adding this agent." | ⚠️ | same | `AddAgentForm.xaml.cs:105` |
 | **UT-AGENT-003** | Blank name falls back to a default | A | P1 | Empty name, valid address | Name falls back to the address, else "Agent" | ✅ | xunit | `AddAgentForm.xaml.cs:176-177` |
 | **DB-AGENT-001** | Agent create / read / delete | D | **P0** | CRUD | Round-trips correctly | ✅ | xunit | `AgentRepository` |
 | **DB-AGENT-002** | Deleting an agent cascades to its sessions | D | **P0** | Delete an agent with conversations | `sessions` / `messages` stay consistent; no orphan rows (FK enforced) | ✅ | xunit | `AgentRepository` + FK |
 | **UT-AGENT-004** | Delete an agent that is currently connected | C | **P0** | Agent has an active run | Run is cancelled, socket released, no dangling references | ✅ | xunit + fake | `AgentSessionManager.ReleaseConversationAsync`, `ConversationCache` invalidation |
-| **UI-AGENT-001** | Empty state when no agents exist | B | P1 | Empty DB | HomePage shows the empty state and an add entry point | ⚠️ | MSTest (WinUI) | `HomePage.xaml` |
+| **UI-AGENT-001** | Empty state when no agents exist | B | P1 | Empty DB | HomePage shows the empty state and an add entry point | ⚠️ | FlaUI real-window test | `HomePage.xaml` |
 | **UT-AGENT-005** | Avatar initial generation | A | P2 | Names: `"connectonion"`, `""`, `"🙂x"` | Yields `C`, `?`, and a whole grapheme respectively | ✅ | xunit | `ChatViewModel.SelectedAgentInitial:136` — **Risk: `Name[..1]` splits surrogate pairs / emoji** |
 
 ### 11.3 Agent connection (CONN)
@@ -389,7 +422,7 @@ Note the test steps pass no `-p:Platform`. The solution build maps the conforman
 | **UT-CHAT-007** | User message appears instantly and persists | C | **P0** | Normal send | Bubble is immediate; user row written before the reply | ✅ | xunit | `AgentSessionManager` (persists the user message on send) |
 | **UT-CHAT-008** | Unicode / Chinese / emoji / multiline / very long | A | P1 | See test data | Preserved verbatim; not truncated or mangled | ✅ | xunit | `InputMessageBuilder` |
 | **UT-CHAT-009** | `CanRetry` / `ShowRetryBar` logic | A | P1 | After a failure | Retry bar appears and is mutually exclusive with the offline notice | ✅ | xunit | `ChatViewModel:119,133` |
-| **UI-CHAT-001** | Composer clears and keeps focus after send | B | P1 | — | Focus remains in the input | ⚠️ | MSTest (WinUI) | `ChatComposer.xaml.cs` |
+| **UI-CHAT-001** | Composer clears and keeps focus after send | B | P1 | — | Focus remains in the input | ⚠️ | FlaUI real-window test | `ChatComposer.xaml.cs` |
 | **UI-CHAT-002** | Disclosure bubbles animate open and closed | B | P1 | Thought process, interactive cards, tool activity and tool steps | 140 ms fade/vertical transition; header is guarded against repeat clicks; OS animation preference is respected | ⚠️ manual | WinUI | `DisclosureAnimation` |
 
 ### 11.6 Streaming and projection (STREAM)
@@ -413,7 +446,7 @@ Note the test steps pass no `-p:Platform`. The solution build maps the conforman
 | **UT-STREAM-015** | Graceful stop uses the latest wire protocol | B | **P0** | Existing socket receives exactly `{ "type": "INTERRUPT" }`; ordinary OUTPUT still completes the turn | ✅ | xunit | `AgentConnectionServiceTests.SendInterruptAsync_*` |
 | **UT-STREAM-016** | Stop during approval uses the FIFO-safe hard rejection | B | **P0** | Exactly `approved=false`, `mode=reject_hard`, `feedback=用户中断`; no `type`/`scope` fields | ✅ | xunit | `AgentConnectionServiceTests.RejectApprovalForStopAsync_*` |
 | **UT-STREAM-017** | Interrupted OUTPUT is marked without an extra activity bubble | A | **P0** | Final agent message has `EventMeta=Stopped`; failed interrupt send leaves it unmarked | ✅ | xunit | `ChatTurnProjectionTests.AppendCompletedTurn_AfterInterrupt*` |
-| **UI-STREAM-001** | Stop enters an idempotent disabled intermediate state | B | **P0** | Button is visible only after INPUT, disabled while `IsStopping`, and disappears on OUTPUT/ERROR/disconnect | ⚠️ | MSTest (WinUI) | `ChatComposer.CanStop`, `ChatViewModel.ApplyRunSnapshot` |
+| **UI-STREAM-001** | Stop enters an idempotent disabled intermediate state | B | **P0** | Button is visible only after INPUT, disabled while `IsStopping`, and disappears on OUTPUT/ERROR/disconnect | ⚠️ | FlaUI real-window test | `ChatComposer.CanStop`, `ChatViewModel.ApplyRunSnapshot` |
 
 ### 11.7 Conversation management (SESSION)
 
@@ -431,7 +464,7 @@ Note the test steps pass no `-p:Platform`. The solution build maps the conforman
 
 | ID | Title | Layer | Pri | Expected | Auto | Code location |
 |---|---|---|---|---|---|---|
-| **UI-MD-001** | Full syntax renders (headings, bold/italic, strikethrough, lists, quotes, tables, rules) | B | P1 | Correct element types | ⚠️ | MSTest (WinUI) · `WinUiMarkdownRenderer` |
+| **UI-MD-001** | Full syntax renders (headings, bold/italic, strikethrough, lists, quotes, tables, rules) | B | P1 | Correct element types | ⚠️ | FlaUI real-window test · `WinUiMarkdownRenderer` |
 | **UI-MD-002** | Unclosed code fence does not crash | B | **P0** | Degrades gracefully | ⚠️ | `MarkdownTextBlock.RenderMarkdown:123` (fallback paragraph exists) |
 | **UI-MD-003** | **Search highlight inside inline code does not crash** | B | **P0** | No `ArgumentException` | ⚠️ | 🔴 **Regression case (this actually happened)**: `InlineUIContainer` is legal only inside a `RichTextBlock` paragraph · `WinUiMarkdownRenderer.WriteCodeInline` |
 | **UI-MD-004** | Search highlight inside a fenced code block does not crash | B | **P0** | Same | ⚠️ | `WriteCodeBlockLines` |
@@ -470,7 +503,7 @@ Note the test steps pass no `-p:Platform`. The solution build maps the conforman
 | **UT-ABOUT-003** | Copyright year is taken from the clock | A | P2 | `© {DateTime.Now.Year} ConnectOnion` | ✅ | `AppVersionService.CopyrightText` |
 | **UI-ABOUT-004** | High DPI (150% / 200%): text is not clipped | F | P2 | Layout adapts | ❌ manual | `AboutOverlay.xaml` (ScrollViewer backstop) |
 | **UT-HELP-001** | Help menu contains Keyboard shortcuts / ConnectOnion Docs / About | B | P1 | All three present, in order | ⚠️ | `MainWindow.xaml` `HelpMenuBarItem` |
-| **UT-HELP-002** | Docs opens the correct URL | A | **P0** | `https://docs.connectonion.com/` | ⚠️ | `Shell/MainWindow.HelpMenu.cs` `DocsUrl` — **Risk: `Launcher.LaunchUriAsync` is static WinRT and cannot be mocked. Extract `IUriLauncher` (INFRA-4) to automate this.** |
+| **UT-HELP-002** | Docs opens the correct URL | A | **P0** | `https://docs.connectonion.com/` | ⚠️ | `Shell/MainWindow.HelpMenu.cs` `DocsUrl` — the implemented `IUriLauncher` abstraction makes this headlessly testable. |
 | **UT-HELP-003** | A failed Docs launch surfaces an error toast (never silent) | A | P1 | `NotificationType.Error` toast | ⚠️ | same (`launched == false` branch) |
 | **UT-HELP-004** | Docs and About are separate commands | A | P2 | Two independent handlers; no shared event branching on text | ✅ code review | `Shell/MainWindow.HelpMenu.cs` |
 | **UT-KBD-001** | The shortcut catalog matches real handlers | A | **P0** | Every entry in `KeyboardShortcutCatalog` has a corresponding KeyDown handler in `MainWindow.*Menu.cs` | ✅ | xunit (reflection / string comparison) — the file's own comment demands this |
@@ -514,7 +547,7 @@ Note the test steps pass no `-p:Platform`. The solution build maps the conforman
 
 | ID | Title | Layer | Pri | Expected | Auto |
 |---|---|---|---|---|---|
-| **A11Y-FOCUS-001** | Initial focus on overlay open | B | **P0** | Settings → first control; Shortcuts → SearchBox; About → OkButton | ⚠️ MSTest |
+| **A11Y-FOCUS-001** | Initial focus on overlay open | B | **P0** | Settings → first control; Shortcuts → SearchBox; About → OkButton | ⚠️ FlaUI |
 | **A11Y-FOCUS-002** | Focus returns to the opener on close | B | **P0** | See UI-OVL-004 | ⚠️ |
 | **A11Y-FOCUS-003** | Tab / Shift+Tab order is sane and skips hidden controls | B | P1 | Collapsed regions are not tabbable | ⚠️ |
 | **A11Y-FOCUS-004** | Disabled controls do not take focus | B | P1 | — | ⚠️ |
@@ -552,7 +585,9 @@ Note the test steps pass no `-p:Platform`. The solution build maps the conforman
 ## 12. End-to-End Flows
 
 > Conventions: all E2E use **FlaUI** and locate elements by `AutomationId`. **No `Thread.Sleep`** — condition waits only (§13.3).
-> On failure, always collect: app logs, a copy of `connectonion.db`, the fake server's interaction log, a screenshot at failure, and a UIA tree dump.
+> On failure, always collect: app logs, the isolated `connectonion.db`, fake-server interaction logs where applicable, a screenshot, and a UIA tree dump.
+>
+> The current six shell tests cover launch, Settings, Agent Management, Identity actions, Add Agent focus, and Usage heatmap accessibility. The broader flows below remain the target catalog and are owned by Issue #12 unless another Issue is named.
 
 | ID | Flow | Preconditions | Steps | Expected | Automation difficulty | Stability measures |
 |---|---|---|---|---|---|---|
@@ -567,9 +602,9 @@ Note the test steps pass no `-p:Platform`. The solution build maps the conforman
 | **E2E-009** | Open and close Settings | — | Ctrl+, → change theme → Esc | Setting applies and persists; focus returns | — | Wait for `SettingsOverlay` visible/hidden |
 | **E2E-010** | Open About | — | Help → About ConnectOnion | Shows name, version, copyright; Esc / OK / close all behave identically | — | Wait for `AboutOverlay` |
 | **E2E-011** | Open Keyboard Shortcuts | — | Ctrl+Shift+/ | Window opens; search works; Esc closes | Keyboard layout | Cover the menu-click path too |
-| **E2E-012** | Open the docs via ConnectOnion Docs | — | Help → ConnectOnion Docs | Default browser opens `docs.connectonion.com` | **The external browser cannot be asserted** | Inject an `IUriLauncher` fake and assert the URL (needs INFRA-4) |
+| **E2E-012** | Open the docs via ConnectOnion Docs | — | Help → ConnectOnion Docs | Default browser opens `docs.connectonion.com` | **The external browser cannot be asserted** | Use the implemented `IUriLauncher` fake for the URI assertion; keep browser launch as a manual boundary |
 | **E2E-013** | Second instance activates the existing window | App running | Launch the exe again | No second window; existing one comes forward; the second process exits | Process timing | Poll the process count and window handle |
-| **E2E-014** | Long conversation scrolling and virtualization | `conversation.1000.json` | Open and scroll to the bottom | Smooth scrolling; memory does not grow linearly with scroll | Performance assertions are flaky | Sample repeatedly, take the median |
+| **E2E-014** | Long conversation scrolling and virtualization | Isolated synthetic 2,000-message profile | Open and scroll to the bottom | Smooth scrolling; memory does not grow linearly with scroll | Performance assertions are flaky | Sample repeatedly, take the median |
 | **E2E-015** | **Complete a send using only the keyboard** | Connected | Tab / Enter / accelerators only | The message sends; focus is visible throughout | Focus order | Assert the `AutomationId` of `FocusedElement` at each step |
 
 ---
@@ -578,7 +613,7 @@ Note the test steps pass no `-p:Platform`. The solution build maps the conforman
 
 ### 13.1 `AutomationId` implementation status
 
-The first **INFRA-1** slice is complete: 24 IDs exist and `Accessibility/AutomationContractTests.cs` prevents accidental removal. The remaining rows are required before the corresponding FlaUI flows can be implemented.
+The first locator slice is complete: 24 IDs exist and `Accessibility/AutomationContractTests.cs` prevents accidental removal. Remaining E2E locators are tracked by Issue #12; broader accessibility semantics are tracked by Issue #16.
 
 | AutomationId | Location | Status |
 |---|---|---|
@@ -652,28 +687,50 @@ Permitted conditions: element appears · element becomes clickable · status tex
 
 ## 15. Performance and Stability
 
-| ID | Metric | Target | Method |
-|---|---|---|---|
-| **PERF-START-001** | Cold start to interactive | < 2.0s | Stopwatch |
-| **PERF-CHAT-001** | Conversation switch (cache hit) | < 100ms | `ConversationCache` hit path |
-| **PERF-CHAT-002** | Conversation switch (DB read, 1000 msgs) | < 500ms | — |
-| **PERF-MSG-001** | Scrolling 1000 messages | No dropped frames (≥ 55fps) | Depends on `ChatMessageTemplateSelector`'s per-kind templates + virtualization |
-| **PERF-MSG-002** | Thumbnail converter cache | Recycled containers do not re-decode | `LocalPathToImageSourceConverter` (caches `BitmapImage` by path) |
-| **PERF-DB-001** | Per-turn write cost | O(turn), not O(conversation) | Assert the upsert touches exactly N rows |
-| **PERF-STREAM-001** | 1000 events per turn | Nothing dropped; UI does not freeze | — |
-| **STAB-LEAK-001** | Repeated page enter/exit cycles | Tail Private Bytes slope ≤ 1.5 MB/cycle and tail span ≤ 24 MB; handles/threads plateau | ✅ `MemoryLeakTests` via `scripts/Test-MemoryLeaks.ps1` |
-| **STAB-LEAK-002** | Repeated overlay open/close cycles | Same plateau gate; no event-subscription leak | ✅ Settings scenario in `MemoryLeakTests` |
-| **STAB-LEAK-003** | WebSocket release | No residual socket after a conversation is deleted | `AgentConnectionRegistry` count assertion |
-| **STAB-LEAK-004** | `CancellationTokenSource` release | No leak | — |
-| **STAB-NET-001** | 20 disconnect/reconnect cycles | No handle leak; always recovers | Fake server flapping |
-| **STAB-LONG-001** | 2-hour soak | Memory stays flat | Long-run test |
+Performance evidence is split between the repeatable launch benchmark in [PERFORMANCE.md](./PERFORMANCE.md), the real-window memory gate, and the [2026-07-25 pre-release audit](./PERFORMANCE_AUDIT_2026-07-25_EN.md). Absolute values are machine/build specific; budgets and trends are the release contract.
 
-`STAB-LEAK-001/002` deliberately do not require Task Manager memory to return to the launch
-baseline. CLR/XAML/native allocators retain reusable high-water pages. The regression signal is
-an unbounded tail, independently corroborated by handles and threads; see
-[`MEMORY_LEAK_INVESTIGATION.md`](./MEMORY_LEAK_INVESTIGATION.md).
+### 15.1 Launch and idle budgets
 
----
+| Metric | Target | Fail threshold | Method |
+|---|---:|---:|---|
+| Cold start to first frame | 2,000 ms | 5,000 ms | `scripts/Measure-Performance.ps1`; first composited frame |
+| Warm start to first frame | 1,200 ms | 2,500 ms | Same, median of repeated launches |
+| Idle working set | 200 MB | 350 MB | External process sample after first frame |
+| Idle private bytes | 180 MB | 320 MB | External process sample |
+| Managed heap at first frame | 40 MB | 80 MB | In-process telemetry |
+| Graceful shutdown | 1,500 ms | 4,000 ms | **Currently invalid in the startup harness; repair tracked by #20** |
+
+The 2026-07-25 final audit measured a **717.6 ms warm-launch median**, approximately **204.7 MB** idle Working Set and **133.6 MB** idle Private Bytes. True cold-start evidence remains statistically insufficient because each fresh-publish group had only one first sample and the OS standby list was not cleared.
+
+### 15.2 Real-window responsiveness and memory evidence
+
+- Six shell/settings smoke tests passed against the published executable.
+- The UI performance audit exercises synthetic 100-, 500-, and 2,000-message histories. The final 2,000-message first open was 442.2 ms and only 14 `ListViewItem` containers were realized, confirming visual virtualization.
+- Tool Activity restoration and expansion passed after Release JSON metadata remediation; expansion measured 7.2–12.8 ms.
+- The final 50-cycle four-session alternating memory test had a tail slope of 0.03 MB/cycle, a 1.2 MB Private Bytes span, handle span 27, and thread span 5—all within the configured gate.
+- Task Manager memory is not expected to return to the initial launch baseline. The gate detects an unbounded tail after warm-up and corroborates it with handles/threads.
+
+### 15.3 Reproduction
+
+```powershell
+# Launch benchmark and idle memory
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Measure-Performance.ps1
+
+# Repeated-navigation/session memory gate
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Test-MemoryLeaks.ps1
+
+# The UI audit test is opt-in and writes JSON only when configured
+$env:CONNECTONION_UI_TEST_EXE = '<published ConnectOnion.WinUIClient.exe>'
+$env:CONNECTONION_UI_PERF_OUT = '<output.json>'
+dotnet test tests\ConnectOnion.WinUIClient.UITests\ConnectOnion.WinUIClient.UITests.csproj --configuration Release
+```
+
+### 15.4 Open performance themes
+
+- Startup harness repair and explicit milestones: [#20](https://github.com/unsw-cse-comp99-3900/capstone-project-26t2-9900-t09c-almond/issues/20).
+- Long-conversation budgets and repeatable baselines: [#14](https://github.com/unsw-cse-comp99-3900/capstone-project-26t2-9900-t09c-almond/issues/14).
+- Trim-safe publishing before trimming is re-enabled: [#19](https://github.com/unsw-cse-comp99-3900/capstone-project-26t2-9900-t09c-almond/issues/19).
+- Packaged install and signed release evidence: [#11](https://github.com/unsw-cse-comp99-3900/capstone-project-26t2-9900-t09c-almond/issues/11).
 
 ## 16. Regression Strategy
 
@@ -722,208 +779,87 @@ All of the following must hold before release:
 
 In addition to §18:
 
-- [x] Every test project is wired into the `.sln` **and** CI
-- [x] All current test projects run in CI on every push and pull request (66 protocol + 139 client unit + 42 integration)
-- [ ] Coverage: `ConnectOnion.Protocol` ≥ 80%; `Services/Runtime` + `Data` ≥ 70%
-- [ ] Performance baselines met: `PERF-START-001`, `PERF-MSG-001`
-- [ ] A manual pass over Light/Dark × 100%/150%/200% DPI
-- [ ] No P0 case is skipped or ignored
-
----
+- [x] The app, Core, Protocol, Conformance project, and all four test projects are wired into the solution as documented.
+- [x] CI restores, audits dependencies, builds Release/x64, runs all three headless suites, collects coverage, compiles/discovers UI tests, publishes the unpackaged executable, and runs Protocol Conformance.
+- [x] Headless snapshot verified on 2026-07-25: 161 Protocol + 703 Core/architecture + 114 SQLite integration = 978.
+- [x] Six real-window shell/settings smoke tests have passed separately.
+- [x] Memory and UI performance audit tests have passed separately against a published executable.
+- [ ] Coverage thresholds are enforced in CI — [#17](https://github.com/unsw-cse-comp99-3900/capstone-project-26t2-9900-t09c-almond/issues/17).
+- [ ] Signed MSIX install/upgrade/uninstall and clean-machine launch pass — [#11](https://github.com/unsw-cse-comp99-3900/capstone-project-26t2-9900-t09c-almond/issues/11).
+- [ ] Trimming is proven safe before it is re-enabled — [#19](https://github.com/unsw-cse-comp99-3900/capstone-project-26t2-9900-t09c-almond/issues/19).
+- [ ] True cold-start and startup-harness evidence are repaired — [#20](https://github.com/unsw-cse-comp99-3900/capstone-project-26t2-9900-t09c-almond/issues/20).
+- [ ] Critical reconnect/lifecycle and expanded real-window flows pass — [#13](https://github.com/unsw-cse-comp99-3900/capstone-project-26t2-9900-t09c-almond/issues/13), [#12](https://github.com/unsw-cse-comp99-3900/capstone-project-26t2-9900-t09c-almond/issues/12).
+- [ ] Accessibility quality gates and a manual Narrator/text-scaling pass are complete — [#16](https://github.com/unsw-cse-comp99-3900/capstone-project-26t2-9900-t09c-almond/issues/16).
+- [ ] Hardware/external-state manual gates for real-agent streaming, speech/audio, notification activation, packaged tray behavior, and native/XAML profiling are signed off.
 
 ## 20. Test Directory Structure
 
-Production `.csproj` files sit at the repo root; **every implemented automated test project lives under `tests/`**. The tree below is the target layout: the three existing xunit projects are implemented, while `WinUITests`, `UITests`, and `PerfTests` are planned phase-3 projects rather than current files.
+Production projects sit at the repository root and all implemented test projects live under `tests/`. The structure below describes the **current repository**, not a proposed future layout.
 
-```
+```text
 connectonion-desktop/
-├── ConnectOnion.WinUIClient/           # existing
-├── ConnectOnion.Protocol/              # existing
-├── ConnectOnion.Protocol.Conformance/  # existing (signing gate)
-├── ConnectOnion.Protocol.LiveTest/     # existing (manual smoke, not in CI)
-│
+├── ConnectOnion.WinUIClient/                 # WinUI 3 app
+├── ConnectOnion.WinUIClient.Core/            # WinUI-free test seam
+├── ConnectOnion.Protocol/                    # protocol library
+├── ConnectOnion.Protocol.Conformance/        # separate Release gate
+├── ConnectOnion.Protocol.LiveTest/           # manual deployed-agent console run; not in solution/CI
+├── scripts/
+│   ├── Measure-Performance.ps1
+│   └── Test-MemoryLeaks.ps1
 └── tests/
-    ├── ConnectOnion.Protocol.Tests/          # xunit · in .sln + CI
-    │   ├── InputMessageBuilderTests.cs
-    │   ├── DataUrlCodecTests.cs
-    │   ├── AttachmentWireEventsTests.cs
-    │   ├── ConversationRunRegistryTests.cs
-    │   └── AgentConnectionServiceTests.cs    # new: timeouts / watchdog / dispose
-    │
-    ├── ConnectOnion.WinUIClient.UnitTests/   # xunit · net10.0 · no UI thread
-    │   ├── ViewModels/
-    │   │   ├── ChatViewModelTests.cs                 # CanSend truth table, empty send, retry
-    │   │   └── KeyboardShortcutsViewModelTests.cs
-    │   ├── Services/
-    │   │   ├── AppVersionServiceTests.cs
-    │   │   ├── ConversationCacheTests.cs             # LRU + no-cache-while-running
-    │   │   ├── KeyboardShortcutCatalogTests.cs       # catalog vs. real handlers
-    │   │   └── Notifications/
-    │   │       ├── NotificationPolicyTests.cs        # every Decide branch
-    │   │       ├── NotificationCoordinatorTests.cs   # turn/approval dedup, disconnect grace
-    │   │       ├── NotificationTextTests.cs
-    │   │       └── DedupCacheTests.cs
-    │   ├── Runtime/
-    │   │   ├── ChatTurnProjectionTests.cs            # live/headless parity
-    │   │   ├── ToolActivityProjectorTests.cs
-    │   │   └── ToolActivityMigrationTests.cs
+    ├── ConnectOnion.Protocol.Tests/           # xUnit; 161 snapshot
+    ├── ConnectOnion.WinUIClient.UnitTests/    # xUnit + ArchUnitNET; 703 snapshot
+    │   ├── Accessibility/
+    │   ├── Architecture/
+    │   ├── Common/
     │   ├── Models/
-    │   │   └── ChatMessageTests.cs                   # interactive + thought-process collapse/loading state
-    │   ├── Converters/
-    │   │   ├── BoolToVisibilityConverterTests.cs
-    │   │   ├── EventStatusToBrushConverterTests.cs
-    │   │   └── ToolStatusToBrushConverterTests.cs
-    │   └── Selectors/
-    │       └── ChatMessageTemplateSelectorTests.cs
-    │
-    ├── ConnectOnion.WinUIClient.WinUITests/   # MSTest · WinUI Unit Test App (UI thread)
-    │   ├── Controls/
-    │   │   ├── MarkdownTextBlockTests.cs             # highlight × code/link regressions
-    │   │   ├── HighlightedTextBlockTests.cs
-    │   │   ├── ToolActivityViewTests.cs
-    │   │   └── AgentAvatarTests.cs
-    │   ├── Overlays/
-    │   │   ├── AboutOverlayTests.cs
-    │   │   ├── SettingsOverlayTests.cs
-    │   │   └── KeyboardShortcutsDialogTests.cs
-    │   ├── Templates/
-    │   │   └── ChatTemplateSelectionTests.cs
-    │   └── Focus/
-    │       └── OverlayFocusTests.cs
-    │
-    ├── ConnectOnion.IntegrationTests/         # xunit + fake server + real SQLite
+    │   ├── Runtime/
+    │   ├── Services/
+    │   └── ViewModels/
+    ├── ConnectOnion.IntegrationTests/         # xUnit + temporary real SQLite; 114 snapshot
     │   ├── Database/
-    │   │   ├── AppDatabaseSchemaTests.cs
-    │   │   ├── ConversationRepositoryTests.cs        # incremental upsert
-    │   │   ├── SessionRepositoryTests.cs
-    │   │   ├── AgentRepositoryTests.cs
-    │   │   ├── IdentityStoreTests.cs
-    │   │   └── MigrationTests.cs                     # old-DB snapshot
-    │   ├── Connections/
-    │   │   ├── AgentSessionManagerTests.cs           # run survives page close
-    │   │   ├── AgentConnectionRegistryTests.cs
-    │   │   └── ReconnectTests.cs
-    │   ├── Notifications/
-    │   │   └── NotificationCoordinatorTests.cs
-    │   ├── Lifecycle/
-    │   │   └── ShutdownTests.cs
-    │   └── Fakes/
-    │       ├── FakeAgentServer.cs                    # HttpListener + WebSocket
-    │       ├── FakeNotificationChannel.cs
-    │       ├── FakeWindowPresence.cs
-    │       └── FakeChatWindow.cs
-    │
-    ├── ConnectOnion.UITests/                  # FlaUI · the 15 E2E flows
-    │   ├── Fixtures/
-    │   │   ├── AppFixture.cs                         # launch/close process, isolated %AppData%
-    │   │   └── FakeServerFixture.cs
-    │   ├── PageObjects/                              # wrap AutomationIds; never expose tree shape
-    │   │   ├── MainWindowPage.cs
-    │   │   ├── ChatPageObject.cs
-    │   │   ├── SidebarPageObject.cs
-    │   │   └── OverlayPageObjects.cs
-    │   ├── Workflows/
-    │   │   ├── OnboardingE2E.cs                      # E2E-001
-    │   │   ├── ChatE2E.cs                            # E2E-002/003/004/015
-    │   │   ├── ConnectionE2E.cs                      # E2E-005
-    │   │   ├── PersistenceE2E.cs                     # E2E-006
-    │   │   ├── NotificationE2E.cs                    # E2E-007/008
-    │   │   ├── OverlayE2E.cs                         # E2E-009/010/011/012
-    │   │   ├── LifecycleE2E.cs                       # E2E-013
-    │   │   └── PerformanceE2E.cs                     # E2E-014
-    │   └── TestData/
-    │       ├── agents.valid.json
-    │       ├── conversation.1000.json
-    │       ├── markdown.torture.md
-    │       └── db/v0.db
-    │
-    └── ConnectOnion.PerfTests/                # BenchmarkDotNet (optional, phase 3)
-        └── ProjectionBenchmarks.cs
+    │   └── Runtime/
+    └── ConnectOnion.WinUIClient.UITests/      # xUnit + FlaUI; 8 discovered tests
+        ├── ShellSmokeTests.cs                 # six real-window smoke tests
+        ├── MemoryLeakTests.cs                 # opt-in lifecycle/memory gate
+        └── PerformanceAuditTests.cs           # opt-in large-history UI audit
 ```
+
+The solution is `ConnectOnion.WinUIClient/ConnectOnion.WinUIClient.sln`. `ConnectOnion.Protocol.LiveTest` is the sole project intentionally outside it.
 
 ### Naming conventions
 
-**Test methods**: `MethodUnderTest_Scenario_ExpectedOutcome` — matching the existing `DataUrlCodecTests.TryDecode_MalformedInput_ReturnsFalseWithoutThrowing`. **Follow the repo's convention; do not invent a second one.**
+- **Test classes**: `{ClassUnderTest}Tests`.
+- **Test methods**: `MethodUnderTest_Scenario_ExpectedOutcome`.
+- **Regression tests**: include the issue number in the method name or nearby test comment when that improves traceability.
+- **UI tests**: describe the user-visible action and outcome; avoid encoding visual-tree structure in the name or locator.
 
-**Test classes**: `{ClassUnderTest}Tests`
-**E2E methods**: `E2E00X_ShortDescription`
-**Regression cases**: suffix the method name with `_Regression_Issue42`
+## 21. Implementation Priority and Issue Mapping
 
----
+Completed infrastructure no longer belongs in the open backlog. The following are already implemented and should be maintained rather than re-proposed: the Core seam, Generic Host DI, CommunityToolkit.Mvvm migration, ArchUnitNET boundaries, fake-agent server, isolated SQLite fixtures, current CI wiring, FlaUI project, six shell smoke tests, memory-leak gate, performance audit test, and Protocol Conformance.
 
-## 21. Implementation Priority
+Every unfinished P0/P1 theme maps to a GitHub Issue. Individual test IDs in §11–§13 may share one thematic Issue.
 
-### 21.0 Prerequisite infrastructure (**do this first or everything else is wasted motion**)
+| Priority | Unfinished theme | GitHub Issue | Completion evidence |
+|---|---|---|---|
+| P0/P1 | Connection lifecycle, reconnect, cold-start races, shutdown integration | [#13](https://github.com/unsw-cse-comp99-3900/capstone-project-26t2-9900-t09c-almond/issues/13) | Deterministic integration tests for each race/failure path |
+| P0/P1 | Expanded real-window workflows and regular FlaUI execution | [#12](https://github.com/unsw-cse-comp99-3900/capstone-project-26t2-9900-t09c-almond/issues/12) | Stable E2E suite with isolated profiles and documented desktop requirements |
+| P1 | Accessibility, keyboard reachability, focus, names, contrast, scaling | [#16](https://github.com/unsw-cse-comp99-3900/capstone-project-26t2-9900-t09c-almond/issues/16) | Automated quality gates plus manual Narrator/scaling evidence |
+| P1 | Automatic coverage quality gate | [#17](https://github.com/unsw-cse-comp99-3900/capstone-project-26t2-9900-t09c-almond/issues/17) | CI fails on agreed coverage regression/threshold |
+| P1 | Trim-safe Release publishing | [#19](https://github.com/unsw-cse-comp99-3900/capstone-project-26t2-9900-t09c-almond/issues/19) | Zero unresolved application trim warnings plus trimmed live-flow evidence |
+| P1 | Startup harness repair and explicit startup milestones | [#20](https://github.com/unsw-cse-comp99-3900/capstone-project-26t2-9900-t09c-almond/issues/20) | Valid shutdown metric and repeatable cold/warm milestone report |
+| P1 | Signed MSIX release pipeline and clean-machine deployment | [#11](https://github.com/unsw-cse-comp99-3900/capstone-project-26t2-9900-t09c-almond/issues/11) | Signed artifact, install/upgrade/uninstall tests, release notes |
+| P1/P2 | Long-conversation performance baselines and budgets | [#14](https://github.com/unsw-cse-comp99-3900/capstone-project-26t2-9900-t09c-almond/issues/14) | Repeatable 100/500/2,000+ message comparison with budgets |
+| P2 | Complete localization and validate a second locale | [#15](https://github.com/unsw-cse-comp99-3900/capstone-project-26t2-9900-t09c-almond/issues/15) | Resource coverage plus second-locale UI verification |
+| P2 | Agent-detail and modal-surface UI changes require regression coverage | [#21](https://github.com/unsw-cse-comp99-3900/capstone-project-26t2-9900-t09c-almond/issues/21), [#22](https://github.com/unsw-cse-comp99-3900/capstone-project-26t2-9900-t09c-almond/issues/22) | Updated smoke/accessibility tests alongside the UI changes |
 
-| ID | Task | Why |
-|---|---|---|
-| ~~**INFRA-0**~~ | ~~Add `ConnectOnion.Protocol.Tests` to the `.sln` and CI~~ | ✅ **Done** — it now lives at `tests/ConnectOnion.Protocol.Tests` and runs in CI alongside the two new suites |
-| **INFRA-1** | Add the `AutomationId`s from §13.1 | 🟡 **Partial** — 24 critical IDs are present and contract-tested; connection/conversation/card locators remain |
-| ~~**INFRA-2**~~ | ~~Build `FakeAgentServer` (HttpListener + WebSocket)~~ | ✅ **Done** — protocol connection tests cover handshake, timeout, watchdog, responses and disposal |
-| ~~**INFRA-3**~~ | ~~Build a temp-DB fixture (isolated from `%AppData%`)~~ | ✅ **Done** — `tests/ConnectOnion.IntegrationTests/Database/TempDatabaseFixture.cs` |
-| ~~**INFRA-4**~~ | ~~Extract `IUriLauncher` (wrapping `Launcher.LaunchUriAsync`)~~ | ✅ **Done** — `Services/UriLauncher.cs`, injectable via `AppServices.UriLauncher` |
-| **INFRA-5** | Extract `PendingActivationBuffer` from static `App` | Otherwise the cold-start activation race cannot be tested |
+### Manual gates retained for now
 
-### 21.1 P0 tests required before release
+Multi-monitor behavior, high contrast, full Narrator reading order, real microphone/audio lifecycle, Focus Assist/system notification behavior, signed-package activation, and WPR/XAML native profiling remain manual until their owning Issue supplies repeatable automation.
 
-**48 P0 cases**, distributed as: LC (5) · AGENT (5) · CONN (9) · DB (12) · CHAT (6) · STREAM (9) · SESSION (2) · MD (4) · TOOL (3) · OVL (5) · NOTIF (7) · A11Y (3) · ERR (4) · E2E (6).
+### Backlog rule
 
-### 21.2 Phase 1 — headless unit tests (1–2 weeks, highest ROI)
-
-Pure functions, zero UI dependency, near-instant. **This phase alone covers roughly 60% of the high-risk logic.**
-
-### 21.3 Phase 2 — integration tests (2–3 weeks)
-
-Database + fake server + `AgentSessionManager`. **This phase locks down data safety and connection recovery.**
-
-### 21.4 Phase 3 — UI automation (3–4 weeks)
-
-FlaUI + the 15 E2E flows. Blocked on completing INFRA-1 and creating a launch/isolation fixture. These tests must not be run as part of ordinary headless development unless application launch is explicitly requested.
-
-### 21.5 Keep manual for now
-
-Multi-monitor, DPI switching, high contrast, Narrator reading order, Focus Assist, tray interaction, title-bar dragging, and visual baseline alignment (the empirical `0.22` in `ApplyBaselineNudge`).
-
-### 21.6 Most flake-prone areas
-
-1. **E2E-004 (switch mid-stream)** — a race; assert final consistency, never intermediate states
-2. **Notification E2E** — OS behavior is uncontrollable → must go through the fake channel
-3. **Performance assertions** — CI machines are noisy → sample repeatedly, take the median, leave 50% headroom
-4. **Connection timeout tests** — actually waiting 30s/60s is unacceptable → **inject a controllable clock**
-5. **Tray / window activation** — depends on OS foreground policy → push down to unit tests wherever possible
-
-### 21.7 Biggest infrastructure gap today
-
-See §21.0. CI, the fake server, temp databases, connection registry tests, and the first critical AutomationId slice are complete. The biggest gap is now the **WinUI/FlaUI test host and process-isolation fixture**. Headless coverage can continue independently for session lifecycle and activation buffering.
-
-### 21.8 The first 20 tests to write
-
-Ranked by risk ÷ cost — all headless, all writable in a day:
-
-| # | Test ID | Why this one |
-|---|---|---|
-| ~~1~~ | ~~INFRA-0 (wire existing tests into CI)~~ | ✅ Done — the precondition for every test below |
-| ~~2~~ | ~~`UT-STREAM-002`~~ | ✅ Done — `ChatTurnProjectionTests` |
-| ~~3~~ | ~~`DB-MSG-001`~~ | ✅ Done — `ConversationRepositoryTests` |
-| ~~4~~ | ~~`DB-MSG-002`~~ | ✅ Done — `ConversationRepositoryTests` |
-| ~~5~~ | ~~`DB-MSG-004`~~ | ✅ Done — `ConversationRepositoryTests` |
-| ~~6~~ | ~~`UT-NOTIF-001…006`~~ | ✅ Done — `NotificationPolicyTests` + `NotificationCoordinatorTests` |
-| 7 | `UT-CHAT-003` | `CanSend` truth table |
-| 8 | `UT-TOOL-004` | `EventKind` → template mapping |
-| ~~9~~ | ~~`UT-CONN-004`~~ | ✅ Done — `AgentConnectionServiceTests` verifies human-response waits pause the watchdog |
-| ~~10~~ | ~~`UT-STREAM-003`~~ | ✅ Done — `ChatTurnProjectionTests.AppendFinalReply_*` |
-| 11 | `UT-STREAM-011/012` | Interactive answers persist; unanswered sealed as "No selection" |
-| 12 | `UT-SESSION-004` | Active-run conversations bypass the cache |
-| ~~13~~ | ~~`UT-ABOUT-002`~~ | ✅ Done — `AppVersionServiceTests` verifies assembly metadata and fallback behavior |
-| ~~14~~ | ~~`UT-KBD-001`~~ | ✅ Done — shortcut catalog and source-contract tests cover catalog/handler agreement |
-| 15 | `UI-MD-007` | Highlight match counting (the fallback path must count too) |
-| ~~16~~ | ~~`DB-SCHEMA-001`~~ | ✅ Done — `AppDatabaseSchemaTests` verifies idempotent initialization |
-| ~~17~~ | ~~`DB-ID-001`~~ | ✅ Done — `IdentityStoreTests` verifies DPAPI-protected persistence |
-| 18 | `UT-CHAT-001/002` | Empty and whitespace-only messages |
-| ~~19~~ | ~~`UT-CONN-009`~~ | ✅ Done — concurrent `GetOrCreate` calls invoke the connection factory exactly once |
-| ~~20~~ | ~~`DB-MIGRATION-001`~~ | ✅ Done — migration tests open and upgrade legacy schema snapshots |
-
----
+Do not add a new unfinished theme to this document without an Issue number, owner, expected outcome, and verification method. When an Issue is completed, move its evidence into the relevant implemented/current-state section instead of leaving it listed here as planned work.
 
 ## Appendix A — Design Gaps Surfaced by This Plan (all resolved)
 
@@ -936,13 +872,13 @@ These were never testing problems — they are real design gaps that writing the
 | 1 | 🔴 **No DB migration framework** — the documented recovery was "delete the database" | **Fixed.** `Data/SchemaMigrator.cs` versions the DB via SQLite's `PRAGMA user_version` and applies ordered forward migrations in a transaction. Existing databases (version 0) are stamped as the version-1 baseline without running anything, since that is exactly the shape pre-versioning builds produced. A database written by a *newer* build now fails loudly instead of being silently mangled. `AppDatabase.EnsureInitializedAsync` calls it right after the baseline schema. **Enables `DB-MIGRATION-001/002`.** |
 | 2 | 🔴 **`IdentityStore` silently regenerated the identity on decrypt failure** | **Fixed.** `Load()` now distinguishes *nothing stored* (normal first run → generate quietly) from *stored but unreadable* (identity is being thrown away → report). The latter raises `IdentityStore.IdentityReset` and latches `WasReset` / `ResetReason`; `MainWindow` surfaces it as an error toast telling the user their address changed and agents must re-authorize. **Enables `DB-ID-002`.** |
 | 3 | 🟠 **`Launcher.LaunchUriAsync` is static and unmockable** | **Fixed.** `Services/UriLauncher.cs` introduces `IUriLauncher` + `SystemUriLauncher`, exposed as the settable `AppServices.UriLauncher`. `Shell/MainWindow.HelpMenu.cs` now goes through it. A test substitutes a fake and asserts the URI. **Enables `UT-HELP-002` and `E2E-012`; INFRA-4 is done.** |
-| 4 | 🟠 **`AppServices` is a static locator** | **No change needed.** `AgentSessionManager` already exposes `public AgentSessionManager(HttpClient, ConversationRepository)`, and the repositories are constructible. Tests construct instances directly and bypass `AppServices` entirely. |
+| 4 | 🟠 **The original composition model behaved like a static locator** | **Replaced.** The app now uses a Generic Host and constructor injection. `AppServices` remains only as a typed, get-only bridge for framework-created code-behind; tests construct focused subject graphs or use registered abstractions. |
 | 5 | 🟡 **Ctrl+Shift+/ hard-coded VK 191** | **Fixed.** `ProducesSlash(VirtualKey)` asks the *current keyboard layout* what character a key types (`MapVirtualKeyW` with `MAPVK_VK_TO_CHAR`), so the shortcut works on layouts where `/` is not on VK_OEM_2. Numpad divide is accepted too; VK 191 remains only as a fallback. **Removes the `UT-KBD-002` layout risk.** |
 | 6 | 🟡 **`Name[..1]` splits emoji / surrogate pairs** | **Fixed.** The bug existed in *four* places (`ChatViewModel`, `HomePage`, `AgentDetailViewModel`, `ShellAgentItem`), which is why it now lives in one: `Common/NameInitial.cs` takes the first *grapheme* via `StringInfo.GetTextElementEnumerator`. **Enables `UT-AGENT-005`.** |
 | 7 | 🟡 **`ApplyBaselineNudge`'s `0.22` was a guessed em-ratio** | **Fixed.** `HighlightedTextBlock.DescentFor(fontFamily, fontSize)` measures a probe `TextBlock` and derives the real descent from `DesiredSize.Height - BaselineOffset`, cached per (family, size); the ratio survives only as a fallback when measurement is impossible. Each call site now passes the font that actually governs its alignment — the code face for inline code, the document face for a code block. Search highlights inside code also inherit the monospace face now, which they previously did not. |
 
-**Net effect on this plan**: `INFRA-4` (extract `IUriLauncher`) is complete, and `DB-MIGRATION-001`, `DB-ID-002`, `UT-HELP-002`, `UT-AGENT-005`, and `E2E-012` moved from "blocked on a refactor" to "writable today". `INFRA-5` (extract `PendingActivationBuffer`) remains open.
+**Net effect on this plan**: the migration, identity-reset, URI-launch, keyboard-layout, grapheme, and baseline-measurement gaps are resolved. Remaining activation/lifecycle coverage is tracked by [#13](https://github.com/unsw-cse-comp99-3900/capstone-project-26t2-9900-t09c-almond/issues/13), not by an unowned document-only infrastructure item.
 
 ---
 
-*End of document. 48 P0 cases · 15 E2E flows · 6 prerequisite infrastructure tasks.*
+*End of document. Snapshot: 978 headless xUnit tests (161 Protocol + 703 Core/architecture + 114 SQLite integration), 8 discovered real-window UI tests, and Protocol Conformance reported separately. Verified 2026-07-25.*
