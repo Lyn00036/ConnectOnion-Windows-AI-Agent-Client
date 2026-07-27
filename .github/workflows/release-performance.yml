@@ -20,6 +20,10 @@ on:
         description: Require a first-conversation-render milestone
         type: boolean
         default: false
+      iterations:
+        description: Measured samples (minimum 5)
+        type: string
+        default: '5'
       fixture_path:
         description: Optional prepared data-root fixture on the self-hosted runner
         type: string
@@ -51,6 +55,7 @@ jobs:
             '-File', 'scripts\Capture-StartupTrace.ps1',
             '-Mode', '${{ inputs.mode }}',
             '-DatasetId', '${{ inputs.dataset_id }}',
+            '-Iterations', '${{ inputs.iterations }}',
             '-OutDir', 'TestResults\release-performance'
           )
           if ('${{ inputs.require_conversation }}' -eq 'true') {

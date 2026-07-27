@@ -20,6 +20,7 @@ param(
     [string] $Exe,
     [string] $DatasetId = 'empty-isolated-profile',
     [string] $FixturePath,
+    [int]    $Iterations = 5,
     [string[]] $Profiles = @(
         'GeneralProfile',
         'DotNET',
@@ -68,7 +69,8 @@ try {
         '-NoProfile', '-ExecutionPolicy', 'Bypass',
         '-File', (Join-Path $PSScriptRoot 'Measure-Performance.ps1'),
         '-Mode', $Mode,
-        '-Iterations', '5',
+        '-Iterations', "$Iterations",
+        '-UnderInstrumentation',
         '-OutDir', $OutDir,
         '-DatasetId', $DatasetId
     )

@@ -27,6 +27,17 @@
     One of WarmUnpackaged, ColdUnpackaged, WarmMsix, or ColdMsix. Cold modes require successful
     standby-list purge before every sample; MSIX modes resolve the installed package executable.
 
+.PARAMETER SettleSeconds
+    Idle time after the readiness milestones before memory is sampled. Reaching the milestones
+    proves the shell is ready, not that startup work has drained — presence probes and lazy
+    first-use allocations are still running — so sampling on the milestone alone understates
+    steady state and is not comparable to the ratified baseline. Default 15.
+
+.PARAMETER UnderInstrumentation
+    Set by Capture-StartupTrace.ps1 when this run happens inside a WPR trace. Budget verdicts are
+    withheld and the report says why: ETW adds ~20% to launch and ~70% to shutdown here, so a
+    traced run answers "where does the time go", never "does this build pass".
+
 .PARAMETER EnforceBudgets
     Exit non-zero when a median metric breaches its Fail threshold. Off by default so the first
     run can establish the baseline rather than fail against a guess.
@@ -42,13 +53,16 @@ param(
     [ValidateSet('WarmUnpackaged', 'ColdUnpackaged', 'WarmMsix', 'ColdMsix')]
     [string] $Mode = 'WarmUnpackaged',
     [int]    $Iterations = 5,
+    [int]    $SettleSeconds = 15,
     [int]    $LaunchTimeoutSeconds = 60,
+    [int]    $ReadinessTimeoutSeconds = 60,
     [string] $OutDir,
     [string] $PackageName = '779a2035-a8d1-4bc8-91cf-82aecda14cc5',
     [string] $PackageExecutable = 'ConnectOnion.WinUIClient.exe',
     [string] $DatasetId = 'empty-isolated-profile',
     [string] $FixturePath,
     [switch] $RequireConversation,
+    [switch] $UnderInstrumentation,
     [switch] $UseRealDataRoot,
     [switch] $AllowDebugBuild,
     [switch] $EnforceBudgets
@@ -62,6 +76,12 @@ $ProcessName = 'ConnectOnion.WinUIClient'
 
 if ($Iterations -lt 5) {
     throw "At least five valid samples are required; -Iterations must be 5 or greater."
+}
+
+# Refused rather than silently ignored: a traced run withholds every verdict, so -EnforceBudgets
+# would pass unconditionally and report a gate that never ran.
+if ($UnderInstrumentation -and $EnforceBudgets) {
+    throw '-EnforceBudgets cannot be combined with -UnderInstrumentation: a traced run has no budget verdict to enforce.'
 }
 
 # Budgets, in the units each metric is reported in. "Target" is what we want to hold; "Fail" is
@@ -120,9 +140,35 @@ function Request-AppExit {
     <#
         Signals the one-shot named event armed by StartupTelemetry. The callback invokes the same
         MainWindow.ExitApplication path as File > Exit; no tray implementation detail is assumed.
+
+        Setting the event cannot tell us the app ever opened it — a failure to arm is only visible
+        in the app's own log — so this returns nothing and the WaitForExit that follows is what
+        decides whether the shutdown was graceful.
     #>
     param([Threading.EventWaitHandle] $ExitEvent)
-    return $ExitEvent.Set()
+    $null = $ExitEvent.Set()
+}
+
+function Read-StartupReport {
+    <#
+        Reads the app's atomic startup report.
+
+        Retried, always: the app rewrites this file as each readiness milestone lands, and each
+        rewrite is a File.Move. Test-Path can see the destination the instant the move creates it,
+        a moment before the move releases its handle, so any single read can fail with a sharing
+        violation even though the document on disk is complete. With $ErrorActionPreference = Stop
+        an unretried read would throw away a whole iteration for a transient miss.
+    #>
+    param([string] $Path)
+
+    foreach ($attempt in 1..10) {
+        try {
+            return Get-Content $Path -Raw -ErrorAction Stop | ConvertFrom-Json
+        } catch {
+            if ($attempt -eq 10) { throw }
+            Start-Sleep -Milliseconds 100
+        }
+    }
 }
 
 $script:StandbyPurgeAvailable = $null
@@ -140,7 +186,60 @@ function Clear-StandbyList {
                 Add-Type -Namespace Perf -Name MemoryList -MemberDefinition @'
 [DllImport("ntdll.dll")]
 public static extern int NtSetSystemInformation(int InfoClass, ref int Info, int Length);
+
+[StructLayout(LayoutKind.Sequential)]
+private struct LUID { public uint LowPart; public int HighPart; }
+
+[StructLayout(LayoutKind.Sequential)]
+private struct TOKEN_PRIVILEGES { public uint PrivilegeCount; public LUID Luid; public uint Attributes; }
+
+[DllImport("advapi32.dll", SetLastError = true)]
+private static extern bool OpenProcessToken(IntPtr process, uint access, out IntPtr token);
+
+[DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+private static extern bool LookupPrivilegeValue(string system, string name, out LUID luid);
+
+[DllImport("advapi32.dll", SetLastError = true)]
+private static extern bool AdjustTokenPrivileges(IntPtr token, bool disableAll,
+    ref TOKEN_PRIVILEGES newState, uint length, IntPtr previous, IntPtr returnLength);
+
+[DllImport("kernel32.dll")]
+private static extern IntPtr GetCurrentProcess();
+
+[DllImport("kernel32.dll", SetLastError = true)]
+private static extern bool CloseHandle(IntPtr handle);
+
+// Being in the Administrators group only means the token *holds* a privilege; it is disabled
+// until something enables it. Without this the purge returns STATUS_PRIVILEGE_NOT_HELD
+// (0xC0000061) from an elevated shell, which reads like a policy block but is not one.
+public static bool EnablePrivilege(string name)
+{
+    IntPtr token;
+    // TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY
+    if (!OpenProcessToken(GetCurrentProcess(), 0x0020 | 0x0008, out token)) return false;
+    try
+    {
+        LUID luid;
+        if (!LookupPrivilegeValue(null, name, out luid)) return false;
+
+        TOKEN_PRIVILEGES tp = new TOKEN_PRIVILEGES();
+        tp.PrivilegeCount = 1;
+        tp.Luid = luid;
+        tp.Attributes = 0x0002; // SE_PRIVILEGE_ENABLED
+        if (!AdjustTokenPrivileges(token, false, ref tp, 0, IntPtr.Zero, IntPtr.Zero)) return false;
+
+        // AdjustTokenPrivileges reports success even when it assigned nothing; only the last
+        // error distinguishes "enabled" from "not all privileges were assigned".
+        return Marshal.GetLastWin32Error() == 0;
+    }
+    finally { CloseHandle(token); }
+}
 '@
+            }
+
+            if (-not [Perf.MemoryList]::EnablePrivilege('SeProfileSingleProcessPrivilege')) {
+                $script:StandbyPurgeAvailable = $false
+                Write-Warning 'SeProfileSingleProcessPrivilege could not be enabled; the standby list cannot be purged.'
             }
         } else {
             Write-Warning 'Standby-list purge needs an elevated shell; runs will be warm.'
@@ -153,7 +252,10 @@ public static extern int NtSetSystemInformation(int InfoClass, ref int Info, int
         $command = 4
         $status = [Perf.MemoryList]::NtSetSystemInformation(80, [ref] $command, 4)
         if ($status -ne 0) {
-            Write-Warning ("Standby-list purge returned NTSTATUS 0x{0:X8}." -f $status)
+            $hint = if ($status -eq -1073741727) {  # 0xC0000061 STATUS_PRIVILEGE_NOT_HELD
+                ' (STATUS_PRIVILEGE_NOT_HELD — SeProfileSingleProcessPrivilege is held but not enabled)'
+            } else { '' }
+            Write-Warning ("Standby-list purge returned NTSTATUS 0x{0:X8}.{1}" -f $status, $hint)
             return $false
         }
         return $true
@@ -212,52 +314,53 @@ function Invoke-MeasuredLaunch {
             Start-Sleep -Milliseconds 50
         }
 
-        # Test-Path can see the report the instant File.Move creates it, a moment before the
-        # move releases its handle — so the first read can fail with a sharing violation even
-        # though the document is complete. Retry briefly rather than losing the iteration.
-        $report = $null
-        foreach ($attempt in 1..10) {
-            try {
-                $report = Get-Content $ReportPath -Raw -ErrorAction Stop | ConvertFrom-Json
-                break
-            } catch {
-                if ($attempt -eq 10) { throw }
-                Start-Sleep -Milliseconds 100
-            }
-        }
-
-        # Wait for actual readiness marks instead of sleeping for an arbitrary settling period.
-        $requiredMarks = @('firstFrame', 'firstInteractive', 'sessionListLoaded', 'deferredStartupCompleted')
+        # Readiness gets its own budget rather than whatever is left of the launch deadline: a
+        # slow first frame would otherwise silently shrink the window the milestones have to
+        # land in, and the run would fail on a timeout that says nothing about readiness.
+        $readinessDeadline = (Get-Date).AddSeconds($ReadinessTimeoutSeconds)
+        $requiredMarks = @('firstFrame', 'firstInteractive', 'sessionListLoaded', 'shellInitialized')
         if ($ConversationRequired) { $requiredMarks += 'firstConversationRendered' }
+        $report = $null
         while ($true) {
-            $report = Get-Content $ReportPath -Raw | ConvertFrom-Json
+            $report = Read-StartupReport -Path $ReportPath
             $observed = @($report.marks | ForEach-Object { $_.phase })
-            if (@($requiredMarks | Where-Object { $_ -notin $observed }).Count -eq 0) { break }
-            if ((Get-Date) -gt $deadline) {
-                throw "Iteration $Index did not reach required readiness milestones: $($requiredMarks -join ', ')."
+            $missing = @($requiredMarks | Where-Object { $_ -notin $observed })
+            if ($missing.Count -eq 0) { break }
+            if ((Get-Date) -gt $readinessDeadline) {
+                throw "Iteration $Index did not reach readiness milestones within $ReadinessTimeoutSeconds s; missing: $($missing -join ', ')."
             }
             Start-Sleep -Milliseconds 50
         }
+
+        # Readiness says the shell is usable; it does not say startup work has drained. Presence
+        # probes and lazy first-use allocations are still in flight, so idle memory is sampled
+        # after a settling period — the same one the ratified baseline was measured with.
+        Start-Sleep -Seconds $SettleSeconds
         $proc.Refresh()
+
+        # Say so plainly when the process is gone. Someone closing the window mid-settle is the
+        # common cause, and without this check the run dies on the memory reads below with
+        # "The property 'Count' cannot be found on this object" — a StrictMode artifact of
+        # querying an exited process, which says nothing about what actually happened.
+        if ($proc.HasExited) {
+            throw "Iteration $Index : the app exited (code $($proc.ExitCode)) before it could be sampled. If you closed the window, just re-run; the benchmark needs the process alive through the ${SettleSeconds}s settle."
+        }
+
         $idleWorkingSet = $proc.WorkingSet64
         $idlePrivate = $proc.PrivateMemorySize64
         $peakWorkingSet = $proc.PeakWorkingSet64
         $handles = $proc.HandleCount
         $threads = $proc.Threads.Count
 
-        # Exit the app the way the tray menu does rather than killing it: shutdown drains runs
-        # and stops the Generic Host, and that cost is part of the app's felt performance too.
-        $requested = Request-AppExit -ExitEvent $exitEvent
-        if (-not $requested) {
-            Write-Warning "Iteration $Index : named exit event could not be signalled; cannot measure shutdown."
-        }
+        # Ask for the real exit path rather than killing it: shutdown drains runs and stops the
+        # Generic Host, and that cost is part of the app's felt performance too.
+        Request-AppExit -ExitEvent $exitEvent
 
         $shutdown = [Diagnostics.Stopwatch]::StartNew()
-        $exited = $false
-        if ($requested) { $exited = $proc.WaitForExit(15000) }
+        $exited = $proc.WaitForExit(15000)
         $shutdown.Stop()
         if (-not $exited) {
-            Write-Warning "Iteration $Index did not exit gracefully; killing."
+            Write-Warning "Iteration $Index did not exit within 15 s of the graceful-exit request; killing. Check the app log for 'Performance exit event ... could not be armed'."
             try { $proc.Kill() } catch { }
         }
 
@@ -278,7 +381,7 @@ function Invoke-MeasuredLaunch {
             FirstInteractiveMs = $marks['firstInteractive']
             SessionListLoadedMs = $marks['sessionListLoaded']
             FirstConversationRenderedMs = $marks['firstConversationRendered']
-            DeferredStartupCompletedMs = $marks['deferredStartupCompleted']
+            ShellInitializedMs = $marks['shellInitialized']
             ManagedHeapMb    = [math]::Round($report.memory.managedHeapBytes / 1MB, 1)
             IdleWorkingSetMb = [math]::Round($idleWorkingSet / 1MB, 1)
             IdlePrivateMb    = [math]::Round($idlePrivate / 1MB, 1)
@@ -325,7 +428,11 @@ function Get-Stats {
 
 $packageFullName = $null
 if ($Mode -like '*Msix') {
-    $package = Get-AppxPackage -Name $PackageName | Sort-Object Version -Descending | Select-Object -First 1
+    # Sort on [version], not the string Get-AppxPackage hands back: lexically "1.0.9.0" sorts
+    # above "1.0.10.0", so a string sort silently benchmarks an older side-by-side install.
+    $package = Get-AppxPackage -Name $PackageName |
+        Sort-Object { [version] $_.Version } -Descending |
+        Select-Object -First 1
     if (-not $package) { throw "Installed MSIX package '$PackageName' was not found." }
     $packageFullName = $package.PackageFullName
     $Exe = Join-Path $package.InstallLocation $PackageExecutable
@@ -362,7 +469,7 @@ if ($FixturePath) {
 
 Write-Host "Executable : $Exe"
 Write-Host "Mode       : $Mode"
-Write-Host "Iterations : $Iterations (minimum valid sample count: 5)"
+Write-Host "Iterations : $Iterations (minimum valid sample count: 5, settle ${SettleSeconds}s)"
 Write-Host "Data root  : $(if ($dataRoot) { $dataRoot } else { 'real profile (%AppData%\ConnectOnion)' })"
 Write-Host "Output     : $OutDir"
 Write-Host ''
@@ -408,7 +515,7 @@ $stats += Get-Stats 'WarmStartMs'      @($warmRuns | ForEach-Object { $_.TimeToF
 $stats += Get-Stats 'FirstInteractiveMs' @($results | ForEach-Object { $_.FirstInteractiveMs }) 'ms'
 $stats += Get-Stats 'SessionListLoadedMs' @($results | ForEach-Object { $_.SessionListLoadedMs }) 'ms'
 $stats += Get-Stats 'FirstConversationRenderedMs' @($results | ForEach-Object { $_.FirstConversationRenderedMs }) 'ms'
-$stats += Get-Stats 'DeferredStartupCompletedMs' @($results | ForEach-Object { $_.DeferredStartupCompletedMs }) 'ms'
+$stats += Get-Stats 'ShellInitializedMs' @($results | ForEach-Object { $_.ShellInitializedMs }) 'ms'
 $stats += Get-Stats 'IdleWorkingSetMb' @($results | ForEach-Object { $_.IdleWorkingSetMb }) 'MB'
 $stats += Get-Stats 'IdlePrivateMb'    @($results | ForEach-Object { $_.IdlePrivateMb }) 'MB'
 $stats += Get-Stats 'ManagedHeapMb'    @($results | ForEach-Object { $_.ManagedHeapMb }) 'MB'
@@ -427,9 +534,13 @@ $verdicts = @()
 foreach ($budget in $Budgets) {
     $stat = $stats | Where-Object { $_.Metric -eq $budget.Metric } | Select-Object -First 1
     if (-not $stat) { continue }
-    $status = 'PASS'
-    if ($stat.Median -gt $budget.Fail) { $status = 'FAIL' }
-    elseif ($stat.Median -gt $budget.Target) { $status = 'OVER TARGET' }
+    # A traced run measures the app plus the tracer. Observed ETW overhead on this benchmark is
+    # ~20% on launch and ~70% on shutdown, which is enough to push a healthy build past a target
+    # and print a regression that does not exist. Report the numbers, withhold the verdict.
+    $status = if ($UnderInstrumentation) { 'n/a (traced)' }
+        elseif ($stat.Median -gt $budget.Fail) { 'FAIL' }
+        elseif ($stat.Median -gt $budget.Target) { 'OVER TARGET' }
+        else { 'PASS' }
     $verdicts += [pscustomobject]@{
         Metric = $budget.Metric; Label = $budget.Label; Unit = $budget.Unit
         Median = $stat.Median; Target = $budget.Target; Fail = $budget.Fail; Status = $status
@@ -447,12 +558,21 @@ $machine = [pscustomobject]@{
     TotalMemoryGb = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 1)
     Configuration = $results[0].Configuration
     Packaged      = $results[0].Packaged
-    StandbyPurged = [bool]$script:StandbyPurgeAvailable
+    # True iff every measured sample was preceded by a successful purge. Cold modes guarantee
+    # that by throwing on the first failure, so the mode is the honest answer here;
+    # $script:StandbyPurgeAvailable only records whether the shell *could* purge.
+    StandbyPurged = [bool]($Mode -like 'Cold*')
     ColdCacheQualification = $(if ($Mode -like 'Cold*') { 'Qualified-PurgedBeforeEverySample' } else { 'NotApplicable-WarmMode' })
     BenchmarkMode = $Mode
+    UnderInstrumentation = [bool]$UnderInstrumentation
     BuildCommit = $buildCommit
     BuildDirty = $buildDirty
-    ExecutableSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $Exe).Hash
+    # Provenance, not measurement: hashing an MSIX payload under C:\Program Files\WindowsApps can
+    # be denied by that tree's ACLs, and losing a completed five-sample run over a metadata field
+    # would be absurd. Record the failure in the field instead.
+    ExecutableSha256 = $(
+        try { (Get-FileHash -Algorithm SHA256 -LiteralPath $Exe -ErrorAction Stop).Hash }
+        catch { "unavailable: $($_.Exception.Message)" })
     PackageFullName = $packageFullName
     Dataset = $DatasetId
     PowerScheme = ((powercfg /getactivescheme) -join ' ').Trim()
@@ -474,17 +594,19 @@ $null = $md.AppendLine('# Performance benchmark')
 $null = $md.AppendLine()
 $null = $md.AppendLine("Captured $($machine.CapturedUtc) on $($machine.Machine) — $($machine.OS) $($machine.OSVersion), $($machine.Cores) cores, $($machine.TotalMemoryGb) GB RAM.")
 $null = $md.AppendLine()
-$null = $md.AppendLine("Build: **$($machine.Configuration)**, packaged: $($machine.Packaged), standby list purged between launches: $($machine.StandbyPurged).")
-if ($Mode -like 'Cold*' -and -not $machine.StandbyPurged) {
-    $null = $md.AppendLine()
-    $null = $md.AppendLine('> Standby list was not purged (needs an elevated shell), so only iteration 1 is a true cold start.')
-}
+$null = $md.AppendLine("Build: **$($machine.Configuration)**, mode: $Mode, packaged: $($machine.Packaged), standby list purged before every sample: $($machine.StandbyPurged).")
+# No "purge failed" caveat: a cold mode that could not purge throws before any sample is
+# recorded, so a report exists only when the claim above is true.
 if ($machine.NonGracefulExits -gt 0) {
     $null = $md.AppendLine()
     $null = $md.AppendLine("> $($machine.NonGracefulExits) of $($results.Count) iteration(s) had to be killed after the named graceful-exit request; those are excluded from the shutdown statistic.")
 }
 $null = $md.AppendLine()
 $null = $md.AppendLine('## Budgets')
+if ($UnderInstrumentation) {
+    $null = $md.AppendLine()
+    $null = $md.AppendLine('> **Captured inside a WPR trace — these numbers are not budget numbers.** ETW instrumentation measured ~20% on launch and ~70% on shutdown against an untraced run of the same binary, so verdicts are withheld. Use this report to locate where the time goes, and an untraced run to decide whether a build passes.')
+}
 $null = $md.AppendLine()
 $null = $md.AppendLine('| Metric | Median | Target | Fail | Status |')
 $null = $md.AppendLine('|---|---:|---:|---:|---|')
@@ -504,15 +626,15 @@ $null = $md.AppendLine('## Launch phase breakdown')
 $null = $md.AppendLine()
 $null = $md.AppendLine('Milliseconds since process start. The gap before `managedEntry` is CLR + Windows App SDK bootstrap.')
 $null = $md.AppendLine()
-$null = $md.AppendLine('| # | Mode | managedEntry | hostStarted | windowCreated | windowActivated | firstFrame | interactive | sessions | conversation | deferred |')
+$null = $md.AppendLine('| # | Mode | managedEntry | hostStarted | windowCreated | windowActivated | firstFrame | interactive | sessions | conversation | shell |')
 $null = $md.AppendLine('|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|')
 foreach ($r in $results) {
-    $null = $md.AppendLine("| $($r.Iteration) | $($r.Mode) | $(Format-OptionalMilliseconds $r.ManagedEntryMs) | $(Format-OptionalMilliseconds $r.HostStartedMs) | $(Format-OptionalMilliseconds $r.WindowCreatedMs) | $(Format-OptionalMilliseconds $r.WindowActivatedMs) | $(Format-OptionalMilliseconds $r.TimeToFirstFrameMs) | $(Format-OptionalMilliseconds $r.FirstInteractiveMs) | $(Format-OptionalMilliseconds $r.SessionListLoadedMs) | $(Format-OptionalMilliseconds $r.FirstConversationRenderedMs) | $(Format-OptionalMilliseconds $r.DeferredStartupCompletedMs) |")
+    $null = $md.AppendLine("| $($r.Iteration) | $($r.Mode) | $(Format-OptionalMilliseconds $r.ManagedEntryMs) | $(Format-OptionalMilliseconds $r.HostStartedMs) | $(Format-OptionalMilliseconds $r.WindowCreatedMs) | $(Format-OptionalMilliseconds $r.WindowActivatedMs) | $(Format-OptionalMilliseconds $r.TimeToFirstFrameMs) | $(Format-OptionalMilliseconds $r.FirstInteractiveMs) | $(Format-OptionalMilliseconds $r.SessionListLoadedMs) | $(Format-OptionalMilliseconds $r.FirstConversationRenderedMs) | $(Format-OptionalMilliseconds $r.ShellInitializedMs) |")
 }
 $null = $md.AppendLine()
 $null = $md.AppendLine('## Per-iteration resources')
 $null = $md.AppendLine()
-$null = $md.AppendLine('Memory sampled after all required readiness milestones completed.')
+$null = $md.AppendLine("Memory sampled ${SettleSeconds}s after all required readiness milestones completed.")
 $null = $md.AppendLine()
 $null = $md.AppendLine('| # | Idle WS (MB) | Idle private (MB) | Peak WS (MB) | Managed heap (MB) | Handles | Threads | Shutdown (ms) |')
 $null = $md.AppendLine('|---:|---:|---:|---:|---:|---:|---:|---:|')
