@@ -23,6 +23,7 @@ namespace ConnectOnion.WinUIClient.Services;
 public enum AgentIconError
 {
     WindowUnavailable,
+    PickerFailed,
     UnsupportedFileType,
     FileTooLarge,
     ImageTooLarge,
@@ -103,6 +104,9 @@ public sealed class AgentIconService : IAgentIconService
     private const uint MaxSourceDimension = 8192;
     private const uint OutputDimension = 256;
 
+    private static readonly FrozenSet<char> InvalidFileNameCharacters =
+        Path.GetInvalidFileNameChars().ToFrozenSet();
+
     private static readonly FrozenSet<string> SupportedExtensions =
         new[]
         {
@@ -143,7 +147,7 @@ public sealed class AgentIconService : IAgentIconService
         catch (Exception exception)
         {
             throw new AgentIconException(
-                AgentIconError.WindowUnavailable,
+                AgentIconError.PickerFailed,
                 exception);
         }
 
@@ -636,17 +640,18 @@ public sealed class AgentIconService : IAgentIconService
         };
     }
 
+    /// <summary>
+    /// Turns an agent id into something that can appear in a filename. The result is decoration
+    /// only — the GUID that follows it is what makes the name unique — so collapsing awkward
+    /// characters rather than rejecting them is the right trade.
+    /// </summary>
     private static string CreateSafeFileNamePart(
         string value)
     {
-        var invalidCharacters =
-            Path.GetInvalidFileNameChars()
-                .ToHashSet();
-
         var characters = value
             .Trim()
             .Select(character =>
-                invalidCharacters.Contains(character)
+                InvalidFileNameCharacters.Contains(character)
                     || char.IsWhiteSpace(character)
                         ? '-'
                         : character)
@@ -667,6 +672,11 @@ public sealed class AgentIconService : IAgentIconService
             : result[..maxLength];
     }
 
+    /// <summary>
+    /// Resolves a caller-supplied temporary path, refusing anything outside the managed
+    /// directory. The containment rule itself lives in <see cref="AppStorage"/> so the one that
+    /// guards writes here and the one that guards reads in <c>AgentAvatar</c> cannot drift apart.
+    /// </summary>
     private static string ValidatePathInsideDirectory(
         string candidatePath,
         string expectedDirectory)
@@ -677,16 +687,9 @@ public sealed class AgentIconService : IAgentIconService
         var candidateFullPath =
             Path.GetFullPath(candidatePath);
 
-        var directoryFullPath =
-            Path.GetFullPath(expectedDirectory)
-                .TrimEnd(
-                    Path.DirectorySeparatorChar,
-                    Path.AltDirectorySeparatorChar)
-            + Path.DirectorySeparatorChar;
-
-        if (!candidateFullPath.StartsWith(
-                directoryFullPath,
-                StringComparison.OrdinalIgnoreCase))
+        if (!AppStorage.IsPathInsideDirectory(
+                candidateFullPath,
+                expectedDirectory))
         {
             throw new InvalidOperationException(
                 "The path is outside the managed directory.");

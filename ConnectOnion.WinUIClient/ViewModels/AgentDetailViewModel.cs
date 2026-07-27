@@ -4,7 +4,6 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
 using System.Text.Json;
-using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using ConnectOnion.Protocol;
@@ -80,7 +79,7 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
             OnPropertyChanged(nameof(HasAgent));
             OnPropertyChanged(nameof(AgentInitial));
             OnPropertyChanged(nameof(AgentAvatarPaletteIndex));
-            RaiseAgentIconProperties();
+            OnPropertyChanged(nameof(AgentIconPath));
             RaisePresenceProperties();
             RaiseProfileSummaryProperties();
         }
@@ -91,14 +90,9 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
     public string AgentInitial => NameInitial.From(AgentDisplayName);
     public int AgentAvatarPaletteIndex => AvatarPalette.From(AgentName);
 
-    /// <summary>
-    /// App-managed relative path of the selected Agent's custom icon.
-    /// Null means the deterministic initial-and-palette avatar is used.
-    /// </summary>
+    /// <summary>The agent's chosen icon, relative to the data root. Null falls back to
+    /// <see cref="AgentInitial"/> on its palette colour.</summary>
     public string? AgentIconPath => _agent?.IconPath;
-
-    /// <summary>Whether the selected Agent currently has a custom icon.</summary>
-    public bool HasCustomIcon => _agent?.HasCustomIcon == true;
 
     public string AgentAddress => _agent?.Address ?? "";
     public string? DirectUrl => _agent?.DirectUrl;
@@ -219,50 +213,6 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
     public IReadOnlyList<string> SkillOffers => AgentSkills.BestOffers(Skills);
 
     public bool HasSkillOffers => SkillOffers.Count > 0;
-
-    /// <summary>
-    /// Persists a custom icon path for the currently selected Agent and updates
-    /// the in-memory Agent instance exposed by this ViewModel.
-    ///
-    /// The path should be the app-relative value returned by
-    /// <c>IAgentIconService.CommitTemporaryIconAsync</c>, such as
-    /// <c>avatars/agent-id.png</c>. Pass <see langword="null"/> to remove the
-    /// custom icon reference.
-    /// </summary>
-    /// <returns>
-    /// <see langword="true"/> when the Agent still existed and was updated;
-    /// otherwise <see langword="false"/>.
-    /// </returns>
-    public async Task<bool> UpdateAgentIconPathAsync(
-        string? iconPath,
-        CancellationToken cancellationToken = default)
-    {
-        var agentId = Agent?.Id;
-        if (string.IsNullOrWhiteSpace(agentId)) return false;
-
-        var normalizedPath = string.IsNullOrWhiteSpace(iconPath)
-            ? null
-            : iconPath.Trim();
-
-        var state = await _agents.LoadAsync(cancellationToken);
-        var storedAgent = state.Agents.FirstOrDefault(agent =>
-            string.Equals(agent.Id, agentId, StringComparison.Ordinal));
-
-        if (storedAgent is null) return false;
-
-        storedAgent.IconPath = normalizedPath;
-        await _agents.SaveAsync(state, cancellationToken);
-
-        // The page is cached and can switch Agent while the repository call is
-        // in flight. Never publish one Agent's icon onto another Agent.
-        if (_agent?.Id == agentId)
-        {
-            _agent.IconPath = normalizedPath;
-            RaiseAgentIconProperties();
-        }
-
-        return true;
-    }
 
     /// <summary>
     /// Starts a new conversation. <paramref name="hasAttachments"/> must be true
@@ -497,12 +447,6 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
                 }
                 break;
         }
-    }
-
-    private void RaiseAgentIconProperties()
-    {
-        OnPropertyChanged(nameof(AgentIconPath));
-        OnPropertyChanged(nameof(HasCustomIcon));
     }
 
     private void RaiseProfileSummaryProperties()

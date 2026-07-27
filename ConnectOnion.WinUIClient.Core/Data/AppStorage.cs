@@ -3,10 +3,8 @@ namespace ConnectOnion.WinUIClient.Data;
 /// <summary>
 /// Shared filesystem plumbing for the local repositories.
 ///
-/// Unpackaged data lives under <c>%AppData%\ConnectOnion</c>; an installed MSIX normally uses its
-/// package <c>LocalState\ConnectOnion</c> folder. Existing installations that already have a
-/// SQLite database under <c>%AppData%\ConnectOnion</c> continue to use that database so saved
-/// Agents, sessions, preferences, and conversations remain visible.
+/// Unpackaged data lives under <c>%AppData%\ConnectOnion</c>; an installed MSIX uses its
+/// package <c>LocalState\ConnectOnion</c> folder. SQLite is the active store:
 /// <code>
 ///   connectonion.db
 /// </code>
@@ -29,7 +27,8 @@ public static class AppStorage
     /// </summary>
     public const string DataRootEnvironmentVariable = "CONNECTONION_DATA_ROOT";
 
-    private const string DatabaseFileName = "connectonion.db";
+    /// <summary>Directory segment persisted inside an agent's <c>icon_path</c>.</summary>
+    private const string AgentIconsFolderName = "avatars";
 
     private static readonly StorageLocation Location = ResolveStorageLocation();
 
@@ -45,16 +44,19 @@ public static class AppStorage
     public static readonly string ImageCacheDir = Path.Combine(RootDir, "cache", "images");
 
     /// <summary>
-    /// Permanent storage for user-selected Agent icons.
-    /// The database stores a relative path such as <c>avatars/agent-123.png</c>.
+    /// Permanent store for user-selected agent icons. <c>agents.icon_path</c> holds a path
+    /// relative to <see cref="RootDir"/> (<c>avatars/agent-….png</c>) rather than an absolute
+    /// one, so a portable install that moves between folders keeps resolving its own icons.
     /// </summary>
-    public static readonly string AgentIconsDir = Path.Combine(RootDir, "avatars");
+    public static readonly string AgentIconsDir = Path.Combine(RootDir, AgentIconsFolderName);
 
     /// <summary>
-    /// Temporary storage used while an Agent icon is selected and processed.
+    /// Scratch space holding a processed icon between "user picked an image" and "the agent it
+    /// belongs to was saved". Nothing here is referenced by the database, so
+    /// <see cref="PurgeTemporaryAgentIcons"/> may empty it at startup.
     /// </summary>
     public static readonly string TemporaryAgentIconsDir =
-        Path.Combine(RootDir, "temp", "avatars");
+        Path.Combine(RootDir, "temp", AgentIconsFolderName);
 
     /// <summary>Rolling structured application logs.</summary>
     public static readonly string LogsDir = Path.Combine(RootDir, "logs");
@@ -73,85 +75,123 @@ public static class AppStorage
     public static string PathFor(string fileName) => Path.Combine(RootDir, fileName);
 
     /// <summary>
-    /// Creates the relative path persisted for an Agent icon.
+    /// Builds the value stored in <c>agents.icon_path</c>. Always forward-slashed and always
+    /// relative, which is what <see cref="GetAgentIconAbsolutePath"/> expects to resolve.
     /// </summary>
     public static string CreateAgentIconRelativePath(string fileName)
-    {
-        var safeFileName = ValidateLeafFileName(fileName);
-        return $"avatars/{safeFileName}";
-    }
+        => $"{AgentIconsFolderName}/{ValidateLeafFileName(fileName)}";
 
     /// <summary>
-    /// Resolves a persisted Agent icon path to its absolute managed path.
+    /// Resolves a stored icon path against the current data root.
+    ///
+    /// The containment check is the point: <c>icon_path</c> is a database column, and a database
+    /// that was hand-edited or restored from elsewhere must not be able to make the app open —
+    /// or, through the delete paths, remove — a file outside the managed avatars directory.
     /// </summary>
+    /// <exception cref="InvalidOperationException">The path escapes <see cref="AgentIconsDir"/>.</exception>
     public static string GetAgentIconAbsolutePath(string relativePath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(relativePath);
 
-        var normalizedRelativePath = relativePath
+        var normalized = relativePath
             .Replace('/', Path.DirectorySeparatorChar)
             .Replace('\\', Path.DirectorySeparatorChar);
 
-        var absolutePath = Path.GetFullPath(
-            Path.Combine(RootDir, normalizedRelativePath));
+        var absolutePath = Path.GetFullPath(Path.Combine(RootDir, normalized));
 
-        EnsurePathInsideDirectory(
-            absolutePath,
-            AgentIconsDir,
-            "The Agent icon path must remain inside the managed avatars directory.");
+        if (!IsPathInsideDirectory(absolutePath, AgentIconsDir))
+        {
+            throw new InvalidOperationException(
+                "The agent icon path must remain inside the managed avatars directory.");
+        }
 
         return absolutePath;
     }
 
     /// <summary>
-    /// Tries to resolve a persisted Agent icon path for UI fallback scenarios.
+    /// Non-throwing <see cref="GetAgentIconAbsolutePath"/> for display paths, where a stored value
+    /// that no longer resolves means "fall back to the initial", not "fail".
     /// </summary>
-    public static bool TryGetAgentIconAbsolutePath(
-        string? relativePath,
-        out string? absolutePath)
+    public static bool TryGetAgentIconAbsolutePath(string? relativePath, out string? absolutePath)
     {
         absolutePath = null;
-
-        if (string.IsNullOrWhiteSpace(relativePath))
-        {
-            return false;
-        }
+        if (string.IsNullOrWhiteSpace(relativePath)) return false;
 
         try
         {
             absolutePath = GetAgentIconAbsolutePath(relativePath);
             return true;
         }
-        catch (ArgumentException)
-        {
-            return false;
-        }
-        catch (InvalidOperationException)
-        {
-            return false;
-        }
-        catch (NotSupportedException)
-        {
-            return false;
-        }
-        catch (PathTooLongException)
+        catch (Exception exception) when (exception is ArgumentException
+                                              or InvalidOperationException
+                                              or NotSupportedException
+                                              or PathTooLongException)
         {
             return false;
         }
     }
 
     public static string GetTemporaryAgentIconAbsolutePath(string fileName)
-    {
-        var safeFileName = ValidateLeafFileName(fileName);
-        return Path.Combine(TemporaryAgentIconsDir, safeFileName);
-    }
+        => Path.Combine(TemporaryAgentIconsDir, ValidateLeafFileName(fileName));
 
     public static string GetPermanentAgentIconAbsolutePath(string fileName)
+        => Path.Combine(AgentIconsDir, ValidateLeafFileName(fileName));
+
+    /// <summary>
+    /// True when <paramref name="candidatePath"/> resolves to something inside
+    /// <paramref name="expectedDirectory"/>. The trailing separator matters: without it
+    /// <c>…\avatars-backup</c> would pass as being inside <c>…\avatars</c>.
+    /// </summary>
+    public static bool IsPathInsideDirectory(string candidatePath, string expectedDirectory)
     {
-        var safeFileName = ValidateLeafFileName(fileName);
-        return Path.Combine(AgentIconsDir, safeFileName);
+        var candidateFullPath = Path.GetFullPath(candidatePath);
+        var directoryFullPath = Path
+            .GetFullPath(expectedDirectory)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
+
+        return candidateFullPath.StartsWith(directoryFullPath, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Empties the temporary icon directory. An icon lives there only while an Add Agent form is
+    /// open, so anything found at startup was left by a process that died mid-pick and is
+    /// unreachable — nothing in the database ever points here.
+    ///
+    /// Startup only, and never from <see cref="EnsureDirectories"/>: the picker calls that while a
+    /// form is open, and purging then would delete the icon the user is about to save.
+    /// </summary>
+    public static void PurgeTemporaryAgentIcons()
+    {
+        try
+        {
+            if (!Directory.Exists(TemporaryAgentIconsDir)) return;
+
+            foreach (var file in Directory.EnumerateFiles(TemporaryAgentIconsDir))
+            {
+                try
+                {
+                    File.Delete(file);
+                }
+                catch (Exception exception) when (exception is IOException
+                                                      or UnauthorizedAccessException)
+                {
+                    // One undeletable leftover must not stop the sweep or delay startup.
+                }
+            }
+        }
+        catch (Exception exception) when (exception is IOException
+                                              or UnauthorizedAccessException
+                                              or DirectoryNotFoundException)
+        {
+            // Best-effort housekeeping.
+        }
+    }
+
+    /// <summary>
+    /// Accepts only a bare filename. Generated names are safe by construction; this exists so a
+    /// future caller cannot smuggle a relative segment into a path that is later trusted.
+    /// </summary>
     private static string ValidateLeafFileName(string fileName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
@@ -159,50 +199,16 @@ public static class AppStorage
         var trimmed = fileName.Trim();
         var leafFileName = Path.GetFileName(trimmed);
 
-        if (!string.Equals(trimmed, leafFileName, StringComparison.Ordinal))
+        if (!string.Equals(trimmed, leafFileName, StringComparison.Ordinal)
+            || leafFileName is "." or ".."
+            || leafFileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
         {
             throw new ArgumentException(
-                "The value must contain a filename without directory components.",
-                nameof(fileName));
-        }
-
-        if (leafFileName is "." or "..")
-        {
-            throw new ArgumentException(
-                "The value is not a valid filename.",
-                nameof(fileName));
-        }
-
-        if (leafFileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
-        {
-            throw new ArgumentException(
-                "The filename contains invalid characters.",
+                "The value must be a filename with no directory components.",
                 nameof(fileName));
         }
 
         return leafFileName;
-    }
-
-    private static void EnsurePathInsideDirectory(
-        string candidatePath,
-        string expectedDirectory,
-        string errorMessage)
-    {
-        var candidateFullPath = Path.GetFullPath(candidatePath);
-
-        var directoryFullPath = Path
-            .GetFullPath(expectedDirectory)
-            .TrimEnd(
-                Path.DirectorySeparatorChar,
-                Path.AltDirectorySeparatorChar)
-            + Path.DirectorySeparatorChar;
-
-        if (!candidateFullPath.StartsWith(
-                directoryFullPath,
-                StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException(errorMessage);
-        }
     }
 
     private static StorageLocation ResolveStorageLocation()
@@ -215,48 +221,26 @@ public static class AppStorage
                 null);
         }
 
-        /*
-         * Use APPDATA first instead of relying only on SpecialFolder.ApplicationData.
-         * In a packaged process SpecialFolder.ApplicationData can be redirected to the
-         * package's LocalCache\Roaming directory, while APPDATA still identifies the
-         * existing desktop-client store that contains the user's saved SQLite database.
-         */
-        var roamingAppDataFolder = ResolveRoamingAppDataFolder();
-        var roamingRoot = SelectRootDir(
-            configured: null,
-            packagedLocalFolder: null,
-            roamingAppDataFolder: roamingAppDataFolder);
-
         try
         {
-            // ApplicationData requires package identity.
+            // ApplicationData requires package identity. Keeping it behind this guarded branch
+            // preserves the unpackaged CLI/portable path while making an installed MSIX use the
+            // stable LocalState location that Windows backs up and retains across upgrades.
             var applicationData = Windows.Storage.ApplicationData.Current;
-            var packagedRoot = SelectRootDir(
+            var root = SelectRootDir(
                 configured: null,
                 packagedLocalFolder: applicationData.LocalFolder.Path,
                 roamingAppDataFolder: null);
 
-            /*
-             * Compatibility rule:
-             * If the existing desktop store already contains connectonion.db,
-             * keep using it. This prevents a packaged/debug launch from opening
-             * a new empty database and making the saved Agents appear missing.
-             *
-             * Fresh installations with no existing roaming database continue
-             * to use the main branch's LocalState location.
-             */
-            if (HasExistingDatabase(roamingRoot))
-            {
-                return new StorageLocation(roamingRoot, null);
-            }
-
-            // Preserve main's migration path for older packaged development builds.
+            // Older development builds wrote through Environment.SpecialFolder.ApplicationData.
+            // Windows virtualized those writes into LocalCache\Roaming. Migrate that one legacy
+            // location before the first LocalState directory is created so existing developer
+            // conversations and the DPAPI-protected identity are not silently abandoned.
             var legacyRoot = Path.Combine(
                 applicationData.LocalCacheFolder.Path,
                 "Roaming",
                 "ConnectOnion");
-
-            return new StorageLocation(packagedRoot, legacyRoot);
+            return new StorageLocation(root, legacyRoot);
         }
         catch (InvalidOperationException)
         {
@@ -267,27 +251,13 @@ public static class AppStorage
             // Some unpackaged Windows App SDK hosts report the missing identity as a COM error.
         }
 
-        return new StorageLocation(roamingRoot, null);
-    }
-
-    private static string ResolveRoamingAppDataFolder()
-    {
-        var environmentAppData = Environment.GetEnvironmentVariable("APPDATA");
-        if (!string.IsNullOrWhiteSpace(environmentAppData))
-        {
-            return Path.GetFullPath(environmentAppData);
-        }
-
-        var specialFolderAppData = Environment.GetFolderPath(
-            Environment.SpecialFolder.ApplicationData);
-
-        ArgumentException.ThrowIfNullOrWhiteSpace(specialFolderAppData);
-        return Path.GetFullPath(specialFolderAppData);
-    }
-
-    private static bool HasExistingDatabase(string rootDirectory)
-    {
-        return File.Exists(Path.Combine(rootDirectory, DatabaseFileName));
+        return new StorageLocation(
+            SelectRootDir(
+                configured: null,
+                packagedLocalFolder: null,
+                roamingAppDataFolder: Environment.GetFolderPath(
+                    Environment.SpecialFolder.ApplicationData)),
+            null);
     }
 
     internal static string SelectRootDir(

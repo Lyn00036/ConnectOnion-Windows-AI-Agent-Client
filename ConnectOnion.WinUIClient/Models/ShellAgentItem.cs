@@ -19,10 +19,13 @@ public sealed partial class ShellAgentItem : RowStateItem
     public string Name { get; set; } = "";
     public string Address { get; set; } = "";
     public string? DirectUrl { get; set; }
+    /// <summary>The agent's chosen icon, relative to the data root. Null falls back to
+    /// <see cref="Initial"/>.</summary>
+    public string? IconPath { get; set; }
+    /// <summary>True when this agent has an icon the "remove custom icon" action can remove.</summary>
+    public bool HasCustomIcon => !string.IsNullOrWhiteSpace(IconPath);
     /// <summary>User-facing name derived from <see cref="Name"/> (e.g. <c>Remote Admin Agent</c>).
     /// Never persisted — the internal id is unchanged.</summary>
-    
-    public string? IconPath { get; set; }
     public string DisplayName => FriendlyAgentName.From(Name);
     public string Initial => NameInitial.FromPair(DisplayName);
     public int AvatarPaletteIndex => AvatarPalette.From(Name);
