@@ -39,11 +39,20 @@ public static class StartupPhases
     public const string SessionListLoaded = "sessionListLoaded";
 
     /// <summary>The first opened conversation has finished restoring and rendering its visible
-    /// message containers. Absent when the startup fixture opens no conversation.</summary>
+    /// message containers. Absent when the startup fixture opens no conversation, when the
+    /// conversation it opens is empty, and when the restore failed — in all three cases nothing
+    /// was rendered, and a mark would let the harness time work that never happened.</summary>
     public const string FirstConversationRendered = "firstConversationRendered";
 
-    /// <summary>Deferred startup work owned by the shell has completed.</summary>
-    public const string DeferredStartupCompleted = "deferredStartupCompleted";
+    /// <summary>The shell's own startup chain — session list, tray recents, first navigation,
+    /// initial focus — has run to completion.
+    ///
+    /// <para>Named for what it measures rather than when it lands: it is routinely reached
+    /// *before* <see cref="FirstFrame"/>, because that chain runs on the UI thread from
+    /// <c>RootGrid.Loaded</c> and finishes before the compositor's first pass. An earlier name
+    /// promised "deferred startup work", which invited reading a pre-first-frame number as
+    /// post-launch work.</para></summary>
+    public const string ShellInitialized = "shellInitialized";
 
     /// <summary>
     /// Nominal launch order, used only as a tie-breaker when two marks share an elapsed time.
@@ -60,7 +69,7 @@ public static class StartupPhases
             FirstInteractive,
             SessionListLoaded,
             FirstConversationRendered,
-            DeferredStartupCompleted,
+            ShellInitialized,
         ];
 }
 
@@ -201,12 +210,17 @@ public sealed class StartupProfiler
 
     /// <summary>Records <paramref name="phase"/> at the current elapsed time. A phase already
     /// marked is ignored.</summary>
-    public void Mark(string phase)
+    /// <returns>True when this call recorded the phase; false when it was already marked.
+    /// Callers use this to do per-phase work exactly once — several marks are raised from
+    /// events that keep firing for the life of the process (focus, in particular), so
+    /// "did anything change?" has to be answerable without re-scanning the marks.</returns>
+    public bool Mark(string phase)
     {
         lock (_gate)
         {
-            if (_marks.Any(m => m.Phase == phase)) return;
+            if (_marks.Any(m => m.Phase == phase)) return false;
             _marks.Add(new StartupMark(phase, _elapsedMs()));
+            return true;
         }
     }
 
