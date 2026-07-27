@@ -14,11 +14,16 @@ binary.
 |---|---|
 | Cold / warm start | Process creation → first composited frame, measured in-app |
 | Launch phase breakdown | `managedEntry`, `hostStarted`, `windowCreated`, `windowActivated`, `firstFrame` |
-| Readiness breakdown | `firstInteractive`, `sessionListLoaded`, optional `firstConversationRendered`, `deferredStartupCompleted` |
-| Idle working set / private bytes | Sampled externally after required readiness milestones complete |
+| Readiness breakdown | `firstInteractive`, `sessionListLoaded`, `shellInitialized`, optional `firstConversationRendered` |
+| Idle working set / private bytes | Sampled externally, 15 s after the required readiness milestones complete |
 | Managed heap | `GC.GetTotalMemory` at first frame (only observable in-process) |
 | Handles / threads | Sampled with the memory, as a leak tripwire |
-| Graceful shutdown | Tray Exit command → process exit |
+| Graceful shutdown | Named-event exit request → process exit |
+
+The in-process memory figures are captured **once, at first frame**, and reused by the later
+report rewrites the readiness milestones trigger. The budget and the baseline below are written
+against the first-frame figure, so re-sampling per milestone would redefine the metric while
+keeping its name.
 
 **Launch time is measured from `Process.StartTime`, not from a stopwatch started in managed
 code.** On a cold start most of the wall clock is CLR + Windows App SDK bootstrap that runs
@@ -59,6 +64,9 @@ Useful switches:
   reproducible launch mode. Never combine unlike modes in one report. Warm modes perform one
   unmeasured launch first; cold modes purge before every measured launch.
 - `-Iterations 10` records more samples. Five is the enforced minimum.
+- `-SettleSeconds` (default 15) is the idle period between the readiness milestones and the
+  memory sample. Reaching the milestones means the shell is usable, not that startup work has
+  drained; changing this makes a report incomparable to the baseline below.
 - Cold modes purge the standby list before **every** sample and require an elevated shell. A
   failed purge fails the run; the sample is never labelled cold.
 - MSIX modes resolve the installed package separately from the unpackaged build. Use
@@ -82,7 +90,36 @@ Two things the harness has to get right, both of which cost a wrong measurement 
 - **`WM_CLOSE` is not the exit path.** The benchmark creates a unique named Windows event before
   launch. `StartupTelemetry` arms it only for benchmark runs and dispatches it to
   `MainWindow.ExitApplication`, the same graceful path as File > Exit. It does not depend on tray
-  window names or fixed command IDs.
+  window names or fixed command IDs. Setting the event proves nothing about whether the app
+  opened it, so the `WaitForExit` that follows — not the `Set()` — is what decides a sample is a
+  graceful shutdown; a failure to arm shows up as `Performance exit event ... could not be
+  armed` in the app's own log.
+- **The report is rewritten as each readiness milestone lands**, and each rewrite is a
+  `File.Move`. Every read of it therefore has to be retried: the destination path becomes visible
+  a moment before the move releases its handle, so a single read can hit a sharing violation on a
+  file whose contents are complete.
+- **`firstConversationRendered` is absent, not zero, when nothing rendered** — an empty
+  conversation or a restore that threw records no mark, so `-RequireConversation` fails loudly
+  instead of timing work that never happened.
+- **A readiness mark is not necessarily after first frame.** `sessionListLoaded` and
+  `shellInitialized` routinely land *before* `firstFrame`: that chain runs on the UI thread from
+  `RootGrid.Loaded` and finishes before the compositor's first pass. On the default Home route
+  `firstInteractive` is the only milestone that extends past the visible launch. Reports sort
+  chronologically, so this shows up rather than being hidden.
+
+## The `-RequireConversation` fixture contract
+
+`-RequireConversation` sets `CONNECTONION_PERF_OPEN_CONVERSATION=1`, and `MainWindow` then
+navigates to `ChatPage` instead of `HomePage` at startup. Two consequences worth stating plainly,
+because neither is visible from the switch:
+
+- **The measured startup path is not the shipped one.** The shipped app opens Home; this opens a
+  conversation. Numbers from a `-RequireConversation` run answer "how fast does a conversation
+  come back", not "how fast does the app start", and must not be compared with a run without it.
+- **Which conversation is the fixture's business.** `ChatPage` is navigated with no parameter, so
+  it restores whatever session the fixture's database has selected. `-FixturePath` must therefore
+  point at a data root whose selected session has messages in it — an empty or unselected one
+  records no `firstConversationRendered` and the run fails on the readiness timeout.
 
 ## Cold-cache qualification
 
@@ -119,9 +156,18 @@ self-hosted runner and retains aggregate JSON, Markdown, raw samples, and ETL fo
 Release x64 unpackaged, Windows 11 Pro 10.0.26200, 32 cores, 31.6 GB RAM, 5 iterations, memory
 sampled 15 s after first frame, standby list not purged.
 
+> **The cold-start figure below is not a cold start.** The purge it relied on never ran: the old
+> `Clear-StandbyList` discarded `NtSetSystemInformation`'s return value, so the call failed with
+> `STATUS_PRIVILEGE_NOT_HELD` on every machine — being in the Administrators group holds
+> `SeProfileSingleProcessPrivilege` but leaves it disabled — and the failure was invisible. Every
+> historical "cold" number in this file is a warm launch. A qualified cold run of the same binary
+> measures **~1220 ms**, ~44% above the 850 ms recorded here. This section needs re-measuring on
+> a quiet machine before it is trusted again; it is left in place only so the comparison above is
+> reproducible.
+
 | Metric | Median | Min | Max |
 |---|---:|---:|---:|
-| Cold start (n=1) | 850 ms | — | — |
+| Cold start (n=1, not actually cold — see above) | 850 ms | — | — |
 | Warm start (n=4) | 801 ms | 798 ms | 812 ms |
 | Idle working set | 190.2 MB | 189.0 MB | 191.1 MB |
 | Idle private bytes | 119.2 MB | 116.8 MB | 119.9 MB |
@@ -186,7 +232,14 @@ objects — allocation tuning cannot move it.
 
 ## Limitations
 
-- Cold modes cannot run without an elevated, successful standby-list purge.
+- Cold modes cannot run without an elevated, successful standby-list purge. Elevation alone is
+  not enough: the harness must also *enable* `SeProfileSingleProcessPrivilege`, which an
+  administrator token holds but leaves disabled.
+- **A purged standby list is not an empty cache.** SysMain re-prefetches between samples, and
+  pages resident in another live process's working set were never standby pages to begin with.
+  Cold samples therefore trend faster across a run — a measured five-sample sweep went
+  1405 → 1267 → 1167 → 1221 → 1071 ms — so iteration 1 is the coldest one and the median is
+  the honest summary, not the minimum.
 - Steady-state memory is sampled at idle with no conversation loaded. Restoring a large
   conversation, scrolling, and searching are **not** covered — those still want an ETW capture
   (see `docs/OPTIMIZATION.md`) and remain on the backlog as budgets.
