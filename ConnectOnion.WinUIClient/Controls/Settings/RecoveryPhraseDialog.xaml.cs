@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Services;
 using Microsoft.UI.Xaml;
@@ -92,7 +93,17 @@ public sealed partial class RecoveryPhraseDialog : ContentDialog
         var parts = mnemonic.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         var words = new List<RecoveryPhraseWord>(parts.Length);
         for (var i = 0; i < parts.Length; i++)
-            words.Add(new RecoveryPhraseWord { Position = (i + 1).ToString(), Word = parts[i] });
+        {
+            words.Add(new RecoveryPhraseWord
+            {
+                // The position is a label the user reads off the screen while transcribing, so it
+                // follows their locale's digits — same call as the other user-facing counts
+                // (UsageViewModel, UsageHeatmapView). The phrase's *words* are the cross-client
+                // BIP39 contract; their numbering is not.
+                Position = (i + 1).ToString(CultureInfo.CurrentCulture),
+                Word = parts[i],
+            });
+        }
         return words;
     }
 
