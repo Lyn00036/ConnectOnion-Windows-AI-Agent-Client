@@ -31,13 +31,46 @@ public static class StartupPhases
     /// user calls "the app started", and the one budgets are written against.</summary>
     public const string FirstFrame = "firstFrame";
 
+    /// <summary>The shell has accepted focus, proving that it is interactive rather than merely
+    /// visible.</summary>
+    public const string FirstInteractive = "firstInteractive";
+
+    /// <summary>The initial persisted session list has been loaded and bound to the shell.</summary>
+    public const string SessionListLoaded = "sessionListLoaded";
+
+    /// <summary>The first opened conversation has finished restoring and rendering its visible
+    /// message containers. Absent when the startup fixture opens no conversation, when the
+    /// conversation it opens is empty, and when the restore failed — in all three cases nothing
+    /// was rendered, and a mark would let the harness time work that never happened.</summary>
+    public const string FirstConversationRendered = "firstConversationRendered";
+
+    /// <summary>The shell's own startup chain — session list, tray recents, first navigation,
+    /// initial focus — has run to completion.
+    ///
+    /// <para>Named for what it measures rather than when it lands: it is routinely reached
+    /// *before* <see cref="FirstFrame"/>, because that chain runs on the UI thread from
+    /// <c>RootGrid.Loaded</c> and finishes before the compositor's first pass. An earlier name
+    /// promised "deferred startup work", which invited reading a pre-first-frame number as
+    /// post-launch work.</para></summary>
+    public const string ShellInitialized = "shellInitialized";
+
     /// <summary>
     /// Nominal launch order, used only as a tie-breaker when two marks share an elapsed time.
     /// It is *not* the order a report renders in — <c>hostStarted</c> and <c>windowCreated</c>
     /// overlap by design (see <c>App.OnLaunched</c>), so reports sort chronologically.
     /// </summary>
     public static readonly IReadOnlyList<string> Ordered =
-        [ManagedEntry, HostStarted, WindowCreated, WindowActivated, FirstFrame];
+        [
+            ManagedEntry,
+            HostStarted,
+            WindowCreated,
+            WindowActivated,
+            FirstFrame,
+            FirstInteractive,
+            SessionListLoaded,
+            FirstConversationRendered,
+            ShellInitialized,
+        ];
 }
 
 /// <summary>One phase and how long after process start it was reached.</summary>
@@ -157,6 +190,15 @@ public sealed class StartupProfiler
     /// the only thing that sets it, so a user's run does nothing but log a line.</summary>
     public const string OutputPathEnvironmentVariable = "CONNECTONION_PERF_OUT";
 
+    /// <summary>Name of a pre-created Windows event that the benchmark signals to request the
+    /// application's real, graceful exit path.</summary>
+    public const string ExitEventEnvironmentVariable = "CONNECTONION_PERF_EXIT_EVENT";
+
+    /// <summary>When set to 1, the benchmark fixture opens its active conversation at startup so
+    /// first-conversation rendering can be measured independently of the empty Home route.</summary>
+    public const string OpenConversationEnvironmentVariable =
+        "CONNECTONION_PERF_OPEN_CONVERSATION";
+
     private readonly Func<double> _elapsedMs;
     private readonly List<StartupMark> _marks = [];
     private readonly Lock _gate = new();
@@ -168,12 +210,17 @@ public sealed class StartupProfiler
 
     /// <summary>Records <paramref name="phase"/> at the current elapsed time. A phase already
     /// marked is ignored.</summary>
-    public void Mark(string phase)
+    /// <returns>True when this call recorded the phase; false when it was already marked.
+    /// Callers use this to do per-phase work exactly once — several marks are raised from
+    /// events that keep firing for the life of the process (focus, in particular), so
+    /// "did anything change?" has to be answerable without re-scanning the marks.</returns>
+    public bool Mark(string phase)
     {
         lock (_gate)
         {
-            if (_marks.Any(m => m.Phase == phase)) return;
+            if (_marks.Any(m => m.Phase == phase)) return false;
             _marks.Add(new StartupMark(phase, _elapsedMs()));
+            return true;
         }
     }
 

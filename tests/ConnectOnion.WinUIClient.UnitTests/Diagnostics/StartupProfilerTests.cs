@@ -39,6 +39,22 @@ public sealed class StartupProfilerTests
     }
 
     [Fact]
+    public void Mark_ReturnsTrueOnlyForTheCallThatRecordedThePhase()
+    {
+        // StartupTelemetry gates its report on this return value. Several readiness phases are
+        // raised from events that keep firing for the life of the process — firstInteractive
+        // comes from GotFocus, which bubbles from every control the user ever clicks — so a
+        // caller that cannot tell a repeat from a new mark re-samples memory and writes a log
+        // line on every focus change.
+        var profiler = ProfilerOver(100, 900);
+
+        Assert.True(profiler.Mark(StartupPhases.FirstInteractive));
+        Assert.False(profiler.Mark(StartupPhases.FirstInteractive));
+        Assert.False(profiler.Mark(StartupPhases.FirstInteractive));
+        Assert.Single(SnapshotOf(profiler).Marks);
+    }
+
+    [Fact]
     public void ElapsedFor_PhaseNeverMarked_ReturnsNull()
     {
         var profiler = ProfilerOver(10);
@@ -76,7 +92,7 @@ public sealed class StartupProfilerTests
     {
         // The harness (scripts/Measure-Performance.ps1) indexes these exact property and phase
         // names, so this test is the contract between the two.
-        var profiler = ProfilerOver(110, 450, 700, 715, 830);
+        var profiler = ProfilerOver(110, 450, 700, 715, 830, 850, 880, 920, 950);
         foreach (var phase in StartupPhases.Ordered) profiler.Mark(phase);
 
         var metrics = profiler.Snapshot(
@@ -115,7 +131,7 @@ public sealed class StartupProfilerTests
     [Fact]
     public void ToLogLine_ReportsPerPhaseDeltasNotCumulativeTimes()
     {
-        var profiler = ProfilerOver(100, 400, 700, 720, 800);
+        var profiler = ProfilerOver(100, 400, 700, 720, 800, 820, 850, 900, 930);
         foreach (var phase in StartupPhases.Ordered) profiler.Mark(phase);
 
         var line = profiler

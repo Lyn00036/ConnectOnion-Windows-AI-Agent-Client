@@ -1,6 +1,8 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Threading;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Media;
 using Serilog;
 
@@ -27,6 +29,10 @@ namespace ConnectOnion.WinUIClient.Diagnostics;
 /// </summary>
 internal static class StartupTelemetry
 {
+    private static readonly object ReportGate = new();
+    private static EventWaitHandle? _exitEvent;
+    private static RegisteredWaitHandle? _exitRegistration;
+    private static StartupMemory? _firstFrameMemory;
     private static readonly DateTime ProcessStartUtc = ResolveProcessStartUtc();
 
     private static readonly StartupProfiler Profiler =
@@ -34,7 +40,62 @@ internal static class StartupTelemetry
 
     /// <summary>Records a launch phase. Safe to call from any thread; later duplicates of an
     /// already-recorded phase are ignored.</summary>
-    internal static void Mark(string phase) => Profiler.Mark(phase);
+    internal static void Mark(string phase)
+    {
+        // Only a *new* mark may trigger a report. Several readiness phases are raised from
+        // events that keep firing for the life of the process — `firstInteractive` comes from
+        // GotFocus, which bubbles from every control the user ever clicks — so reporting on
+        // every call would sample memory and write a log line on each focus change, forever.
+        if (!Profiler.Mark(phase)) return;
+
+        // A readiness phase can arrive either side of first frame — sessionListLoaded and
+        // shellInitialized routinely land before it — but only a report written *after* first
+        // frame is worth anything, so that is the gate. Rewriting as each one arrives is what
+        // lets the harness observe the complete timeline. The summary is logged once, at first
+        // frame: the later rewrites exist for the harness, and a user's log should read the
+        // same as it always has.
+        if (Profiler.HasMark(StartupPhases.FirstFrame))
+            Report(logSummary: phase == StartupPhases.FirstFrame);
+    }
+
+    /// <summary>Connects the benchmark's named event to the same graceful exit action used by
+    /// File &gt; Exit. Unset in normal runs, so this adds no waiter or handle for users.</summary>
+    internal static void ArmPerformanceExit(DispatcherQueue dispatcher, Action requestExit)
+    {
+        var eventName = Environment.GetEnvironmentVariable(
+            StartupProfiler.ExitEventEnvironmentVariable);
+        if (string.IsNullOrWhiteSpace(eventName)) return;
+
+        try
+        {
+            _exitEvent = EventWaitHandle.OpenExisting(eventName);
+            _exitRegistration = ThreadPool.RegisterWaitForSingleObject(
+                _exitEvent,
+                (_, timedOut) =>
+                {
+                    if (!timedOut) _ = dispatcher.TryEnqueue(() => requestExit());
+                },
+                null,
+                Timeout.Infinite,
+                executeOnlyOnce: true);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Performance exit event {EventName} could not be armed", eventName);
+        }
+    }
+
+    /// <summary>Releases the benchmark waiter. Called from <c>MainWindow.DetachWindowServices</c>
+    /// for the same reason every other window-owned active is disarmed there: a registered wait
+    /// that outlives the window can re-enter a torn-down tree (see CLAUDE.md's shutdown-race
+    /// note). A no-op outside benchmark runs.</summary>
+    internal static void DisarmPerformanceExit()
+    {
+        _exitRegistration?.Unregister(null);
+        _exitRegistration = null;
+        _exitEvent?.Dispose();
+        _exitEvent = null;
+    }
 
     /// <summary>
     /// Arms the first-frame measurement. Call immediately after <c>Window.Activate()</c> —
@@ -49,33 +110,42 @@ internal static class StartupTelemetry
     private static void OnRendering(object? sender, object e)
     {
         CompositionTarget.Rendering -= OnRendering;
-        Profiler.Mark(StartupPhases.FirstFrame);
-        Report();
+        Mark(StartupPhases.FirstFrame);
     }
 
-    private static void Report()
+    private static void Report(bool logSummary)
     {
-        try
+        lock (ReportGate)
         {
-            using var process = Process.GetCurrentProcess();
-            process.Refresh();
+            try
+            {
+                // Memory is captured once, at first frame, and reused by every later rewrite.
+                // The budgets and the recorded baseline in docs/PERFORMANCE.md are written
+                // against the first-frame figure, so re-sampling it as readiness marks arrive
+                // would silently redefine the metric while keeping its name.
+                _firstFrameMemory ??= CaptureMemory();
 
-            var metrics = Profiler.Snapshot(
-                new StartupMemory(
-                    process.WorkingSet64,
-                    process.PrivateMemorySize64,
-                    GC.GetTotalMemory(forceFullCollection: false)),
-                Configuration,
-                IsPackaged());
+                var metrics = Profiler.Snapshot(_firstFrameMemory, Configuration, IsPackaged());
 
-            Log.Information("{StartupSummary}", metrics.ToLogLine());
-            WriteReportIfRequested(metrics);
+                if (logSummary) Log.Information("{StartupSummary}", metrics.ToLogLine());
+                WriteReportIfRequested(metrics);
+            }
+            catch (Exception ex)
+            {
+                // Telemetry must never be able to break a launch it is only observing.
+                Log.Warning(ex, "Startup telemetry could not be captured");
+            }
         }
-        catch (Exception ex)
-        {
-            // Telemetry must never be able to break a launch it is only observing.
-            Log.Warning(ex, "Startup telemetry could not be captured");
-        }
+    }
+
+    private static StartupMemory CaptureMemory()
+    {
+        using var process = Process.GetCurrentProcess();
+        process.Refresh();
+        return new StartupMemory(
+            process.WorkingSet64,
+            process.PrivateMemorySize64,
+            GC.GetTotalMemory(forceFullCollection: false));
     }
 
     private static void WriteReportIfRequested(StartupMetrics metrics)

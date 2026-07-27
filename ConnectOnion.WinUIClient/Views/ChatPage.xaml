@@ -901,36 +901,8 @@
 
         <Border Grid.Row="2"
                 Padding="0,10,0,0"
-                Background="{ThemeResource ChatBackgroundBrush}"
-                BorderBrush="{ThemeResource BorderSubtleBrush}"
-                BorderThickness="0,1,0,0">
+                Background="{ThemeResource ChatBackgroundBrush}">
             <StackPanel Spacing="8">
-                <!-- Jump-to-latest belongs to the composer surface instead of floating over the
-                     transcript. It appears centred above the input only while newer content
-                     remains below the viewport; ChatPage.Scrolling.cs owns that visibility. -->
-                <Button x:Name="ScrollToLatestButton"
-                        Width="40"
-                        Height="40"
-                        Padding="0"
-                        CornerRadius="20"
-                        HorizontalAlignment="Center"
-                        Background="{ThemeResource SurfaceElevatedBrush}"
-                        BorderBrush="{ThemeResource BorderDefaultBrush}"
-                        BorderThickness="1"
-                        Translation="0,0,12"
-                        Visibility="Collapsed"
-                        Click="ScrollToLatest_Click"
-                        AutomationProperties.Name="Jump to latest message"
-                        ToolTipService.ToolTip="Jump to latest">
-                    <Button.Shadow>
-                        <ThemeShadow />
-                    </Button.Shadow>
-                    <ic:FluentIcon Icon="ArrowDown"
-                                   IconVariant="Regular"
-                                   IconSize="Size20"
-                                   Foreground="{ThemeResource TextPrimaryBrush}" />
-                </Button>
-
                 <!-- Connection recovery is part of the conversation surface rather than a
                      floating overlay: it takes layout space above the composer and never covers
                      the transcript. Retry and offline are mutually exclusive via Vm.ShowRetryBar. -->
@@ -993,6 +965,38 @@
                                        SubmitRequested="Composer_SubmitRequested" />
             </StackPanel>
         </Border>
+
+        <!-- Jump-to-latest floats over the bottom of the transcript rather than taking a row in
+             the composer stack: sitting in the stack made the composer jump by 48px every time
+             newer content scrolled out of view. ChatPage.Scrolling.cs owns its visibility.
+
+             It reads as translucent without being translucent, which is the same trick ChatGPT's
+             equivalent uses. SurfaceElevated sits one step off the chat background (#1E1E1E on
+             #121212 dark; both white in light, where the border alone defines the circle), and
+             dropping the ThemeShadow is what keeps it from looking like a raised card. A truly
+             transparent fill was tried and is wrong: body text bleeds through the ring and the
+             glyph collides with whatever line it happens to land on. -->
+        <Button x:Name="ScrollToLatestButton"
+                Grid.Row="1"
+                Width="40"
+                Height="40"
+                Padding="0"
+                Margin="0,0,0,12"
+                CornerRadius="20"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Bottom"
+                Background="{ThemeResource SurfaceElevatedBrush}"
+                BorderBrush="{ThemeResource BorderDefaultBrush}"
+                BorderThickness="1"
+                Visibility="Collapsed"
+                Click="ScrollToLatest_Click"
+                AutomationProperties.Name="Jump to latest message"
+                ToolTipService.ToolTip="Jump to latest">
+            <ic:FluentIcon Icon="ArrowDown"
+                           IconVariant="Regular"
+                           IconSize="Size20"
+                           Foreground="{ThemeResource TextPrimaryBrush}" />
+        </Button>
 
         <!-- Empty state: shown after loading completes when no messages exist -->
         <StackPanel x:Name="EmptyStatePanel"

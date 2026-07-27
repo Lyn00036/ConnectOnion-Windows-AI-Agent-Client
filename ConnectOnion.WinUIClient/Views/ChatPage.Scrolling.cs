@@ -92,6 +92,9 @@ public sealed partial class ChatPage
         cancellationToken.ThrowIfCancellationRequested();
         if (Vm.Messages.Count == 0)
         {
+            // Deliberately no firstConversationRendered mark: there were no bubbles to render,
+            // so claiming the milestone would let the benchmark's -RequireConversation gate pass
+            // against an empty fixture and time a conversation restore that never happened.
             LoadingOverlay.Visibility = Visibility.Collapsed;
             return;
         }
@@ -145,6 +148,7 @@ public sealed partial class ChatPage
 
             cancellationToken.ThrowIfCancellationRequested();
             LoadingOverlay.Visibility = Visibility.Collapsed;
+            Diagnostics.StartupTelemetry.Mark(Diagnostics.StartupPhases.FirstConversationRendered);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -152,6 +156,9 @@ public sealed partial class ChatPage
         }
         catch
         {
+            // Same reasoning as the empty case above — the overlay comes down so the user is not
+            // stuck behind it, but a restore that threw is not a rendered conversation and must
+            // not be recorded as one.
             LoadingOverlay.Visibility = Visibility.Collapsed;
         }
     }

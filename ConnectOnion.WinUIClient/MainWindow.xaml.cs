@@ -44,6 +44,7 @@ public sealed partial class MainWindow : Window
         InitializeWindowPlacement();
         ConfigureCustomTitleBar();
         InitializeTrayBehavior();
+        Diagnostics.StartupTelemetry.ArmPerformanceExit(DispatcherQueue, ExitApplication);
         ShellSidebar.NavigationRequested += NavigateTo;
         ShellSidebar.NewChatRequested += Sidebar_NewChatRequested;
         ShellSidebar.SettingsRequested += ShowSettingsOverlay;
@@ -85,15 +86,26 @@ public sealed partial class MainWindow : Window
             DetachWindowServices();
         };
         ThemeService.RegisterRoot(RootGrid);
+        // The user's theme must not queue behind the sidebar load: awaiting it in the Loaded
+        // handler below shows the shell and the first page in the default theme before flipping
+        // them, and a throwing sidebar refresh would leave the theme unapplied entirely.
         _ = ApplyStartupThemeAsync();
+        RootGrid.GotFocus += (_, _) =>
+            Diagnostics.StartupTelemetry.Mark(Diagnostics.StartupPhases.FirstInteractive);
         RootGrid.Loaded += async (_, _) =>
         {
             try
             {
                 await ShellSidebar.RefreshAsync();
+                Diagnostics.StartupTelemetry.Mark(Diagnostics.StartupPhases.SessionListLoaded);
                 await RefreshTrayRecentChatsAsync();
-                NavigateTo(typeof(HomePage));
+                var benchmarkConversation =
+                    Environment.GetEnvironmentVariable(
+                        Diagnostics.StartupProfiler.OpenConversationEnvironmentVariable) == "1";
+                NavigateTo(benchmarkConversation ? typeof(ChatPage) : typeof(HomePage));
                 UpdateNavigationButtons();
+                EnsureInitialFocus();
+                Diagnostics.StartupTelemetry.Mark(Diagnostics.StartupPhases.ShellInitialized);
             }
             catch
             {
@@ -128,6 +140,7 @@ public sealed partial class MainWindow : Window
         DetachNotificationPresence();
         DetachShortcutHints();
         DetachViewMenu();
+        Diagnostics.StartupTelemetry.DisarmPerformanceExit();
         AddAgentOverlay.AgentAdded -= AddAgentOverlay_AgentAdded;
         AddAgentOverlay.Shutdown();
         InAppNotifications.Shutdown();
@@ -310,6 +323,24 @@ public sealed partial class MainWindow : Window
     {
         var prefs = await AppServices.Preferences.LoadAsync();
         ThemeService.Apply(prefs.Theme);
+    }
+
+    /// <summary>
+    /// Gives the content frame focus only when nothing in the window has taken it yet.
+    ///
+    /// The check is the whole point: pages focus their own composer from <c>Loaded</c>
+    /// (<c>ChatPage</c>, <c>AgentDetailPage</c>), which races this handler, and an unconditional
+    /// focus would pull the caret out of the message box the user is about to type into.
+    /// <c>HomePage</c> focuses nothing, so without this the window would sit with no focused
+    /// element at all — and <c>firstInteractive</c>, which is raised by <c>RootGrid.GotFocus</c>,
+    /// would never be reached on the default route.
+    /// </summary>
+    private void EnsureInitialFocus()
+    {
+        if (Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(RootGrid.XamlRoot) is not null)
+            return;
+
+        ContentFrame.Focus(FocusState.Programmatic);
     }
 
     /// <summary>Two-parameter shape kept because it is what <c>ShellSidebar.NavigationRequested</c>
