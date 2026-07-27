@@ -1,212 +1,137 @@
 # Releasing
 
-Pushing a `v*` tag is the entire release process. Everything below explains what that does, what
-it refuses to do, and the two things a person still has to check by hand.
+Pushing a `v*` tag builds, audits, and publishes one x64 self-contained portable ZIP. The current
+release pipeline does **not** build or publish an MSIX, so it needs no signing certificate or
+repository signing secrets.
 
 | | |
 |---|---|
 | Workflow | `.github/workflows/release.yml` |
-| Scripts | `scripts/Set-PackageIdentity.ps1`, `scripts/Test-PackageContents.ps1`, `scripts/Test-ReleaseUpgrade.ps1` |
-| Headless upgrade coverage | `tests/ConnectOnion.IntegrationTests/Database/ReleaseUpgradeTests.cs` |
+| Release audit | `scripts/Test-PackageContents.ps1` |
 | Architectures | **x64 only** for now — see "Adding ARM64" |
+| Distribution model | Unpackaged, self-contained portable ZIP |
 
 ```powershell
 git tag v1.2.3
 git push origin v1.2.3
 ```
 
-To rehearse without publishing, run the workflow manually with a version — every gate runs, no
-release is created.
-
-## Package identity — decide once, never again
-
-```
-Name       ConnectOnion.Desktop
-Publisher  <the signing certificate's subject>       (secret: SIGNING_PUBLISHER_DN)
-Version    <from the tag>                            (Major.Minor.Patch.0)
-```
-
-**`Name` + `Publisher` together are the upgrade identity, and neither can ever change.** Windows
-keys everything off that pair. A package whose pair differs is a different application: it
-installs *beside* the old one instead of upgrading it, and it gets a different
-`%LOCALAPPDATA%\Packages\<Name>_<publisher hash>\` folder. The previous install's conversations
-and its DPAPI-protected agent identity are still on disk, and the new install cannot see any of
-it. Nothing warns anyone. There is no rename path afterwards — the only remedy is to publish
-another package under the *original* identity, which means the wrong one is loose forever.
-
-So: changing the signing certificate is fine, but **the new certificate's subject must be
-identical to the old one**. That constraint is the real reason to think about the DN before the
-first release rather than after.
-
-The values that shipped before this pipeline existed (`CN=ROG`, a GUID name, `1.0.0.0`) were
-development leftovers. They were never released, so replacing them cost nothing — but a local
-Visual Studio deploy from before the change is now a *different* package, and its data will look
-missing. Uninstall the old one and start fresh; nothing of value is in it.
-
-The committed manifest carries `Version="0.0.0.0"` deliberately: it is not a valid release
-version and the stamping script refuses it, so a package that reaches anyone still carrying it
-proves the pipeline was bypassed. The workflow re-reads the manifest back out of the *signed
-package* and fails if the version, name or publisher is not what it expects — checking the
-working tree would not catch a stamping step that silently no-opped.
+To rehearse without publishing, run the workflow manually with a version. Every gate runs, but no
+GitHub Release is created.
 
 ## Versioning
 
-`Directory.Build.props` holds `VersionPrefix`, the single source. It flows into
-`AssemblyVersion`/`FileVersion`/`InformationalVersion`, which is what `AppVersionService` reports
-when the app runs **unpackaged**. The packaged build additionally stamps the manifest, which is
-what `AppVersionService` reports when it runs **packaged**. Both come from the tag in a release
-build, so the two can never disagree.
+`Directory.Build.props` holds `VersionPrefix`, the local-development default.
+The release workflow overrides the application version from the `v*` tag:
 
-MSIX versions are four integers. The fourth is left at `0` because the Store reserves it and
-rejects packages that set it. There is nowhere to put a prerelease suffix, so `v1.2.3-rc.1` and
-`v1.2.3-rc.2` are *the same version* to Windows — one will not upgrade the other. Prerelease tags
-build and publish as GitHub prereleases for internal testing; do not hand them to users expecting
-an upgrade path.
-
-## Signing
-
-Three repository secrets:
-
-| Secret | What |
-|---|---|
-| `SIGNING_CERTIFICATE_BASE64` | The `.pfx`, base64-encoded |
-| `SIGNING_CERTIFICATE_PASSWORD` | Its password |
-| `SIGNING_PUBLISHER_DN` | The certificate subject, e.g. `CN=ConnectOnion, O=…, C=AU` |
-
-```powershell
-[Convert]::ToBase64String([IO.File]::ReadAllBytes('signing.pfx')) | Set-Clipboard
-# Read the subject exactly as the certificate states it — this is the value that must match:
-(Get-PfxCertificate -FilePath signing.pfx).Subject
+```text
+v1.2.3       -> 1.2.3
+v1.2.3-rc.1  -> 1.2.3-rc.1 (GitHub prerelease)
 ```
 
-The workflow writes the `.pfx` to `RUNNER_TEMP`, signs, and deletes it in a `finally` so the key
-does not survive a failed step. Signing uses SHA-256 with an RFC3161 timestamp
-(`/tr` + `/td SHA256`). **The timestamp is not optional**: without a countersignature every
-installer ever published stops installing the day the certificate expires. With one, signatures
-keep verifying for the life of the timestamp authority's own certificate.
+The release asset keeps the complete tag in its filename:
 
-Verification uses `signtool verify /pa` — the Authenticode policy a client actually applies.
-Verifying under a weaker policy would pass in CI and fail on a user's machine.
-
-### Rotating the certificate
-
-1. Obtain the new certificate **with the same subject DN as the current one**. A different DN is
-   a different application (see above) — if the DN must change, that is a new product identity
-   and a migration problem, not a rotation.
-2. Update `SIGNING_CERTIFICATE_BASE64` and `SIGNING_CERTIFICATE_PASSWORD`. Leave
-   `SIGNING_PUBLISHER_DN` alone if the subject is unchanged; if it changed, stop and read step 1
-   again.
-3. Cut a patch release and run the full validation matrix. Previously published installers keep
-   working — that is what the timestamp bought.
-
-Neither key nor password is ever written to a log, and no marketplace action touches the signed
-artifact: publishing uses the runner's preinstalled `gh`.
+```text
+ConnectOnion.Desktop-v1.2.3-x64-portable.zip
+```
 
 ## What the release contains
 
-| Asset | |
+| Asset | Purpose |
 |---|---|
-| `ConnectOnion.Desktop-v<version>-x64.msix` | The signed, self-contained installer |
-| `ConnectOnion.Desktop-v<version>-x64-portable.zip` | Self-contained unpackaged build; extract the whole archive and run `ConnectOnion.WinUIClient.exe` |
-| `ConnectOnion.Desktop-v<version>-x64.appxsym` | Symbols, **separately** — never inside the package |
-| `SHA256SUMS.txt` | Checksums for every published asset |
+| `ConnectOnion.Desktop-v<version>-x64-portable.zip` | Self-contained unpackaged app |
+| `SHA256SUMS.txt` | SHA-256 checksum for the published ZIP |
 
-Both release forms are self-contained. The MSIX embeds the .NET and Windows App SDK runtimes and
-must not declare an external `PackageDependency`; this makes the single signed file installable
-on a clean supported Windows machine. The portable ZIP includes the .NET runtime and Windows App
-SDK bootstrapper, so it does not need
-a separately installed .NET runtime. It is deliberately a multi-file archive, not a single EXE:
-extract it before running and keep its files together. It has no package identity, does not
-register an installer entry, and does not participate in MSIX upgrades. Its unpackaged data stays
-under `%AppData%\ConnectOnion`, while the installed MSIX uses package LocalState.
+The ZIP contains the .NET runtime, the Windows App SDK runtime, application dependencies, assets,
+and third-party notices. It deliberately contains multiple files rather than one executable:
+extract the complete archive and keep its files together, then run
+`ConnectOnion.WinUIClient.exe`.
 
-`scripts/Test-PackageContents.ps1` audits both the MSIX and portable ZIP and fails the build if
-either contains PDBs, xunit or VSTest assemblies, any
-`ConnectOnion.*Tests`/`TrimSmoke`/`Conformance`/`LiveTest` assembly, FlaUI or ArchUnit, log files,
-`.db` files, coverage output, or source. It also opens the MSIX manifest and rejects every
-external `PackageDependency`, preventing a framework-dependent installer from being published as
-a standalone asset. The payload is assembled from a publish directory rather than an allow-list,
-so the way a test assembly reaches a user is not a decision anyone makes — it is one nobody
-notices.
+The portable build:
 
-Symbols come from MSBuild's `.appxsym`, which needs `mspdbcmf.exe`. If the runner image lacks it
-the release ships without symbols rather than failing; the log warns.
+- does not require a separately installed .NET runtime or Windows App SDK runtime;
+- does not install or register an entry in Windows Installed Apps;
+- does not have MSIX package identity and does not participate in MSIX upgrades;
+- stores unpackaged application data under `%AppData%\ConnectOnion`;
+- can be replaced by extracting a newer release, while the shared data directory remains intact.
+
+## Release gates
+
+Every tag-driven release reruns the full headless validation suite before publishing:
+
+- solution restore, dependency vulnerability audit, and Release/x64 build;
+- protocol, Core, and SQLite integration tests;
+- protocol conformance gate;
+- trimmed serialization smoke harness;
+- self-contained Release/x64 publish with trimming disabled;
+- portable payload and size audit;
+- SHA-256 checksum generation.
+
+`scripts/Test-PackageContents.ps1` rejects PDBs, test assemblies, FlaUI, ArchUnit, logs, databases,
+coverage output, source files, and other development-only payloads. The workflow also checks that
+both `coreclr.dll` and the Windows App SDK runtime are present before creating the ZIP.
+
+Artifacts are uploaded even when a later gate fails, so a failed run remains diagnosable without
+rebuilding it locally.
 
 ## Package size
 
-Baselines (unsigned x64, untrimmed, ReadyToRun):
+The ratified x64 portable baseline is:
 
-| Artifact | Compressed | Unpacked | Budget |
+| Artifact | Compressed | Expanded | Budget |
 |---|---:|---:|---:|
-| Self-contained MSIX, ratified 2026-07-27 | 121.43 MB | 310.07 MB | +10% |
-| Portable ZIP, ratified 2026-07-25 | 96.65 MB | 246.84 MB | +10% |
+| Self-contained portable ZIP, ratified 2026-07-27 | 118.91 MB | 309.21 MB | +10% |
 
-The MSIX increase is intentional: it now embeds the Windows App SDK runtime instead of silently
-depending on a separately installed framework package.
+The size gate catches accidental payload growth. If legitimate product work exceeds the budget,
+inspect the archive and deliberately re-ratify the baseline in both this document and
+`scripts/Test-PackageContents.ps1`.
 
-The gate catches accidental payload — a second copy of the runtime, an unpruned resource set —
-not a few megabytes of real features. A breach is a prompt to look at what grew, and if the
-growth is legitimate, to re-ratify the numbers here deliberately.
+**Do not enable trimming to get under budget.** Trimming is governed separately by
+[TRIMMING.md](./TRIMMING.md); the release workflow explicitly passes `PublishTrimmed=false`.
 
-**Do not enable trimming to get back under budget.** Trimming is gated separately and for
-unrelated reasons by [TRIMMING.md](./TRIMMING.md); the release build passes
-`PublishTrimmed=false` explicitly, and package size is not an argument that bears on that gate.
+## Manual validation
 
-## Validation
+Before the first public release, test the extracted ZIP on a clean supported Windows profile:
 
-### Automated, every release
+1. Confirm `ConnectOnion.WinUIClient.exe` launches without installing .NET or Windows App SDK.
+2. Create an identity and conversation, then close the app.
+3. Extract the next build to a new directory and launch it.
+4. Confirm the address, recovery material, conversations, notifications, and tray behavior remain
+   correct.
+5. Confirm deleting the extracted application directory does not delete `%AppData%\ConnectOnion`.
 
-The workflow runs the full CI suite — protocol, headless client, database integration tests, the
-conformance gate and the trimmed serialization smoke harness — **before** it builds a package,
-and re-runs it here rather than trusting the commit's own CI run, because a tag can point at a
-commit CI never saw.
+The headless `ReleaseUpgradeTests` still covers SQLite and DPAPI compatibility. The old
+`scripts/Test-ReleaseUpgrade.ps1` remains available for future MSIX work, but it is not part of
+the current portable release gate.
 
-`ReleaseUpgradeTests` covers the data half of the upgrade criterion headlessly, against real
-SQLite and real DPAPI:
+## MSIX status
 
-- an upgrade preserves the address, the private seed **and** the recovery phrase, and the stored
-  ciphertext is untouched;
-- upgrading from a pre-schema-v5 release keeps the identity, leaves the phrase absent (nothing
-  can derive one for an existing seed, and regenerating would change the address every agent
-  authorized), and falls back to offering the raw seed;
-- the v4 → v5 migration leaves a *real* DPAPI blob byte-identical and still decryptable;
-- conversations and messages survive.
+MSIX project support remains configured for local development and future installer work, but the
+release workflow intentionally does not invoke it. Therefore:
 
-### Manual, on a clean profile
+- `SIGNING_CERTIFICATE_BASE64`, `SIGNING_CERTIFICATE_PASSWORD`, and
+  `SIGNING_PUBLISHER_DN` are not read by the current workflow;
+- no `.msix` or `.appxsym` is staged or published;
+- `scripts/Set-PackageIdentity.ps1` and `scripts/Test-ReleaseUpgrade.ps1` are dormant release tools.
 
-`scripts/Test-ReleaseUpgrade.ps1` drives the rest and records the evidence to
-`artifacts/release-validation/`. It refuses to run if the package is already installed, because
-on a machine that has ever had the app deployed "the upgrade preserved my data" proves nothing.
-
-```powershell
-pwsh scripts/Test-ReleaseUpgrade.ps1 -OldPackage .\v1.0.0.msix -NewPackage .\v1.1.0.msix
-```
-
-It automates what it can — package registration, that the package family name is unchanged across
-the upgrade, and that `connectonion.db` is byte-identical after install and before first launch —
-and prompts for what only a person can see: first launch with no identity-reset toast, the same
-`0x` address in Settings → Identity, conversations still present, toast activation opening the
-right conversation, tray minimise and restore, and a clean uninstall.
-
-Unverified checkpoints exit `2`, not `0`. An incomplete run is not a pass.
+If MSIX publishing is restored later, the signed package must use the existing
+`ConnectOnion.Desktop` name and a deliberately chosen publisher DN. That `Name` + `Publisher`
+pair becomes the permanent upgrade and application-data identity after the first installed
+release. Restore signature verification and clean-machine install/upgrade/uninstall validation
+in the same change.
 
 ## Adding ARM64
 
-Deliberately out of scope for the first release: it doubles build time and there is no ARM64
-hardware to validate the install on, and an unvalidated architecture in a release is worse than
-an absent one. When it is wanted:
+ARM64 is deliberately absent until there is hardware available to validate it. To add it:
 
-1. Add `ARM64` / `win-arm64` to a build matrix in `release.yml`.
-2. Produce a `.msixbundle` (`makeappx bundle`) instead of publishing the `.msix` directly, and
-   sign the bundle.
-3. Extend `Test-PackageContents.ps1` to walk each package inside the bundle.
-4. Validate the install on real ARM64 hardware before publishing.
+1. Add an `ARM64` / `win-arm64` matrix entry to `release.yml`.
+2. Give each portable ZIP an architecture-specific filename.
+3. Audit each ZIP independently and include each one in `SHA256SUMS.txt`.
+4. Launch and validate the ARM64 archive on real ARM64 Windows hardware before publishing.
 
 ## If a release goes wrong
 
-A failed gate leaves the tag pushed and **no release published** — recoverable in a way a
-half-published release with a broken installer is not. Artifacts upload even on failure, so a bad
-run is diagnosable without re-running the build.
+A failed gate leaves the tag pushed and no GitHub Release published:
 
 ```powershell
 git push --delete origin v1.2.3
@@ -214,6 +139,5 @@ git tag -d v1.2.3
 # fix, then re-tag
 ```
 
-If a broken release is already published, delete the release (and its assets) but **do not reuse
-the version number** — anyone who downloaded it has a package Windows now considers that version.
-Ship the fix as the next patch.
+If a broken archive is already published, delete the GitHub Release and its assets, but do not
+reuse the version number. Publish the correction as the next patch version.

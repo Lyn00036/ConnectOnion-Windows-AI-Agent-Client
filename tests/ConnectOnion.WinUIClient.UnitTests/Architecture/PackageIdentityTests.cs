@@ -106,7 +106,7 @@ public sealed class PackageIdentityTests
     }
 
     [Fact]
-    public void ReleaseWorkflow_PublishesInstallerAndPortableArchive()
+    public void ReleaseWorkflow_PublishesOnlySelfContainedPortableArchive()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "global.json")))
@@ -117,13 +117,20 @@ public sealed class PackageIdentityTests
             Path.Combine(directory!.FullName, ".github", "workflows", "release.yml"));
 
         Assert.Contains("-p:SelfContained=true", workflow, StringComparison.Ordinal);
-        Assert.Contains("/p:WindowsAppSDKSelfContained=true", workflow, StringComparison.Ordinal);
+        Assert.Contains("-p:WindowsAppSDKSelfContained=true", workflow, StringComparison.Ordinal);
+        Assert.Contains("-p:RunUnpackaged=true", workflow, StringComparison.Ordinal);
+        Assert.Contains("Microsoft.WindowsAppRuntime.dll", workflow, StringComparison.Ordinal);
         Assert.Contains("-x64-portable.zip", workflow, StringComparison.Ordinal);
         Assert.Contains(
             "Test-PackageContents.ps1 -PackagePath '${{ steps.collect.outputs.portable }}'",
             workflow,
             StringComparison.Ordinal);
         Assert.Contains("No portable ZIP to publish.", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("SIGNING_CERTIFICATE", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("SIGNING_PUBLISHER_DN", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("signtool", workflow, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("GenerateAppxPackageOnBuild=true", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("steps.collect.outputs.msix", workflow, StringComparison.Ordinal);
     }
 
     [Fact]

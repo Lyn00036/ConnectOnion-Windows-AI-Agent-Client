@@ -39,7 +39,7 @@ questions. The runtime still does.
 | Protocol and interactive serialization paths have direct unit or integration coverage | **Met** — see "Coverage" below |
 | Tool Activity and every interactive card survive persist/restart in the trimmed publish | **Partially met** — proved for `Core` + `Protocol` in a trimmed binary across a real process restart; **not** proved in the trimmed *WinUI app* binary |
 | Fake Agent and real-window smoke tests pass against the trimmed executable | **Not met** — needs a desktop session; `CONNECTONION_UI_TEST_EXE` can already be pointed at the trimmed publish |
-| Signed MSIX functional matrix passes with trimming enabled experimentally | **Not met** — the pipeline now exists (`docs/RELEASE.md`), but no signed package has been produced or installed, so there is nothing to run the matrix against |
+| Signed MSIX functional matrix passes with trimming enabled experimentally | **Not met** — the current release pipeline publishes only the self-contained portable ZIP (`docs/RELEASE.md`); no signed package has been produced or installed, so there is nothing to run the matrix against |
 | No key operation regresses >10% against the same-machine untrimmed baseline | **Not met** — `scripts/Measure-Performance.ps1 -Exe <trimmed>` is the mechanism; no run yet |
 | Package-size savings and compatibility risks documented | **Met** — this document |
 | Production and CI remain explicitly untrimmed until all of the above pass | **Held** — enforced by `TrimmingGateTests` |
@@ -214,10 +214,11 @@ measured against the untrimmed baseline yet — that is the >10% criterion, stil
    and reopen the conversation** — the restart is the step that would have caught the original bug.
 4. `pwsh scripts\Measure-Performance.ps1 -Exe <trimmed>` against a same-machine untrimmed baseline;
    no key operation may regress more than 10%.
-5. The signed MSIX matrix — build a trimmed package through the release pipeline and run
-   `scripts/Test-ReleaseUpgrade.ps1` against it (`docs/RELEASE.md`). Note the release build
-   passes `PublishTrimmed=false` explicitly and `PackageIdentityTests` asserts it does, so this
-   step means deliberately overriding both, not quietly flipping them.
+5. The signed MSIX matrix — temporarily restore the dormant MSIX build/signing path described in
+   `docs/RELEASE.md`, build a trimmed package, and run `scripts/Test-ReleaseUpgrade.ps1` against
+   it. The active portable release passes `PublishTrimmed=false` explicitly and
+   `PackageIdentityTests` asserts it does, so this step means deliberately overriding both, not
+   quietly flipping them.
 6. Only then edit `PublishTrimmed` in `ConnectOnion.WinUIClient.csproj` and CI, and update
    `TrimmingGateTests` in the same commit — the guard is meant to make this a decision, so
    changing it is part of taking the decision, not an obstacle to route around.

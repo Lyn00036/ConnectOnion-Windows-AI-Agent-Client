@@ -1,11 +1,12 @@
 name: Release
 
-# Tag-driven. Pushing `v1.2.3` builds, signs, audits and publishes; nothing else does.
+# Tag-driven. Pushing `v1.2.3` builds, audits and publishes the self-contained portable archive;
+# nothing else does.
 #
 # THE ORDERING IS THE POINT. Every gate runs before the GitHub Release is created, and the
 # release step is the last thing in the job. A failure anywhere leaves the tag pushed and no
 # release published — which is recoverable (delete the tag, fix, re-tag) in a way that a
-# half-published release with a broken installer is not. Artifacts are uploaded on failure too,
+# half-published release with a broken archive is not. Artifacts are uploaded on failure too,
 # so a failed run is still diagnosable.
 on:
   push:
@@ -19,7 +20,7 @@ on:
         required: true
 
 concurrency:
-  # Never cancel a release in progress: a half-run that gets cancelled between signing and
+  # Never cancel a release in progress: a half-run that gets cancelled between auditing and
   # publishing is exactly the state this workflow exists to avoid.
   group: release-${{ github.ref }}
   cancel-in-progress: false
@@ -29,7 +30,7 @@ permissions:
 
 jobs:
   release:
-    name: Build, sign and publish
+    name: Build and publish
     runs-on: windows-latest
     timeout-minutes: 90
 
@@ -63,9 +64,7 @@ jobs:
           $semver = $version.TrimStart('v')
           "version=$version"   >> $env:GITHUB_OUTPUT
           "semver=$semver"     >> $env:GITHUB_OUTPUT
-          # A prerelease tag publishes as a GitHub prerelease. Note MSIX cannot express the
-          # suffix (see Set-PackageIdentity.ps1), so two prereleases of one version look
-          # identical to Windows — docs/RELEASE.md says not to ship those to users.
+          # A prerelease tag publishes as a GitHub prerelease.
           "prerelease=$(if ($semver -match '-') { 'true' } else { 'false' })" >> $env:GITHUB_OUTPUT
 
       - name: Set up .NET
@@ -78,14 +77,11 @@ jobs:
         with:
           node-version: 22
 
-      - name: Add MSBuild to PATH
-        uses: microsoft/setup-msbuild@v2
-
       # ---- Gate 1: the code is good ------------------------------------------------------------
       #
       # The full CI suite, repeated here rather than trusted from the commit's CI run. A tag can
       # point at a commit CI never saw, or at one whose run predates a dependency change, and
-      # "it passed on main" is not a claim worth risking a signed installer on.
+      # "it passed on main" is not a claim worth risking a release archive on.
 
       - name: Restore
         shell: pwsh
@@ -128,20 +124,7 @@ jobs:
         shell: pwsh
         run: pwsh scripts/Invoke-TrimAudit.ps1 -SmokeOnly
 
-      # ---- Gate 2: the package identity is real ------------------------------------------------
-
-      - name: Stamp package identity
-        id: identity
-        shell: pwsh
-        env:
-          PUBLISHER_DN: ${{ secrets.SIGNING_PUBLISHER_DN }}
-        run: |
-          if (-not $env:PUBLISHER_DN) {
-            throw "SIGNING_PUBLISHER_DN is not set. It must match the signing certificate's subject exactly, or the package will not install. See docs/RELEASE.md."
-          }
-          pwsh scripts/Set-PackageIdentity.ps1 `
-            -Version '${{ steps.version.outputs.version }}' `
-            -PublisherDistinguishedName $env:PUBLISHER_DN
+      # ---- Gate 2: build the self-contained portable release -----------------------------------
 
       - name: Publish self-contained portable build
         shell: pwsh
@@ -155,6 +138,7 @@ jobs:
           -p:Version=${{ steps.version.outputs.semver }}
           -p:RunUnpackaged=true
           -p:SelfContained=true
+          -p:WindowsAppSDKSelfContained=true
           -p:PublishSingleFile=false
           -p:PublishTrimmed=false
           -p:PublishReadyToRun=true
@@ -162,56 +146,13 @@ jobs:
           -p:DebugType=None
           -p:AppxPackageSigningEnabled=false
 
-      - name: Build MSIX
-        shell: pwsh
-        run: |
-          # Full MSBuild, not `dotnet build`: single-project MSIX packaging targets ship with
-          # Visual Studio and are not part of the .NET SDK.
-          # PublishTrimmed stays false — gated separately by docs/TRIMMING.md, and shrinking the
-          # package is explicitly not a reason to turn it on.
-          msbuild $env:APP_PROJECT `
-            /p:Configuration=$env:CONFIGURATION `
-            /p:Platform=$env:BUILD_PLATFORM `
-            /p:RuntimeIdentifier=win-x64 `
-            /p:Version=${{ steps.version.outputs.semver }} `
-            /p:SelfContained=true `
-            /p:WindowsAppSDKSelfContained=true `
-            /p:AppxPackageDir=$env:GITHUB_WORKSPACE\artifacts\package\ `
-            /p:UapAppxPackageBuildMode=SideloadOnly `
-            /p:AppxBundle=Never `
-            /p:GenerateAppxPackageOnBuild=true `
-            /p:AppxPackageSigningEnabled=false `
-            /p:PublishTrimmed=false `
-            /p:PublishReadyToRun=true `
-            /restore /v:minimal /nologo
-
-      # MSBuild's output directory is not a release directory: a SideloadOnly build drops the
-      # package inside a `<project>_<version>_<platform>_Test` folder next to Add-AppDevPackage.ps1,
-      # Install.ps1 and a Dependencies tree. Everything downstream — checksums, the upload, the
-      # release assets — must operate on exactly the files we intend to publish and nothing else,
-      # so the intended files are moved into their own directory here and no later step ever
-      # recurses into the build output.
-      - name: Stage release assets
+      - name: Stage portable release
         id: collect
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force artifacts/publish | Out-Null
 
-          # Matched by the project's own package name rather than by picking the largest file:
-          # the Dependencies tree can carry framework packages, and "biggest .msix wins" is a
-          # heuristic that holds right up until it doesn't.
-          $msix = @(Get-ChildItem -Path artifacts/package -Recurse -File -Filter 'ConnectOnion.WinUIClient_*.msix' |
-            Where-Object { $_.FullName -notmatch '[\\/]Dependencies[\\/]' })
-          if ($msix.Count -ne 1) {
-            Get-ChildItem artifacts/package -Recurse -File -Filter *.msix | ForEach-Object { Write-Host $_.FullName }
-            throw "Expected exactly one application .msix, found $($msix.Count)."
-          }
-
-          $final = "artifacts/publish/ConnectOnion.Desktop-${{ steps.version.outputs.version }}-x64.msix"
-          Move-Item -Force $msix[0].FullName $final
-          "msix=$final" >> $env:GITHUB_OUTPUT
-
-          # The portable release is the unpackaged self-contained publish, not one executable:
+          # The portable release is one self-contained directory, not one executable:
           # Windows App SDK and the .NET runtime are loose files and must stay together. Archive
           # the directory contents at the ZIP root so extracting it exposes the executable
           # directly instead of adding an otherwise-useless publish/ nesting level.
@@ -223,109 +164,23 @@ jobs:
           if (-not (Test-Path (Join-Path $portableRoot 'coreclr.dll'))) {
             throw "Portable publish is not self-contained: coreclr.dll is missing."
           }
+          if (-not (Test-Path (Join-Path $portableRoot 'Microsoft.WindowsAppRuntime.dll'))) {
+            throw "Portable publish is not Windows App SDK self-contained: Microsoft.WindowsAppRuntime.dll is missing."
+          }
 
           $portable = "artifacts/publish/ConnectOnion.Desktop-${{ steps.version.outputs.version }}-x64-portable.zip"
           Compress-Archive -Path (Join-Path $portableRoot '*') `
             -DestinationPath $portable -CompressionLevel Optimal
           "portable=$portable" >> $env:GITHUB_OUTPUT
 
-          # Symbols travel as their own artifact, never inside the package.
-          $sym = @(Get-ChildItem -Path artifacts/package -Recurse -File -Filter *.appxsym |
-            Where-Object { $_.FullName -notmatch '[\\/]Dependencies[\\/]' })
-          if ($sym.Count -ge 1) {
-            Move-Item -Force $sym[0].FullName "artifacts/publish/ConnectOnion.Desktop-${{ steps.version.outputs.version }}-x64.appxsym"
-          } else {
-            # Not fatal: .appxsym needs mspdbcmf.exe, which is not on every image. The release
-            # simply ships without symbols rather than failing over a diagnostic aid.
-            Write-Warning "No .appxsym produced; the release will have no symbols artifact."
-          }
-
           Get-ChildItem artifacts/publish | ForEach-Object { Write-Host "staged: $($_.Name)" }
 
-      # ---- Gate 3: sign ------------------------------------------------------------------------
-
-      - name: Sign MSIX
-        shell: pwsh
-        env:
-          CERT_BASE64: ${{ secrets.SIGNING_CERTIFICATE_BASE64 }}
-          CERT_PASSWORD: ${{ secrets.SIGNING_CERTIFICATE_PASSWORD }}
-        run: |
-          if (-not $env:CERT_BASE64) {
-            throw "SIGNING_CERTIFICATE_BASE64 is not set; refusing to publish an unsigned package. See docs/RELEASE.md."
-          }
-
-          $pfx = Join-Path $env:RUNNER_TEMP 'signing.pfx'
-          try {
-            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:CERT_BASE64))
-
-            $signtool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Recurse -Filter signtool.exe |
-              Where-Object { $_.FullName -match 'x64' } |
-              Sort-Object FullName -Descending | Select-Object -First 1
-            if (-not $signtool) { throw "signtool.exe not found on this runner." }
-
-            # /tr + /td: an RFC3161 countersignature, so the signature keeps verifying after the
-            # certificate expires. Without it every installer stops installing on expiry day.
-            & $signtool.FullName sign `
-              /fd SHA256 `
-              /f $pfx `
-              /p $env:CERT_PASSWORD `
-              /tr http://timestamp.digicert.com `
-              /td SHA256 `
-              '${{ steps.collect.outputs.msix }}'
-            if ($LASTEXITCODE -ne 0) { throw "signtool sign failed with exit code $LASTEXITCODE." }
-          }
-          finally {
-            # The key must not survive the step, even on failure.
-            if (Test-Path $pfx) { Remove-Item -Force $pfx }
-          }
-
-      - name: Verify signature
-        shell: pwsh
-        run: |
-          $signtool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Recurse -Filter signtool.exe |
-            Where-Object { $_.FullName -match 'x64' } |
-            Sort-Object FullName -Descending | Select-Object -First 1
-
-          # /pa: the Authenticode policy a client actually applies. Verifying under any weaker
-          # policy would pass here and fail on the user's machine.
-          & $signtool.FullName verify /pa /v '${{ steps.collect.outputs.msix }}'
-          if ($LASTEXITCODE -ne 0) { throw "The package did not verify; refusing to publish." }
-
-      # ---- Gate 4: the package is publishable --------------------------------------------------
-
-      - name: Audit package contents and size
-        id: audit
-        shell: pwsh
-        run: pwsh scripts/Test-PackageContents.ps1 -PackagePath '${{ steps.collect.outputs.msix }}'
+      # ---- Gate 3: the archive is publishable --------------------------------------------------
 
       - name: Audit portable ZIP contents and size
         id: portable_audit
         shell: pwsh
         run: pwsh scripts/Test-PackageContents.ps1 -PackagePath '${{ steps.collect.outputs.portable }}'
-
-      - name: Verify stamped manifest inside the package
-        shell: pwsh
-        run: |
-          # Reads the manifest back out of the signed artifact rather than trusting the working
-          # tree: this is the copy users get, and a stamping step that silently no-ops would
-          # otherwise ship a 0.0.0.0 package that can never be upgraded from.
-          Add-Type -AssemblyName System.IO.Compression.FileSystem
-          $zip = [IO.Compression.ZipFile]::OpenRead((Resolve-Path '${{ steps.collect.outputs.msix }}'))
-          try {
-            $entry = $zip.Entries | Where-Object { $_.FullName -eq 'AppxManifest.xml' }
-            if (-not $entry) { throw "No AppxManifest.xml inside the package." }
-            $reader = New-Object IO.StreamReader($entry.Open())
-            $xml = [xml]$reader.ReadToEnd()
-          }
-          finally { $zip.Dispose() }
-
-          $identity = $xml.Package.Identity
-          Write-Host "Name=$($identity.Name) Publisher=$($identity.Publisher) Version=$($identity.Version)"
-
-          $expected = '${{ steps.version.outputs.semver }}'.Split('-')[0] + '.0'
-          if ($identity.Version -ne $expected) { throw "Package version is $($identity.Version), expected $expected." }
-          if ($identity.Name -ne 'ConnectOnion.Desktop') { throw "Upgrade identity changed: $($identity.Name). See docs/RELEASE.md." }
-          if ($identity.Publisher -match 'CN=ROG') { throw "Development publisher reached the package." }
 
       - name: Compute checksums
         id: checksums
@@ -380,20 +235,16 @@ jobs:
           $notes = @(
             "## ConnectOnion Desktop ${{ steps.version.outputs.version }}",
             "",
-            "### Install",
+            "### Run",
             "",
-            "**Installer:** download the `.msix` and open it. Windows verifies the signature and installs it;",
-            "an existing install with the same identity is upgraded in place, keeping your",
-            "conversations and your agent identity.",
-            "",
-            "**Portable:** download the `-portable.zip`, extract the whole archive, then run",
+            "Download the `-portable.zip`, extract the whole archive, then run",
             "`ConnectOnion.WinUIClient.exe`. Keep the extracted files together. This unpackaged",
-            "build does not install or participate in MSIX upgrades.",
+            "self-contained build does not need a separate .NET or Windows App SDK installation.",
+            "It does not install or participate in MSIX upgrades.",
             "",
-            "Verify the download before installing:",
+            "Verify the download before running:",
             "",
             '```powershell',
-            "Get-FileHash .\ConnectOnion.Desktop-${{ steps.version.outputs.version }}-x64.msix -Algorithm SHA256",
             "Get-FileHash .\ConnectOnion.Desktop-${{ steps.version.outputs.version }}-x64-portable.zip -Algorithm SHA256",
             '```',
             "",
@@ -403,8 +254,7 @@ jobs:
             "",
             "| Asset | Architecture | Download | Expanded |",
             "|---|---|---:|---:|",
-            "| MSIX installer | x64 | ${{ steps.audit.outputs.compressed_mb }} MB | ${{ steps.audit.outputs.unpacked_mb }} MB |",
-            "| Portable ZIP | x64 | ${{ steps.portable_audit.outputs.compressed_mb }} MB | ${{ steps.portable_audit.outputs.unpacked_mb }} MB |",
+            "| Self-contained portable ZIP | x64 | ${{ steps.portable_audit.outputs.compressed_mb }} MB | ${{ steps.portable_audit.outputs.unpacked_mb }} MB |",
             "",
             "### Changes",
             "",
@@ -417,7 +267,7 @@ jobs:
       # ---- Publish. Last step, on purpose. ------------------------------------------------------
 
       # `gh` rather than a marketplace action: it is preinstalled on the runner, so publishing the
-      # signed artifact adds no third-party code to the release path.
+      # release artifact adds no third-party code to the publishing path.
       - name: Create GitHub Release
         if: ${{ github.event_name == 'push' }}
         shell: pwsh
@@ -425,9 +275,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $assets = @(Get-ChildItem artifacts/publish -File)
-          if (-not ($assets | Where-Object Extension -eq '.msix')) {
-            throw "No .msix to publish."
-          }
           if (-not ($assets | Where-Object Name -like '*-portable.zip')) {
             throw "No portable ZIP to publish."
           }

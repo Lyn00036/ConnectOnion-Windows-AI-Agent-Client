@@ -5,11 +5,11 @@
 .DESCRIPTION
     Two gates that both have to hold before a package may be published.
 
-    CONTENTS. An MSIX is produced by the same build that produced the test projects, and the
-    payload is assembled from a publish directory rather than an explicit allow-list — so the way
+    CONTENTS. The release payload is produced by the same build that produced the test projects,
+    and it is assembled from a publish directory rather than an explicit allow-list — so the way
     a test assembly or a PDB reaches a user is not a decision anyone makes, it is one nobody
-    notices. The 2026-07-25 audit found the package clean; this makes that a property of every
-    build rather than an observation about one.
+    notices. The audit makes a clean payload a property of every build rather than an observation
+    about one.
 
     SIZE. Compressed size is what a user downloads and unpacked size is roughly what the install
     costs on disk, so both are reported against the ratified baseline and both must stay inside
@@ -21,10 +21,10 @@
     The .msix / .msixbundle / portable .zip to audit.
 
 .PARAMETER BaselineCompressedMb
-    Override the ratified baseline. Default: 121.43 MB for self-contained MSIX; 96.65 MB for ZIP.
+    Override the ratified baseline. Default: 121.43 MB for self-contained MSIX; 118.91 MB for ZIP.
 
 .PARAMETER BaselineUnpackedMb
-    Override the ratified baseline. Default: 310.07 MB for self-contained MSIX; 246.84 MB for ZIP.
+    Override the ratified baseline. Default: 310.07 MB for self-contained MSIX; 309.21 MB for ZIP.
 
 .PARAMETER BudgetPercent
     Allowed growth over baseline before the gate fails. Default 10, matching the performance
@@ -57,14 +57,13 @@ if (-not (Test-Path $PackagePath)) { throw "Package not found at $PackagePath." 
 $PackagePath = (Resolve-Path $PackagePath).Path
 $isMsix = [IO.Path]::GetExtension($PackagePath) -in '.msix', '.appx'
 
-# Self-contained MSIX carries the Windows App SDK runtime that a clean sideload machine would
-# otherwise have to install separately. The portable ZIP has a different payload shape, so each
-# release form has its own ratified baseline. Explicit parameters still override these defaults.
+# Both forms carry .NET and Windows App SDK. Packaging overhead differs, so each release form has
+# its own ratified baseline. Explicit parameters still override these defaults.
 if (-not $PSBoundParameters.ContainsKey('BaselineCompressedMb')) {
-    $BaselineCompressedMb = if ($isMsix) { 121.43 } else { 96.65 }
+    $BaselineCompressedMb = if ($isMsix) { 121.43 } else { 118.91 }
 }
 if (-not $PSBoundParameters.ContainsKey('BaselineUnpackedMb')) {
-    $BaselineUnpackedMb = if ($isMsix) { 310.07 } else { 246.84 }
+    $BaselineUnpackedMb = if ($isMsix) { 310.07 } else { 309.21 }
 }
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -205,7 +204,7 @@ if ($env:GITHUB_OUTPUT) {
 
 if ($env:GITHUB_STEP_SUMMARY) {
     $baselineKind = if ($isMsix) { 'self-contained MSIX' } else { 'portable ZIP' }
-    $baselineEntries = if ($isMsix) { 632 } else { 343 }
+    $baselineEntries = if ($isMsix) { 632 } else { 621 }
     @(
         "### Package audit",
         "",

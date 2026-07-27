@@ -601,8 +601,8 @@ Known deployed development agents:
 
 ## Not Implemented Yet
 
-- First signed production release (the tag-driven MSIX/portable release pipeline is implemented;
-  signing secrets and clean-machine validation are still required)
+- First production release (the tag-driven self-contained portable ZIP pipeline is implemented;
+  clean-machine validation is still required, while signed MSIX publishing is paused)
 - Broad UI-level tests: the headless surfaces are covered and a FlaUI shell smoke test proves
   the harness works, but navigation, drag-and-drop, and the find overlay are still untested.
   `AutomationId`s exist on the critical controls (guarded by `AutomationContractTests`) —
