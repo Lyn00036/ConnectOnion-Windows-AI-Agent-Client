@@ -85,4 +85,21 @@
   <data name="ChatApprovePlan.Content" xml:space="preserve"><value>Approve plan</value></data>
   <data name="ChatRequestChanges.Content" xml:space="preserve"><value>Request changes</value></data>
   <data name="ChatConnectionFailure.Text" xml:space="preserve"><value>Couldn't reach the agent.</value></data>
+  <data name="MenuChangeAgentIcon.Text" xml:space="preserve"><value>Change icon</value></data>
+  <data name="MenuRemoveAgentIcon.Text" xml:space="preserve"><value>Remove custom icon</value></data>
+  <data name="AddAgentIconHeader.Text" xml:space="preserve"><value>Agent icon</value></data>
+  <data name="AddAgentChooseIcon.Content" xml:space="preserve"><value>Choose image</value></data>
+  <data name="AddAgentRemoveIcon.Content" xml:space="preserve"><value>Remove</value></data>
+  <data name="AddAgentIconHint.Text" xml:space="preserve"><value>Optional. PNG, JPG, JPEG or WebP, up to 5 MB.</value></data>
+  <data name="AgentIconToastTitle" xml:space="preserve"><value>Agent icon</value></data>
+  <data name="AgentIconChangeFailed" xml:space="preserve"><value>The agent icon could not be changed.</value></data>
+  <data name="AgentIconRemoveFailed" xml:space="preserve"><value>The agent icon could not be removed.</value></data>
+  <data name="AgentIconPickerFailed" xml:space="preserve"><value>The image picker could not be opened.</value></data>
+  <data name="AgentIconUnsupportedType" xml:space="preserve"><value>Choose a PNG, JPG, JPEG or WebP image.</value></data>
+  <data name="AgentIconFileTooLarge" xml:space="preserve"><value>The image must be 5 MB or smaller.</value></data>
+  <data name="AgentIconImageTooLarge" xml:space="preserve"><value>The image's dimensions are too large.</value></data>
+  <data name="AgentIconInvalidImage" xml:space="preserve"><value>That file is not an image this app can read.</value></data>
+  <data name="AgentIconProcessFailed" xml:space="preserve"><value>The selected image could not be processed.</value></data>
+  <data name="AgentIconSaveFailed" xml:space="preserve"><value>The agent icon could not be saved.</value></data>
+  <data name="AgentIconDeleteFailed" xml:space="preserve"><value>The agent icon could not be removed.</value></data>
 </root>
