@@ -5,10 +5,15 @@ on:
     branches:
       - main
       - master
+      - developSprint3
+  # Filtered by the PR's *base* branch, so this is what makes a feature branch
+  # merging into developSprint3 run the pipeline — the push list above only
+  # covers commits that already landed on it.
   pull_request:
     branches:
       - main
       - master
+      - developSprint3
   workflow_dispatch:
     inputs:
       run_ui_smoke:
