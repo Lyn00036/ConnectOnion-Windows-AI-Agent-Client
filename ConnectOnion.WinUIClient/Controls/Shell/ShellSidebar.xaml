@@ -15,40 +15,40 @@
           RowSpacing="4">
         <Grid.Resources>
             <ResourceDictionary>
-            <ResourceDictionary.ThemeDictionaries>
-                <!-- Near-opaque, not glass: this is a plain brush with no blur behind it, so any
+                <ResourceDictionary.ThemeDictionaries>
+                    <!-- Near-opaque, not glass: this is a plain brush with no blur behind it, so any
                      alpha low enough to read as glass also reads the sidebar's own text straight
                      through the menu (Exit landed on top of Add Agent). Acrylic would be the way
                      to get real translucency here. -->
-                <ResourceDictionary x:Key="Light">
-                    <SolidColorBrush x:Key="AccountMenuGlassBrush" Color="#F5F2F2F2" />
-                </ResourceDictionary>
-                <ResourceDictionary x:Key="Dark">
-                    <SolidColorBrush x:Key="AccountMenuGlassBrush" Color="#F51C1B20" />
-                </ResourceDictionary>
-                <ResourceDictionary x:Key="HighContrast">
-                    <SolidColorBrush x:Key="AccountMenuGlassBrush"
+                    <ResourceDictionary x:Key="Light">
+                        <SolidColorBrush x:Key="AccountMenuGlassBrush" Color="#F5F2F2F2" />
+                    </ResourceDictionary>
+                    <ResourceDictionary x:Key="Dark">
+                        <SolidColorBrush x:Key="AccountMenuGlassBrush" Color="#F51C1B20" />
+                    </ResourceDictionary>
+                    <ResourceDictionary x:Key="HighContrast">
+                        <SolidColorBrush x:Key="AccountMenuGlassBrush"
                                      Color="{ThemeResource SystemColorWindowColor}" />
-                </ResourceDictionary>
-            </ResourceDictionary.ThemeDictionaries>
-            <Style x:Key="ShellNavButtonStyle"
+                    </ResourceDictionary>
+                </ResourceDictionary.ThemeDictionaries>
+                <Style x:Key="ShellNavButtonStyle"
                    TargetType="Button"
                    BasedOn="{StaticResource TransparentButtonStyle}">
-                <Setter Property="MinHeight" Value="0" />
-                <Setter Property="Padding" Value="0" />
-            </Style>
-            <Style x:Key="SidebarCaptionStyle" TargetType="TextBlock">
-                <Setter Property="FontSize" Value="11" />
-                <Setter Property="Foreground" Value="{ThemeResource TextTertiaryBrush}" />
-                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-            </Style>
-            <Style x:Key="AccountFlyoutRowStyle"
+                    <Setter Property="MinHeight" Value="0" />
+                    <Setter Property="Padding" Value="0" />
+                </Style>
+                <Style x:Key="SidebarCaptionStyle" TargetType="TextBlock">
+                    <Setter Property="FontSize" Value="11" />
+                    <Setter Property="Foreground" Value="{ThemeResource TextTertiaryBrush}" />
+                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                </Style>
+                <Style x:Key="AccountFlyoutRowStyle"
                    TargetType="Button"
                    BasedOn="{StaticResource SidebarNavButtonStyle}">
-                <Setter Property="MinHeight" Value="42" />
-                <Setter Property="Padding" Value="14,0" />
-                <Setter Property="CornerRadius" Value="6" />
-            </Style>
+                    <Setter Property="MinHeight" Value="42" />
+                    <Setter Property="Padding" Value="14,0" />
+                    <Setter Property="CornerRadius" Value="6" />
+                </Style>
             </ResourceDictionary>
         </Grid.Resources>
 
@@ -334,6 +334,7 @@
                                                                Margin="4,0,10,0"
                                                                Initial="{Binding Initial}"
                                                                PaletteIndex="{Binding AvatarPaletteIndex}"
+                                                               ImagePath="{Binding IconPath}"
                                                                IsHitTestVisible="False" />
                                         </Button>
 
@@ -397,6 +398,12 @@
                                                                         Tag="{Binding Id}" />
                                                         <MenuFlyoutItem Text="Agent details"
                                                                         Click="Agent_Click"
+                                                                        Tag="{Binding Id}" />
+                                                        <MenuFlyoutItem Text="Change icon"
+                                                                        Click="ChangeAgentIcon_Click"
+                                                                        Tag="{Binding Id}" />
+                                                        <MenuFlyoutItem Text="Remove custom icon"
+                                                                        Click="RemoveAgentIcon_Click"
                                                                         Tag="{Binding Id}" />
                                                         <MenuFlyoutSeparator />
                                                         <MenuFlyoutItem Text="Delete agent"
