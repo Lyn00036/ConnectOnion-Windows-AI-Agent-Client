@@ -37,7 +37,8 @@
                                                           CornerRadius="19"
                                                           FontSize="14"
                                                           Initial="{x:Bind Initial}"
-                                                          PaletteIndex="{x:Bind AvatarPaletteIndex}" />
+                                                          PaletteIndex="{x:Bind AvatarPaletteIndex}"
+                                                          ImagePath="{x:Bind IconPath}" />
                                     <Ellipse Width="9"
                                              Height="9"
                                              Margin="0,0,-2,-2"

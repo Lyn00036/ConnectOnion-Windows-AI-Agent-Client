@@ -25,6 +25,7 @@ public sealed partial class HomeAgentItem : Common.ObservableObject
     public string FullAddress { get; set; } = "";
     public string ConnectionSummary { get; set; } = "";
     public string LastUsedLabel { get; set; } = "Not used yet";
+    public string? IconPath { get; set; }
     public int AvatarPaletteIndex { get; set; }
     public bool IsSelected { get; set; }
     public bool ShowSelection => IsSelected || IsHighlighted;
@@ -148,6 +149,7 @@ public sealed partial class HomePage : Page, IReloadablePage, IDisposable
                         .Where(session => session.AgentId == agent.Id)
                         .OrderByDescending(session => session.UpdatedAt, StringComparer.Ordinal)
                         .FirstOrDefault()?.UpdatedAt),
+                IconPath = agent.IconPath,
                 AvatarPaletteIndex = AvatarPalette.From(agent.Name),
                 IsInteractionEnabled = true,
                 IsSelected = agent.Id == state.SelectedAgentId,

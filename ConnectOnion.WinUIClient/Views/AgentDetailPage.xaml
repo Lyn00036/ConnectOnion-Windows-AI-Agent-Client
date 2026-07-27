@@ -59,8 +59,7 @@
                         HorizontalAlignment="Center"
                         VerticalAlignment="Center"
                         Spacing="10">
-                <controls:AgentAvatar x:Name="AgentAvatarView"
-                                      Size="56"
+                <controls:AgentAvatar Size="56"
                                       CornerRadius="16"
                                       FontSize="18"
                                       HorizontalAlignment="Center"
