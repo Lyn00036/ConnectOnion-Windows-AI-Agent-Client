@@ -144,7 +144,7 @@ public sealed class AgentTurnExecutor : ITurnExecutor
                 ["type"] = f.Type,
             }).ToList(),
         };
-        return JsonSerializer.Serialize(frame);
+        return WireJson.Serialize(frame);
     }
 
     /// <summary>Re-serializes the onboarding gate so the projection sees the same shape whether it
@@ -152,7 +152,7 @@ public sealed class AgentTurnExecutor : ITurnExecutor
     /// (<c>methods</c>/<c>payment_amount</c>/<c>payment_address</c>) so
     /// <c>AgentInteractiveParsers.ParseOnboard</c> round-trips it.</summary>
     private static string BuildOnboardFrame(OnboardRequest r)
-        => JsonSerializer.Serialize(new Dictionary<string, object?>
+        => WireJson.Serialize(new Dictionary<string, object?>
         {
             ["type"] = "ONBOARD_REQUIRED",
             ["methods"] = r.Methods,
@@ -162,9 +162,9 @@ public sealed class AgentTurnExecutor : ITurnExecutor
 
     private static string BuildApprovalFrame(ApprovalRequest r)
     {
-        JsonElement args;
-        try { args = JsonSerializer.Deserialize<JsonElement>(r.ArgumentsJson); }
-        catch { args = JsonSerializer.Deserialize<JsonElement>("{}"); }
+        // JsonDocument.Parse rather than Deserialize<JsonElement>: same result, no reflection
+        // (see docs/TRIMMING.md). Clone, because the element does not outlive its document.
+        var args = ParseElement(r.ArgumentsJson) ?? ParseElement("{}")!.Value;
         var frame = new Dictionary<string, object?>
         {
             ["type"] = "approval_needed",
@@ -175,14 +175,26 @@ public sealed class AgentTurnExecutor : ITurnExecutor
         };
         if (!string.IsNullOrWhiteSpace(r.BatchRemainingJson))
         {
-            try { frame["batch_remaining"] = JsonSerializer.Deserialize<JsonElement>(r.BatchRemainingJson); }
-            catch { /* Optional preview data must not hide the approval itself. */ }
+            // Optional preview data must not hide the approval itself, so a parse failure
+            // simply leaves the key off.
+            if (ParseElement(r.BatchRemainingJson) is { } remaining)
+                frame["batch_remaining"] = remaining;
         }
-        return JsonSerializer.Serialize(frame);
+        return WireJson.Serialize(frame);
+    }
+
+    private static JsonElement? ParseElement(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            return doc.RootElement.Clone();
+        }
+        catch { return null; }
     }
 
     private static string BuildPlanFrame(PlanReviewRequest r)
-        => JsonSerializer.Serialize(new Dictionary<string, object?>
+        => WireJson.Serialize(new Dictionary<string, object?>
         {
             ["type"] = "plan_review",
             ["plan_content"] = r.PlanContent,

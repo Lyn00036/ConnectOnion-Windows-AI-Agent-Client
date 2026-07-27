@@ -51,6 +51,10 @@
     <Content Include="Assets\Fonts\JetBrainsMonoNerdFontMono-Bold.ttf" />
     <Content Include="Assets\Fonts\JetBrainsMonoNerdFontMono-BoldItalic.ttf" />
     <Content Include="Assets\Fonts\OFL.txt" />
+    <Content Include="..\THIRD-PARTY-NOTICES.md" Link="THIRD-PARTY-NOTICES.md">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
   </ItemGroup>
 
   <!-- Unpackaged publish does not automatically carry loose MSIX assets. Window/tray icons
@@ -110,9 +114,27 @@
     <PublishReadyToRun Condition="'$(Configuration)' == 'Debug'">False</PublishReadyToRun>
     <PublishReadyToRun Condition="'$(Configuration)' != 'Debug'">True</PublishReadyToRun>
     <PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>
-    <!-- The release audit found a real trim-only Tool Activity restoration failure and further
-         IL2026 warnings on protocol and interactive-response paths. Keep Release conservative
-         until every warned path has trim-safe JSON metadata and live-agent coverage. -->
+    <!--
+      LOAD-BEARING. Not a leftover default.
+
+      Trimming sets JsonSerializerIsReflectionEnabledByDefault=false, which turns every
+      reflection-based JsonSerializer call into a runtime failure rather than a risk. The
+      2026-07-25 release audit found that as a Tool Activity timeline that restored empty in
+      Release and worked perfectly in Debug. Those call sites are now trim-safe and a trimmed
+      smoke harness proves they survive a publish + restart, but the criteria that need a signed
+      MSIX, a real window and a same-machine performance comparison are still open.
+
+      Turning this on is gated on docs/TRIMMING.md, and tests/ConnectOnion.WinUIClient.UnitTests/
+      Architecture/TrimmingGateTests.cs fails the build if it changes before then.
+    -->
     <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">False</PublishTrimmed>
+    <GenerateAppInstallerFile>False</GenerateAppInstallerFile>
+    <AppxPackageSigningEnabled>True</AppxPackageSigningEnabled>
+    <PackageCertificateThumbprint>35589B9A6EF8FF79618AE60A00A484F0520338D7</PackageCertificateThumbprint>
+    <AppxPackageSigningTimestampDigestAlgorithm>SHA256</AppxPackageSigningTimestampDigestAlgorithm>
+    <AppxAutoIncrementPackageRevision>True</AppxAutoIncrementPackageRevision>
+    <GenerateTestArtifacts>False</GenerateTestArtifacts>
+    <AppxBundle>Never</AppxBundle>
+    <HoursBetweenUpdateChecks>0</HoursBetweenUpdateChecks>
   </PropertyGroup>
 </Project>

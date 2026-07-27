@@ -6,8 +6,8 @@ namespace ConnectOnion.Protocol;
 /// <summary>
 /// Builds the INPUT wire frame as a plain <see cref="Dictionary{TKey, TValue}"/>,
 /// matching <see cref="AgentConnectionService"/>'s existing convention of building
-/// every outgoing message as an untyped dictionary passed straight to
-/// <c>JsonSerializer.Serialize</c> (no source-gen context, no attribute-based DTOs).
+/// every outgoing message as an untyped dictionary, serialized by
+/// <see cref="WireJson"/> (no source-gen context, no attribute-based DTOs).
 ///
 /// Pulled out of <see cref="AgentConnectionService"/> so the exact shape — text-only,
 /// image-only, file-only, and mixed — is independently unit-testable without a live

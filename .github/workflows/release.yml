@@ -1,0 +1,458 @@
+name: Release
+
+# Tag-driven. Pushing `v1.2.3` builds, signs, audits and publishes; nothing else does.
+#
+# THE ORDERING IS THE POINT. Every gate runs before the GitHub Release is created, and the
+# release step is the last thing in the job. A failure anywhere leaves the tag pushed and no
+# release published — which is recoverable (delete the tag, fix, re-tag) in a way that a
+# half-published release with a broken installer is not. Artifacts are uploaded on failure too,
+# so a failed run is still diagnosable.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to build (e.g. v1.2.3). Dry run — never publishes a release.
+        type: string
+        required: true
+
+concurrency:
+  # Never cancel a release in progress: a half-run that gets cancelled between signing and
+  # publishing is exactly the state this workflow exists to avoid.
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build, sign and publish
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+      SOLUTION_PATH: ConnectOnion.WinUIClient/ConnectOnion.WinUIClient.sln
+      APP_PROJECT: ConnectOnion.WinUIClient/ConnectOnion.WinUIClient.csproj
+      CONFIGURATION: Release
+      # See ci.yml for why this is not called PLATFORM.
+      BUILD_PLATFORM: x64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        run: |
+          $version = if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
+            '${{ inputs.version }}'
+          } else {
+            '${{ github.ref_name }}'
+          }
+          if ($version -notmatch '^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') {
+            throw "Tag '$version' is not v<major>.<minor>.<patch>[-prerelease]."
+          }
+          $semver = $version.TrimStart('v')
+          "version=$version"   >> $env:GITHUB_OUTPUT
+          "semver=$semver"     >> $env:GITHUB_OUTPUT
+          # A prerelease tag publishes as a GitHub prerelease. Note MSIX cannot express the
+          # suffix (see Set-PackageIdentity.ps1), so two prereleases of one version look
+          # identical to Windows — docs/RELEASE.md says not to ship those to users.
+          "prerelease=$(if ($semver -match '-') { 'true' } else { 'false' })" >> $env:GITHUB_OUTPUT
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Set up Node.js for protocol conformance
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      # ---- Gate 1: the code is good ------------------------------------------------------------
+      #
+      # The full CI suite, repeated here rather than trusted from the commit's CI run. A tag can
+      # point at a commit CI never saw, or at one whose run predates a dependency change, and
+      # "it passed on main" is not a claim worth risking a signed installer on.
+
+      - name: Restore
+        shell: pwsh
+        run: dotnet restore $env:SOLUTION_PATH -p:Platform=$env:BUILD_PLATFORM
+
+      - name: Audit NuGet dependencies
+        shell: pwsh
+        run: dotnet list $env:SOLUTION_PATH package --vulnerable --include-transitive
+
+      - name: Build solution
+        shell: pwsh
+        run: >
+          dotnet build $env:SOLUTION_PATH
+          --configuration $env:CONFIGURATION
+          --no-restore
+          -p:Platform=$env:BUILD_PLATFORM
+          -p:Version=${{ steps.version.outputs.semver }}
+          -p:AppxPackageSigningEnabled=false
+          -p:GenerateAppxPackageOnBuild=false
+          -p:PublishReadyToRun=false
+          -p:PublishTrimmed=false
+
+      - name: Run protocol unit tests
+        shell: pwsh
+        run: dotnet test tests/ConnectOnion.Protocol.Tests/ConnectOnion.Protocol.Tests.csproj --configuration $env:CONFIGURATION
+
+      - name: Run headless client unit tests
+        shell: pwsh
+        run: dotnet test tests/ConnectOnion.WinUIClient.UnitTests/ConnectOnion.WinUIClient.UnitTests.csproj --configuration $env:CONFIGURATION
+
+      - name: Run database integration tests
+        shell: pwsh
+        run: dotnet test tests/ConnectOnion.IntegrationTests/ConnectOnion.IntegrationTests.csproj --configuration $env:CONFIGURATION
+
+      - name: Run protocol conformance gate
+        shell: pwsh
+        run: dotnet run --project ConnectOnion.Protocol.Conformance/ConnectOnion.Protocol.Conformance.csproj --configuration $env:CONFIGURATION
+
+      - name: Run trimmed serialization smoke harness
+        shell: pwsh
+        run: pwsh scripts/Invoke-TrimAudit.ps1 -SmokeOnly
+
+      # ---- Gate 2: the package identity is real ------------------------------------------------
+
+      - name: Stamp package identity
+        id: identity
+        shell: pwsh
+        env:
+          PUBLISHER_DN: ${{ secrets.SIGNING_PUBLISHER_DN }}
+        run: |
+          if (-not $env:PUBLISHER_DN) {
+            throw "SIGNING_PUBLISHER_DN is not set. It must match the signing certificate's subject exactly, or the package will not install. See docs/RELEASE.md."
+          }
+          pwsh scripts/Set-PackageIdentity.ps1 `
+            -Version '${{ steps.version.outputs.version }}' `
+            -PublisherDistinguishedName $env:PUBLISHER_DN
+
+      - name: Publish self-contained portable build
+        shell: pwsh
+        run: >
+          dotnet publish $env:APP_PROJECT
+          --configuration $env:CONFIGURATION
+          --runtime win-x64
+          --no-restore
+          --output artifacts/portable
+          -p:Platform=$env:BUILD_PLATFORM
+          -p:Version=${{ steps.version.outputs.semver }}
+          -p:RunUnpackaged=true
+          -p:SelfContained=true
+          -p:PublishSingleFile=false
+          -p:PublishTrimmed=false
+          -p:PublishReadyToRun=true
+          -p:DebugSymbols=false
+          -p:DebugType=None
+          -p:AppxPackageSigningEnabled=false
+
+      - name: Build MSIX
+        shell: pwsh
+        run: |
+          # Full MSBuild, not `dotnet build`: single-project MSIX packaging targets ship with
+          # Visual Studio and are not part of the .NET SDK.
+          # PublishTrimmed stays false — gated separately by docs/TRIMMING.md, and shrinking the
+          # package is explicitly not a reason to turn it on.
+          msbuild $env:APP_PROJECT `
+            /p:Configuration=$env:CONFIGURATION `
+            /p:Platform=$env:BUILD_PLATFORM `
+            /p:RuntimeIdentifier=win-x64 `
+            /p:Version=${{ steps.version.outputs.semver }} `
+            /p:SelfContained=true `
+            /p:WindowsAppSDKSelfContained=true `
+            /p:AppxPackageDir=$env:GITHUB_WORKSPACE\artifacts\package\ `
+            /p:UapAppxPackageBuildMode=SideloadOnly `
+            /p:AppxBundle=Never `
+            /p:GenerateAppxPackageOnBuild=true `
+            /p:AppxPackageSigningEnabled=false `
+            /p:PublishTrimmed=false `
+            /p:PublishReadyToRun=true `
+            /restore /v:minimal /nologo
+
+      # MSBuild's output directory is not a release directory: a SideloadOnly build drops the
+      # package inside a `<project>_<version>_<platform>_Test` folder next to Add-AppDevPackage.ps1,
+      # Install.ps1 and a Dependencies tree. Everything downstream — checksums, the upload, the
+      # release assets — must operate on exactly the files we intend to publish and nothing else,
+      # so the intended files are moved into their own directory here and no later step ever
+      # recurses into the build output.
+      - name: Stage release assets
+        id: collect
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts/publish | Out-Null
+
+          # Matched by the project's own package name rather than by picking the largest file:
+          # the Dependencies tree can carry framework packages, and "biggest .msix wins" is a
+          # heuristic that holds right up until it doesn't.
+          $msix = @(Get-ChildItem -Path artifacts/package -Recurse -File -Filter 'ConnectOnion.WinUIClient_*.msix' |
+            Where-Object { $_.FullName -notmatch '[\\/]Dependencies[\\/]' })
+          if ($msix.Count -ne 1) {
+            Get-ChildItem artifacts/package -Recurse -File -Filter *.msix | ForEach-Object { Write-Host $_.FullName }
+            throw "Expected exactly one application .msix, found $($msix.Count)."
+          }
+
+          $final = "artifacts/publish/ConnectOnion.Desktop-${{ steps.version.outputs.version }}-x64.msix"
+          Move-Item -Force $msix[0].FullName $final
+          "msix=$final" >> $env:GITHUB_OUTPUT
+
+          # The portable release is the unpackaged self-contained publish, not one executable:
+          # Windows App SDK and the .NET runtime are loose files and must stay together. Archive
+          # the directory contents at the ZIP root so extracting it exposes the executable
+          # directly instead of adding an otherwise-useless publish/ nesting level.
+          $portableRoot = 'artifacts/portable'
+          $portableExe = Join-Path $portableRoot 'ConnectOnion.WinUIClient.exe'
+          if (-not (Test-Path $portableExe)) {
+            throw "Portable publish did not produce $portableExe."
+          }
+          if (-not (Test-Path (Join-Path $portableRoot 'coreclr.dll'))) {
+            throw "Portable publish is not self-contained: coreclr.dll is missing."
+          }
+
+          $portable = "artifacts/publish/ConnectOnion.Desktop-${{ steps.version.outputs.version }}-x64-portable.zip"
+          Compress-Archive -Path (Join-Path $portableRoot '*') `
+            -DestinationPath $portable -CompressionLevel Optimal
+          "portable=$portable" >> $env:GITHUB_OUTPUT
+
+          # Symbols travel as their own artifact, never inside the package.
+          $sym = @(Get-ChildItem -Path artifacts/package -Recurse -File -Filter *.appxsym |
+            Where-Object { $_.FullName -notmatch '[\\/]Dependencies[\\/]' })
+          if ($sym.Count -ge 1) {
+            Move-Item -Force $sym[0].FullName "artifacts/publish/ConnectOnion.Desktop-${{ steps.version.outputs.version }}-x64.appxsym"
+          } else {
+            # Not fatal: .appxsym needs mspdbcmf.exe, which is not on every image. The release
+            # simply ships without symbols rather than failing over a diagnostic aid.
+            Write-Warning "No .appxsym produced; the release will have no symbols artifact."
+          }
+
+          Get-ChildItem artifacts/publish | ForEach-Object { Write-Host "staged: $($_.Name)" }
+
+      # ---- Gate 3: sign ------------------------------------------------------------------------
+
+      - name: Sign MSIX
+        shell: pwsh
+        env:
+          CERT_BASE64: ${{ secrets.SIGNING_CERTIFICATE_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.SIGNING_CERTIFICATE_PASSWORD }}
+        run: |
+          if (-not $env:CERT_BASE64) {
+            throw "SIGNING_CERTIFICATE_BASE64 is not set; refusing to publish an unsigned package. See docs/RELEASE.md."
+          }
+
+          $pfx = Join-Path $env:RUNNER_TEMP 'signing.pfx'
+          try {
+            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:CERT_BASE64))
+
+            $signtool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Recurse -Filter signtool.exe |
+              Where-Object { $_.FullName -match 'x64' } |
+              Sort-Object FullName -Descending | Select-Object -First 1
+            if (-not $signtool) { throw "signtool.exe not found on this runner." }
+
+            # /tr + /td: an RFC3161 countersignature, so the signature keeps verifying after the
+            # certificate expires. Without it every installer stops installing on expiry day.
+            & $signtool.FullName sign `
+              /fd SHA256 `
+              /f $pfx `
+              /p $env:CERT_PASSWORD `
+              /tr http://timestamp.digicert.com `
+              /td SHA256 `
+              '${{ steps.collect.outputs.msix }}'
+            if ($LASTEXITCODE -ne 0) { throw "signtool sign failed with exit code $LASTEXITCODE." }
+          }
+          finally {
+            # The key must not survive the step, even on failure.
+            if (Test-Path $pfx) { Remove-Item -Force $pfx }
+          }
+
+      - name: Verify signature
+        shell: pwsh
+        run: |
+          $signtool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Recurse -Filter signtool.exe |
+            Where-Object { $_.FullName -match 'x64' } |
+            Sort-Object FullName -Descending | Select-Object -First 1
+
+          # /pa: the Authenticode policy a client actually applies. Verifying under any weaker
+          # policy would pass here and fail on the user's machine.
+          & $signtool.FullName verify /pa /v '${{ steps.collect.outputs.msix }}'
+          if ($LASTEXITCODE -ne 0) { throw "The package did not verify; refusing to publish." }
+
+      # ---- Gate 4: the package is publishable --------------------------------------------------
+
+      - name: Audit package contents and size
+        id: audit
+        shell: pwsh
+        run: pwsh scripts/Test-PackageContents.ps1 -PackagePath '${{ steps.collect.outputs.msix }}'
+
+      - name: Audit portable ZIP contents and size
+        id: portable_audit
+        shell: pwsh
+        run: pwsh scripts/Test-PackageContents.ps1 -PackagePath '${{ steps.collect.outputs.portable }}'
+
+      - name: Verify stamped manifest inside the package
+        shell: pwsh
+        run: |
+          # Reads the manifest back out of the signed artifact rather than trusting the working
+          # tree: this is the copy users get, and a stamping step that silently no-ops would
+          # otherwise ship a 0.0.0.0 package that can never be upgraded from.
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [IO.Compression.ZipFile]::OpenRead((Resolve-Path '${{ steps.collect.outputs.msix }}'))
+          try {
+            $entry = $zip.Entries | Where-Object { $_.FullName -eq 'AppxManifest.xml' }
+            if (-not $entry) { throw "No AppxManifest.xml inside the package." }
+            $reader = New-Object IO.StreamReader($entry.Open())
+            $xml = [xml]$reader.ReadToEnd()
+          }
+          finally { $zip.Dispose() }
+
+          $identity = $xml.Package.Identity
+          Write-Host "Name=$($identity.Name) Publisher=$($identity.Publisher) Version=$($identity.Version)"
+
+          $expected = '${{ steps.version.outputs.semver }}'.Split('-')[0] + '.0'
+          if ($identity.Version -ne $expected) { throw "Package version is $($identity.Version), expected $expected." }
+          if ($identity.Name -ne 'ConnectOnion.Desktop') { throw "Upgrade identity changed: $($identity.Name). See docs/RELEASE.md." }
+          if ($identity.Publisher -match 'CN=ROG') { throw "Development publisher reached the package." }
+
+      - name: Compute checksums
+        id: checksums
+        shell: pwsh
+        run: |
+          # Flat, over the staging directory only — every file here is one we publish.
+          $lines = @()
+          foreach ($file in Get-ChildItem artifacts/publish -File | Sort-Object Name) {
+            $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            $lines += "$hash  $($file.Name)"
+          }
+          if ($lines.Count -eq 0) { throw "Nothing staged to checksum." }
+          $path = 'artifacts/publish/SHA256SUMS.txt'
+          $lines | Out-File -FilePath $path -Encoding ascii
+          Get-Content $path | Write-Host
+          "file=$path" >> $env:GITHUB_OUTPUT
+
+      # Uploaded before the release is created, and on failure too — a run that fails the audit
+      # still has to be diagnosable without re-running the whole build.
+      - name: Upload build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ steps.version.outputs.version }}
+          path: artifacts/publish/
+          if-no-files-found: warn
+
+      - name: Compose release notes
+        id: notes
+        shell: pwsh
+        run: |
+          $previous = git tag --list 'v*' --sort=-v:refname |
+            Where-Object { $_ -ne '${{ steps.version.outputs.version }}' } |
+            Select-Object -First 1
+
+          # With no previous tag there is no meaningful range: `git log HEAD` would paste the
+          # project's entire history into the release notes. The first release says so instead.
+          # A dispatch dry-run builds a version that deliberately has no tag yet, so its upper
+          # revision is the checked-out commit. A tag-triggered run uses the tag itself.
+          $upperRevision = if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
+            '${{ github.sha }}'
+          } else {
+            '${{ steps.version.outputs.version }}'
+          }
+
+          $log = if ($previous) {
+            git log "$previous..$upperRevision" --no-merges --pretty=format:'- %s (%h)'
+          } else {
+            $null
+          }
+
+          $notes = @(
+            "## ConnectOnion Desktop ${{ steps.version.outputs.version }}",
+            "",
+            "### Install",
+            "",
+            "**Installer:** download the `.msix` and open it. Windows verifies the signature and installs it;",
+            "an existing install with the same identity is upgraded in place, keeping your",
+            "conversations and your agent identity.",
+            "",
+            "**Portable:** download the `-portable.zip`, extract the whole archive, then run",
+            "`ConnectOnion.WinUIClient.exe`. Keep the extracted files together. This unpackaged",
+            "build does not install or participate in MSIX upgrades.",
+            "",
+            "Verify the download before installing:",
+            "",
+            '```powershell',
+            "Get-FileHash .\ConnectOnion.Desktop-${{ steps.version.outputs.version }}-x64.msix -Algorithm SHA256",
+            "Get-FileHash .\ConnectOnion.Desktop-${{ steps.version.outputs.version }}-x64-portable.zip -Algorithm SHA256",
+            '```',
+            "",
+            "Compare against `SHA256SUMS.txt`.",
+            "",
+            "### Package",
+            "",
+            "| Asset | Architecture | Download | Expanded |",
+            "|---|---|---:|---:|",
+            "| MSIX installer | x64 | ${{ steps.audit.outputs.compressed_mb }} MB | ${{ steps.audit.outputs.unpacked_mb }} MB |",
+            "| Portable ZIP | x64 | ${{ steps.portable_audit.outputs.compressed_mb }} MB | ${{ steps.portable_audit.outputs.unpacked_mb }} MB |",
+            "",
+            "### Changes",
+            "",
+            $(if ($log) { $log } else { '- Initial release.' })
+          ) -join "`n"
+
+          $notes | Out-File -FilePath release-notes.md -Encoding utf8
+          Write-Host $notes
+
+      # ---- Publish. Last step, on purpose. ------------------------------------------------------
+
+      # `gh` rather than a marketplace action: it is preinstalled on the runner, so publishing the
+      # signed artifact adds no third-party code to the release path.
+      - name: Create GitHub Release
+        if: ${{ github.event_name == 'push' }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $assets = @(Get-ChildItem artifacts/publish -File)
+          if (-not ($assets | Where-Object Extension -eq '.msix')) {
+            throw "No .msix to publish."
+          }
+          if (-not ($assets | Where-Object Name -like '*-portable.zip')) {
+            throw "No portable ZIP to publish."
+          }
+
+          # Not $args: that is an automatic variable holding the script's own arguments, and
+          # assigning to it then splatting it is asking for a surprise on the one code path that
+          # must not surprise anyone.
+          $ghArgs = @(
+            'release', 'create', '${{ steps.version.outputs.version }}',
+            '--title', 'ConnectOnion Desktop ${{ steps.version.outputs.version }}',
+            '--notes-file', 'release-notes.md',
+            '--verify-tag'
+          )
+          if ('${{ steps.version.outputs.prerelease }}' -eq 'true') { $ghArgs += '--prerelease' }
+          $ghArgs += $assets.FullName
+
+          gh @ghArgs
+          if ($LASTEXITCODE -ne 0) { throw "gh release create failed with exit code $LASTEXITCODE." }
+
+          Write-Host "Published:"
+          $assets | ForEach-Object { Write-Host "  $($_.Name)" }
+
+      - name: Dry-run summary
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        shell: pwsh
+        run: |
+          "Dry run for ${{ steps.version.outputs.version }} — every gate passed, no release published." |
+            Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8

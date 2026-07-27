@@ -1,5 +1,8 @@
+using System.Runtime.InteropServices;
 using FlaUI.Core;
 using FlaUI.Core.AutomationElements;
+using FlaUI.Core.Capturing;
+using FlaUI.Core.Input;
 using FlaUI.UIA3;
 
 namespace ConnectOnion.WinUIClient.UITests;
@@ -7,6 +10,9 @@ namespace ConnectOnion.WinUIClient.UITests;
 public sealed class ShellSmokeTests
 {
     public const string ExecutableEnvironmentVariable = "CONNECTONION_UI_TEST_EXE";
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr windowHandle);
 
     [Fact]
     public void Launch_ShowsResponsiveConnectOnionWindow()
@@ -17,17 +23,15 @@ public sealed class ShellSmokeTests
         var window = launched.Window;
         Assert.Contains("ConnectOnion", window.Title, StringComparison.OrdinalIgnoreCase);
         Assert.True(window.IsEnabled);
-        Assert.NotNull(window.FindFirstDescendant(query => query.ByAutomationId("SettingsButton")));
+        Assert.NotNull(WaitForDescendant(window, "AccountMenuButton"));
     }
 
     /// <summary>
-    /// Clicking the sidebar's Settings button shows the settings overlay. This is the first
-    /// coverage of an actual interaction (the other test only asserts the shell renders), and it
-    /// is what catches a change to how the overlay is constructed or wired — an attempt to defer
-    /// it with <c>x:Load</c> failed exactly here, silently, with the button doing nothing.
+    /// Opening the sidebar's account menu and clicking Settings shows the settings overlay. This
+    /// covers a real flyout interaction as well as the shell-to-overlay wiring.
     /// </summary>
     [Fact]
-    public void SettingsButton_Click_ShowsSettingsOverlay()
+    public void AccountMenu_SettingsClick_ShowsSettingsOverlay()
     {
         using var launched = LaunchApp();
         if (launched is null) return;
@@ -41,33 +45,116 @@ public sealed class ShellSmokeTests
 
         Assert.Null(window.FindFirstDescendant(query => query.ByAutomationId(settingsContentId)));
 
-        var settingsButton = window.FindFirstDescendant(query => query.ByAutomationId("SettingsButton"));
-        Assert.NotNull(settingsButton);
-        settingsButton.AsButton().Invoke();
+        OpenSettings(window);
+    }
 
-        // The overlay's show animation is not instant; poll rather than sleep a fixed amount, so
-        // a slow machine does not fail a working build.
-        //
-        // The COMException catch is required, not defensive: UIA throws E_UNEXPECTED
-        // ("Catastrophic failure") when a FindFirst races a visual-tree mutation, which is
-        // exactly what showing the overlay is. It means "ask again", not "broken".
-        AutomationElement? overlay = null;
-        var deadline = DateTime.UtcNow.AddSeconds(10);
-        while (DateTime.UtcNow < deadline && overlay is null)
+    [Fact]
+    public void AccountMenu_KeyboardShortcutsRow_HasRoomForBothLabels()
+    {
+        using var launched = LaunchApp();
+        if (launched is null) return;
+
+        var window = launched.Window;
+        OpenAccountMenu(window);
+
+        var shortcuts = WaitForDescendant(window, "AccountKeyboardShortcutsMenuItem");
+        Assert.NotNull(shortcuts);
+        Assert.Equal("Keyboard Shortcuts", shortcuts.Properties.Name.ValueOrDefault);
+
+        // The previous 236 px flyout left only about 222 px for each row after its border and
+        // padding, clipping the end of the left label beside Ctrl+Shift+/. Keep the row's real
+        // rendered width under test so the visual regression is caught without screenshot OCR.
+        Assert.True(
+            shortcuts.BoundingRectangle.Width >= 250,
+            $"Keyboard Shortcuts row was only {shortcuts.BoundingRectangle.Width}px wide.");
+    }
+
+    [Fact]
+    public void CloseToTray_SecondLaunch_RestoresTheResponsiveWindow()
+    {
+        using var launched = LaunchApp();
+        if (launched is null) return;
+
+        var windowHandle = launched.Process.MainWindowHandle;
+        Assert.NotEqual(IntPtr.Zero, windowHandle);
+        var originalMousePosition = Mouse.Position;
+
+        try
         {
-            try
+            // Reproduce the real bug: a physical click leaves the pointer and DWM hover state on
+            // the caption Close button when WM_CLOSE is consumed and the window is hidden.
+            var initialBounds = launched.Window.BoundingRectangle;
+            Mouse.MoveTo(initialBounds.Right - 23, initialBounds.Top + 16);
+            Thread.Sleep(150);
+            Mouse.LeftClick();
+            Assert.True(WaitUntil(() => !IsWindowVisible(windowHandle)), "window did not hide to tray");
+
+            // Move while the HWND is hidden, so it receives no non-client mouse transition.
+            Mouse.MoveTo(initialBounds.Left + initialBounds.Width / 2,
+                initialBounds.Top + initialBounds.Height / 2);
+
+            var executable = Environment.GetEnvironmentVariable(ExecutableEnvironmentVariable);
+            Assert.False(string.IsNullOrWhiteSpace(executable));
+            using var redirected = System.Diagnostics.Process.Start(
+                new System.Diagnostics.ProcessStartInfo(executable!)
+                {
+                    UseShellExecute = true,
+                });
+            Assert.NotNull(redirected);
+
+            Assert.True(
+                WaitUntil(() =>
+                {
+                    launched.Process.Refresh();
+                    return IsWindowVisible(windowHandle)
+                        && !launched.Process.HasExited
+                        && launched.Process.Responding;
+                }),
+                "redirected launch did not restore the tray window");
+
+            Assert.NotNull(WaitForDescendant(launched.Window, "AccountMenuButton"));
+
+            // Give the queued low-priority non-client tracking request time to deliver its real
+            // WM_NCMOUSELEAVE, then inspect the actual pixels of the caption Close button.
+            Thread.Sleep(350);
+            var restoredBounds = launched.Window.BoundingRectangle;
+            var closeBounds = new System.Drawing.Rectangle(
+                restoredBounds.Right - 46,
+                restoredBounds.Top,
+                46,
+                32);
+            using var closeCapture = Capture.Rectangle(closeBounds, new CaptureSettings());
+
+            var captureDirectory = Environment.GetEnvironmentVariable("CONNECTONION_UI_CAPTURE_DIR");
+            if (!string.IsNullOrWhiteSpace(captureDirectory))
             {
-                overlay = window.FindFirstDescendant(query => query.ByAutomationId(settingsContentId));
-            }
-            catch (System.Runtime.InteropServices.COMException)
-            {
-                // Tree changed under the query; retry below.
+                Directory.CreateDirectory(captureDirectory);
+                closeCapture.ToFile(Path.Combine(captureDirectory, "caption-close-after-tray-restore.png"));
             }
 
-            if (overlay is null) Thread.Sleep(150);
+            var redPixels = 0;
+            for (var y = 0; y < closeCapture.Bitmap.Height; y++)
+            {
+                for (var x = 0; x < closeCapture.Bitmap.Width; x++)
+                {
+                    var pixel = closeCapture.Bitmap.GetPixel(x, y);
+                    if (pixel.R >= 180
+                        && pixel.R > pixel.G * 1.5
+                        && pixel.R > pixel.B * 1.3)
+                    {
+                        redPixels++;
+                    }
+                }
+            }
+
+            Assert.True(
+                redPixels < 100,
+                $"caption Close button retained its red hover state ({redPixels} red pixels)");
         }
-
-        Assert.NotNull(overlay);
+        finally
+        {
+            Mouse.MoveTo(originalMousePosition);
+        }
     }
 
     [Fact]
@@ -77,8 +164,7 @@ public sealed class ShellSmokeTests
         if (launched is null) return;
 
         var window = launched.Window;
-        window.FindFirstDescendant(query => query.ByAutomationId("SettingsButton"))?.AsButton().Invoke();
-        Assert.NotNull(WaitForDescendant(window, "GeneralNav"));
+        OpenSettings(window);
 
         var agentsNav = window.FindFirstDescendant(query => query.ByAutomationId("AgentsNav"));
         Assert.NotNull(agentsNav);
@@ -125,8 +211,7 @@ public sealed class ShellSmokeTests
         if (launched is null) return;
 
         var window = launched.Window;
-        window.FindFirstDescendant(query => query.ByAutomationId("SettingsButton"))?.AsButton().Invoke();
-        Assert.NotNull(WaitForDescendant(window, "GeneralNav"));
+        OpenSettings(window);
 
         var identityNav = window.FindFirstDescendant(query => query.ByAutomationId("IdentityNav"));
         Assert.NotNull(identityNav);
@@ -145,7 +230,7 @@ public sealed class ShellSmokeTests
     }
 
     /// <summary>Polls for a Text element with the given content, tolerating the COMException a
-    /// mutating visual tree throws (see the note in <see cref="SettingsButton_Click_ShowsSettingsOverlay"/>).</summary>
+    /// mutating visual tree throws.</summary>
     private static AutomationElement? WaitForText(AutomationElement window, string text)
     {
         var deadline = DateTime.UtcNow.AddSeconds(10);
@@ -216,12 +301,14 @@ public sealed class ShellSmokeTests
 
         var window = launched.Window;
 
-        window.FindFirstDescendant(query => query.ByAutomationId("SettingsButton"))?.AsButton().Invoke();
-        Assert.NotNull(WaitForDescendant(window, "GeneralNav"));
+        OpenSettings(window);
 
-        var usageNav = window.FindFirstDescendant(query => query.ByName("Token usage"));
+        var usageNav = WaitForDescendant(window, "UsageNav");
         Assert.NotNull(usageNav);
         usageNav.AsRadioButton().Click();
+        Assert.True(
+            WaitUntil(() => usageNav.AsRadioButton().IsChecked == true),
+            "Usage settings category was not selected.");
 
         // A fresh profile has no usage, so every square is an empty day — which is exactly the
         // case worth pinning: the grid must still render rather than collapsing to nothing.
@@ -250,8 +337,28 @@ public sealed class ShellSmokeTests
         Assert.NotNull(square);
     }
 
+    /// <summary>Opens the account flyout, then follows its Settings command into the modal.</summary>
+    internal static void OpenSettings(Window window)
+    {
+        OpenAccountMenu(window);
+
+        // Flyout content does not exist in the UIA tree until its owner opens it.
+        var settingsButton = WaitForDescendant(window, "SettingsButton");
+        Assert.NotNull(settingsButton);
+        settingsButton.AsButton().Invoke();
+
+        Assert.NotNull(WaitForDescendant(window, "GeneralNav"));
+    }
+
+    private static void OpenAccountMenu(Window window)
+    {
+        var accountMenuButton = WaitForDescendant(window, "AccountMenuButton");
+        Assert.NotNull(accountMenuButton);
+        accountMenuButton.AsButton().Invoke();
+    }
+
     /// <summary>Polls for a descendant, tolerating the transient UIA failures a mutating visual
-    /// tree produces (see the note in <see cref="SettingsButton_Click_ShowsSettingsOverlay"/>).</summary>
+    /// tree produces.</summary>
     private static AutomationElement? WaitForDescendant(Window window, string automationId)
     {
         AutomationElement? found = null;
@@ -271,6 +378,26 @@ public sealed class ShellSmokeTests
         }
 
         return found;
+    }
+
+    private static bool WaitUntil(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                if (condition()) return true;
+            }
+            catch (InvalidOperationException)
+            {
+                // The process/window can be between hidden and visible states; retry below.
+            }
+
+            Thread.Sleep(100);
+        }
+
+        return false;
     }
 
     /// <summary>

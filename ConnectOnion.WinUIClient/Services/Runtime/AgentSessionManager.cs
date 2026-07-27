@@ -409,7 +409,7 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
             "reconnecting",
             $"Reconnecting (attempt {e.Attempt}/{ReconnectPolicy.MaxAttempts})",
             null,
-            JsonSerializer.Serialize(new Dictionary<string, object?>
+            WireJson.Serialize(new Dictionary<string, object?>
             {
                 ["type"] = "reconnecting",
                 ["attempt"] = e.Attempt,
@@ -421,7 +421,7 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
             "reconnected",
             "Reconnected",
             null,
-            JsonSerializer.Serialize(new Dictionary<string, object?>
+            WireJson.Serialize(new Dictionary<string, object?>
             {
                 ["type"] = "reconnected",
                 ["status"] = state.Status,

@@ -57,6 +57,34 @@ public sealed class AgentConnectionServiceTests
     }
 
     [Fact]
+    public async Task SendInputAsync_OversizedFrame_ClosesWithMessageTooBig()
+    {
+        WebSocketCloseStatus? closeStatus = null;
+        await using var server = new FakeAgentServer(async (socket, ct) =>
+        {
+            await FakeAgentServer.ReceiveTextAsync(socket, ct);
+            await FakeAgentServer.SendTextAsync(socket, "{\"type\":\"CONNECTED\"}", ct);
+            await FakeAgentServer.ReceiveTextAsync(socket, ct);
+
+            var fragment = new byte[40];
+            await socket.SendAsync(fragment, WebSocketMessageType.Text, endOfMessage: false, ct);
+            await socket.SendAsync(fragment, WebSocketMessageType.Text, endOfMessage: true, ct);
+
+            var result = await socket.ReceiveAsync(new byte[128], ct);
+            closeStatus = result.CloseStatus;
+        });
+        await using var service = Service(server);
+        service.IncomingFrameSizeLimitBytes = 64;
+
+        var error = await Assert.ThrowsAsync<WebSocketException>(
+            () => service.SendInputAsync("hello", null));
+
+        Assert.Contains("exceeded 64 bytes", error.Message, StringComparison.Ordinal);
+        await server.Completion;
+        Assert.Equal(WebSocketCloseStatus.MessageTooBig, closeStatus);
+    }
+
+    [Fact]
     public async Task SendInterruptAsync_ActiveTurn_SendsExactFrameOnExistingSocket()
     {
         string? interruptJson = null;

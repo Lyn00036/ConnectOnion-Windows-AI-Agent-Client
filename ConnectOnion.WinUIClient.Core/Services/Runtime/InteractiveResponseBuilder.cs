@@ -1,4 +1,4 @@
-using System.Text.Json;
+using ConnectOnion.Protocol;
 using ConnectOnion.WinUIClient.Models;
 
 namespace ConnectOnion.WinUIClient.Services.Runtime;
@@ -28,7 +28,9 @@ public static class InteractiveResponseBuilder
         {
             var values = new Dictionary<string, string>();
             foreach (var entry in message.AskUserFields) values[entry.Name] = entry.Value.Trim();
-            return JsonSerializer.Serialize(values);
+            // WireJson, not JsonSerializer: this string goes on the socket, and the reflection
+            // serializer throws under trimming (see docs/TRIMMING.md). Byte-identical output.
+            return WireJson.SerializeStringMap(values);
         }
 
         if (!string.IsNullOrWhiteSpace(message.AskUserFreeText))

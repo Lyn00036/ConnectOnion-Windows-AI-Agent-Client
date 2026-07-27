@@ -9,16 +9,37 @@
   xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
   IgnorableNamespaces="uap rescap com desktop">
 
-  <Identity
-    Name="779a2035-a8d1-4bc8-91cf-82aecda14cc5"
-    Publisher="CN=ROG"
-    Version="1.0.0.0" />
+  <!--
+    PACKAGE IDENTITY — see docs/RELEASE.md before touching any of this.
 
+    Name + Publisher together are the *upgrade identity*. Windows treats a package whose pair
+    differs as a completely different application: it installs side by side instead of upgrading,
+    and it gets a different %LOCALAPPDATA%\Packages\<Name>_<publisher hash>\ folder, so the user's
+    conversations and their DPAPI-protected identity are still on disk but the new install cannot
+    see them. There is no rename path afterwards. Both values are therefore fixed as of the first
+    release and must never change.
+
+    Publisher must match the signing certificate's subject byte for byte or the package will not
+    install. The value below is the default for local and self-signed builds; the release workflow
+    overwrites it with the SIGNING_PUBLISHER_DN secret so the manifest always agrees with whatever
+    certificate actually signed it.
+
+    Version is 0.0.0.0 on purpose — an obviously-not-a-release placeholder. Every packaged build
+    that matters gets its version from the git tag via scripts/Set-PackageIdentity.ps1; a package
+    that reaches a user still carrying 0.0.0.0 means the release pipeline was bypassed.
+  -->
+  <Identity
+    Name="ConnectOnion.Desktop"
+    Publisher="CN=ConnectOnion"
+    Version="0.0.0.0" />
+
+  <!-- Vestigial: the mp: namespace is a Windows Phone leftover that desktop ignores. Left at its
+       original GUID because nothing reads it and churning it buys nothing. -->
   <mp:PhoneIdentity PhoneProductId="779a2035-a8d1-4bc8-91cf-82aecda14cc5" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 
   <Properties>
-    <DisplayName>ConnectOnion.WinUIClient</DisplayName>
-    <PublisherDisplayName>ROG</PublisherDisplayName>
+    <DisplayName>ConnectOnion Desktop</DisplayName>
+    <PublisherDisplayName>ConnectOnion</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
 
@@ -36,8 +57,8 @@
       Executable="$targetnametoken$.exe"
       EntryPoint="$targetentrypoint$">
       <uap:VisualElements
-        DisplayName="ConnectOnion.WinUIClient"
-        Description="ConnectOnion.WinUIClient"
+        DisplayName="ConnectOnion Desktop"
+        Description="Chat with ConnectOnion agents over WebSocket."
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png">

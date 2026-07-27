@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Net.Http;
 using System.Net.WebSockets;
 using System.Text;
@@ -580,14 +581,20 @@ public sealed class AgentConnectionService : IAsyncDisposable
 
     private static AskUserRequest ParseAskUser(WireMessage msg) => AgentInteractiveParsers.ParseAskUser(msg);
 
-    /// <summary>Frame-reassembly buffer above this size is dropped rather than reused (see below).</summary>
-    private const int MaxRetainedFrameCapacity = 64 * 1024;
+    /// <summary>
+    /// A 50 MiB agent image expands to about 66.7 MiB as base64. Leave room for its data-URL
+    /// prefix and JSON envelope, but reject an unbounded or never-ending frame before it can
+    /// exhaust the desktop process.
+    /// </summary>
+    public const int MaxIncomingFrameBytes = 80 * 1024 * 1024;
+
+    internal int IncomingFrameSizeLimitBytes { get; set; } = MaxIncomingFrameBytes;
 
     private async Task ReceiveLoopAsync(CancellationToken ct)
     {
         var ws = _ws!;
         var buffer = new byte[16 * 1024];
-        var frame = new StringBuilder();
+        using var frame = new MemoryStream();
         try
         {
             while (!ct.IsCancellationRequested && ws.State == WebSocketState.Open)
@@ -599,16 +606,37 @@ public sealed class AgentConnectionService : IAsyncDisposable
                     return;
                 }
 
-                frame.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
+                if (result.MessageType != WebSocketMessageType.Text)
+                {
+                    await ws.CloseOutputAsync(
+                        WebSocketCloseStatus.InvalidMessageType,
+                        "Only text protocol frames are supported.",
+                        CancellationToken.None).ConfigureAwait(false);
+                    HandleConnectionLoss(new WebSocketException("Server sent a non-text protocol frame"));
+                    return;
+                }
+
+                if (frame.Length + result.Count > IncomingFrameSizeLimitBytes)
+                {
+                    await ws.CloseOutputAsync(
+                        WebSocketCloseStatus.MessageTooBig,
+                        "Incoming protocol frame exceeded the client limit.",
+                        CancellationToken.None).ConfigureAwait(false);
+                    HandleConnectionLoss(new WebSocketException(
+                        $"Incoming WebSocket frame exceeded {IncomingFrameSizeLimitBytes} bytes"));
+                    return;
+                }
+
+                frame.Write(buffer, 0, result.Count);
                 if (!result.EndOfMessage) continue;
 
-                var json = frame.ToString();
-                // Clear() keeps the capacity, so one multi-megabyte frame (a base64 image, an
-                // LLM call carrying the whole message history) would otherwise leave that buffer
-                // resident on the connection for as long as it lives. Reassemble small frames in
-                // the existing builder; start fresh after an outsized one.
-                if (frame.Capacity > MaxRetainedFrameCapacity) frame = new StringBuilder();
-                else frame.Clear();
+                // Decode once after the complete frame is present. Decoding each WebSocket
+                // fragment independently corrupts a UTF-8 code point split across fragments.
+                var json = Encoding.UTF8.GetString(
+                    frame.GetBuffer(),
+                    0,
+                    checked((int)frame.Length));
+                frame.SetLength(0);
                 _lastActivityUtc = DateTime.UtcNow;
                 await HandleMessageAsync(json, ct).ConfigureAwait(false);
             }
@@ -806,7 +834,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
             compact["session"] = sessionState;
         }
 
-        return JsonSerializer.Serialize(compact);
+        return WireJson.Serialize(compact);
     }
 
     private static void CopyScalar(
@@ -981,7 +1009,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
 
     private async Task SendJsonAsync(Dictionary<string, object?> message, CancellationToken ct)
     {
-        var json = JsonSerializer.Serialize(message);
+        var json = WireJson.Serialize(message);
         var bytes = Encoding.UTF8.GetBytes(json);
         await _ws!.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, ct)
             .ConfigureAwait(false);

@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -758,6 +760,83 @@ public static class EndpointResolver
         {
             return [];
         }
+    }
+
+    /// <summary>
+    /// Writes an <see cref="AgentInfo"/> back out in the same <c>/info</c> document shape the
+    /// parsers above read, for the relay path — where the client composes the blob itself rather
+    /// than storing an agent's own response verbatim.
+    ///
+    /// <para><b>Lives here, beside <see cref="NormalizeSkills"/> and
+    /// <see cref="ParseAcceptedInputs"/>, because the two halves have to agree key for key.</b>
+    /// The caller previously built this document by handing an anonymous type to
+    /// <c>JsonSerializer.Serialize</c>, which is both reflection-based (it throws outright under
+    /// trimming — see <c>docs/TRIMMING.md</c>) and, having no naming policy, emitted the nested
+    /// records with their C# names: <c>{"Name":…,"Description":…}</c> for a skill and
+    /// <c>{"Text":…,"Images":…,"Files":{"MaxFileSizeMb":…}}</c> for the capabilities. The parsers
+    /// look for <c>name</c>, <c>description</c>, <c>text</c>, <c>images</c> and
+    /// <c>max_file_size_mb</c>, so every relay-composed blob silently read back with no skills
+    /// and no declared capabilities. Emitting the document by hand fixes both problems at once,
+    /// and putting it in this file is what stops the halves drifting apart again.</para>
+    ///
+    /// <para>Keys the agent said nothing about are omitted rather than written null: the whole
+    /// capability model is a tri-state where absent means "unstated, assume permissive", and a
+    /// null would be read as exactly the same thing only after a needless round trip.</para>
+    /// </summary>
+    public static string SerializeAgentInfo(AgentInfo info)
+    {
+        ArgumentNullException.ThrowIfNull(info);
+
+        using var buffer = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(buffer))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("address", info.Address);
+            writer.WriteBoolean("online", info.Online);
+            if (info.Name is not null) writer.WriteString("name", info.Name);
+            if (info.Trust is not null) writer.WriteString("trust", info.Trust);
+            if (info.Version is not null) writer.WriteString("version", info.Version);
+            if (info.Model is not null) writer.WriteString("model", info.Model);
+
+            if (info.Tools is not null)
+            {
+                writer.WriteStartArray("tools");
+                foreach (var tool in info.Tools) writer.WriteStringValue(tool);
+                writer.WriteEndArray();
+            }
+
+            if (info.Skills is not null)
+            {
+                writer.WriteStartArray("skills");
+                foreach (var skill in info.Skills)
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("name", skill.Name);
+                    writer.WriteString("description", skill.Description);
+                    if (skill.Location is not null) writer.WriteString("location", skill.Location);
+                    writer.WriteEndObject();
+                }
+                writer.WriteEndArray();
+            }
+
+            if (info.AcceptedInputs is { } inputs)
+            {
+                writer.WriteStartObject("accepted_inputs");
+                if (inputs.Text is { } text) writer.WriteBoolean("text", text);
+                if (inputs.Images is { } images) writer.WriteBoolean("images", images);
+                if (inputs.Files is { } files)
+                {
+                    writer.WriteStartObject("files");
+                    writer.WriteNumber("max_file_size_mb", files.MaxFileSizeMb);
+                    writer.WriteNumber("max_files_per_request", files.MaxFilesPerRequest);
+                    writer.WriteEndObject();
+                }
+                writer.WriteEndObject();
+            }
+
+            writer.WriteEndObject();
+        }
+        return Encoding.UTF8.GetString(buffer.ToArray());
     }
 
     /// <summary>Reads the agent's declared input capabilities. Every field is a nullable

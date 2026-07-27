@@ -80,7 +80,7 @@ public sealed class PerformanceAuditTests(ITestOutputHelper output)
         for (var index = 0; index < 10; index++)
         {
             settings.Add(MeasureUntil(
-                () => Invoke(WaitForAutomationId(window, "SettingsButton")),
+                () => ShellSmokeTests.OpenSettings(window),
                 () => FindByAutomationId(window, "GeneralNav") is not null));
             Invoke(WaitForName(window, "Close settings"));
             Assert.True(WaitUntil(() => FindByAutomationId(window, "GeneralNav") is null));

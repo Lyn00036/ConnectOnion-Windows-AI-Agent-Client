@@ -1,4 +1,5 @@
 using System;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 
 namespace ConnectOnion.WinUIClient;
@@ -6,6 +7,7 @@ namespace ConnectOnion.WinUIClient;
 public sealed partial class MainWindow
 {
     private const int WmClose = 0x0010;
+    private const int WmCancelMode = 0x001F;
     private const int WmSize = 0x0005;
     private const int WmNcMouseLeave = 0x02A2;
     private const int SizeRestored = 0;
@@ -18,10 +20,16 @@ public sealed partial class MainWindow
     private const uint RedrawInvalidate = 0x0001;
     private const uint RedrawUpdateNow = 0x0100;
     private const uint RedrawFrame = 0x0400;
+    private const uint SwpNoSize = 0x0001;
+    private const uint SwpNoMove = 0x0002;
+    private const uint SwpNoZOrder = 0x0004;
+    private const uint SwpNoActivate = 0x0010;
+    private const uint SwpFrameChanged = 0x0020;
     private static bool _isExiting;
 
     private SUBCLASSPROC? _subclassProc;
     private bool _isTrayDisposed;
+    private bool _isHiddenToTray;
 
     private void InitializeTrayBehavior()
     {
@@ -101,6 +109,7 @@ public sealed partial class MainWindow
         Serilog.Log.Information("Window hidden to tray; app still running");
         ClearCaptionButtonInteraction();
         ShowWindow(_hwnd, SwHide);
+        _isHiddenToTray = true;
         _windowPresence?.SetVisible(this, false);
     }
 
@@ -120,6 +129,9 @@ public sealed partial class MainWindow
     {
         if (_isExiting || _hwnd == IntPtr.Zero) return;
 
+        if (_isHiddenToTray)
+            ResetCaptionButtonChrome();
+
         // SW_RESTORE un-minimizes and unhides in one call; SW_SHOW guarantees the window
         // is visible even when it was hidden to the tray via SW_HIDE.
         ShowWindow(_hwnd, SwRestore);
@@ -127,8 +139,37 @@ public sealed partial class MainWindow
         SetForegroundWindow(_hwnd);
         try { Activate(); }
         catch { /* Activate can throw during teardown; best-effort. */ }
+
+        // SetForegroundWindow/Activate complete through queued native messages. Refresh once now
+        // and once after those messages have settled; otherwise DWM can restore the Close
+        // button's pre-hide hover/pressed visual after our first reset.
         RefreshCaptionButtons();
+        _ = DispatcherQueue.TryEnqueue(
+            DispatcherQueuePriority.Low,
+            RefreshCaptionButtons);
+        _isHiddenToTray = false;
         if (!_isTrayDisposed) _windowPresence?.SetVisible(this, true);
+    }
+
+    private void ResetCaptionButtonChrome()
+    {
+        try
+        {
+            // Tear down and recreate WinUI's custom-title-bar integration while the HWND is
+            // hidden. Presenter/style toggles retain the same AppWindowTitleBar caption visuals,
+            // including their stale Close hover, whereas unregistering the XAML title bar
+            // rebuilds that state before the frame becomes visible again.
+            SetTitleBar(null);
+            ExtendsContentIntoTitleBar = false;
+            _appWindow.TitleBar.ResetToDefault();
+            ExtendsContentIntoTitleBar = true;
+            SetTitleBar(TitleBarDragRegion);
+            ApplyTitleBarTheme(RootGrid.ActualTheme);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Warning(ex, "Could not rebuild caption button chrome before tray restore");
+        }
     }
 
     private void ClearCaptionButtonInteraction()
@@ -136,12 +177,23 @@ public sealed partial class MainWindow
         // WM_CLOSE is consumed to keep the process alive, so the normal close sequence never
         // gets a chance to clear the DWM caption button's pressed/hover state.
         ReleaseCapture();
+        SendMessage(_hwnd, WmCancelMode, UIntPtr.Zero, IntPtr.Zero);
         SendMessage(_hwnd, WmNcMouseLeave, UIntPtr.Zero, IntPtr.Zero);
     }
 
     private void RefreshCaptionButtons()
     {
+        if (_isExiting || _isTrayDisposed || _hwnd == IntPtr.Zero) return;
+
         ClearCaptionButtonInteraction();
+        SetWindowPos(
+            _hwnd,
+            IntPtr.Zero,
+            0,
+            0,
+            0,
+            0,
+            SwpNoSize | SwpNoMove | SwpNoZOrder | SwpNoActivate | SwpFrameChanged);
         RedrawWindow(
             _hwnd,
             IntPtr.Zero,
