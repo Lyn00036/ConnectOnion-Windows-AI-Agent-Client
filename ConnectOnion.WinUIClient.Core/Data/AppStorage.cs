@@ -3,8 +3,10 @@ namespace ConnectOnion.WinUIClient.Data;
 /// <summary>
 /// Shared filesystem plumbing for the local repositories.
 ///
-/// Unpackaged data lives under <c>%AppData%\ConnectOnion</c>; an installed MSIX uses its
-/// package <c>LocalState\ConnectOnion</c> folder. SQLite is the active store:
+/// Unpackaged data lives under <c>%AppData%\ConnectOnion</c>; an installed MSIX normally uses its
+/// package <c>LocalState\ConnectOnion</c> folder. Existing installations that already have a
+/// SQLite database under <c>%AppData%\ConnectOnion</c> continue to use that database so saved
+/// Agents, sessions, preferences, and conversations remain visible.
 /// <code>
 ///   connectonion.db
 /// </code>
@@ -25,58 +27,37 @@ public static class AppStorage
     /// Optional data-root override for isolated automation and portable development runs.
     /// Production leaves this unset and selects the root from the deployment model.
     /// </summary>
-    public const string DataRootEnvironmentVariable =
-        "CONNECTONION_DATA_ROOT";
+    public const string DataRootEnvironmentVariable = "CONNECTONION_DATA_ROOT";
+
+    private const string DatabaseFileName = "connectonion.db";
 
     private static readonly StorageLocation Location = ResolveStorageLocation();
 
     public static readonly string RootDir = Location.RootDir;
 
-    /// <summary>
-    /// Legacy or auxiliary conversation file storage.
-    /// Conversation records themselves are primarily stored in SQLite.
-    /// </summary>
-    public static readonly string ConversationsDir =
-        Path.Combine(RootDir, "conversations");
+    public static readonly string ConversationsDir = Path.Combine(RootDir, "conversations");
 
     /// <summary>
     /// Content store for user-selected and agent-produced conversation images.
-    ///
-    /// Files are named by content hash so storing the same image is idempotent,
+    /// Files are named by content hash so storing the same image is idempotent
     /// and remote filenames are never trusted as local paths.
     /// </summary>
-    public static readonly string ImageCacheDir =
-        Path.Combine(RootDir, "cache", "images");
+    public static readonly string ImageCacheDir = Path.Combine(RootDir, "cache", "images");
 
     /// <summary>
     /// Permanent storage for user-selected Agent icons.
-    ///
-    /// The database stores only a relative path such as:
-    /// <code>
-    /// avatars/agent-123.png
-    /// </code>
-    ///
-    /// The image itself is stored in this directory.
+    /// The database stores a relative path such as <c>avatars/agent-123.png</c>.
     /// </summary>
-    public static readonly string AgentIconsDir =
-        Path.Combine(RootDir, "avatars");
+    public static readonly string AgentIconsDir = Path.Combine(RootDir, "avatars");
 
     /// <summary>
-    /// Temporary storage used while an Agent icon is being selected.
-    ///
-    /// For example, Add Agent may place a processed image here while the form
-    /// is open. If the user confirms the form, the image is moved to
-    /// <see cref="AgentIconsDir"/>. If the user cancels, the temporary image
-    /// can be deleted without leaving an unused permanent file.
+    /// Temporary storage used while an Agent icon is selected and processed.
     /// </summary>
     public static readonly string TemporaryAgentIconsDir =
         Path.Combine(RootDir, "temp", "avatars");
 
-    /// <summary>
-    /// Rolling structured application logs.
-    /// </summary>
-    public static readonly string LogsDir =
-        Path.Combine(RootDir, "logs");
+    /// <summary>Rolling structured application logs.</summary>
+    public static readonly string LogsDir = Path.Combine(RootDir, "logs");
 
     public static void EnsureDirectories()
     {
@@ -89,49 +70,20 @@ public static class AppStorage
         Directory.CreateDirectory(LogsDir);
     }
 
-    /// <summary>
-    /// Returns an absolute path under the application's root directory.
-    /// </summary>
-    public static string PathFor(string fileName)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
-
-        return Path.Combine(RootDir, fileName);
-    }
+    public static string PathFor(string fileName) => Path.Combine(RootDir, fileName);
 
     /// <summary>
-    /// Creates the relative path that should be stored in
-    /// <c>agents.icon_path</c>.
-    ///
-    /// For example:
-    /// <code>
-    /// CreateAgentIconRelativePath("agent-123.png")
-    /// // returns "avatars/agent-123.png"
-    /// </code>
-    ///
-    /// Forward slashes are used in the persisted value so the stored path
-    /// remains stable and independent of Windows path formatting.
+    /// Creates the relative path persisted for an Agent icon.
     /// </summary>
     public static string CreateAgentIconRelativePath(string fileName)
     {
         var safeFileName = ValidateLeafFileName(fileName);
-
         return $"avatars/{safeFileName}";
     }
 
     /// <summary>
-    /// Resolves an Agent icon path stored in SQLite into an absolute local
-    /// filesystem path.
-    ///
-    /// The supplied path must resolve inside <see cref="AgentIconsDir"/>.
-    /// Paths that attempt to escape the avatar directory are rejected.
+    /// Resolves a persisted Agent icon path to its absolute managed path.
     /// </summary>
-    /// <exception cref="ArgumentException">
-    /// The relative path is null, empty, or contains only whitespace.
-    /// </exception>
-    /// <exception cref="InvalidOperationException">
-    /// The path resolves outside the managed Agent icon directory.
-    /// </exception>
     public static string GetAgentIconAbsolutePath(string relativePath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(relativePath);
@@ -152,11 +104,7 @@ public static class AppStorage
     }
 
     /// <summary>
-    /// Attempts to resolve a stored Agent icon path.
-    ///
-    /// Returns <see langword="false"/> for an empty, malformed, or unsafe path.
-    /// This is suitable for UI fallback behavior where an invalid path should
-    /// display the default Agent avatar instead of crashing the application.
+    /// Tries to resolve a persisted Agent icon path for UI fallback scenarios.
     /// </summary>
     public static bool TryGetAgentIconAbsolutePath(
         string? relativePath,
@@ -192,30 +140,69 @@ public static class AppStorage
         }
     }
 
-    /// <summary>
-    /// Returns an absolute path in the temporary Agent icon directory.
-    ///
-    /// Only a plain filename is accepted. Directory components such as
-    /// <c>../</c> or <c>folder/image.png</c> are rejected.
-    /// </summary>
     public static string GetTemporaryAgentIconAbsolutePath(string fileName)
     {
         var safeFileName = ValidateLeafFileName(fileName);
-
         return Path.Combine(TemporaryAgentIconsDir, safeFileName);
     }
 
-    /// <summary>
-    /// Returns an absolute path in the permanent Agent icon directory.
-    ///
-    /// This method is useful when committing a processed temporary icon into
-    /// permanent storage.
-    /// </summary>
     public static string GetPermanentAgentIconAbsolutePath(string fileName)
     {
         var safeFileName = ValidateLeafFileName(fileName);
-
         return Path.Combine(AgentIconsDir, safeFileName);
+    }
+
+    private static string ValidateLeafFileName(string fileName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
+
+        var trimmed = fileName.Trim();
+        var leafFileName = Path.GetFileName(trimmed);
+
+        if (!string.Equals(trimmed, leafFileName, StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                "The value must contain a filename without directory components.",
+                nameof(fileName));
+        }
+
+        if (leafFileName is "." or "..")
+        {
+            throw new ArgumentException(
+                "The value is not a valid filename.",
+                nameof(fileName));
+        }
+
+        if (leafFileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+        {
+            throw new ArgumentException(
+                "The filename contains invalid characters.",
+                nameof(fileName));
+        }
+
+        return leafFileName;
+    }
+
+    private static void EnsurePathInsideDirectory(
+        string candidatePath,
+        string expectedDirectory,
+        string errorMessage)
+    {
+        var candidateFullPath = Path.GetFullPath(candidatePath);
+
+        var directoryFullPath = Path
+            .GetFullPath(expectedDirectory)
+            .TrimEnd(
+                Path.DirectorySeparatorChar,
+                Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
+
+        if (!candidateFullPath.StartsWith(
+                directoryFullPath,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(errorMessage);
+        }
     }
 
     private static StorageLocation ResolveStorageLocation()
@@ -228,26 +215,48 @@ public static class AppStorage
                 null);
         }
 
+        /*
+         * Use APPDATA first instead of relying only on SpecialFolder.ApplicationData.
+         * In a packaged process SpecialFolder.ApplicationData can be redirected to the
+         * package's LocalCache\Roaming directory, while APPDATA still identifies the
+         * existing desktop-client store that contains the user's saved SQLite database.
+         */
+        var roamingAppDataFolder = ResolveRoamingAppDataFolder();
+        var roamingRoot = SelectRootDir(
+            configured: null,
+            packagedLocalFolder: null,
+            roamingAppDataFolder: roamingAppDataFolder);
+
         try
         {
-            // ApplicationData requires package identity. Keeping it behind this guarded branch
-            // preserves the unpackaged CLI/portable path while making an installed MSIX use the
-            // stable LocalState location that Windows backs up and retains across upgrades.
+            // ApplicationData requires package identity.
             var applicationData = Windows.Storage.ApplicationData.Current;
-            var root = SelectRootDir(
+            var packagedRoot = SelectRootDir(
                 configured: null,
                 packagedLocalFolder: applicationData.LocalFolder.Path,
                 roamingAppDataFolder: null);
 
-            // Older development builds wrote through Environment.SpecialFolder.ApplicationData.
-            // Windows virtualized those writes into LocalCache\Roaming. Migrate that one legacy
-            // location before the first LocalState directory is created so existing developer
-            // conversations and the DPAPI-protected identity are not silently abandoned.
+            /*
+             * Compatibility rule:
+             * If the existing desktop store already contains connectonion.db,
+             * keep using it. This prevents a packaged/debug launch from opening
+             * a new empty database and making the saved Agents appear missing.
+             *
+             * Fresh installations with no existing roaming database continue
+             * to use the main branch's LocalState location.
+             */
+            if (HasExistingDatabase(roamingRoot))
+            {
+                return new StorageLocation(roamingRoot, null);
+            }
+
+            // Preserve main's migration path for older packaged development builds.
             var legacyRoot = Path.Combine(
                 applicationData.LocalCacheFolder.Path,
                 "Roaming",
                 "ConnectOnion");
-            return new StorageLocation(root, legacyRoot);
+
+            return new StorageLocation(packagedRoot, legacyRoot);
         }
         catch (InvalidOperationException)
         {
@@ -258,13 +267,27 @@ public static class AppStorage
             // Some unpackaged Windows App SDK hosts report the missing identity as a COM error.
         }
 
-        return new StorageLocation(
-            SelectRootDir(
-                configured: null,
-                packagedLocalFolder: null,
-                roamingAppDataFolder: Environment.GetFolderPath(
-                    Environment.SpecialFolder.ApplicationData)),
-            null);
+        return new StorageLocation(roamingRoot, null);
+    }
+
+    private static string ResolveRoamingAppDataFolder()
+    {
+        var environmentAppData = Environment.GetEnvironmentVariable("APPDATA");
+        if (!string.IsNullOrWhiteSpace(environmentAppData))
+        {
+            return Path.GetFullPath(environmentAppData);
+        }
+
+        var specialFolderAppData = Environment.GetFolderPath(
+            Environment.SpecialFolder.ApplicationData);
+
+        ArgumentException.ThrowIfNullOrWhiteSpace(specialFolderAppData);
+        return Path.GetFullPath(specialFolderAppData);
+    }
+
+    private static bool HasExistingDatabase(string rootDirectory)
+    {
+        return File.Exists(Path.Combine(rootDirectory, DatabaseFileName));
     }
 
     internal static string SelectRootDir(
