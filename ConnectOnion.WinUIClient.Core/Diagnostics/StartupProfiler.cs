@@ -31,13 +31,37 @@ public static class StartupPhases
     /// user calls "the app started", and the one budgets are written against.</summary>
     public const string FirstFrame = "firstFrame";
 
+    /// <summary>The shell has accepted focus, proving that it is interactive rather than merely
+    /// visible.</summary>
+    public const string FirstInteractive = "firstInteractive";
+
+    /// <summary>The initial persisted session list has been loaded and bound to the shell.</summary>
+    public const string SessionListLoaded = "sessionListLoaded";
+
+    /// <summary>The first opened conversation has finished restoring and rendering its visible
+    /// message containers. Absent when the startup fixture opens no conversation.</summary>
+    public const string FirstConversationRendered = "firstConversationRendered";
+
+    /// <summary>Deferred startup work owned by the shell has completed.</summary>
+    public const string DeferredStartupCompleted = "deferredStartupCompleted";
+
     /// <summary>
     /// Nominal launch order, used only as a tie-breaker when two marks share an elapsed time.
     /// It is *not* the order a report renders in — <c>hostStarted</c> and <c>windowCreated</c>
     /// overlap by design (see <c>App.OnLaunched</c>), so reports sort chronologically.
     /// </summary>
     public static readonly IReadOnlyList<string> Ordered =
-        [ManagedEntry, HostStarted, WindowCreated, WindowActivated, FirstFrame];
+        [
+            ManagedEntry,
+            HostStarted,
+            WindowCreated,
+            WindowActivated,
+            FirstFrame,
+            FirstInteractive,
+            SessionListLoaded,
+            FirstConversationRendered,
+            DeferredStartupCompleted,
+        ];
 }
 
 /// <summary>One phase and how long after process start it was reached.</summary>
@@ -156,6 +180,15 @@ public sealed class StartupProfiler
     /// JSON there once the first frame renders. Unset in normal use: the benchmark harness is
     /// the only thing that sets it, so a user's run does nothing but log a line.</summary>
     public const string OutputPathEnvironmentVariable = "CONNECTONION_PERF_OUT";
+
+    /// <summary>Name of a pre-created Windows event that the benchmark signals to request the
+    /// application's real, graceful exit path.</summary>
+    public const string ExitEventEnvironmentVariable = "CONNECTONION_PERF_EXIT_EVENT";
+
+    /// <summary>When set to 1, the benchmark fixture opens its active conversation at startup so
+    /// first-conversation rendering can be measured independently of the empty Home route.</summary>
+    public const string OpenConversationEnvironmentVariable =
+        "CONNECTONION_PERF_OPEN_CONVERSATION";
 
     private readonly Func<double> _elapsedMs;
     private readonly List<StartupMark> _marks = [];

@@ -283,6 +283,7 @@
                          Background="Transparent"
                          VerticalAlignment="Stretch"
                          TextChanged="InputBox_TextChanged"
+                         GotFocus="InputBox_GotFocus"
                          PreviewKeyDown="InputBox_PreviewKeyDown">
                     <TextBox.Resources>
                         <Thickness x:Key="TextControlBorderThemeThickness">0</Thickness>

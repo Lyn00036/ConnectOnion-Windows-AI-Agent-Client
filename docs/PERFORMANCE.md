@@ -14,7 +14,8 @@ binary.
 |---|---|
 | Cold / warm start | Process creation → first composited frame, measured in-app |
 | Launch phase breakdown | `managedEntry`, `hostStarted`, `windowCreated`, `windowActivated`, `firstFrame` |
-| Idle working set / private bytes | Sampled externally from the process, 15 s after first frame |
+| Readiness breakdown | `firstInteractive`, `sessionListLoaded`, optional `firstConversationRendered`, `deferredStartupCompleted` |
+| Idle working set / private bytes | Sampled externally after required readiness milestones complete |
 | Managed heap | `GC.GetTotalMemory` at first frame (only observable in-process) |
 | Handles / threads | Sampled with the memory, as a leak tripwire |
 | Graceful shutdown | Tray Exit command → process exit |
@@ -48,15 +49,24 @@ them when a run establishes a new baseline; don't quietly loosen one to make a r
 # Release + unpackaged: the plain build has no Windows App SDK bootstrapper and dies on launch.
 dotnet build ConnectOnion.WinUIClient\ConnectOnion.WinUIClient.csproj -c Release -p:Platform=x64 -p:RunUnpackaged=true
 
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Measure-Performance.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Measure-Performance.ps1 `
+  -Mode WarmUnpackaged -Iterations 5
 ```
 
 Useful switches:
 
-- `-Iterations 10` — more samples (default 5).
-- `-ClearStandbyList` — purge the OS standby list before each launch, making **every** iteration
-  a true cold start. Needs an elevated shell; without it only iteration 1 is cold-ish and the
-  report says so.
+- `-Mode WarmUnpackaged|ColdUnpackaged|WarmMsix|ColdMsix` selects one independently
+  reproducible launch mode. Never combine unlike modes in one report. Warm modes perform one
+  unmeasured launch first; cold modes purge before every measured launch.
+- `-Iterations 10` records more samples. Five is the enforced minimum.
+- Cold modes purge the standby list before **every** sample and require an elevated shell. A
+  failed purge fails the run; the sample is never labelled cold.
+- MSIX modes resolve the installed package separately from the unpackaged build. Use
+  `-PackageName` and `-PackageExecutable` if its identity differs from the defaults.
+- `-DatasetId` records the fixture/profile identity. Add `-RequireConversation` when that fixture
+  opens a conversation; the run then requires `firstConversationRendered`. Use `-FixturePath`
+  to copy the same prepared data root into the isolated profile before every sample. In that
+  benchmark-only mode the app opens the fixture's active conversation instead of Home.
 - `-EnforceBudgets` — exit non-zero when a median breaches its `Fail` threshold. Off by default.
 - `-UseRealDataRoot` — measure against `%AppData%\ConnectOnion` instead of a throwaway data root.
 - `-AllowDebugBuild` — required to benchmark a Debug build, whose numbers are not budgets.
@@ -69,11 +79,40 @@ Two things the harness has to get right, both of which cost a wrong measurement 
 - **The app is single-instance.** A second launch redirects to the running one and exits
   immediately, which records as an absurdly fast startup — so every iteration kills leftovers
   first.
-- **`WM_CLOSE` is not the exit path.** `MainWindow.Tray.cs` intercepts it and shows a modal
-  "Minimize to tray / Exit" dialog, so `Process.CloseMainWindow()` leaves the app alive waiting
-  on a human and the measured "shutdown" is really the harness's own timeout. The harness posts
-  `WM_COMMAND(1002)` to the hidden `ConnectOnionTrayHelper` message window — the same thing the
-  tray menu's Exit item does — which routes to `MainWindow.ExitApplication`.
+- **`WM_CLOSE` is not the exit path.** The benchmark creates a unique named Windows event before
+  launch. `StartupTelemetry` arms it only for benchmark runs and dispatches it to
+  `MainWindow.ExitApplication`, the same graceful path as File > Exit. It does not depend on tray
+  window names or fixed command IDs.
+
+## Cold-cache qualification
+
+Warm modes make no cache claim. Cold modes require an elevated process and a successful standby
+list purge before every one of at least five samples. Failure is terminal and
+`ColdCacheQualification` is written to `results.json`; there is no "cold-ish" fallback. Build
+commit, dataset identity, power source, and power scheme are recorded because runs with different
+values are not directly comparable.
+
+## WPR / WPA trace
+
+Run from an elevated PowerShell prompt on a machine where Windows Performance Recorder policy is
+enabled:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Capture-StartupTrace.ps1 `
+  -Mode ColdUnpackaged `
+  -DatasetId empty-isolated-profile
+```
+
+The wrapper starts the built-in `GeneralProfile`, `DotNET`, `XAMLActivity`,
+`XAMLAppResponsiveness`, and `DesktopComposition` profiles, runs five valid samples, then saves
+`startup.etl` beside `results.json` and `report.md`. In WPA inspect Process Lifetimes, CPU Usage
+(Sampled), File I/O (including `winsqlite3.dll` and `connectonion.db`), .NET GC/allocations, XAML
+layout/responsiveness, and frame/compositor activity.
+
+If elevation, profile availability, or machine policy blocks capture—including
+`0xc5585011`—the wrapper exits non-zero, cancels WPR, and does not claim a trace. The manually
+dispatched `release-performance.yml` workflow targets a prepared, elevated, real-desktop
+self-hosted runner and retains aggregate JSON, Markdown, raw samples, and ETL for 30 days.
 
 ## Baseline — 2026-07-20
 
@@ -147,7 +186,7 @@ objects — allocation tuning cannot move it.
 
 ## Limitations
 
-- Without `-ClearStandbyList` (elevated), only the first iteration is meaningfully cold.
+- Cold modes cannot run without an elevated, successful standby-list purge.
 - Steady-state memory is sampled at idle with no conversation loaded. Restoring a large
   conversation, scrolling, and searching are **not** covered — those still want an ETW capture
   (see `docs/OPTIMIZATION.md`) and remain on the backlog as budgets.

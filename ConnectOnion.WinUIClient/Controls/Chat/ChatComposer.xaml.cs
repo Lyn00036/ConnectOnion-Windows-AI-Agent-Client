@@ -720,6 +720,9 @@ public sealed partial class ChatComposer : UserControl, IDisposable
         RefreshSkillPalette();
     }
 
+    private void InputBox_GotFocus(object sender, RoutedEventArgs e)
+        => Diagnostics.StartupTelemetry.Mark(Diagnostics.StartupPhases.FirstInteractive);
+
     private void InputBox_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
         // The palette gets first refusal on every key it uses. It has to: while it is open, Enter

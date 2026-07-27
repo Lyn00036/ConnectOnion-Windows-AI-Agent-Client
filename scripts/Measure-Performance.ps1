@@ -21,16 +21,11 @@
     Path to ConnectOnion.WinUIClient.exe. Defaults to the Release x64 unpackaged build.
 
 .PARAMETER Iterations
-    Measured launches. Default 5; the first is reported separately as the cold-ish run.
+    Measured launches for the selected mode. Default and minimum 5.
 
-.PARAMETER SettleSeconds
-    Idle time after first frame before memory is sampled. Startup work (presence probes, the
-    first SQLite open) is still running at first frame, so sampling immediately understates
-    steady state. Default 15.
-
-.PARAMETER ClearStandbyList
-    Purge the OS standby list before each launch to approximate a true cold start. Requires an
-    elevated shell; without it, iterations after the first are warm and are labelled as such.
+.PARAMETER Mode
+    One of WarmUnpackaged, ColdUnpackaged, WarmMsix, or ColdMsix. Cold modes require successful
+    standby-list purge before every sample; MSIX modes resolve the installed package executable.
 
 .PARAMETER EnforceBudgets
     Exit non-zero when a median metric breaches its Fail threshold. Off by default so the first
@@ -39,16 +34,21 @@
 .EXAMPLE
     pwsh scripts/Measure-Performance.ps1
 .EXAMPLE
-    pwsh scripts/Measure-Performance.ps1 -Iterations 10 -ClearStandbyList -EnforceBudgets
+    pwsh scripts/Measure-Performance.ps1 -Mode ColdUnpackaged -Iterations 5 -EnforceBudgets
 #>
 [CmdletBinding()]
 param(
     [string] $Exe,
+    [ValidateSet('WarmUnpackaged', 'ColdUnpackaged', 'WarmMsix', 'ColdMsix')]
+    [string] $Mode = 'WarmUnpackaged',
     [int]    $Iterations = 5,
-    [int]    $SettleSeconds = 15,
     [int]    $LaunchTimeoutSeconds = 60,
     [string] $OutDir,
-    [switch] $ClearStandbyList,
+    [string] $PackageName = '779a2035-a8d1-4bc8-91cf-82aecda14cc5',
+    [string] $PackageExecutable = 'ConnectOnion.WinUIClient.exe',
+    [string] $DatasetId = 'empty-isolated-profile',
+    [string] $FixturePath,
+    [switch] $RequireConversation,
     [switch] $UseRealDataRoot,
     [switch] $AllowDebugBuild,
     [switch] $EnforceBudgets
@@ -59,6 +59,10 @@ $ErrorActionPreference = 'Stop'
 
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $ProcessName = 'ConnectOnion.WinUIClient'
+
+if ($Iterations -lt 5) {
+    throw "At least five valid samples are required; -Iterations must be 5 or greater."
+}
 
 # Budgets, in the units each metric is reported in. "Target" is what we want to hold; "Fail" is
 # the line that makes a build unacceptable. Launch numbers are anchored on the Store
@@ -112,58 +116,13 @@ function Stop-RunningInstances {
     }
 }
 
-function Initialize-Win32 {
-    if ('Perf.Win32' -as [type]) { return }
-    Add-Type -Namespace Perf -Name Win32 -MemberDefinition @'
-[DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-public static extern IntPtr FindWindowEx(IntPtr parent, IntPtr childAfter, string className, string windowName);
-
-[DllImport("user32.dll", SetLastError = true)]
-public static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
-
-[DllImport("user32.dll", SetLastError = true)]
-public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
-'@
-}
-
 function Request-AppExit {
     <#
-        Asks the app to exit the way a user does from the tray menu.
-
-        WM_CLOSE is NOT the exit path here: MainWindow.Tray.cs intercepts it and shows a modal
-        "Minimize to tray / Exit" ContentDialog, so Process.CloseMainWindow() leaves the process
-        alive waiting on a human and the measured "shutdown" is really the harness's own wait
-        timeout. The tray menu's Exit item posts WM_COMMAND(1002) to the hidden message-only
-        window of class ConnectOnionTrayHelper, which routes to MainWindow.ExitApplication —
-        that is the real, dialog-free teardown, and it is what this measures.
+        Signals the one-shot named event armed by StartupTelemetry. The callback invokes the same
+        MainWindow.ExitApplication path as File > Exit; no tray implementation detail is assumed.
     #>
-    param([Diagnostics.Process] $Process)
-
-    Initialize-Win32
-
-    $HwndMessage = [IntPtr]::new(-3)
-    $WmCommand = 0x0111
-    $ExitCommandId = 1002
-
-    # The helper window is created while MainWindow is constructed, so by first frame it exists;
-    # retry anyway rather than falling back on the first miss.
-    foreach ($attempt in 1..20) {
-        $hwnd = [IntPtr]::Zero
-        while ($true) {
-            $hwnd = [Perf.Win32]::FindWindowEx($HwndMessage, $hwnd, 'ConnectOnionTrayHelper', $null)
-            if ($hwnd -eq [IntPtr]::Zero) { break }
-
-            $owner = 0
-            $null = [Perf.Win32]::GetWindowThreadProcessId($hwnd, [ref] $owner)
-            if ($owner -eq $Process.Id) {
-                $null = [Perf.Win32]::PostMessage($hwnd, $WmCommand, [IntPtr]$ExitCommandId, [IntPtr]::Zero)
-                return $true
-            }
-        }
-        Start-Sleep -Milliseconds 100
-    }
-
-    return $false
+    param([Threading.EventWaitHandle] $ExitEvent)
+    return $ExitEvent.Set()
 }
 
 $script:StandbyPurgeAvailable = $null
@@ -192,7 +151,11 @@ public static extern int NtSetSystemInformation(int InfoClass, ref int Info, int
     try {
         # SystemMemoryListInformation (80) / MemoryPurgeStandbyList (4)
         $command = 4
-        $null = [Perf.MemoryList]::NtSetSystemInformation(80, [ref] $command, 4)
+        $status = [Perf.MemoryList]::NtSetSystemInformation(80, [ref] $command, 4)
+        if ($status -ne 0) {
+            Write-Warning ("Standby-list purge returned NTSTATUS 0x{0:X8}." -f $status)
+            return $false
+        }
         return $true
     } catch {
         $script:StandbyPurgeAvailable = $false
@@ -207,18 +170,32 @@ function Invoke-MeasuredLaunch {
         [int]    $Index,
         [string] $ReportPath,
         [string] $DataRoot,
-        [bool]   $Cold
+        [string] $FixturePath,
+        [bool]   $Cold,
+        [bool]   $ConversationRequired
     )
 
     Stop-RunningInstances
     if (Test-Path $ReportPath) { Remove-Item $ReportPath -Force }
     if ($DataRoot -and (Test-Path $DataRoot)) { Remove-Item $DataRoot -Recurse -Force }
+    if ($DataRoot -and $FixturePath) {
+        $null = New-Item -ItemType Directory -Force -Path $DataRoot
+        Copy-Item -Path (Join-Path $FixturePath '*') -Destination $DataRoot -Recurse -Force
+    }
 
+    if ($Cold -and -not (Clear-StandbyList)) {
+        throw 'Cold mode requires an elevated shell and a successful standby-list purge. No sample was recorded.'
+    }
+
+    $exitEventName = "Local\ConnectOnion.PerfExit.$([guid]::NewGuid().ToString('N'))"
+    $exitEvent = [Threading.EventWaitHandle]::new(
+        $false, [Threading.EventResetMode]::AutoReset, $exitEventName)
     $env:CONNECTONION_PERF_OUT = $ReportPath
+    $env:CONNECTONION_PERF_EXIT_EVENT = $exitEventName
+    if ($ConversationRequired) { $env:CONNECTONION_PERF_OPEN_CONVERSATION = '1' }
+    else { Remove-Item Env:CONNECTONION_PERF_OPEN_CONVERSATION -ErrorAction SilentlyContinue }
     if ($DataRoot) { $env:CONNECTONION_DATA_ROOT = $DataRoot }
     else { Remove-Item Env:CONNECTONION_DATA_ROOT -ErrorAction SilentlyContinue }
-
-    if ($Cold) { $null = Clear-StandbyList }
 
     $proc = Start-Process -FilePath $ExePath -PassThru
     try {
@@ -249,7 +226,18 @@ function Invoke-MeasuredLaunch {
             }
         }
 
-        Start-Sleep -Seconds $SettleSeconds
+        # Wait for actual readiness marks instead of sleeping for an arbitrary settling period.
+        $requiredMarks = @('firstFrame', 'firstInteractive', 'sessionListLoaded', 'deferredStartupCompleted')
+        if ($ConversationRequired) { $requiredMarks += 'firstConversationRendered' }
+        while ($true) {
+            $report = Get-Content $ReportPath -Raw | ConvertFrom-Json
+            $observed = @($report.marks | ForEach-Object { $_.phase })
+            if (@($requiredMarks | Where-Object { $_ -notin $observed }).Count -eq 0) { break }
+            if ((Get-Date) -gt $deadline) {
+                throw "Iteration $Index did not reach required readiness milestones: $($requiredMarks -join ', ')."
+            }
+            Start-Sleep -Milliseconds 50
+        }
         $proc.Refresh()
         $idleWorkingSet = $proc.WorkingSet64
         $idlePrivate = $proc.PrivateMemorySize64
@@ -259,9 +247,9 @@ function Invoke-MeasuredLaunch {
 
         # Exit the app the way the tray menu does rather than killing it: shutdown drains runs
         # and stops the Generic Host, and that cost is part of the app's felt performance too.
-        $requested = Request-AppExit -Process $proc
+        $requested = Request-AppExit -ExitEvent $exitEvent
         if (-not $requested) {
-            Write-Warning "Iteration $Index : tray helper window not found; cannot measure shutdown."
+            Write-Warning "Iteration $Index : named exit event could not be signalled; cannot measure shutdown."
         }
 
         $shutdown = [Diagnostics.Stopwatch]::StartNew()
@@ -287,6 +275,10 @@ function Invoke-MeasuredLaunch {
             WindowCreatedMs  = $marks['windowCreated']
             WindowActivatedMs = $marks['windowActivated']
             FirstFrameWorkingSetMb = [math]::Round($report.memory.workingSetBytes / 1MB, 1)
+            FirstInteractiveMs = $marks['firstInteractive']
+            SessionListLoadedMs = $marks['sessionListLoaded']
+            FirstConversationRenderedMs = $marks['firstConversationRendered']
+            DeferredStartupCompletedMs = $marks['deferredStartupCompleted']
             ManagedHeapMb    = [math]::Round($report.memory.managedHeapBytes / 1MB, 1)
             IdleWorkingSetMb = [math]::Round($idleWorkingSet / 1MB, 1)
             IdlePrivateMb    = [math]::Round($idlePrivate / 1MB, 1)
@@ -299,13 +291,24 @@ function Invoke-MeasuredLaunch {
     } finally {
         if (-not $proc.HasExited) { try { $proc.Kill() } catch { } }
         Remove-Item Env:CONNECTONION_PERF_OUT -ErrorAction SilentlyContinue
+        Remove-Item Env:CONNECTONION_PERF_EXIT_EVENT -ErrorAction SilentlyContinue
+        Remove-Item Env:CONNECTONION_PERF_OPEN_CONVERSATION -ErrorAction SilentlyContinue
         Remove-Item Env:CONNECTONION_DATA_ROOT -ErrorAction SilentlyContinue
+        $exitEvent.Dispose()
     }
 }
 
+function Format-OptionalMilliseconds {
+    param($Value)
+    if ($null -eq $Value) { return '' }
+    return [math]::Round([double]$Value, 0)
+}
+
 function Get-Stats {
-    param([string] $Name, [double[]] $Values, [string] $Unit)
-    $clean = @($Values | Where-Object { $null -ne $_ })
+    param([string] $Name, [object[]] $Values, [string] $Unit)
+    # Keep optional milestones optional. Binding directly to [double[]] converts a missing
+    # conversation mark ($null) to 0.0 and fabricates a zero-millisecond render in the report.
+    $clean = @($Values | Where-Object { $null -ne $_ } | ForEach-Object { [double]$_ })
     if ($clean.Count -eq 0) { return $null }
     return [pscustomobject]@{
         Metric = $Name
@@ -320,7 +323,13 @@ function Get-Stats {
 
 # --- resolve inputs ----------------------------------------------------------
 
-if (-not $Exe) {
+$packageFullName = $null
+if ($Mode -like '*Msix') {
+    $package = Get-AppxPackage -Name $PackageName | Sort-Object Version -Descending | Select-Object -First 1
+    if (-not $package) { throw "Installed MSIX package '$PackageName' was not found." }
+    $packageFullName = $package.PackageFullName
+    $Exe = Join-Path $package.InstallLocation $PackageExecutable
+} elseif (-not $Exe) {
     $candidates = @(
         "$RepoRoot\ConnectOnion.WinUIClient\bin\x64\Release\net10.0-windows10.0.19041.0\win-x64\$ProcessName.exe"
         "$RepoRoot\ConnectOnion.WinUIClient\bin\x64\Debug\net10.0-windows10.0.19041.0\win-x64\$ProcessName.exe"
@@ -346,9 +355,14 @@ $null = New-Item -ItemType Directory -Force -Path $OutDir
 
 $dataRoot = $null
 if (-not $UseRealDataRoot) { $dataRoot = Join-Path $OutDir 'data-root' }
+if ($FixturePath) {
+    $FixturePath = (Resolve-Path $FixturePath).Path
+    if ($UseRealDataRoot) { throw '-FixturePath cannot be combined with -UseRealDataRoot.' }
+}
 
 Write-Host "Executable : $Exe"
-Write-Host "Iterations : $Iterations (settle ${SettleSeconds}s)"
+Write-Host "Mode       : $Mode"
+Write-Host "Iterations : $Iterations (minimum valid sample count: 5)"
 Write-Host "Data root  : $(if ($dataRoot) { $dataRoot } else { 'real profile (%AppData%\ConnectOnion)' })"
 Write-Host "Output     : $OutDir"
 Write-Host ''
@@ -356,13 +370,26 @@ Write-Host ''
 # --- run ---------------------------------------------------------------------
 
 $results = @()
+if ($Mode -like 'Warm*') {
+    Write-Host 'Warm-up (not recorded) ... ' -NoNewline
+    $warmup = Invoke-MeasuredLaunch -ExePath $Exe -Index 0 -DataRoot $dataRoot `
+        -FixturePath $FixturePath -Cold $false `
+        -ReportPath (Join-Path $OutDir 'warmup.json') `
+        -ConversationRequired $RequireConversation.IsPresent
+    if (-not $warmup.GracefulExit) { throw 'Warm-up did not exit gracefully.' }
+    Write-Host 'complete'
+}
 for ($i = 1; $i -le $Iterations; $i++) {
     # Without a standby purge only the first launch is meaningfully cold, so later iterations
     # are labelled warm and aggregated separately rather than averaged together.
-    $cold = $ClearStandbyList.IsPresent -or ($i -eq 1)
+    $cold = $Mode -like 'Cold*'
     Write-Host ("Iteration {0}/{1} ({2}) ..." -f $i, $Iterations, $(if ($cold) { 'cold' } else { 'warm' })) -NoNewline
-    $result = Invoke-MeasuredLaunch -ExePath $Exe -Index $i -DataRoot $dataRoot -Cold $cold `
-        -ReportPath (Join-Path $OutDir "startup-$i.json")
+    $result = Invoke-MeasuredLaunch -ExePath $Exe -Index $i -DataRoot $dataRoot -FixturePath $FixturePath -Cold $cold `
+        -ReportPath (Join-Path $OutDir "startup-$i.json") -ConversationRequired $RequireConversation.IsPresent
+    $expectedPackaged = $Mode -like '*Msix'
+    if ([bool]$result.Packaged -ne $expectedPackaged) {
+        throw "Mode $Mode expected packaged=$expectedPackaged, but the app reported packaged=$($result.Packaged)."
+    }
     $results += $result
     Write-Host (" {0} ms to first frame, {1} MB idle" -f `
         [math]::Round($result.TimeToFirstFrameMs, 0), $result.IdleWorkingSetMb)
@@ -378,6 +405,10 @@ $warmRuns = @($results | Where-Object { $_.Mode -eq 'warm' })
 $stats = @()
 $stats += Get-Stats 'ColdStartMs'      @($coldRuns | ForEach-Object { $_.TimeToFirstFrameMs }) 'ms'
 $stats += Get-Stats 'WarmStartMs'      @($warmRuns | ForEach-Object { $_.TimeToFirstFrameMs }) 'ms'
+$stats += Get-Stats 'FirstInteractiveMs' @($results | ForEach-Object { $_.FirstInteractiveMs }) 'ms'
+$stats += Get-Stats 'SessionListLoadedMs' @($results | ForEach-Object { $_.SessionListLoadedMs }) 'ms'
+$stats += Get-Stats 'FirstConversationRenderedMs' @($results | ForEach-Object { $_.FirstConversationRenderedMs }) 'ms'
+$stats += Get-Stats 'DeferredStartupCompletedMs' @($results | ForEach-Object { $_.DeferredStartupCompletedMs }) 'ms'
 $stats += Get-Stats 'IdleWorkingSetMb' @($results | ForEach-Object { $_.IdleWorkingSetMb }) 'MB'
 $stats += Get-Stats 'IdlePrivateMb'    @($results | ForEach-Object { $_.IdlePrivateMb }) 'MB'
 $stats += Get-Stats 'ManagedHeapMb'    @($results | ForEach-Object { $_.ManagedHeapMb }) 'MB'
@@ -386,6 +417,9 @@ $stats += Get-Stats 'PeakWorkingSetMb' @($results | ForEach-Object { $_.PeakWork
 # which would drag the median toward the timeout rather than toward the app's behaviour. The
 # count of non-graceful exits is reported separately instead of being averaged in.
 $gracefulRuns = @($results | Where-Object { $_.GracefulExit })
+if ($gracefulRuns.Count -lt 5) {
+    throw "Only $($gracefulRuns.Count) graceful shutdown sample(s) were valid; at least five are required."
+}
 $stats += Get-Stats 'ShutdownMs'       @($gracefulRuns | ForEach-Object { $_.ShutdownMs }) 'ms'
 $stats = @($stats | Where-Object { $null -ne $_ })
 
@@ -402,6 +436,9 @@ foreach ($budget in $Budgets) {
     }
 }
 
+$buildCommit = (git -C $RepoRoot rev-parse HEAD).Trim()
+$buildDirty = [bool](git -C $RepoRoot status --porcelain)
+Add-Type -AssemblyName System.Windows.Forms
 $machine = [pscustomobject]@{
     Machine       = $env:COMPUTERNAME
     OS            = (Get-CimInstance Win32_OperatingSystem).Caption
@@ -411,6 +448,15 @@ $machine = [pscustomobject]@{
     Configuration = $results[0].Configuration
     Packaged      = $results[0].Packaged
     StandbyPurged = [bool]$script:StandbyPurgeAvailable
+    ColdCacheQualification = $(if ($Mode -like 'Cold*') { 'Qualified-PurgedBeforeEverySample' } else { 'NotApplicable-WarmMode' })
+    BenchmarkMode = $Mode
+    BuildCommit = $buildCommit
+    BuildDirty = $buildDirty
+    ExecutableSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $Exe).Hash
+    PackageFullName = $packageFullName
+    Dataset = $DatasetId
+    PowerScheme = ((powercfg /getactivescheme) -join ' ').Trim()
+    PowerSource = [System.Windows.Forms.SystemInformation]::PowerStatus.PowerLineStatus.ToString()
     NonGracefulExits = $results.Count - $gracefulRuns.Count
     Executable    = $Exe
     CapturedUtc   = (Get-Date).ToUniversalTime().ToString('o')
@@ -429,13 +475,13 @@ $null = $md.AppendLine()
 $null = $md.AppendLine("Captured $($machine.CapturedUtc) on $($machine.Machine) — $($machine.OS) $($machine.OSVersion), $($machine.Cores) cores, $($machine.TotalMemoryGb) GB RAM.")
 $null = $md.AppendLine()
 $null = $md.AppendLine("Build: **$($machine.Configuration)**, packaged: $($machine.Packaged), standby list purged between launches: $($machine.StandbyPurged).")
-if (-not $machine.StandbyPurged) {
+if ($Mode -like 'Cold*' -and -not $machine.StandbyPurged) {
     $null = $md.AppendLine()
     $null = $md.AppendLine('> Standby list was not purged (needs an elevated shell), so only iteration 1 is a true cold start.')
 }
 if ($machine.NonGracefulExits -gt 0) {
     $null = $md.AppendLine()
-    $null = $md.AppendLine("> $($machine.NonGracefulExits) of $($results.Count) iteration(s) had to be killed after the tray Exit command; those are excluded from the shutdown statistic.")
+    $null = $md.AppendLine("> $($machine.NonGracefulExits) of $($results.Count) iteration(s) had to be killed after the named graceful-exit request; those are excluded from the shutdown statistic.")
 }
 $null = $md.AppendLine()
 $null = $md.AppendLine('## Budgets')
@@ -458,15 +504,15 @@ $null = $md.AppendLine('## Launch phase breakdown')
 $null = $md.AppendLine()
 $null = $md.AppendLine('Milliseconds since process start. The gap before `managedEntry` is CLR + Windows App SDK bootstrap.')
 $null = $md.AppendLine()
-$null = $md.AppendLine('| # | Mode | managedEntry | hostStarted | windowCreated | windowActivated | firstFrame |')
-$null = $md.AppendLine('|---:|---|---:|---:|---:|---:|---:|')
+$null = $md.AppendLine('| # | Mode | managedEntry | hostStarted | windowCreated | windowActivated | firstFrame | interactive | sessions | conversation | deferred |')
+$null = $md.AppendLine('|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|')
 foreach ($r in $results) {
-    $null = $md.AppendLine("| $($r.Iteration) | $($r.Mode) | $([math]::Round($r.ManagedEntryMs,0)) | $([math]::Round($r.HostStartedMs,0)) | $([math]::Round($r.WindowCreatedMs,0)) | $([math]::Round($r.WindowActivatedMs,0)) | $([math]::Round($r.TimeToFirstFrameMs,0)) |")
+    $null = $md.AppendLine("| $($r.Iteration) | $($r.Mode) | $(Format-OptionalMilliseconds $r.ManagedEntryMs) | $(Format-OptionalMilliseconds $r.HostStartedMs) | $(Format-OptionalMilliseconds $r.WindowCreatedMs) | $(Format-OptionalMilliseconds $r.WindowActivatedMs) | $(Format-OptionalMilliseconds $r.TimeToFirstFrameMs) | $(Format-OptionalMilliseconds $r.FirstInteractiveMs) | $(Format-OptionalMilliseconds $r.SessionListLoadedMs) | $(Format-OptionalMilliseconds $r.FirstConversationRenderedMs) | $(Format-OptionalMilliseconds $r.DeferredStartupCompletedMs) |")
 }
 $null = $md.AppendLine()
 $null = $md.AppendLine('## Per-iteration resources')
 $null = $md.AppendLine()
-$null = $md.AppendLine("Memory sampled $SettleSeconds s after first frame.")
+$null = $md.AppendLine('Memory sampled after all required readiness milestones completed.')
 $null = $md.AppendLine()
 $null = $md.AppendLine('| # | Idle WS (MB) | Idle private (MB) | Peak WS (MB) | Managed heap (MB) | Handles | Threads | Shutdown (ms) |')
 $null = $md.AppendLine('|---:|---:|---:|---:|---:|---:|---:|---:|')

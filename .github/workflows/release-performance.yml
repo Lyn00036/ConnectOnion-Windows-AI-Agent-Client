@@ -1,0 +1,76 @@
+name: Release candidate performance
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Startup mode to measure on the prepared Windows performance runner
+        type: choice
+        options:
+          - WarmUnpackaged
+          - ColdUnpackaged
+          - WarmMsix
+          - ColdMsix
+        default: WarmUnpackaged
+      dataset_id:
+        description: Identity of the preinstalled fixture/profile
+        type: string
+        default: empty-isolated-profile
+      require_conversation:
+        description: Require a first-conversation-render milestone
+        type: boolean
+        default: false
+      fixture_path:
+        description: Optional prepared data-root fixture on the self-hosted runner
+        type: string
+        default: ''
+
+jobs:
+  startup:
+    # A real desktop, optional installed MSIX, elevation and WPR are intentionally not claimed
+    # by github-hosted runners. The prepared RC runner must provide all four.
+    runs-on: [self-hosted, Windows, X64, performance]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build current unpackaged release candidate
+        if: ${{ contains(inputs.mode, 'Unpackaged') }}
+        shell: powershell
+        run: |
+          dotnet restore ConnectOnion.WinUIClient\ConnectOnion.WinUIClient.sln -p:Platform=x64
+          dotnet build ConnectOnion.WinUIClient\ConnectOnion.WinUIClient.csproj `
+            --configuration Release --no-restore `
+            -p:Platform=x64 -p:RunUnpackaged=true
+
+      - name: Capture startup report and ETL
+        shell: powershell
+        run: |
+          $captureArgs = @(
+            '-NoProfile', '-ExecutionPolicy', 'Bypass',
+            '-File', 'scripts\Capture-StartupTrace.ps1',
+            '-Mode', '${{ inputs.mode }}',
+            '-DatasetId', '${{ inputs.dataset_id }}',
+            '-OutDir', 'TestResults\release-performance'
+          )
+          if ('${{ inputs.require_conversation }}' -eq 'true') {
+            $captureArgs += '-RequireConversation'
+          }
+          if ('${{ inputs.fixture_path }}') {
+            $captureArgs += @('-FixturePath', '${{ inputs.fixture_path }}')
+          }
+          & powershell @captureArgs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload machine-readable report, Markdown and trace
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: startup-${{ inputs.mode }}-${{ github.sha }}
+          path: |
+            TestResults/release-performance/results.json
+            TestResults/release-performance/report.md
+            TestResults/release-performance/startup-*.json
+            TestResults/release-performance/*.etl
+          if-no-files-found: error
+          retention-days: 30

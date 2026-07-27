@@ -93,6 +93,7 @@ public sealed partial class ChatPage
         if (Vm.Messages.Count == 0)
         {
             LoadingOverlay.Visibility = Visibility.Collapsed;
+            Diagnostics.StartupTelemetry.Mark(Diagnostics.StartupPhases.FirstConversationRendered);
             return;
         }
 
@@ -145,6 +146,7 @@ public sealed partial class ChatPage
 
             cancellationToken.ThrowIfCancellationRequested();
             LoadingOverlay.Visibility = Visibility.Collapsed;
+            Diagnostics.StartupTelemetry.Mark(Diagnostics.StartupPhases.FirstConversationRendered);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -153,6 +155,7 @@ public sealed partial class ChatPage
         catch
         {
             LoadingOverlay.Visibility = Visibility.Collapsed;
+            Diagnostics.StartupTelemetry.Mark(Diagnostics.StartupPhases.FirstConversationRendered);
         }
     }
 

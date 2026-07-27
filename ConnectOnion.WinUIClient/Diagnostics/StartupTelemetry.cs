@@ -1,6 +1,8 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Threading;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Media;
 using Serilog;
 
@@ -27,6 +29,9 @@ namespace ConnectOnion.WinUIClient.Diagnostics;
 /// </summary>
 internal static class StartupTelemetry
 {
+    private static readonly object ReportGate = new();
+    private static EventWaitHandle? _exitEvent;
+    private static RegisteredWaitHandle? _exitRegistration;
     private static readonly DateTime ProcessStartUtc = ResolveProcessStartUtc();
 
     private static readonly StartupProfiler Profiler =
@@ -34,7 +39,40 @@ internal static class StartupTelemetry
 
     /// <summary>Records a launch phase. Safe to call from any thread; later duplicates of an
     /// already-recorded phase are ignored.</summary>
-    internal static void Mark(string phase) => Profiler.Mark(phase);
+    internal static void Mark(string phase)
+    {
+        Profiler.Mark(phase);
+        // firstInteractive/session/conversation/deferred all occur after first frame. Rewrite the
+        // atomic report as each arrives so the harness observes the complete readiness timeline.
+        if (Profiler.HasMark(StartupPhases.FirstFrame)) Report();
+    }
+
+    /// <summary>Connects the benchmark's named event to the same graceful exit action used by
+    /// File &gt; Exit. Unset in normal runs, so this adds no waiter or handle for users.</summary>
+    internal static void ArmPerformanceExit(DispatcherQueue dispatcher, Action requestExit)
+    {
+        var eventName = Environment.GetEnvironmentVariable(
+            StartupProfiler.ExitEventEnvironmentVariable);
+        if (string.IsNullOrWhiteSpace(eventName)) return;
+
+        try
+        {
+            _exitEvent = EventWaitHandle.OpenExisting(eventName);
+            _exitRegistration = ThreadPool.RegisterWaitForSingleObject(
+                _exitEvent,
+                (_, timedOut) =>
+                {
+                    if (!timedOut) _ = dispatcher.TryEnqueue(() => requestExit());
+                },
+                null,
+                Timeout.Infinite,
+                executeOnlyOnce: true);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Performance exit event {EventName} could not be armed", eventName);
+        }
+    }
 
     /// <summary>
     /// Arms the first-frame measurement. Call immediately after <c>Window.Activate()</c> —
@@ -49,12 +87,13 @@ internal static class StartupTelemetry
     private static void OnRendering(object? sender, object e)
     {
         CompositionTarget.Rendering -= OnRendering;
-        Profiler.Mark(StartupPhases.FirstFrame);
-        Report();
+        Mark(StartupPhases.FirstFrame);
     }
 
     private static void Report()
     {
+        lock (ReportGate)
+        {
         try
         {
             using var process = Process.GetCurrentProcess();
@@ -75,6 +114,7 @@ internal static class StartupTelemetry
         {
             // Telemetry must never be able to break a launch it is only observing.
             Log.Warning(ex, "Startup telemetry could not be captured");
+        }
         }
     }
 

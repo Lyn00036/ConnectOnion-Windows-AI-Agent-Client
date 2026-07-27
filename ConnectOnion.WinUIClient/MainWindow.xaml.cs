@@ -44,6 +44,7 @@ public sealed partial class MainWindow : Window
         InitializeWindowPlacement();
         ConfigureCustomTitleBar();
         InitializeTrayBehavior();
+        Diagnostics.StartupTelemetry.ArmPerformanceExit(DispatcherQueue, ExitApplication);
         ShellSidebar.NavigationRequested += NavigateTo;
         ShellSidebar.NewChatRequested += Sidebar_NewChatRequested;
         ShellSidebar.SettingsRequested += ShowSettingsOverlay;
@@ -85,15 +86,24 @@ public sealed partial class MainWindow : Window
             DetachWindowServices();
         };
         ThemeService.RegisterRoot(RootGrid);
-        _ = ApplyStartupThemeAsync();
+        RootGrid.GotFocus += (_, _) =>
+            Diagnostics.StartupTelemetry.Mark(Diagnostics.StartupPhases.FirstInteractive);
         RootGrid.Loaded += async (_, _) =>
         {
             try
             {
                 await ShellSidebar.RefreshAsync();
+                Diagnostics.StartupTelemetry.Mark(Diagnostics.StartupPhases.SessionListLoaded);
                 await RefreshTrayRecentChatsAsync();
-                NavigateTo(typeof(HomePage));
+                var benchmarkConversation =
+                    Environment.GetEnvironmentVariable(
+                        Diagnostics.StartupProfiler.OpenConversationEnvironmentVariable) == "1";
+                NavigateTo(benchmarkConversation ? typeof(ChatPage) : typeof(HomePage));
                 UpdateNavigationButtons();
+                await ApplyStartupThemeAsync();
+                if (ContentFrame.Focus(FocusState.Programmatic))
+                    Diagnostics.StartupTelemetry.Mark(Diagnostics.StartupPhases.FirstInteractive);
+                Diagnostics.StartupTelemetry.Mark(Diagnostics.StartupPhases.DeferredStartupCompleted);
             }
             catch
             {
