@@ -54,4 +54,15 @@ public sealed partial class MainWindow
         IntPtr updateRect,
         IntPtr updateRegion,
         uint flags);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowPos(
+        IntPtr hWnd,
+        IntPtr hWndInsertAfter,
+        int x,
+        int y,
+        int width,
+        int height,
+        uint flags);
+
 }

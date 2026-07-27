@@ -23,6 +23,7 @@ public sealed partial class AutomationContractTests
         "AboutMenuItem",
         "ConnectOnionDocsMenuItem",
         "KeyboardShortcutsMenuItem",
+        "AccountKeyboardShortcutsMenuItem",
         "SettingsOverlay",
         "AgentsNav",
         "SettingsAgentList",

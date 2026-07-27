@@ -135,7 +135,8 @@
                                 <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="Key"/><TextBlock x:Name="IdentityNavLabel" Text="Identity"/></StackPanel>
                             </RadioButton>
                             <RadioButton GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
-                                Click="UsageNav_Click" AutomationProperties.Name="Token usage">
+                                Click="UsageNav_Click" AutomationProperties.AutomationId="UsageNav"
+                                AutomationProperties.Name="Token usage">
                                 <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="DataUsage"/><TextBlock x:Name="UsageNavLabel" Text="Usage"/></StackPanel>
                             </RadioButton>
                         </StackPanel>

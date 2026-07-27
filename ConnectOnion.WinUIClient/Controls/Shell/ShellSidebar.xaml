@@ -612,7 +612,7 @@
                                     <Setter Property="CornerRadius" Value="12" />
                                 </Style>
                             </Flyout.FlyoutPresenterStyle>
-                            <Border Width="236"
+                            <Border MinWidth="272"
                                     Padding="6"
                                     CornerRadius="12"
                                     Background="{ThemeResource AccountMenuGlassBrush}"
@@ -637,6 +637,7 @@
                                     </Button>
                                     <Button Style="{StaticResource AccountFlyoutRowStyle}"
                                             Click="BottomKeyboardShortcuts_Click"
+                                            AutomationProperties.AutomationId="AccountKeyboardShortcutsMenuItem"
                                             AutomationProperties.Name="Keyboard Shortcuts">
                                         <Grid ColumnSpacing="12">
                                             <Grid.ColumnDefinitions>

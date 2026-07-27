@@ -137,7 +137,7 @@ public sealed class MemoryLeakTests(ITestOutputHelper output)
         {
             "settings" => () =>
             {
-                InvokeByAutomationId(window, "SettingsButton");
+                ShellSmokeTests.OpenSettings(window);
                 InvokeByName(window, "Close settings");
             },
             "add-agent" => () =>

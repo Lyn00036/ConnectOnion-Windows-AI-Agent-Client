@@ -1,4 +1,21 @@
 <Project>
+  <!--
+    THE SINGLE VERSION SOURCE. Nothing else in the repo hard-codes a version.
+
+    `VersionPrefix` flows into AssemblyVersion / FileVersion / InformationalVersion for every
+    project, which is what AppVersionService reads when the app runs unpackaged. The packaged
+    build additionally stamps Package.appxmanifest (see scripts/Set-PackageIdentity.ps1), which
+    is what AppVersionService reads when it runs packaged — the two must agree, and deriving
+    both from here is how that is arranged.
+
+    The release workflow overrides this from the `v*` tag, so the value committed here is only
+    ever what a local or CI build reports. Keep it at or below the next intended release so a
+    development build never claims to be a version that shipped.
+  -->
+  <PropertyGroup>
+    <VersionPrefix>0.1.0</VersionPrefix>
+  </PropertyGroup>
+
   <PropertyGroup>
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <AnalysisLevel>latest-recommended</AnalysisLevel>

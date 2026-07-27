@@ -1,5 +1,4 @@
 using System;
-using System.Text.Json;
 using System.Threading.Tasks;
 using ConnectOnion.Protocol;
 using ConnectOnion.WinUIClient.Models;
@@ -150,18 +149,11 @@ public static class AgentInfoService
 
             if (!info.Online) return null;
 
-            return JsonSerializer.Serialize(new
-            {
-                name = info.Name,
-                address = info.Address,
-                tools = info.Tools,
-                skills = info.Skills,
-                trust = info.Trust,
-                version = info.Version,
-                model = info.Model,
-                accepted_inputs = info.AcceptedInputs,
-                online = info.Online,
-            });
+            // Composed by the protocol library rather than here, so the writer sits next to the
+            // parsers that read this blob back: an anonymous type serialized by reflection gave
+            // the nested skills and capabilities their C# names, which those parsers never
+            // matched. See EndpointResolver.SerializeAgentInfo.
+            return EndpointResolver.SerializeAgentInfo(info);
         }
         catch
         {

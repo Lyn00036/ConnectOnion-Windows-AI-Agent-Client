@@ -118,4 +118,39 @@ public sealed class SanitizeJsonEncodingTests
         Assert.Contains("[hidden]", sanitized, StringComparison.Ordinal);
         Assert.DoesNotContain("sk-live-1", sanitized, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// The redaction recursion now writes straight into a <c>Utf8JsonWriter</c> instead of
+    /// building an <c>object?</c> tree for the reflection serializer to walk — that serializer
+    /// throws under trimming, and this method runs on every persisted tool step. Structure has to
+    /// come out unchanged.
+    /// </summary>
+    [Fact]
+    public void SanitizeJson_PreservesNestedStructureAndValueKinds()
+    {
+        var sanitized = ToolActivityProjector.SanitizeJson(
+            """{"a":{"b":[1,2.5,true,false,null,{"c":"d"}]},"e":[]}""");
+
+        Assert.Equal("""{"a":{"b":[1,2.5,true,false,null,{"c":"d"}]},"e":[]}""", sanitized);
+    }
+
+    [Fact]
+    public void SanitizeJson_RedactsSecretsNestedInsideArrays()
+    {
+        var sanitized = ToolActivityProjector.SanitizeJson(
+            """{"steps":[{"name":"login","password":"hunter2"}]}""");
+
+        Assert.Contains("[hidden]", sanitized, StringComparison.Ordinal);
+        Assert.DoesNotContain("hunter2", sanitized, StringComparison.Ordinal);
+        Assert.Contains("\"name\":\"login\"", sanitized, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SanitizeJson_NonJsonPayload_FallsBackToTheTextScrubber()
+    {
+        var sanitized = ToolActivityProjector.SanitizeJson("Traceback: api_key=sk-live-1 at line 3");
+
+        Assert.Contains("[hidden]", sanitized, StringComparison.Ordinal);
+        Assert.DoesNotContain("sk-live-1", sanitized, StringComparison.Ordinal);
+    }
 }

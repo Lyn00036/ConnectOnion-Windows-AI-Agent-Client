@@ -57,7 +57,7 @@ param(
     [int]    $LaunchTimeoutSeconds = 60,
     [int]    $ReadinessTimeoutSeconds = 60,
     [string] $OutDir,
-    [string] $PackageName = '779a2035-a8d1-4bc8-91cf-82aecda14cc5',
+    [string] $PackageName = 'ConnectOnion.Desktop',
     [string] $PackageExecutable = 'ConnectOnion.WinUIClient.exe',
     [string] $DatasetId = 'empty-isolated-profile',
     [string] $FixturePath,

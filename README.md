@@ -601,7 +601,8 @@ Known deployed development agents:
 
 ## Not Implemented Yet
 
-- Production installer/release pipeline (MSIX packaging is configured but not yet automated)
+- First production release (the tag-driven self-contained portable ZIP pipeline is implemented;
+  clean-machine validation is still required, while signed MSIX publishing is paused)
 - Broad UI-level tests: the headless surfaces are covered and a FlaUI shell smoke test proves
   the harness works, but navigation, drag-and-drop, and the find overlay are still untested.
   `AutomationId`s exist on the critical controls (guarded by `AutomationContractTests`) —
@@ -628,7 +629,7 @@ depends on how the app is launched:
 | Launch mode | Path |
 |---|---|
 | Unpackaged (`dotnet run`) | `%APPDATA%\ConnectOnion\connectonion.db` |
-| Packaged / MSIX (VS Debug) | `%LOCALAPPDATA%\Packages\779a2035-a8d1-4bc8-91cf-82aecda14cc5_<hash>\LocalState\ConnectOnion\connectonion.db` |
+| Packaged / MSIX (installed or VS Debug) | `%LOCALAPPDATA%\Packages\ConnectOnion.Desktop_<publisher hash>\LocalState\ConnectOnion\connectonion.db` |
 
 To reset app data during development, delete the file and restart the app —
 the database is recreated from the embedded schema on next launch.

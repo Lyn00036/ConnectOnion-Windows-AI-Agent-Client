@@ -15,6 +15,10 @@ on:
         description: Run the interactive WinUI shell smoke test
         type: boolean
         default: false
+      run_trim_audit:
+        description: Run the trimming gate audit (experimental trimmed publish + smoke harness)
+        type: boolean
+        default: false
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -120,6 +124,30 @@ jobs:
         env:
           CONNECTONION_UI_TEST_EXE: ${{ github.workspace }}\ConnectOnion.WinUIClient\bin\Release\net10.0-windows10.0.19041.0\win-x64\publish\ConnectOnion.WinUIClient.exe
         run: dotnet test tests/ConnectOnion.WinUIClient.UITests/ConnectOnion.WinUIClient.UITests.csproj --configuration $env:CONFIGURATION --no-build
+
+      # The cheap half of the trimming gate, on every run: it publishes only the small console
+      # harness (not the app), and it is the check that fails the moment a reflection-based
+      # JsonSerializer call returns to a persistence or protocol path. The expensive half — the
+      # experimental trimmed publish of the app and its warning inventory — is opt-in below.
+      # docs/TRIMMING.md explains why a clean warning inventory is not the same as trim-safe.
+      - name: Run trimmed serialization smoke harness
+        shell: pwsh
+        run: pwsh scripts/Invoke-TrimAudit.ps1 -SmokeOnly
+
+      - name: Run full trimming gate audit
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_trim_audit }}
+        shell: pwsh
+        run: pwsh scripts/Invoke-TrimAudit.ps1
+
+      - name: Upload trimming gate report
+        if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.run_trim_audit }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: trim-audit
+          path: |
+            artifacts/trim-audit/trim-audit.json
+            artifacts/trim-audit/*.log
+          if-no-files-found: warn
 
       - name: Upload coverage
         if: always()

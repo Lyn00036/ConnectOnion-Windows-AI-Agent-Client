@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using ConnectOnion.Protocol;
@@ -376,15 +377,20 @@ public sealed class ToolActivityProjector
         try
         {
             using var doc = JsonDocument.Parse(raw);
-            return JsonSerializer.Serialize(Redact(doc.RootElement), DisplayJsonOptions);
+            using var buffer = new MemoryStream();
+            using (var writer = new Utf8JsonWriter(buffer, DisplayJsonOptions))
+            {
+                WriteRedacted(writer, doc.RootElement);
+            }
+            return Encoding.UTF8.GetString(buffer.ToArray());
         }
         catch { return SanitizeText(raw); }
     }
 
     /// <summary>
-    /// Serializer settings for arguments that will be <i>read by a person</i>.
+    /// Writer settings for arguments that will be <i>read by a person</i>.
     ///
-    /// <para><b>The relaxed encoder is the point.</b> <see cref="JsonSerializer"/>'s default escapes
+    /// <para><b>The relaxed encoder is the point.</b> The default encoder escapes
     /// far more than JSON requires — not only non-ASCII, but <c>+</c>, <c>&amp;</c>, <c>&lt;</c> and
     /// <c>&gt;</c> — so a perfectly ordinary search URL reached the timeline as
     /// <c>google.com/search?q=Sydney+weather&ia=web</c>, and any Chinese argument arrived
@@ -396,7 +402,7 @@ public sealed class ToolActivityProjector
     /// through a parameterized SQLite command, and re-parsed as JSON — never interpolated into a
     /// page or a script. Do not copy this encoder to somewhere that <i>is</i> such a context.</para>
     /// </summary>
-    private static readonly JsonSerializerOptions DisplayJsonOptions = new()
+    private static readonly JsonWriterOptions DisplayJsonOptions = new()
     {
         Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
@@ -430,19 +436,57 @@ public sealed class ToolActivityProjector
     /// Reconstructing rather than string-editing is what makes the redaction total: a secret
     /// nested ten levels down in an array is reached by the same recursion as a top-level one.
     /// Unhandled kinds (null, undefined, comments) collapse to null, which is lossless enough
-    /// for a display-only payload.</summary>
-    private static object? Redact(JsonElement element) => element.ValueKind switch
+    /// for a display-only payload.
+    ///
+    /// <para>Writes straight into the <see cref="Utf8JsonWriter"/> rather than building an
+    /// intermediate <c>object?</c> tree for <c>JsonSerializer.Serialize</c> to walk. That
+    /// serializer is reflection-based, which under <c>PublishTrimmed=true</c> throws instead of
+    /// running (see <c>docs/TRIMMING.md</c>) — and this path is on every persisted tool step, so
+    /// it took the whole Tool Activity timeline down with it. Emitting the document directly is
+    /// trim-safe by construction and skips the boxing besides.</para></summary>
+    private static void WriteRedacted(Utf8JsonWriter writer, JsonElement element)
     {
-        JsonValueKind.Object => element.EnumerateObject().ToDictionary(
-            property => property.Name,
-            property => SensitiveKeys.Contains(property.Name) ? "[hidden]" : Redact(property.Value)),
-        JsonValueKind.Array => element.EnumerateArray().Select(Redact).ToList(),
-        JsonValueKind.String => SanitizeText(element.GetString() ?? ""),
-        JsonValueKind.Number => element.TryGetInt64(out var integer) ? integer : element.GetDouble(),
-        JsonValueKind.True => true,
-        JsonValueKind.False => false,
-        _ => null,
-    };
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.Object:
+                writer.WriteStartObject();
+                foreach (var property in element.EnumerateObject())
+                {
+                    writer.WritePropertyName(property.Name);
+                    if (SensitiveKeys.Contains(property.Name)) writer.WriteStringValue("[hidden]");
+                    else WriteRedacted(writer, property.Value);
+                }
+                writer.WriteEndObject();
+                break;
+
+            case JsonValueKind.Array:
+                writer.WriteStartArray();
+                foreach (var item in element.EnumerateArray()) WriteRedacted(writer, item);
+                writer.WriteEndArray();
+                break;
+
+            case JsonValueKind.String:
+                writer.WriteStringValue(SanitizeText(element.GetString() ?? ""));
+                break;
+
+            case JsonValueKind.Number:
+                if (element.TryGetInt64(out var integer)) writer.WriteNumberValue(integer);
+                else writer.WriteNumberValue(element.GetDouble());
+                break;
+
+            case JsonValueKind.True:
+                writer.WriteBooleanValue(true);
+                break;
+
+            case JsonValueKind.False:
+                writer.WriteBooleanValue(false);
+                break;
+
+            default:
+                writer.WriteNullValue();
+                break;
+        }
+    }
 
     /// <summary>The id that binds a result back to its call. Agents disagree on the property
     /// name, so all the spellings in the wild are probed in order; the stream event's own id is
