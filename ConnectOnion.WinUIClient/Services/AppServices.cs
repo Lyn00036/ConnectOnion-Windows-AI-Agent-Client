@@ -4,6 +4,7 @@ using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Services.Notifications;
 using ConnectOnion.WinUIClient.Services.Runtime;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace ConnectOnion.WinUIClient.Services;
 
@@ -33,6 +34,13 @@ public static class AppServices
 
     /// <summary>Session-lived cache of each agent's online status.</summary>
     public static AgentPresenceService Presence => Provider.GetRequiredService<AgentPresenceService>();
+
+    /// <summary>Picks, processes, commits and deletes the user's chosen agent icons.</summary>
+    public static IAgentIconService AgentIcons => Provider.GetRequiredService<IAgentIconService>();
+
+    /// <summary>Logger source for framework-created code-behind, which cannot be handed an
+    /// <c>ILogger&lt;T&gt;</c> through a constructor the way an injected type is.</summary>
+    public static ILoggerFactory Logging => Provider.GetRequiredService<ILoggerFactory>();
 
     /// <summary>The live shortcut bindings (catalog defaults overlaid with the user's rebinds).
     /// The window's key handlers ask this rather than testing hard-coded key codes.</summary>

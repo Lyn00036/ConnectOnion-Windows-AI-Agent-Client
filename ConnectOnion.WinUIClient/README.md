@@ -20,7 +20,8 @@ The client connects to agents via **Direct URL** or **relay-based address resolu
 | Target Platforms | x64, x86, ARM64 |
 
 NuGet versions are managed centrally in `../Directory.Packages.props`. Runtime
-diagnostics use structured rolling logs in `%AppData%\ConnectOnion\logs`.
+diagnostics use structured rolling logs in `<data root>\logs` — `%AppData%\ConnectOnion\logs`
+unpackaged, the package's `LocalState\ConnectOnion\logs` when installed.
 
 ## Prerequisites
 

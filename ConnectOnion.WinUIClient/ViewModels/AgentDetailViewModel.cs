@@ -79,6 +79,7 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
             OnPropertyChanged(nameof(HasAgent));
             OnPropertyChanged(nameof(AgentInitial));
             OnPropertyChanged(nameof(AgentAvatarPaletteIndex));
+            OnPropertyChanged(nameof(AgentIconPath));
             RaisePresenceProperties();
             RaiseProfileSummaryProperties();
         }
@@ -88,6 +89,11 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
     public string AgentDisplayName => _agent?.DisplayName ?? "";
     public string AgentInitial => NameInitial.From(AgentDisplayName);
     public int AgentAvatarPaletteIndex => AvatarPalette.From(AgentName);
+
+    /// <summary>The agent's chosen icon, relative to the data root. Null falls back to
+    /// <see cref="AgentInitial"/> on its palette colour.</summary>
+    public string? AgentIconPath => _agent?.IconPath;
+
     public string AgentAddress => _agent?.Address ?? "";
     public string? DirectUrl => _agent?.DirectUrl;
     public bool CanShareAgent => _agent?.IsRelayOnly == true;

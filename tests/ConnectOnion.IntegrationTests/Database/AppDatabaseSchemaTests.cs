@@ -27,6 +27,31 @@ public sealed class AppDatabaseSchemaTests(TempDatabaseFixture fixture)
         Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'usage_events';"));
         Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'mode';"));
         Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM pragma_table_info('identity_keys') WHERE name = 'mnemonic';"));
+        Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM pragma_table_info('agents') WHERE name = 'icon_path';"));
+    }
+
+    [Fact]
+    public async Task ApplyAsync_VersionFiveDatabase_AddsIconPathAndLeavesExistingAgentsWithoutOne()
+    {
+        await using var initialized = await AppDatabase.OpenAsync();
+        await using var connection = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await AppDatabase.CreateSchemaAsync(connection);
+        await ExecuteAsync(connection, """
+            ALTER TABLE identity_keys ADD COLUMN mnemonic TEXT NULL;
+            PRAGMA user_version = 5;
+
+            INSERT INTO agents (id, name, address, sort_order)
+            VALUES ('agent-existing', 'Existing agent', '0xabc', 0);
+            """);
+
+        await SchemaMigrator.ApplyAsync(connection);
+
+        Assert.Equal(SchemaMigrator.LatestVersion, (int)await ScalarLongAsync(connection, "PRAGMA user_version;"));
+        Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM pragma_table_info('agents') WHERE name = 'icon_path';"));
+        // "No custom icon" is the normal state for everyone who upgrades: the column is nullable
+        // precisely so an existing agent keeps working with its name-initial avatar.
+        Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM agents WHERE id = 'agent-existing' AND icon_path IS NULL;"));
     }
 
     [Fact]

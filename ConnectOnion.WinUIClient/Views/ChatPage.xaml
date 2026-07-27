@@ -778,7 +778,8 @@
                                       FontSize="11"
                                       VerticalAlignment="Center"
                                       Initial="{x:Bind Vm.SelectedAgentInitial, Mode=OneWay}"
-                                      PaletteIndex="{x:Bind Vm.SelectedAgentAvatarPaletteIndex, Mode=OneWay}" />
+                                      PaletteIndex="{x:Bind Vm.SelectedAgentAvatarPaletteIndex, Mode=OneWay}"
+                                      ImagePath="{x:Bind Vm.SelectedAgentIconPath, Mode=OneWay}" />
                 <StackPanel Grid.Column="1"
                             VerticalAlignment="Center"
                             Spacing="1">
@@ -853,7 +854,8 @@
                                                   FontSize="16"
                                                   VerticalAlignment="Center"
                                                   Initial="{x:Bind Vm.SelectedAgentInitial, Mode=OneWay}"
-                                                  PaletteIndex="{x:Bind Vm.SelectedAgentAvatarPaletteIndex, Mode=OneWay}" />
+                                                  PaletteIndex="{x:Bind Vm.SelectedAgentAvatarPaletteIndex, Mode=OneWay}"
+                                                  ImagePath="{x:Bind Vm.SelectedAgentIconPath, Mode=OneWay}" />
                             <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="3">
                                 <TextBlock Text="{x:Bind Vm.SelectedAgentDisplayName, Mode=OneWay}"
                                            FontSize="16"

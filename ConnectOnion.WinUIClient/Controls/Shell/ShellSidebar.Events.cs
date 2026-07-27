@@ -1,20 +1,43 @@
 using System;
 using System.Linq;
+using System.Threading;
+using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Models;
+using ConnectOnion.WinUIClient.Models.Notifications;
 using ConnectOnion.WinUIClient.Services;
 using ConnectOnion.WinUIClient.Views;
+using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
 
 namespace ConnectOnion.WinUIClient.Controls;
 
 // User-interaction entry points for the sidebar: row hover/focus handlers and the
-// routed Click handlers for add-chat / add-agent / pin / delete / settings. Each
+// routed Click handlers for add-chat / add-agent / icon / pin / delete / settings. Each
 // delegates to the state/refresh logic in ShellSidebar.xaml.cs (RefreshAsync,
 // SelectSessionAsync, ConfirmDeleteAsync, RequestNavigation);
 // split out so the main file holds the data/presence model, not the wiring.
 public sealed partial class ShellSidebar
 {
+    /// <summary>Guards the icon menu items against re-entry. Both are <c>async void</c> handlers
+    /// that await a file picker, so without this a second click while the picker is open would
+    /// commit a second file and leave the first orphaned on disk.</summary>
+    private int _iconOperationInProgress;
+
+    // Pre-compiled message delegates rather than the ILogger extension methods, which is what
+    // CA1848 asks for and what NotificationLog already does.
+    private static readonly Action<ILogger, string, Exception?> LogIconCleanupFailed =
+        LoggerMessage.Define<string>(
+            LogLevel.Warning,
+            new EventId(1, nameof(LogIconCleanupFailed)),
+            "Could not delete agent icon {IconPath}.");
+
+    private static readonly Action<ILogger, string, Exception?> LogIconOperationFailed =
+        LoggerMessage.Define<string>(
+            LogLevel.Warning,
+            new EventId(2, nameof(LogIconOperationFailed)),
+            "Agent icon operation failed for {AgentId}.");
+
     // Agent and session rows share one interaction model (see RowStateItem):
     // pointer hover and keyboard focus both reveal the row's action buttons and
     // paint its hover background. Both row kinds bind to these same handlers.
@@ -54,6 +77,153 @@ public sealed partial class ShellSidebar
         RequestNavigation(typeof(Views.AgentDetailPage), forceReload: true);
     }
 
+    /// <summary>
+    /// Replaces the agent's avatar with an image the user picks.
+    ///
+    /// The order — commit the file, then save the row, then delete the old file — is what keeps
+    /// the two stores consistent under a failure: a committed file with no row is an orphan the
+    /// next sweep can remove, whereas a row pointing at a file that was deleted first is a
+    /// permanently broken avatar. Committed names carry a GUID, so the file just written can
+    /// never be the one being deleted.
+    /// </summary>
+    private async void ChangeAgentIcon_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not string agentId) return;
+        if (Interlocked.Exchange(ref _iconOperationInProgress, 1) != 0) return;
+
+        string? temporaryPath = null;
+        try
+        {
+            temporaryPath = await AppServices.AgentIcons.PickTemporaryIconAsync();
+            // Dismissing the picker is not a failure and gets no toast.
+            if (temporaryPath is null) return;
+
+            // Loaded after the picker closes, not before: the agent can be deleted from another
+            // surface while a modal file dialog is open, and the stale copy would resurrect it.
+            var agentsState = await AppServices.Agents.LoadAsync();
+            var agent = agentsState.Agents.FirstOrDefault(entry => entry.Id == agentId);
+            if (agent is null) return;
+
+            var previousIconPath = agent.IconPath;
+            var committedPath = await AppServices.AgentIcons.CommitTemporaryIconAsync(agentId, temporaryPath);
+            // The commit moved the file, so the finally block below has nothing left to clean up.
+            temporaryPath = null;
+
+            agent.IconPath = committedPath;
+            try
+            {
+                await AppServices.Agents.SaveAsync(agentsState);
+            }
+            catch
+            {
+                await DeleteIconQuietlyAsync(committedPath);
+                throw;
+            }
+
+            await DeleteIconQuietlyAsync(previousIconPath);
+            await RefreshAsync();
+        }
+        catch (Exception exception)
+        {
+            ReportIconFailure(
+                agentId,
+                exception,
+                "AgentIconChangeFailed",
+                "The agent icon could not be changed.");
+        }
+        finally
+        {
+            await DeleteTemporaryIconQuietlyAsync(temporaryPath);
+            Volatile.Write(ref _iconOperationInProgress, 0);
+        }
+    }
+
+    /// <summary>Drops the custom icon and restores the name-initial avatar.</summary>
+    private async void RemoveAgentIcon_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not string agentId) return;
+        if (Interlocked.Exchange(ref _iconOperationInProgress, 1) != 0) return;
+
+        try
+        {
+            var agentsState = await AppServices.Agents.LoadAsync();
+            var agent = agentsState.Agents.FirstOrDefault(entry => entry.Id == agentId);
+            if (agent is null || string.IsNullOrWhiteSpace(agent.IconPath)) return;
+
+            // Clear the reference before touching the file, for the same reason the change path
+            // commits before saving: an orphaned file is recoverable, a dangling row is not.
+            var previousIconPath = agent.IconPath;
+            agent.IconPath = null;
+            await AppServices.Agents.SaveAsync(agentsState);
+
+            await DeleteIconQuietlyAsync(previousIconPath);
+            await RefreshAsync();
+        }
+        catch (Exception exception)
+        {
+            ReportIconFailure(
+                agentId,
+                exception,
+                "AgentIconRemoveFailed",
+                "The agent icon could not be removed.");
+        }
+        finally
+        {
+            Volatile.Write(ref _iconOperationInProgress, 0);
+        }
+    }
+
+    /// <summary>Deletes a committed icon, swallowing failure. Every caller has already put the
+    /// database in the state it wants; a file that outlives its row is untidy, not broken.</summary>
+    private static async System.Threading.Tasks.Task DeleteIconQuietlyAsync(string? relativePath)
+    {
+        if (string.IsNullOrWhiteSpace(relativePath)) return;
+
+        try
+        {
+            await AppServices.AgentIcons.DeleteIconAsync(relativePath);
+        }
+        catch (Exception exception)
+        {
+            LogIconCleanupFailed(
+                AppServices.Logging.CreateLogger<ShellSidebar>(), relativePath, exception);
+        }
+    }
+
+    private static async System.Threading.Tasks.Task DeleteTemporaryIconQuietlyAsync(string? temporaryPath)
+    {
+        if (string.IsNullOrWhiteSpace(temporaryPath)) return;
+
+        try
+        {
+            await AppServices.AgentIcons.DeleteTemporaryIconAsync(temporaryPath);
+        }
+        catch (Exception exception)
+        {
+            LogIconCleanupFailed(
+                AppServices.Logging.CreateLogger<ShellSidebar>(), temporaryPath, exception);
+        }
+    }
+
+    /// <summary>
+    /// Surfaces an icon failure as a toast rather than a dialog. The icon is decoration: a modal
+    /// would interrupt whatever conversation is on screen to announce that an avatar stayed the
+    /// way it already was.
+    /// </summary>
+    private void ReportIconFailure(string agentId, Exception exception, string resourceKey, string fallback)
+    {
+        LogIconOperationFailed(
+            AppServices.Logging.CreateLogger<ShellSidebar>(), agentId, exception);
+
+        MainWindow.FromXamlRoot(XamlRoot)?.ShowInAppToast(new InAppToastModel(
+            LocalizedStrings.Get("AgentIconToastTitle", "Agent icon"),
+            LocalizedStrings.Get(resourceKey, fallback),
+            NotificationType.Error,
+            AgentId: agentId,
+            ConversationId: null,
+            ActionId: null));
+    }
+
     private async void DeleteAgent_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.Tag is not string agentId) return;
@@ -69,6 +239,10 @@ public sealed partial class ShellSidebar
         if (agent is null) return false;
 
         if (!await ConfirmDeleteAsync($"Delete {agent.DisplayName}?", "This agent and all of its local sessions will be removed.")) return false;
+
+        // Read before the row goes: once the agent is removed from storage nothing points at its
+        // icon file any more, and the path would be unrecoverable.
+        var iconPath = agent.IconPath;
 
         var sessionsState = await AppServices.Sessions.LoadAsync();
         // Tear each of this agent's conversations down completely before its sessions rows go,
@@ -104,6 +278,10 @@ public sealed partial class ShellSidebar
             agentsState.SelectedAgentId = agentsState.Agents.FirstOrDefault()?.Id;
         }
         await AppServices.Agents.SaveAsync(agentsState);
+
+        // Only now: the row is gone, so deleting the file cannot leave a live agent pointing at
+        // one that no longer exists.
+        await DeleteIconQuietlyAsync(iconPath);
 
         AppServices.RunManager.ForgetAgent(agentId);
         AppServices.Presence.Forget(agentId);

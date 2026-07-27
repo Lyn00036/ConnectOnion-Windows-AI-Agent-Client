@@ -191,6 +191,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
                 Name = agent.Name,
                 Address = agent.Address,
                 DirectUrl = agent.DirectUrl,
+                IconPath = agent.IconPath,
                 IsSelected = IsAgentSelected(agent.Id, agentsState.SelectedAgentId),
                 // First build: open the selected agent so the app doesn't start fully collapsed.
                 // Afterwards the user's own expansion state is authoritative, including "all

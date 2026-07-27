@@ -64,7 +64,9 @@
                                       FontSize="18"
                                       HorizontalAlignment="Center"
                                       Initial="{x:Bind Vm.AgentInitial, Mode=OneWay}"
-                                      PaletteIndex="{x:Bind Vm.AgentAvatarPaletteIndex, Mode=OneWay}" />
+                                      PaletteIndex="{x:Bind Vm.AgentAvatarPaletteIndex, Mode=OneWay}"
+                                      ImagePath="{x:Bind Vm.AgentIconPath, Mode=OneWay}"
+                                      AutomationProperties.Name="Agent icon" />
 
                 <StackPanel HorizontalAlignment="Center"
                             Spacing="4">

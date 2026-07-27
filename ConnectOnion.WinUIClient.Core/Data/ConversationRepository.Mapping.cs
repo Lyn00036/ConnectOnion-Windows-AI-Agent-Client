@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using ConnectOnion.WinUIClient.Models;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Logging;
 
 namespace ConnectOnion.WinUIClient.Data;
 
@@ -17,7 +18,18 @@ namespace ConnectOnion.WinUIClient.Data;
 /// </summary>
 public sealed partial class ConversationRepository
 {
-    private static ChatMessage RowToMessage(SqliteDataReader reader)
+    private static readonly Action<ILogger, long, Exception?> LogToolActivityPayloadUnreadable =
+        LoggerMessage.Define<long>(LogLevel.Warning, new EventId(2, "ToolActivityPayloadUnreadable"),
+            "Tool activity payload for message {MessageId} could not be restored; showing a plain activity card");
+
+    private static readonly Action<ILogger, Exception?> LogThoughtStepsPayloadUnreadable =
+        LoggerMessage.Define(LogLevel.Warning, new EventId(3, "ThoughtStepsPayloadUnreadable"),
+            "Grouped thought steps payload could not be restored; falling back to the single stored step");
+
+    // Instance rather than static so these can reach _logger. A payload that will not deserialize
+    // is degraded rather than rethrown, and a degradation nobody can see afterwards is the kind of
+    // thing that gets reported as "the app lost my history" with nothing to go on.
+    private ChatMessage RowToMessage(SqliteDataReader reader)
     {
         var m = new ChatMessage
         {
@@ -62,6 +74,7 @@ public sealed partial class ConversationRepository
                 // cost the user the surrounding conversation. The visible title says so
                 // instead of silently rendering an empty card.
                 Debug.WriteLine($"[db] tool activity payload for message {m.Id} could not be restored: {ex}");
+                LogToolActivityPayloadUnreadable(_logger, m.Id, ex);
                 m.EventKind = "activity";
                 m.EventTitle = "Tool execution history could not be restored";
             }
@@ -84,7 +97,7 @@ public sealed partial class ConversationRepository
         return m;
     }
 
-    private static IReadOnlyList<string>? TryReadThoughtSteps(string? payload)
+    private IReadOnlyList<string>? TryReadThoughtSteps(string? payload)
     {
         if (string.IsNullOrWhiteSpace(payload)) return null;
         try
@@ -98,6 +111,7 @@ public sealed partial class ConversationRepository
             // Same bargain as the tool-activity payload above: one unreadable blob must not cost
             // the user the conversation. The caller falls back to the event_detail single step.
             Debug.WriteLine($"[db] thought steps payload could not be restored: {ex}");
+            LogThoughtStepsPayloadUnreadable(_logger, ex);
             return null;
         }
     }

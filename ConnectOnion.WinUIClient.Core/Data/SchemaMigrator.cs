@@ -29,7 +29,7 @@ internal static class SchemaMigrator
     private const int BaselineVersion = 1;
 
     /// <summary>The schema version this build expects. Bump when you append to <see cref="Migrations"/>.</summary>
-    internal const int LatestVersion = 5;
+    internal const int LatestVersion = 6;
 
     /// <summary>
     /// Ordered forward migrations. Each runs exactly once, in its own transaction, on databases
@@ -173,6 +173,16 @@ internal static class SchemaMigrator
         // seed while writing the phrase in the clear right beside it would defeat the point.
         new(5, """
             ALTER TABLE identity_keys ADD COLUMN mnemonic TEXT NULL;
+            """),
+
+        // v6 — the user's chosen icon for a saved agent.
+        //
+        // Holds a path relative to the data root (avatars/agent-….png), never the image bytes and
+        // never an absolute path: a BLOB would put a 256×256 PNG on every agent read, and an
+        // absolute path breaks the moment a portable install is moved. Nullable on purpose —
+        // "no custom icon" is the normal state, and those agents keep the name-initial avatar.
+        new(6, """
+            ALTER TABLE agents ADD COLUMN icon_path TEXT NULL;
             """),
     };
 

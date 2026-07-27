@@ -27,6 +27,9 @@ public static class AppStorage
     /// </summary>
     public const string DataRootEnvironmentVariable = "CONNECTONION_DATA_ROOT";
 
+    /// <summary>Directory segment persisted inside an agent's <c>icon_path</c>.</summary>
+    private const string AgentIconsFolderName = "avatars";
+
     private static readonly StorageLocation Location = ResolveStorageLocation();
 
     public static readonly string RootDir = Location.RootDir;
@@ -40,6 +43,21 @@ public static class AppStorage
     /// </summary>
     public static readonly string ImageCacheDir = Path.Combine(RootDir, "cache", "images");
 
+    /// <summary>
+    /// Permanent store for user-selected agent icons. <c>agents.icon_path</c> holds a path
+    /// relative to <see cref="RootDir"/> (<c>avatars/agent-….png</c>) rather than an absolute
+    /// one, so a portable install that moves between folders keeps resolving its own icons.
+    /// </summary>
+    public static readonly string AgentIconsDir = Path.Combine(RootDir, AgentIconsFolderName);
+
+    /// <summary>
+    /// Scratch space holding a processed icon between "user picked an image" and "the agent it
+    /// belongs to was saved". Nothing here is referenced by the database, so
+    /// <see cref="PurgeTemporaryAgentIcons"/> may empty it at startup.
+    /// </summary>
+    public static readonly string TemporaryAgentIconsDir =
+        Path.Combine(RootDir, "temp", AgentIconsFolderName);
+
     /// <summary>Rolling structured application logs.</summary>
     public static readonly string LogsDir = Path.Combine(RootDir, "logs");
 
@@ -49,10 +67,149 @@ public static class AppStorage
         Directory.CreateDirectory(RootDir);
         Directory.CreateDirectory(ConversationsDir);
         Directory.CreateDirectory(ImageCacheDir);
+        Directory.CreateDirectory(AgentIconsDir);
+        Directory.CreateDirectory(TemporaryAgentIconsDir);
         Directory.CreateDirectory(LogsDir);
     }
 
     public static string PathFor(string fileName) => Path.Combine(RootDir, fileName);
+
+    /// <summary>
+    /// Builds the value stored in <c>agents.icon_path</c>. Always forward-slashed and always
+    /// relative, which is what <see cref="GetAgentIconAbsolutePath"/> expects to resolve.
+    /// </summary>
+    public static string CreateAgentIconRelativePath(string fileName)
+        => $"{AgentIconsFolderName}/{ValidateLeafFileName(fileName)}";
+
+    /// <summary>
+    /// Resolves a stored icon path against the current data root.
+    ///
+    /// The containment check is the point: <c>icon_path</c> is a database column, and a database
+    /// that was hand-edited or restored from elsewhere must not be able to make the app open —
+    /// or, through the delete paths, remove — a file outside the managed avatars directory.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The path escapes <see cref="AgentIconsDir"/>.</exception>
+    public static string GetAgentIconAbsolutePath(string relativePath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(relativePath);
+
+        var normalized = relativePath
+            .Replace('/', Path.DirectorySeparatorChar)
+            .Replace('\\', Path.DirectorySeparatorChar);
+
+        var absolutePath = Path.GetFullPath(Path.Combine(RootDir, normalized));
+
+        if (!IsPathInsideDirectory(absolutePath, AgentIconsDir))
+        {
+            throw new InvalidOperationException(
+                "The agent icon path must remain inside the managed avatars directory.");
+        }
+
+        return absolutePath;
+    }
+
+    /// <summary>
+    /// Non-throwing <see cref="GetAgentIconAbsolutePath"/> for display paths, where a stored value
+    /// that no longer resolves means "fall back to the initial", not "fail".
+    /// </summary>
+    public static bool TryGetAgentIconAbsolutePath(string? relativePath, out string? absolutePath)
+    {
+        absolutePath = null;
+        if (string.IsNullOrWhiteSpace(relativePath)) return false;
+
+        try
+        {
+            absolutePath = GetAgentIconAbsolutePath(relativePath);
+            return true;
+        }
+        catch (Exception exception) when (exception is ArgumentException
+                                              or InvalidOperationException
+                                              or NotSupportedException
+                                              or PathTooLongException)
+        {
+            return false;
+        }
+    }
+
+    public static string GetTemporaryAgentIconAbsolutePath(string fileName)
+        => Path.Combine(TemporaryAgentIconsDir, ValidateLeafFileName(fileName));
+
+    public static string GetPermanentAgentIconAbsolutePath(string fileName)
+        => Path.Combine(AgentIconsDir, ValidateLeafFileName(fileName));
+
+    /// <summary>
+    /// True when <paramref name="candidatePath"/> resolves to something inside
+    /// <paramref name="expectedDirectory"/>. The trailing separator matters: without it
+    /// <c>…\avatars-backup</c> would pass as being inside <c>…\avatars</c>.
+    /// </summary>
+    public static bool IsPathInsideDirectory(string candidatePath, string expectedDirectory)
+    {
+        var candidateFullPath = Path.GetFullPath(candidatePath);
+        var directoryFullPath = Path
+            .GetFullPath(expectedDirectory)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
+
+        return candidateFullPath.StartsWith(directoryFullPath, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Empties the temporary icon directory. An icon lives there only while an Add Agent form is
+    /// open, so anything found at startup was left by a process that died mid-pick and is
+    /// unreachable — nothing in the database ever points here.
+    ///
+    /// Startup only, and never from <see cref="EnsureDirectories"/>: the picker calls that while a
+    /// form is open, and purging then would delete the icon the user is about to save.
+    /// </summary>
+    public static void PurgeTemporaryAgentIcons()
+    {
+        try
+        {
+            if (!Directory.Exists(TemporaryAgentIconsDir)) return;
+
+            foreach (var file in Directory.EnumerateFiles(TemporaryAgentIconsDir))
+            {
+                try
+                {
+                    File.Delete(file);
+                }
+                catch (Exception exception) when (exception is IOException
+                                                      or UnauthorizedAccessException)
+                {
+                    // One undeletable leftover must not stop the sweep or delay startup.
+                }
+            }
+        }
+        catch (Exception exception) when (exception is IOException
+                                              or UnauthorizedAccessException
+                                              or DirectoryNotFoundException)
+        {
+            // Best-effort housekeeping.
+        }
+    }
+
+    /// <summary>
+    /// Accepts only a bare filename. Generated names are safe by construction; this exists so a
+    /// future caller cannot smuggle a relative segment into a path that is later trusted.
+    /// </summary>
+    private static string ValidateLeafFileName(string fileName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
+
+        var trimmed = fileName.Trim();
+        var leafFileName = Path.GetFileName(trimmed);
+
+        if (!string.Equals(trimmed, leafFileName, StringComparison.Ordinal)
+            || leafFileName is "." or ".."
+            || leafFileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+        {
+            throw new ArgumentException(
+                "The value must be a filename with no directory components.",
+                nameof(fileName));
+        }
+
+        return leafFileName;
+    }
 
     private static StorageLocation ResolveStorageLocation()
     {
