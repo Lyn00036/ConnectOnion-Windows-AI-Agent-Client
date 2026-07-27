@@ -27,9 +27,10 @@ namespace ConnectOnion.WinUIClient.Controls;
 /// It also raises navigation as an event rather than performing it: the sidebar knows *what*
 /// the user picked, and <c>MainWindow</c> owns the frame that acts on it.
 ///
-/// <see cref="RefreshAsync"/> still performs a complete rebuild after real data changes, while
-/// ordinary navigation updates selection state in place. This prevents AgentAvatar controls from
-/// being recreated and decoding their image files on every sidebar click.
+/// The whole tree is rebuilt from storage on every <see cref="RefreshAsync"/> — there is no
+/// incremental update path. That keeps it simple and correct at the cost of losing transient UI
+/// state, which is exactly why expansion state is remembered separately (see
+/// <see cref="_expandedAgentIds"/>).
 /// </summary>
 public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
 {
@@ -57,8 +58,6 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     private readonly Dictionary<string, (string UpdatedAt, string Preview)> _sessionPreviewCache =
         new(StringComparer.Ordinal);
     private Type? _currentPageType;
-    private string? _selectedAgentId;
-    private string? _activeSessionId;
     private int _onlineAgentCount;
     /// <summary>False until the first refresh completes. Distinguishes "the user has collapsed
     /// every agent" from "we have not observed any expansion state yet" — the first refresh
@@ -136,31 +135,21 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     private void OnUnloadedDetachPresence(object sender, RoutedEventArgs e)
         => _presence.PresenceChanged -= OnPresenceChanged;
 
-    /// <summary>
-    /// Updates the page-dependent selection highlight without rebuilding the
-    /// sidebar collections.
-    /// </summary>
     public void SetCurrentPage(Type? pageType)
-    {
-        _currentPageType = pageType;
-        ApplySelectionState();
-    }
+        => _currentPageType = pageType;
 
-    /// <summary>
-    /// Rebuilds the entire tree from storage. Use this after data that changes the
-    /// tree has actually changed: Agent add/edit/delete, icon replacement,
-    /// conversation creation/deletion, or pin state changes. Ordinary navigation
-    /// uses <see cref="ApplySelectionState"/> instead.
-    /// </summary>
+    /// <summary>Rebuilds the entire tree from storage. Called after anything that could change
+    /// what the sidebar shows — agent added/renamed/deleted, conversation created/pinned/removed,
+    /// navigation. Cheap enough to be unconditional at this scale (tens of rows).</summary>
     public async System.Threading.Tasks.Task RefreshAsync()
     {
         var agentsState = await AppServices.Agents.LoadAsync();
         var sessionsState = await AppServices.Sessions.LoadAsync();
-
-        _selectedAgentId = agentsState.SelectedAgentId;
-        _activeSessionId = sessionsState.ActiveSessionId;
-
-        UpdateNewChatTargetText(agentsState);
+        var newChatAgent = agentsState.Agents.FirstOrDefault(agent => agent.Id == agentsState.SelectedAgentId)
+            ?? agentsState.Agents.FirstOrDefault();
+        NewChatTargetText = newChatAgent is null
+            ? "Add an agent to start a new chat"
+            : $"Start a new chat with {newChatAgent.Name}";
         await RefreshSessionPreviewCacheAsync(sessionsState.Sessions);
 
         // Must run *before* the Clear below, while the old items still hold their expansion.
@@ -256,13 +245,8 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         // leaves nothing behind — the sidebar used to collect an empty conversation per stray
         // Ctrl+N. Same path the agent row's "+" takes (ShellSidebar.Events.AddChat_Click), so the
         // two entry points into "new chat" behave identically.
-        _selectedAgentId = agent.Id;
-        _currentPageType = typeof(AgentDetailPage);
-
         FocusAgentInSidebar(agent.Id);
-        UpdateNewChatTargetText(agentsState);
-        ApplySelectionState();
-
+        await RefreshAsync();
         // forceReload because the target may already be the current page: a plain Navigate to the
         // page you are on is a no-op, and the composer would keep whatever was on it.
         RequestNavigation(typeof(AgentDetailPage), forceReload: true);
@@ -402,66 +386,6 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     private bool IsSessionSelected(string sessionId, string? activeSessionId)
         => _currentPageType == typeof(ChatPage) && sessionId == activeSessionId;
 
-    /// <summary>
-    /// Applies the current page, Agent, and conversation selection to the
-    /// existing row objects. No collection is cleared, so AgentAvatar controls
-    /// and their decoded image sources remain alive.
-    /// </summary>
-    private void ApplySelectionState()
-    {
-        var showAgentSelection =
-            _currentPageType == typeof(AgentDetailPage) ||
-            _currentPageType == typeof(SessionsPage);
-
-        var showSessionSelection =
-            _currentPageType == typeof(ChatPage);
-
-        foreach (var agent in ShellAgents)
-        {
-            agent.IsSelected =
-                showAgentSelection &&
-                string.Equals(
-                    agent.Id,
-                    _selectedAgentId,
-                    StringComparison.Ordinal);
-
-            foreach (var session in agent.Sessions)
-            {
-                session.IsSelected =
-                    showSessionSelection &&
-                    string.Equals(
-                        session.Id,
-                        _activeSessionId,
-                        StringComparison.Ordinal);
-            }
-        }
-
-        // Pinned rows are shortcuts. The canonical row in the Agent tree carries
-        // the active-conversation accent.
-        foreach (var pinnedSession in PinnedSessions)
-        {
-            pinnedSession.IsSelected = false;
-        }
-    }
-
-    /// <summary>
-    /// Updates the New Chat button tooltip and accessibility label after an
-    /// Agent selection change without rebuilding the sidebar.
-    /// </summary>
-    private void UpdateNewChatTargetText(AgentsState agentsState)
-    {
-        var targetAgent = agentsState.Agents.FirstOrDefault(
-                agent => string.Equals(
-                    agent.Id,
-                    agentsState.SelectedAgentId,
-                    StringComparison.Ordinal))
-            ?? agentsState.Agents.FirstOrDefault();
-
-        NewChatTargetText = targetAgent is null
-            ? "Add an agent to start a new chat"
-            : $"Start a new chat with {targetAgent.Name}";
-    }
-
     /// <summary>Captures the live expansion state before a rebuild discards the items.</summary>
     private void RememberExpandedAgentsFromUi()
     {
@@ -559,24 +483,17 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         var agentsState = await AppServices.Agents.LoadAsync();
         agentsState.SelectedAgentId = agentId;
         await AppServices.Agents.SaveAsync(agentsState);
-
-        _selectedAgentId = agentId;
-        _activeSessionId = null;
-        _currentPageType = typeof(ChatPage);
-
-        UpdateNewChatTargetText(agentsState);
-        ApplySelectionState();
-
+        await RefreshAsync();
         RequestNavigation(typeof(ChatPage), forceReload: true);
     }
 
     /// <summary>Opens a conversation, moving agent selection with it (a pinned row can belong to
     /// an agent other than the current one).</summary>
-    /// <param name="preserveSidebarState">
-    /// True for clicks in the pinned section: the Agent tree keeps whatever the
-    /// user expanded instead of collapsing onto the selected conversation's
-    /// Agent. Selection is updated in place in both cases.
-    /// </param>
+    /// <param name="preserveSidebarState">True for clicks in the pinned section: the tree keeps
+    /// whatever was expanded instead of collapsing onto this conversation's agent. Pinned rows
+    /// are a jump-list, and reorganizing the tree below — possibly for a different agent
+    /// entirely — moves content out from under a user whose attention is at the top of the
+    /// sidebar. The tree is still rebuilt either way, so selection highlighting stays correct.</param>
     private async System.Threading.Tasks.Task SelectSessionAsync(string sessionId, bool preserveSidebarState = false)
     {
         var sessionsState = await AppServices.Sessions.LoadAsync();
@@ -590,18 +507,12 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         agentsState.SelectedAgentId = session.AgentId;
         await AppServices.Agents.SaveAsync(agentsState);
 
-        _selectedAgentId = session.AgentId;
-        _activeSessionId = session.Id;
-        _currentPageType = typeof(ChatPage);
-
-        if (!preserveSidebarState)
-        {
-            FocusAgentInSidebar(session.AgentId);
-        }
-
-        UpdateNewChatTargetText(agentsState);
-        ApplySelectionState();
-
+        // Only the *focus* is conditional. RefreshAsync always runs, because it is what moves
+        // the selection highlight onto the newly-opened conversation; skipping it would leave
+        // the sidebar pointing at the previous one. RefreshAsync preserves whatever is expanded
+        // (RememberExpandedAgentsFromUi), so without the focus call the tree is left untouched.
+        if (!preserveSidebarState) FocusAgentInSidebar(session.AgentId);
+        await RefreshAsync();
         RequestNavigation(typeof(ChatPage), forceReload: true);
     }
 
@@ -624,33 +535,23 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         return await dialog.ShowAsync() == ContentDialogResult.Primary;
     }
 
-    private void ChatHome_Click(object sender, RoutedEventArgs e)
+    private async void ChatHome_Click(object sender, RoutedEventArgs e)
     {
-        _currentPageType = typeof(HomePage);
-        ApplySelectionState();
-
+        await RefreshAsync();
         RequestNavigation(typeof(HomePage), forceReload: true);
     }
 
     private async void Agent_Click(object sender, RoutedEventArgs e)
     {
-        if ((sender as FrameworkElement)?.Tag is not string agentId)
+        if ((sender as FrameworkElement)?.Tag is string agentId)
         {
-            return;
+            var agentsState = await AppServices.Agents.LoadAsync();
+            agentsState.SelectedAgentId = agentId;
+            await AppServices.Agents.SaveAsync(agentsState);
+            FocusAgentInSidebar(agentId);
+            await RefreshAsync();
+            RequestNavigation(typeof(AgentDetailPage), forceReload: true);
         }
-
-        var agentsState = await AppServices.Agents.LoadAsync();
-        agentsState.SelectedAgentId = agentId;
-        await AppServices.Agents.SaveAsync(agentsState);
-
-        _selectedAgentId = agentId;
-        _currentPageType = typeof(AgentDetailPage);
-
-        FocusAgentInSidebar(agentId);
-        UpdateNewChatTargetText(agentsState);
-        ApplySelectionState();
-
-        RequestNavigation(typeof(AgentDetailPage), forceReload: true);
     }
 
     private void ToggleAgent_Click(object sender, RoutedEventArgs e)

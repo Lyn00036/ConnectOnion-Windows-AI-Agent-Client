@@ -1,5 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-
 <UserControl
     x:Class="ConnectOnion.WinUIClient.Controls.AddAgentForm"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -14,309 +13,213 @@
     AutomationProperties.Name="Add an agent"
     AutomationProperties.AutomationId="AddAgentOverlay">
 
-    <Grid
-        x:Name="OverlayRoot"
-        KeyDown="OverlayRoot_KeyDown">
+    <Grid x:Name="OverlayRoot"
+          KeyDown="OverlayRoot_KeyDown">
+        <Rectangle Fill="{ThemeResource SettingsBackdropBrush}"
+                   Tapped="Backdrop_Tapped" />
 
-        <!-- Modal backdrop -->
-        <Rectangle
-            Fill="{ThemeResource SettingsBackdropBrush}"
-            Tapped="Backdrop_Tapped" />
-
-        <!-- Modal -->
-        <Border
-            x:Name="ModalContainer"
-            MaxWidth="500"
-            MaxHeight="760"
-            Margin="24"
-            HorizontalAlignment="Stretch"
-            VerticalAlignment="Center"
-            Background="{ThemeResource SettingsContentBrush}"
-            BorderBrush="{ThemeResource SettingsModalBorderBrush}"
-            BorderThickness="1"
-            CornerRadius="14"
-            Tapped="ModalContainer_Tapped">
-
+        <Border x:Name="ModalContainer"
+                MaxWidth="460"
+                Margin="24"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Center"
+                Background="{ThemeResource SettingsContentBrush}"
+                BorderBrush="{ThemeResource SettingsModalBorderBrush}"
+                BorderThickness="1"
+                CornerRadius="14"
+                Tapped="ModalContainer_Tapped">
             <Border.Shadow>
                 <ThemeShadow />
             </Border.Shadow>
 
-            <ScrollViewer
-                HorizontalScrollMode="Disabled"
-                HorizontalScrollBarVisibility="Disabled"
-                VerticalScrollMode="Auto"
-                VerticalScrollBarVisibility="Auto">
+            <StackPanel Padding="24"
+                        Spacing="0">
+                <TextBlock Text="Add an agent"
+                           FontSize="24"
+                           FontWeight="SemiBold" />
 
-                <StackPanel
-                    Padding="24"
-                    Spacing="0">
+                <StackPanel Margin="0,20,0,0"
+                            Spacing="8">
+                    <TextBlock Text="Address or Direct URL"
+                               FontWeight="SemiBold" />
+                    <TextBox x:Name="InputBox"
+                             AutomationProperties.AutomationId="AgentAddressInput"
+                             AutomationProperties.HelpText="{x:Bind Vm.InputHelpText, Mode=OneWay}"
+                             PlaceholderText="0x… or wss://example.com/agent"
+                             Text="{x:Bind Vm.Input, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             IsEnabled="{x:Bind Vm.IsInputEnabled, Mode=OneWay}"
+                             LostFocus="InputBox_LostFocus"
+                             KeyDown="InputBox_KeyDown" />
+                    <TextBlock Text="Enter an agent address or a direct WebSocket URL."
+                               FontSize="12"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextWrapping="Wrap" />
+                    <TextBlock Text="Enter a valid agent address or WebSocket URL."
+                               FontSize="12"
+                               Foreground="{ThemeResource DangerBrush}"
+                               TextWrapping="Wrap"
+                               AutomationProperties.LiveSetting="Polite"
+                               Visibility="{x:Bind Vm.ShowValidationError, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                </StackPanel>
 
-                    <!-- Title -->
-                    <TextBlock
-                        Text="Add an agent"
-                        FontSize="24"
-                        FontWeight="SemiBold" />
+                <StackPanel Margin="0,20,0,0"
+                            Spacing="8">
+                    <TextBlock x:Uid="AddAgentIconHeader"
+                               Text="Agent icon"
+                               FontWeight="SemiBold" />
 
-                    <!-- Address / URL -->
-                    <StackPanel
-                        Margin="0,20,0,0"
-                        Spacing="8">
-
-                        <TextBlock
-                            Text="Address or Direct URL"
-                            FontWeight="SemiBold" />
-
-                        <TextBox
-                            x:Name="InputBox"
-                            AutomationProperties.AutomationId="AgentAddressInput"
-                            AutomationProperties.HelpText="{x:Bind Vm.InputHelpText, Mode=OneWay}"
-                            PlaceholderText="0x… or wss://example.com/agent"
-                            Text="{x:Bind Vm.Input, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                            IsEnabled="{x:Bind Vm.IsInputEnabled, Mode=OneWay}"
-                            LostFocus="InputBox_LostFocus"
-                            KeyDown="InputBox_KeyDown" />
-
-                        <TextBlock
-                            Text="Enter an agent address or a direct WebSocket URL."
-                            FontSize="12"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            TextWrapping="Wrap" />
-
-                        <TextBlock
-                            Text="Enter a valid agent address or WebSocket URL."
-                            FontSize="12"
-                            Foreground="{ThemeResource DangerBrush}"
-                            TextWrapping="Wrap"
-                            AutomationProperties.LiveSetting="Polite"
-                            Visibility="{x:Bind Vm.ShowValidationError, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-
-                    </StackPanel>
-
-                    <!-- Optional custom icon -->
-                    <StackPanel
-                        Margin="0,20,0,0"
-                        Spacing="8">
-
-                        <TextBlock
-                            Text="Agent icon"
-                            FontWeight="SemiBold" />
-
-                        <Grid
-                            MinHeight="72"
-                            ColumnSpacing="16">
-
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-
-                            <!--
-                                ImagePath and Initial are updated from
-                                AddAgentForm.xaml.cs.
-
-                                Temporary absolute paths are supported by
-                                AgentAvatar for previews before the Agent
-                                is saved.
-                            -->
-                            <controls:AgentAvatar
-                                x:Name="AvatarPreview"
-                                Grid.Column="0"
-                                Size="72"
-                                FontSize="26"
-                                CornerRadius="36"
-                                Initial="?"
-                                VerticalAlignment="Top"
-                                AutomationProperties.Name="Agent icon preview" />
-
-                            <StackPanel
-                                Grid.Column="1"
-                                VerticalAlignment="Center"
-                                Spacing="8">
-
-                                <StackPanel
-                                    Orientation="Horizontal"
-                                    Spacing="8">
-
-                                    <Button
-                                        x:Name="ChooseIconButton"
-                                        MinWidth="112"
-                                        Height="36"
-                                        Content="Choose image"
-                                        Click="ChooseIcon_Click"
-                                        AutomationProperties.Name="Choose an Agent icon" />
-
-                                    <Button
-                                        x:Name="RemoveIconButton"
-                                        Height="36"
-                                        Content="Remove"
-                                        Click="RemoveIcon_Click"
-                                        Visibility="Collapsed"
-                                        AutomationProperties.Name="Remove selected Agent icon" />
-
-                                    <ProgressRing
-                                        x:Name="IconProgressRing"
-                                        Width="18"
-                                        Height="18"
-                                        Margin="4,0,0,0"
-                                        VerticalAlignment="Center"
-                                        IsActive="False"
-                                        Visibility="Collapsed"
-                                        AutomationProperties.Name="Processing Agent icon" />
-
-                                </StackPanel>
-
-                                <TextBlock
-                                    Text="Optional. PNG, JPG, JPEG or WebP, up to 5 MB."
-                                    FontSize="12"
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                    TextWrapping="Wrap" />
-
-                                <TextBlock
-                                    x:Name="IconErrorText"
-                                    FontSize="12"
-                                    Foreground="{ThemeResource DangerBrush}"
-                                    TextWrapping="Wrap"
-                                    Visibility="Collapsed"
-                                    AutomationProperties.LiveSetting="Polite" />
-
-                            </StackPanel>
-
-                        </Grid>
-
-                    </StackPanel>
-
-                    <!-- Connection test -->
-                    <Grid
-                        Margin="0,20,0,0"
-                        MinHeight="40"
-                        ColumnSpacing="12">
-
+                    <Grid ColumnSpacing="16">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
 
-                        <Button
-                            x:Name="TestButton"
+                        <!-- Previews the uncommitted temporary file: AgentAvatar accepts an
+                             absolute path as long as it is inside the managed directories, which
+                             is what lets the user see the pick before the agent exists. -->
+                        <controls:AgentAvatar x:Name="AvatarPreview"
+                                              Grid.Column="0"
+                                              Size="72"
+                                              CornerRadius="36"
+                                              FontSize="26"
+                                              VerticalAlignment="Top"
+                                              Initial="?"
+                                              AutomationProperties.Name="Agent icon preview" />
+
+                        <StackPanel Grid.Column="1"
+                                    VerticalAlignment="Center"
+                                    Spacing="8">
+                            <StackPanel Orientation="Horizontal"
+                                        Spacing="8">
+                                <Button x:Name="ChooseIconButton"
+                                        x:Uid="AddAgentChooseIcon"
+                                        MinWidth="112"
+                                        Height="36"
+                                        Content="Choose image"
+                                        Click="ChooseIcon_Click"
+                                        AutomationProperties.Name="Choose an agent icon" />
+
+                                <Button x:Name="RemoveIconButton"
+                                        x:Uid="AddAgentRemoveIcon"
+                                        Height="36"
+                                        Content="Remove"
+                                        Click="RemoveIcon_Click"
+                                        Visibility="Collapsed"
+                                        AutomationProperties.Name="Remove the selected agent icon" />
+
+                                <ProgressRing x:Name="IconProgressRing"
+                                              Width="18"
+                                              Height="18"
+                                              Margin="4,0,0,0"
+                                              VerticalAlignment="Center"
+                                              IsActive="False"
+                                              Visibility="Collapsed" />
+                            </StackPanel>
+
+                            <TextBlock x:Uid="AddAgentIconHint"
+                                       Text="Optional. PNG, JPG, JPEG or WebP, up to 5 MB."
+                                       FontSize="12"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap" />
+
+                            <TextBlock x:Name="IconErrorText"
+                                       FontSize="12"
+                                       Foreground="{ThemeResource DangerBrush}"
+                                       TextWrapping="Wrap"
+                                       Visibility="Collapsed"
+                                       AutomationProperties.LiveSetting="Polite" />
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+
+                <Grid Margin="0,16,0,0"
+                      MinHeight="40"
+                      ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Button x:Name="TestButton"
                             MinWidth="130"
                             Height="40"
                             HorizontalAlignment="Left"
                             IsEnabled="{x:Bind Vm.CanTest, Mode=OneWay}"
                             Click="TestConnection_Click"
                             AutomationProperties.Name="{x:Bind Vm.TestButtonText, Mode=OneWay}">
+                        <StackPanel Orientation="Horizontal"
+                                    Spacing="8">
+                            <ProgressRing Width="16"
+                                          Height="16"
+                                          IsActive="{x:Bind Vm.IsTesting, Mode=OneWay}"
+                                          Visibility="{x:Bind Vm.IsTesting, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                            <TextBlock Text="{x:Bind Vm.TestButtonText, Mode=OneWay}"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
 
-                            <StackPanel
-                                Orientation="Horizontal"
-                                Spacing="8">
-
-                                <ProgressRing
-                                    Width="16"
-                                    Height="16"
-                                    IsActive="{x:Bind Vm.IsTesting, Mode=OneWay}"
-                                    Visibility="{x:Bind Vm.IsTesting, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-
-                                <TextBlock
-                                    Text="{x:Bind Vm.TestButtonText, Mode=OneWay}"
-                                    VerticalAlignment="Center" />
-
-                            </StackPanel>
-
-                        </Button>
-
-                        <!-- Connection status -->
-                        <Grid
-                            Grid.Column="1"
-                            MinHeight="40"
-                            VerticalAlignment="Center">
-
-                            <!-- Testing -->
-                            <StackPanel
-                                Orientation="Horizontal"
-                                Spacing="7"
-                                VerticalAlignment="Center"
-                                Visibility="{x:Bind Vm.ShowTestingStatus, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-
-                                <ProgressRing
-                                    Width="14"
-                                    Height="14"
-                                    IsActive="{x:Bind Vm.IsTesting, Mode=OneWay}" />
-
-                                <TextBlock
-                                    Text="{x:Bind Vm.StatusText, Mode=OneWay}"
-                                    FontSize="12"
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                    TextWrapping="Wrap"
-                                    VerticalAlignment="Center" />
-
-                            </StackPanel>
-
-                            <!-- Connected -->
-                            <StackPanel
-                                Orientation="Horizontal"
-                                Spacing="7"
-                                VerticalAlignment="Center"
-                                Visibility="{x:Bind Vm.ShowConnected, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-
-                                <ic:FluentIcon
-                                    Icon="CheckmarkCircle"
-                                    IconVariant="Regular"
-                                    IconSize="Size16"
-                                    Foreground="{ThemeResource SuccessBrush}"
-                                    AutomationProperties.Name="Connection successful" />
-
-                                <TextBlock
-                                    Text="{x:Bind Vm.StatusText, Mode=OneWay}"
-                                    FontSize="12"
-                                    Foreground="{ThemeResource SuccessBrush}"
-                                    TextWrapping="Wrap"
-                                    VerticalAlignment="Center" />
-
-                            </StackPanel>
-
-                            <!-- Connection failure -->
-                            <StackPanel
-                                Orientation="Horizontal"
-                                Spacing="7"
-                                VerticalAlignment="Center"
-                                Visibility="{x:Bind Vm.ShowConnectionError, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-
-                                <ic:FluentIcon
-                                    Icon="ErrorCircle"
-                                    IconVariant="Regular"
-                                    IconSize="Size16"
-                                    Foreground="{ThemeResource DangerBrush}"
-                                    AutomationProperties.Name="Connection failed" />
-
-                                <TextBlock
-                                    Text="{x:Bind Vm.StatusText, Mode=OneWay}"
-                                    FontSize="12"
-                                    Foreground="{ThemeResource DangerBrush}"
-                                    TextWrapping="Wrap"
+                    <Grid Grid.Column="1"
+                          MinHeight="40"
+                          VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal"
+                                    Spacing="7"
                                     VerticalAlignment="Center"
-                                    AutomationProperties.LiveSetting="Assertive" />
+                                    Visibility="{x:Bind Vm.ShowTestingStatus, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                            <ProgressRing Width="14"
+                                          Height="14"
+                                          IsActive="{x:Bind Vm.IsTesting, Mode=OneWay}" />
+                            <TextBlock Text="{x:Bind Vm.StatusText, Mode=OneWay}"
+                                       FontSize="12"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
 
-                            </StackPanel>
+                        <StackPanel Orientation="Horizontal"
+                                    Spacing="7"
+                                    VerticalAlignment="Center"
+                                    Visibility="{x:Bind Vm.ShowConnected, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                            <ic:FluentIcon Icon="CheckmarkCircle"
+                                           IconVariant="Regular"
+                                           IconSize="Size16"
+                                           Foreground="{ThemeResource SuccessBrush}"
+                                           AutomationProperties.Name="Connection successful" />
+                            <TextBlock Text="{x:Bind Vm.StatusText, Mode=OneWay}"
+                                       FontSize="12"
+                                       Foreground="{ThemeResource SuccessBrush}"
+                                       TextWrapping="Wrap"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
 
-                        </Grid>
-
+                        <StackPanel Orientation="Horizontal"
+                                    Spacing="7"
+                                    VerticalAlignment="Center"
+                                    Visibility="{x:Bind Vm.ShowConnectionError, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                            <ic:FluentIcon Icon="ErrorCircle"
+                                           IconVariant="Regular"
+                                           IconSize="Size16"
+                                           Foreground="{ThemeResource DangerBrush}"
+                                           AutomationProperties.Name="Connection failed" />
+                            <TextBlock Text="{x:Bind Vm.StatusText, Mode=OneWay}"
+                                       FontSize="12"
+                                       Foreground="{ThemeResource DangerBrush}"
+                                       TextWrapping="Wrap"
+                                       VerticalAlignment="Center"
+                                       AutomationProperties.LiveSetting="Assertive" />
+                        </StackPanel>
                     </Grid>
+                </Grid>
 
-                    <!-- Footer buttons -->
-                    <StackPanel
-                        Margin="0,24,0,0"
-                        Orientation="Horizontal"
-                        Spacing="8"
-                        HorizontalAlignment="Right">
-
-                        <Button
-                            Width="96"
+                <StackPanel Margin="0,24,0,0"
+                            Orientation="Horizontal"
+                            Spacing="8"
+                            HorizontalAlignment="Right">
+                    <Button Width="96"
                             Height="40"
                             Content="Cancel"
                             Click="Cancel_Click"
                             AutomationProperties.Name="Cancel adding agent" />
-
-                        <Button
-                            MinWidth="116"
+                    <Button MinWidth="116"
                             MaxWidth="116"
                             Height="40"
                             Style="{StaticResource AccentButtonStyle}"
@@ -324,34 +227,19 @@
                             Click="AddAgent_Click"
                             AutomationProperties.AutomationId="SubmitAgentButton"
                             AutomationProperties.Name="{x:Bind Vm.AddButtonText, Mode=OneWay}">
-
-                            <StackPanel
-                                Orientation="Horizontal"
-                                HorizontalAlignment="Center"
-                                Spacing="8">
-
-                                <ProgressRing
-                                    Width="16"
-                                    Height="16"
-                                    IsActive="{x:Bind Vm.IsAdding, Mode=OneWay}"
-                                    Visibility="{x:Bind Vm.IsAdding, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-
-                                <TextBlock
-                                    Text="{x:Bind Vm.AddButtonText, Mode=OneWay}"
-                                    VerticalAlignment="Center" />
-
-                            </StackPanel>
-
-                        </Button>
-
-                    </StackPanel>
-
+                        <StackPanel Orientation="Horizontal"
+                                    HorizontalAlignment="Center"
+                                    Spacing="8">
+                            <ProgressRing Width="16"
+                                          Height="16"
+                                          IsActive="{x:Bind Vm.IsAdding, Mode=OneWay}"
+                                          Visibility="{x:Bind Vm.IsAdding, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                            <TextBlock Text="{x:Bind Vm.AddButtonText, Mode=OneWay}"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
-
-            </ScrollViewer>
-
+            </StackPanel>
         </Border>
-
     </Grid>
-
 </UserControl>

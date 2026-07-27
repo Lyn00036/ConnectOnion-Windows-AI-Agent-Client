@@ -399,12 +399,18 @@
                                                         <MenuFlyoutItem Text="Agent details"
                                                                         Click="Agent_Click"
                                                                         Tag="{Binding Id}" />
-                                                        <MenuFlyoutItem Text="Change icon"
+                                                        <MenuFlyoutItem x:Uid="MenuChangeAgentIcon"
+                                                                        Text="Change icon"
                                                                         Click="ChangeAgentIcon_Click"
                                                                         Tag="{Binding Id}" />
-                                                        <MenuFlyoutItem Text="Remove custom icon"
+                                                        <!-- Hidden rather than disabled when there is
+                                                             no custom icon: an action that can never
+                                                             apply is noise in a six-item menu. -->
+                                                        <MenuFlyoutItem x:Uid="MenuRemoveAgentIcon"
+                                                                        Text="Remove custom icon"
                                                                         Click="RemoveAgentIcon_Click"
-                                                                        Tag="{Binding Id}" />
+                                                                        Tag="{Binding Id}"
+                                                                        Visibility="{Binding HasCustomIcon, Converter={StaticResource BoolToVis}}" />
                                                         <MenuFlyoutSeparator />
                                                         <MenuFlyoutItem Text="Delete agent"
                                                                         Click="DeleteAgent_Click"
