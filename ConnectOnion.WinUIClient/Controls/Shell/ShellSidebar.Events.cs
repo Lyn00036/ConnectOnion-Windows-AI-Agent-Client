@@ -304,15 +304,13 @@ public sealed partial class ShellSidebar
         }
     }
 
-    /// <summary>A conversation row in the pinned section. Same navigation, but the tree below is
-    /// left as the user arranged it — see <see cref="SelectSessionAsync"/>. Separate handler
-    /// rather than a flag on the row, because the two call sites are already distinct elements
-    /// in the XAML and this keeps the difference visible where the click is wired.</summary>
+    /// <summary>A conversation row in the pinned section. Same navigation, but its owning agent
+    /// is revealed without collapsing any other branches the user has open.</summary>
     private async void PinnedSession_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.Tag is string sessionId)
         {
-            await SelectSessionAsync(sessionId, preserveSidebarState: true);
+            await SelectSessionAsync(sessionId, preserveOtherExpandedAgents: true);
         }
     }
 

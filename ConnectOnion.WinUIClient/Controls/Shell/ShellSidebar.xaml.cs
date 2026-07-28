@@ -179,8 +179,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
             PinnedSessions.Add(CreateShellSessionItem(
                 session,
                 sessionsState.ActiveSessionId,
-                agentNames,
-                isPinnedShortcut: true));
+                agentNames));
         }
 
         foreach (var agent in agentsState.Agents)
@@ -283,8 +282,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     private ShellSessionItem CreateShellSessionItem(
         SessionSummary session,
         string? activeSessionId,
-        IReadOnlyDictionary<string, string> agentNames,
-        bool isPinnedShortcut = false)
+        IReadOnlyDictionary<string, string> agentNames)
     {
         var updatedAt = ParseUpdatedAt(session.UpdatedAt);
         var preview = _sessionPreviewCache.TryGetValue(session.Id, out var cached)
@@ -301,9 +299,9 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
             TimeGroup = FormatTimeGroup(updatedAt),
             AgentName = agentNames.TryGetValue(session.AgentId, out var agentName) ? agentName : "",
             IsPinned = session.IsPinned,
-            // The pinned section is a shortcut to the same destination rendered in the agent
-            // tree. Only the canonical tree row carries the current-location accent.
-            IsSelected = !isPinnedShortcut && IsSessionSelected(session.Id, activeSessionId),
+            // Both the pinned shortcut and the canonical tree row represent the current
+            // conversation, so both carry the current-location accent.
+            IsSelected = IsSessionSelected(session.Id, activeSessionId),
         };
     }
 
@@ -417,6 +415,18 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         QueueSidebarStateSave();
     }
 
+    /// <summary>Reveals one agent without disturbing any other branches the user has open.
+    /// Pinned conversations use this additive path so the canonical row becomes visible while
+    /// ordinary tree navigation keeps the existing single-agent focus behaviour.</summary>
+    private void RevealAgentInSidebar(string agentId)
+    {
+        _expandedAgentIds.Add(agentId);
+        var agent = FindShellAgent(agentId);
+        if (agent is not null) agent.IsExpanded = true;
+        _hasExpansionState = true;
+        QueueSidebarStateSave();
+    }
+
     /// <summary>
     /// Snapshots the UI state before leaving the UI thread. The repository coalesces overlapping
     /// writes so rapid disclosure clicks still persist the last visible state.
@@ -489,12 +499,12 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
 
     /// <summary>Opens a conversation, moving agent selection with it (a pinned row can belong to
     /// an agent other than the current one).</summary>
-    /// <param name="preserveSidebarState">True for clicks in the pinned section: the tree keeps
-    /// whatever was expanded instead of collapsing onto this conversation's agent. Pinned rows
-    /// are a jump-list, and reorganizing the tree below — possibly for a different agent
-    /// entirely — moves content out from under a user whose attention is at the top of the
-    /// sidebar. The tree is still rebuilt either way, so selection highlighting stays correct.</param>
-    private async System.Threading.Tasks.Task SelectSessionAsync(string sessionId, bool preserveSidebarState = false)
+    /// <param name="preserveOtherExpandedAgents">True for clicks in the pinned section: reveal
+    /// the conversation's owning agent without collapsing any other open branches. Ordinary
+    /// session clicks still focus the tree onto one agent.</param>
+    private async System.Threading.Tasks.Task SelectSessionAsync(
+        string sessionId,
+        bool preserveOtherExpandedAgents = false)
     {
         var sessionsState = await AppServices.Sessions.LoadAsync();
         var session = sessionsState.Sessions.FirstOrDefault(s => s.Id == sessionId);
@@ -507,11 +517,10 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         agentsState.SelectedAgentId = session.AgentId;
         await AppServices.Agents.SaveAsync(agentsState);
 
-        // Only the *focus* is conditional. RefreshAsync always runs, because it is what moves
-        // the selection highlight onto the newly-opened conversation; skipping it would leave
-        // the sidebar pointing at the previous one. RefreshAsync preserves whatever is expanded
-        // (RememberExpandedAgentsFromUi), so without the focus call the tree is left untouched.
-        if (!preserveSidebarState) FocusAgentInSidebar(session.AgentId);
+        if (preserveOtherExpandedAgents)
+            RevealAgentInSidebar(session.AgentId);
+        else
+            FocusAgentInSidebar(session.AgentId);
         await RefreshAsync();
         RequestNavigation(typeof(ChatPage), forceReload: true);
     }
