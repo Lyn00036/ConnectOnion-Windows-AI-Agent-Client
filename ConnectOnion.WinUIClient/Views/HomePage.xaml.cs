@@ -72,6 +72,11 @@ public sealed partial class HomeAgentItem : Common.ObservableObject
 /// </summary>
 public sealed partial class HomePage : Page, IReloadablePage, IDisposable
 {
+    // The wide content is 960px plus its 48px margins on both sides. This threshold must use the
+    // page viewport, not AdaptiveTrigger's top-level window width: during startup the shell can
+    // restore from a wider presenter before the content Frame receives its final size.
+    private const double WideViewportMinWidth = 1056;
+
     private readonly AgentPresenceService _presence = AppServices.Presence;
     private readonly CancellationTokenSource _lifetimeCts = new();
     private bool _isOpeningAgent;
@@ -86,6 +91,12 @@ public sealed partial class HomePage : Page, IReloadablePage, IDisposable
         Loaded += HomePage_Loaded;
         Unloaded += HomePage_Unloaded;
     }
+
+    private void PageRoot_SizeChanged(object sender, SizeChangedEventArgs e)
+        => VisualStateManager.GoToState(
+            this,
+            e.NewSize.Width >= WideViewportMinWidth ? "Wide" : "Adaptive",
+            useTransitions: false);
 
     protected override void OnNavigatedFrom(Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
     {

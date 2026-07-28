@@ -70,18 +70,12 @@
     </Page.Resources>
 
     <Grid x:Name="PageRoot"
-          Background="{ThemeResource AppBackgroundBrush}">
+          Background="{ThemeResource AppBackgroundBrush}"
+          SizeChanged="PageRoot_SizeChanged">
         <VisualStateManager.VisualStateGroups>
             <VisualStateGroup x:Name="WindowWidthStates">
                 <VisualState x:Name="Adaptive" />
                 <VisualState x:Name="Wide">
-                    <VisualState.StateTriggers>
-                        <!-- AdaptiveTrigger measures the whole window, not this page's frame.
-                             Account for the 264px shell sidebar as well as the 960px reading
-                             column and its 48px side margins; activating this state earlier
-                             forces a wider child into the clipped content viewport. -->
-                        <AdaptiveTrigger MinWindowWidth="1360" />
-                    </VisualState.StateTriggers>
                     <VisualState.Setters>
                         <Setter Target="ContentRoot.Width" Value="960" />
                         <Setter Target="ContentRoot.HorizontalAlignment" Value="Center" />
