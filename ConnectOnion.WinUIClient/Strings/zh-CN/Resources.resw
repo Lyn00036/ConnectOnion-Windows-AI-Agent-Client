@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="HomeChooseAgent.Text" xml:space="preserve"><value>选择一个 Agent</value></data>
+  <data name="HomeChooseAgentDescription.Text" xml:space="preserve"><value>选择一个 Agent 以开始新对话</value></data>
+  <data name="SessionsTitle.Text" xml:space="preserve"><value>会话</value></data>
+  <data name="SessionsNew.Content" xml:space="preserve"><value>新建会话</value></data>
+  <data name="SessionsDelete.Content" xml:space="preserve"><value>删除</value></data>
+  <data name="AgentEmptyTitle.Text" xml:space="preserve"><value>未选择 Agent</value></data>
+  <data name="AgentEmptyDescription.Text" xml:space="preserve"><value>请从侧边栏选择一个 Agent，或添加新的 Agent 以开始使用。</value></data>
+  <data name="SettingsDescription.Text" xml:space="preserve"><value>此应用的桌面偏好设置。</value></data>
+  <data name="SettingsAppearance.Text" xml:space="preserve"><value>外观</value></data>
+  <data name="SettingsTheme.Header" xml:space="preserve"><value>主题</value></data>
+  <data name="SettingsChat.Text" xml:space="preserve"><value>聊天</value></data>
+  <data name="SettingsMessageSize.Header" xml:space="preserve"><value>消息文字大小</value></data>
+  <data name="SettingsEnterToSend.Header" xml:space="preserve"><value>按 Enter 发送</value></data>
+  <data name="SettingsNotifications.Text" xml:space="preserve"><value>通知</value></data>
+  <data name="SettingsNotificationsEnable.Header" xml:space="preserve"><value>启用通知</value></data>
+  <data name="SettingsAgentReplies.Header" xml:space="preserve"><value>Agent 回复</value></data>
+  <data name="SettingsTaskCompletion.Header" xml:space="preserve"><value>任务完成</value></data>
+  <data name="SettingsApprovalRequests.Header" xml:space="preserve"><value>审批请求</value></data>
+  <data name="SettingsConnectionProblems.Header" xml:space="preserve"><value>连接问题</value></data>
+  <data name="SettingsPlaySound.Header" xml:space="preserve"><value>播放声音</value></data>
+  <data name="SettingsMessagePreview.Header" xml:space="preserve"><value>显示消息预览</value></data>
+  <data name="SettingsAudio.Text" xml:space="preserve"><value>音频</value></data>
+  <data name="SettingsMicrophone.Header" xml:space="preserve"><value>麦克风</value></data>
+  <data name="ChatInviteCode.PlaceholderText" xml:space="preserve"><value>邀请码</value></data>
+  <data name="ChatSubmitInvite.Content" xml:space="preserve"><value>提交</value></data>
+  <data name="ChatAnswer.PlaceholderText" xml:space="preserve"><value>其他回答...</value></data>
+  <data name="ChatRetry.Text" xml:space="preserve"><value>重试</value></data>
+  <data name="ComposerInput.PlaceholderText" xml:space="preserve"><value>输入任何任务</value></data>
+  <data name="MenuNewChat.Text" xml:space="preserve"><value>新建聊天</value></data>
+  <data name="MenuOpenFolder.Text" xml:space="preserve"><value>打开文件夹...</value></data>
+  <data name="MenuClose.Text" xml:space="preserve"><value>关闭</value></data>
+  <data name="MenuSettings.Text" xml:space="preserve"><value>设置...</value></data>
+  <data name="MenuExit.Text" xml:space="preserve"><value>退出</value></data>
+  <data name="MenuUndo.Text" xml:space="preserve"><value>撤销</value></data>
+  <data name="MenuRedo.Text" xml:space="preserve"><value>重做</value></data>
+  <data name="MenuCut.Text" xml:space="preserve"><value>剪切</value></data>
+  <data name="MenuCopy.Text" xml:space="preserve"><value>复制</value></data>
+  <data name="MenuPaste.Text" xml:space="preserve"><value>粘贴</value></data>
+  <data name="MenuDelete.Text" xml:space="preserve"><value>删除</value></data>
+  <data name="MenuSelectAll.Text" xml:space="preserve"><value>全选</value></data>
+  <data name="MenuToggleSidebar.Text" xml:space="preserve"><value>切换侧边栏</value></data>
+  <data name="MenuOpenTerminal.Text" xml:space="preserve"><value>打开终端</value></data>
+  <data name="MenuFind.Text" xml:space="preserve"><value>查找</value></data>
+  <data name="MenuBack.Text" xml:space="preserve"><value>后退</value></data>
+  <data name="MenuForward.Text" xml:space="preserve"><value>前进</value></data>
+  <data name="MenuZoomIn.Text" xml:space="preserve"><value>放大</value></data>
+  <data name="MenuZoomOut.Text" xml:space="preserve"><value>缩小</value></data>
+  <data name="MenuActualSize.Text" xml:space="preserve"><value>实际大小</value></data>
+  <data name="MenuFullScreen.Text" xml:space="preserve"><value>切换全屏</value></data>
+  <data name="MenuKeyboardShortcuts.Text" xml:space="preserve"><value>键盘快捷键</value></data>
+  <data name="MenuDocs.Text" xml:space="preserve"><value>ConnectOnion 文档</value></data>
+  <data name="MenuAbout.Text" xml:space="preserve"><value>关于 ConnectOnion</value></data>
+  <data name="FindSearch.PlaceholderText" xml:space="preserve"><value>搜索聊天...</value></data>
+  <data name="ZoomReset.Text" xml:space="preserve"><value>重置</value></data>
+  <data name="DropHint.Text" xml:space="preserve"><value>将文件拖到消息框以添加附件</value></data>
+  <data name="ComposerSuggestionCapabilities.Content" xml:space="preserve"><value>你能做什么？</value></data>
+  <data name="ComposerSuggestionSystem.Content" xml:space="preserve"><value>显示系统信息</value></data>
+  <data name="ComposerSuggestionFiles.Content" xml:space="preserve"><value>列出文件</value></data>
+  <data name="ComposerSafeMode.Text" xml:space="preserve"><value>安全模式</value></data>
+  <data name="ComposerSafeModeDescription.Text" xml:space="preserve"><value>安全模式 — 危险工具需要审批</value></data>
+  <data name="ComposerAcceptEditsDescription.Text" xml:space="preserve"><value>接受编辑 — 文件写入无需确认</value></data>
+  <data name="ComposerPlanDescription.Text" xml:space="preserve"><value>规划模式 — 先调研，再审核计划</value></data>
+  <data name="ComposerDropHint.Text" xml:space="preserve"><value>拖放文件以添加附件</value></data>
+  <data name="OfflineTitle.Text" xml:space="preserve"><value>Agent 已离线</value></data>
+  <data name="OfflineRecheck.Text" xml:space="preserve"><value>重新检查</value></data>
+  <data name="ChatImageLoadFailure.Text" xml:space="preserve"><value>无法加载图片。</value></data>
+  <data name="ChatActivityFailed.Text" xml:space="preserve"><value>失败</value></data>
+  <data name="ChatCustomAnswerDivider.Text" xml:space="preserve"><value>或提供自定义回答</value></data>
+  <data name="ChatSkipQuestion.Content" xml:space="preserve"><value>跳过此问题</value></data>
+  <data name="ChatApproveOnce.Text" xml:space="preserve"><value>仅允许一次</value></data>
+  <data name="ChatApproveSessionHint.Text" xml:space="preserve"><value>在本次会话中</value></data>
+  <data name="ChatReject.Text" xml:space="preserve"><value>拒绝</value></data>
+  <data name="ChatRejectHint.Text" xml:space="preserve"><value>此工具</value></data>
+  <data name="ChatApprovalStop.Text" xml:space="preserve"><value>停止</value></data>
+  <data name="ChatApprovalStopHint.Text" xml:space="preserve"><value>停止全部并重定向</value></data>
+  <data name="ChatApprovalExplain.Text" xml:space="preserve"><value>解释</value></data>
+  <data name="ChatApprovalExplainHint.Text" xml:space="preserve"><value>为什么？</value></data>
+  <data name="ChatPlanFeedback.PlaceholderText" xml:space="preserve"><value>可选的反馈或修改要求</value></data>
+  <data name="ChatApprovePlan.Content" xml:space="preserve"><value>批准计划</value></data>
+  <data name="ChatRequestChanges.Content" xml:space="preserve"><value>请求修改</value></data>
+  <data name="ChatConnectionFailure.Text" xml:space="preserve"><value>无法连接到 Agent。</value></data>
+</root>
