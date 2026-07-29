@@ -21,7 +21,9 @@ public sealed partial class ShellSessionItem : RowStateItem
         => string.IsNullOrWhiteSpace(Preview)
             ? $"{Title}, {RelativeTime}"
             : $"{Title}, {Preview}, {RelativeTime}";
-    public string PinToolTip => IsPinned ? "Unpin chat" : "Pin chat";
+    public string PinToolTip => IsPinned
+        ? LocalizedStrings.Get("SidebarUnpinChat", "Unpin chat")
+        : LocalizedStrings.Get("SidebarPinChat", "Pin chat");
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PinToolTip))]

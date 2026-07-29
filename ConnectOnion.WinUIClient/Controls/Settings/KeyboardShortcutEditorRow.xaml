@@ -58,7 +58,7 @@
                            Foreground="{ThemeResource TextSecondaryBrush}" />
             </Border>
 
-            <Button x:Name="ResetButton"
+            <Button x:Uid="KeyboardReset" x:Name="ResetButton"
                     Grid.Column="2"
                     VerticalAlignment="Center"
                     Visibility="Collapsed"

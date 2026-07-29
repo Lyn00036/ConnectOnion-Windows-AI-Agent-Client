@@ -1,4 +1,5 @@
 using System.Linq;
+using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
 using ConnectOnion.WinUIClient.ViewModels;
@@ -37,8 +38,13 @@ public sealed partial class SessionsPage : Page
         var hasAgent = _currentAgent is not null;
         NewSessionButton.IsEnabled = hasAgent;
         AgentLabel.Text = hasAgent
-            ? $"New conversations use: {_currentAgent!.DisplayName}"
-            : "Select an agent on the Agents page to start a conversation.";
+            ? LocalizedStrings.Format(
+                "SessionsNewConversationAgent",
+                "New conversations use: {0}",
+                _currentAgent!.DisplayName)
+            : LocalizedStrings.Get(
+                "SessionsSelectAgent",
+                "Select an agent on the Agents page to start a conversation.");
     }
 
     private void NewSession_Click(object sender, RoutedEventArgs e)

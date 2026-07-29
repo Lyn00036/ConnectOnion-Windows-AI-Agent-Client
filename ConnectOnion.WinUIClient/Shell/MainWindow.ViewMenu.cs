@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Services;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -320,7 +321,8 @@ public sealed partial class MainWindow
         var host = _activeFindHost;
         var hasMatches = host?.HasFindMatches == true;
 
-        FindCounterText.Text = host?.FindStatusText ?? "0 / 0 results";
+        FindCounterText.Text = host?.FindStatusText
+            ?? LocalizedStrings.Get("FindNoResults", "0 / 0 results");
         PreviousFindButton.IsEnabled = hasMatches;
         NextFindButton.IsEnabled = hasMatches;
     }

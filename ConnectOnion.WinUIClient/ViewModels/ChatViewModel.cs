@@ -98,7 +98,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
 
         // Partial-property [ObservableProperty] declarations can't carry initializers, so the
         // non-default seeds live here.
-        HeaderText = "Chat";
+        HeaderText = LocalizedStrings.Get("ChatHeader", "Chat");
         MessageFontSize = 14;
         EnterToSend = true;
         CurrentMode = AgentModes.Safe;
@@ -310,14 +310,18 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
 
     public string ConnectionPhaseText => ConnectionPhase switch
     {
-        Models.ConnectionPhase.Connecting => "Connecting",
-        Models.ConnectionPhase.Connected => "Ready",
-        Models.ConnectionPhase.Running => "Working",
-        Models.ConnectionPhase.Waiting => "Waiting for approval",
+        Models.ConnectionPhase.Connecting => LocalizedStrings.Get("PresenceConnecting", "Connecting"),
+        Models.ConnectionPhase.Connected => LocalizedStrings.Get("ConnectionReady", "Ready"),
+        Models.ConnectionPhase.Running => LocalizedStrings.Get("ConnectionWorking", "Working"),
+        Models.ConnectionPhase.Waiting => LocalizedStrings.Get("ConnectionWaitingApproval", "Waiting for approval"),
         Models.ConnectionPhase.Reconnecting =>
-            $"Reconnecting {ReconnectAttempt}/{ReconnectPolicy.MaxAttempts}",
-        Models.ConnectionPhase.Offline => "Offline",
-        _ => "Ready",
+            LocalizedStrings.Format(
+                "ConnectionReconnecting",
+                "Reconnecting {0}/{1}",
+                ReconnectAttempt,
+                ReconnectPolicy.MaxAttempts),
+        Models.ConnectionPhase.Offline => LocalizedStrings.Get("PresenceOffline", "Offline"),
+        _ => LocalizedStrings.Get("ConnectionReady", "Ready"),
     };
 
     /// <summary>
@@ -416,7 +420,9 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
 
         if (_agent is null)
         {
-            HeaderText = "Select an agent to start chatting";
+            HeaderText = LocalizedStrings.Get(
+                "ChatSelectAgent",
+                "Select an agent to start chatting");
             RaiseHeaderProperties();
             return;
         }

@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using ConnectOnion.Protocol;
 using ConnectOnion.Protocol.Runtime;
+using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services.Attachments;
@@ -921,7 +922,9 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
             else
             {
                 attachment.Status = AttachmentStatus.Failed;
-                attachment.Error = "Image could not be loaded.";
+                attachment.Error = LocalizedStrings.Get(
+                    "ImageLoadFailed",
+                    "Image could not be loaded.");
             }
         }
 

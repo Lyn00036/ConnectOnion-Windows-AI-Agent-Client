@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
+using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Services;
 using ConnectOnion.WinUIClient.Views;
 using Microsoft.UI.Xaml;
@@ -125,7 +126,7 @@ public sealed partial class MainWindow
         {
             Title = title,
             Content = content,
-            CloseButtonText = "OK",
+            CloseButtonText = LocalizedStrings.Get("CommonOk", "OK"),
             XamlRoot = RootGrid.XamlRoot,
         };
         await dialog.ShowAsync();

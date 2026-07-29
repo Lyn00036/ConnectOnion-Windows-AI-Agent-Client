@@ -1,4 +1,5 @@
 using System;
+using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Controls;
 using ConnectOnion.WinUIClient.ViewModels;
 using Microsoft.UI.Xaml;
@@ -72,7 +73,10 @@ public sealed partial class AgentDetailPage : Page, IReloadablePage, IShutdownDi
     private void Suggestion_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.Tag is string prompt)
-            Composer.SetDraft(prompt);
+            Composer.SetDraft(
+                string.Equals(prompt, "What can you do?", StringComparison.Ordinal)
+                    ? LocalizedStrings.Get("ComposerSuggestionCapabilitiesPrompt", "What can you do?")
+                    : prompt);
     }
 
     private async void Share_Click(object sender, RoutedEventArgs e)
@@ -88,7 +92,10 @@ public sealed partial class AgentDetailPage : Page, IReloadablePage, IShutdownDi
         {
             var profile = await Services.AppServices.OpenOnionAccount.RefreshAsync();
             if (!IsLoaded) return;
-            BalanceButton.Content = $"Balance ${profile.BalanceUsd:0.00} · Top up";
+            BalanceButton.Content = LocalizedStrings.Format(
+                "AgentBalanceTopUp",
+                "Balance {0:C2} · Top up",
+                profile.BalanceUsd);
             BalanceButton.Visibility = Visibility.Visible;
         }
         catch

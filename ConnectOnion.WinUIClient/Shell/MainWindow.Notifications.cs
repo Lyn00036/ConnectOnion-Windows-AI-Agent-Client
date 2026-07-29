@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
+using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Models.Notifications;
 using ConnectOnion.WinUIClient.Services;
@@ -98,9 +99,11 @@ public sealed partial class MainWindow : IChatWindow
 
     private void ShowIdentityResetToast(string reason)
         => DispatcherQueue.TryEnqueue(() => ShowInAppToast(new InAppToastModel(
-            "New identity generated",
-            $"Your previous ConnectOnion identity could not be recovered — {reason}. "
-                + "Agents that authorized the old address will need to authorize this one again.",
+            LocalizedStrings.Get("IdentityResetTitle", "New identity generated"),
+            LocalizedStrings.Format(
+                "IdentityResetBody",
+                "Your previous ConnectOnion identity could not be recovered — {0}. Agents that authorized the old address will need to authorize this one again.",
+                reason),
             NotificationType.Error,
             AgentId: null,
             ConversationId: null,

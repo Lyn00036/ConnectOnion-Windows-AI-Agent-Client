@@ -64,11 +64,13 @@
                             AreOpenCloseAnimationsEnabled="False"
                             Opening="TrayContextMenu_Opening">
                     <MenuFlyoutItem
+                        x:Uid="HistoryRecentChats"
                         x:Name="RecentChatsHeader"
                         Text="Recent chats"
                         IsEnabled="False" />
                     <MenuFlyoutSeparator x:Name="RecentChatsEndSeparator" />
                     <MenuFlyoutItem
+                        x:Uid="HistoryNewChat"
                         Text="New Chat"
                         Command="{x:Bind NewChatFromTrayCommand}">
                         <MenuFlyoutItem.Icon>
@@ -79,6 +81,7 @@
                     </MenuFlyoutItem>
                     <MenuFlyoutSeparator />
                     <MenuFlyoutItem
+                        x:Uid="HistoryExit"
                         Text="Exit"
                         Command="{x:Bind ExitFromTrayCommand}" />
                 </MenuFlyout>
@@ -95,7 +98,7 @@
             </Grid.ColumnDefinitions>
 
             <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="2" Padding="10,0,0,0">
-                <Button x:Name="SidebarToggleButton"
+                <Button x:Uid="MainToggleSidebar" x:Name="SidebarToggleButton"
                         Style="{StaticResource TitleIconButtonStyle}"
                         Click="SidebarToggle_Click"
                         AutomationProperties.Name="Toggle sidebar"
@@ -105,7 +108,7 @@
                                    IconSize="Size20"
                                    Foreground="{ThemeResource TextSecondaryBrush}" />
                 </Button>
-                <Button x:Name="BackButton"
+                <Button x:Uid="MainNavigateBack" x:Name="BackButton"
                         Style="{StaticResource TitleIconButtonStyle}"
                         Click="Back_Click"
                         AutomationProperties.Name="Back"
@@ -123,7 +126,7 @@
                                    IconSize="Size20"
                                    Foreground="{ThemeResource TextSecondaryBrush}" />
                 </Button>
-                <Button x:Name="ForwardButton"
+                <Button x:Uid="MainNavigateForward" x:Name="ForwardButton"
                         Style="{StaticResource TitleIconButtonStyle}"
                         Click="Forward_Click"
                         AutomationProperties.Name="Forward"
@@ -141,7 +144,7 @@
                 <MenuBar Background="Transparent"
                          BorderThickness="0"
                          VerticalAlignment="Center">
-                    <MenuBarItem Title="File">
+            <MenuBarItem x:Uid="MenuFile" Title="File">
                         <MenuFlyoutItem x:Uid="MenuNewChat" x:Name="NewChatMenuItem" Text="New Chat"
                                         KeyboardAcceleratorTextOverride="Ctrl+N"
                                         Click="NewChat_Click" />
@@ -160,7 +163,7 @@
                                         KeyboardAcceleratorTextOverride="Ctrl+Q"
                                         Click="Exit_Click" />
                     </MenuBarItem>
-                    <MenuBarItem Title="Edit">
+            <MenuBarItem x:Uid="MenuEdit" Title="Edit">
                         <MenuFlyoutItem x:Uid="MenuUndo" Text="Undo"
                                         KeyboardAcceleratorTextOverride="Ctrl+Z"
                                         Click="Undo_Click" />
@@ -184,7 +187,7 @@
                                         KeyboardAcceleratorTextOverride="Ctrl+A"
                                         Click="SelectAll_Click" />
                     </MenuBarItem>
-                    <MenuBarItem Title="View">
+            <MenuBarItem x:Uid="MenuView" Title="View">
                         <MenuFlyoutItem x:Uid="MenuToggleSidebar" x:Name="ToggleSidebarMenuItem" Text="Toggle Sidebar"
                                         KeyboardAcceleratorTextOverride="Ctrl+B"
                                         Click="ToggleSidebarMenu_Click" />
@@ -215,7 +218,7 @@
                                         KeyboardAcceleratorTextOverride="F11"
                                         Click="ToggleFullScreen_Click" />
                     </MenuBarItem>
-                    <MenuBarItem x:Name="HelpMenuBarItem" Title="Help" AutomationProperties.AutomationId="HelpMenuButton">
+            <MenuBarItem x:Uid="MenuHelp" x:Name="HelpMenuBarItem" Title="Help" AutomationProperties.AutomationId="HelpMenuButton">
                         <MenuFlyoutItem x:Uid="MenuKeyboardShortcuts" x:Name="KeyboardShortcutsMenuItem" Text="Keyboard shortcuts" AutomationProperties.AutomationId="KeyboardShortcutsMenuItem"
                                         KeyboardAcceleratorTextOverride="Ctrl+Shift+/"
                                         Click="KeyboardShortcuts_Click" />
@@ -318,12 +321,13 @@
 
                     <TextBlock x:Name="FindCounterText"
                                Grid.Column="2"
+                               x:Uid="FindCounter"
                                Text="0 / 0 results"
                                FontSize="11"
                                VerticalAlignment="Center"
                                Foreground="{ThemeResource TextTertiaryBrush}" />
 
-                    <Button x:Name="PreviousFindButton"
+                    <Button x:Uid="MainFindPrevious" x:Name="PreviousFindButton"
                             Grid.Column="3"
                             Style="{StaticResource FindHudButtonStyle}"
                             Click="PreviousFind_Click"
@@ -335,7 +339,7 @@
                                        Foreground="{ThemeResource TextSecondaryBrush}" />
                     </Button>
 
-                    <Button x:Name="NextFindButton"
+                    <Button x:Uid="MainFindNext" x:Name="NextFindButton"
                             Grid.Column="4"
                             Style="{StaticResource FindHudButtonStyle}"
                             Click="NextFind_Click"
@@ -347,7 +351,7 @@
                                        Foreground="{ThemeResource TextSecondaryBrush}" />
                     </Button>
 
-                    <Button Grid.Column="5"
+                    <Button x:Uid="MainFindClose" Grid.Column="5"
                             Style="{StaticResource FindHudButtonStyle}"
                             Click="CloseFind_Click"
                             AutomationProperties.Name="Close find"
@@ -396,7 +400,7 @@
                                Fill="{ThemeResource DividerBrush}"
                                Opacity="0.7"
                                VerticalAlignment="Center" />
-                    <Button Grid.Column="2"
+                    <Button x:Uid="MainZoomOut" Grid.Column="2"
                             Style="{StaticResource ZoomHudButtonStyle}"
                             Click="ActualSizeZoomOut_Click"
                             AutomationProperties.Name="Zoom out"
@@ -405,7 +409,7 @@
                                    FontSize="16"
                                    VerticalAlignment="Center" />
                     </Button>
-                    <Button Grid.Column="3"
+                    <Button x:Uid="MainZoomIn" Grid.Column="3"
                             Style="{StaticResource ZoomHudButtonStyle}"
                             Click="ActualSizeZoomIn_Click"
                             AutomationProperties.Name="Zoom in"

@@ -1,5 +1,6 @@
 using System;
 using ConnectOnion.WinUIClient.Models;
+using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -47,11 +48,12 @@ public sealed partial class UsageSettingsContent : UserControl
         var dialog = new ContentDialog
         {
             XamlRoot = XamlRoot,
-            Title = "Clear usage history?",
-            Content = "This permanently deletes all recorded token usage on this device. "
-                    + "Your conversations are not affected.",
-            PrimaryButtonText = "Clear",
-            CloseButtonText = "Cancel",
+            Title = LocalizedStrings.Get("UsageClearTitle", "Clear usage history?"),
+            Content = LocalizedStrings.Get(
+                "UsageClearWarning",
+                "This permanently deletes all recorded token usage on this device. Your conversations are not affected."),
+            PrimaryButtonText = LocalizedStrings.Get("UsageClearConfirm", "Clear"),
+            CloseButtonText = LocalizedStrings.Get("CommonCancel", "Cancel"),
             DefaultButton = ContentDialogButton.Close,
         };
 

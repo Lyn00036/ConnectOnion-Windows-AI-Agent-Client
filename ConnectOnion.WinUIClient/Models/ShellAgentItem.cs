@@ -59,10 +59,10 @@ public sealed partial class ShellAgentItem : RowStateItem
     public bool IsOfflineIconVisible => Presence == AgentPresence.Offline || Presence == AgentPresence.Unknown;
     public string PresenceLabel => Presence switch
     {
-        AgentPresence.Online => "Online",
-        AgentPresence.Checking => "Connecting",
-        AgentPresence.Offline => "Offline",
-        _ => "Not connected",
+        AgentPresence.Online => Common.LocalizedStrings.Get("PresenceOnline", "Online"),
+        AgentPresence.Checking => Common.LocalizedStrings.Get("PresenceConnecting", "Connecting"),
+        AgentPresence.Offline => Common.LocalizedStrings.Get("PresenceOffline", "Offline"),
+        _ => Common.LocalizedStrings.Get("PresenceNotConnected", "Not connected"),
     };
 
     [ObservableProperty]
@@ -81,13 +81,19 @@ public sealed class ShellSessionGroup
 {
     public ShellSessionGroup(string label, IReadOnlyList<ShellSessionItem> sessions)
     {
-        Label = label;
+        _label = label;
         foreach (var session in sessions)
         {
             Sessions.Add(session);
         }
     }
 
-    public string Label { get; }
+    public string Label => _label switch
+    {
+        "Today" => LocalizedStrings.Get("TimeGroupToday", "Today"),
+        "Yesterday" => LocalizedStrings.Get("TimeGroupYesterday", "Yesterday"),
+        _ => LocalizedStrings.Get("TimeGroupEarlier", "Earlier"),
+    };
+    private readonly string _label;
     public ObservableCollection<ShellSessionItem> Sessions { get; } = new();
 }

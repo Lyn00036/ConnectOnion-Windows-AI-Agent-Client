@@ -70,18 +70,12 @@
     </Page.Resources>
 
     <Grid x:Name="PageRoot"
-          Background="{ThemeResource AppBackgroundBrush}">
+          Background="{ThemeResource AppBackgroundBrush}"
+          SizeChanged="PageRoot_SizeChanged">
         <VisualStateManager.VisualStateGroups>
             <VisualStateGroup x:Name="WindowWidthStates">
                 <VisualState x:Name="Adaptive" />
                 <VisualState x:Name="Wide">
-                    <VisualState.StateTriggers>
-                        <!-- AdaptiveTrigger measures the whole window, not this page's frame.
-                             Account for the 264px shell sidebar as well as the 960px reading
-                             column and its 48px side margins; activating this state earlier
-                             forces a wider child into the clipped content viewport. -->
-                        <AdaptiveTrigger MinWindowWidth="1360" />
-                    </VisualState.StateTriggers>
                     <VisualState.Setters>
                         <Setter Target="ContentRoot.Width" Value="960" />
                         <Setter Target="ContentRoot.HorizontalAlignment" Value="Center" />
@@ -118,11 +112,11 @@
 
                         <StackPanel VerticalAlignment="Center"
                                     Spacing="4">
-                            <TextBlock Text="Agents"
+                    <TextBlock x:Uid="HomeAgentsTitle" Text="Agents"
                                        FontSize="28"
                                        FontWeight="SemiBold"
                                        Foreground="{ThemeResource TextPrimaryBrush}" />
-                            <TextBlock Text="Open an agent to continue its most recent conversation."
+                    <TextBlock x:Uid="HomeAgentsDescription" Text="Open an agent to continue its most recent conversation."
                                        FontSize="14"
                                        Foreground="{ThemeResource TextSecondaryBrush}"
                                        TextWrapping="Wrap" />
@@ -144,14 +138,14 @@
                                                IconVariant="Regular"
                                                IconSize="Size16"
                                                VerticalAlignment="Center" />
-                                <TextBlock Text="Add Agent"
+                    <TextBlock x:Uid="HomeAddAgent" Text="Add Agent"
                                            FontSize="13"
                                            VerticalAlignment="Center" />
                             </StackPanel>
                         </Button>
                     </Grid>
 
-                    <InfoBar x:Name="PageErrorBar"
+                    <InfoBar x:Uid="HomeOpenError" x:Name="PageErrorBar"
                              Margin="0,16,0,0"
                              IsOpen="False"
                              Severity="Error"
@@ -163,11 +157,11 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Text="Available agents"
+                        <TextBlock x:Uid="HomeAvailableAgents" Text="Available agents"
                                    FontSize="14"
                                    FontWeight="SemiBold"
                                    Foreground="{ThemeResource TextPrimaryBrush}" />
-                        <TextBlock Grid.Column="1"
+                        <TextBlock x:Uid="HomeStatusAuto" Grid.Column="1"
                                    Text="Status updates automatically"
                                    FontSize="11"
                                    Foreground="{ThemeResource TextTertiaryBrush}"
@@ -273,7 +267,7 @@
                                                         Spacing="3"
                                                         VerticalAlignment="Center"
                                                         Visibility="Collapsed">
-                                                <TextBlock Text="Last used"
+                                        <TextBlock x:Uid="HomeLastUsed" Text="Last used"
                                                            Style="{StaticResource HomeMetadataLabelStyle}" />
                                                 <TextBlock Text="{x:Bind LastUsedLabel}"
                                                            FontSize="12"
@@ -317,7 +311,7 @@
                                                     <ProgressRing Width="14"
                                                                   Height="14"
                                                                   IsActive="{x:Bind IsOpening, Mode=OneWay}" />
-                                                    <TextBlock Text="Opening"
+                                    <TextBlock x:Uid="HomeOpening" Text="Opening"
                                                                FontSize="12"
                                                                VerticalAlignment="Center" />
                                                 </StackPanel>
@@ -361,11 +355,11 @@
                                            IconSize="Size24"
                                            Foreground="{ThemeResource TextSecondaryBrush}"
                                            HorizontalAlignment="Center" />
-                            <TextBlock Text="No agents yet"
+                            <TextBlock x:Uid="HomeNoAgents" Text="No agents yet"
                                        FontSize="15"
                                        FontWeight="SemiBold"
                                        HorizontalAlignment="Center" />
-                            <TextBlock Text="Add an agent to start a conversation."
+                            <TextBlock x:Uid="HomeNoAgentsHint" Text="Add an agent to start a conversation."
                                        FontSize="12"
                                        Foreground="{ThemeResource TextSecondaryBrush}"
                                        HorizontalAlignment="Center" />

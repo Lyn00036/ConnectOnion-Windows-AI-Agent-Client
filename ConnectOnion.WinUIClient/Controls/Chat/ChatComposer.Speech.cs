@@ -15,6 +15,7 @@ using Windows.Media.Render;
 using Windows.Media.SpeechRecognition;
 using WinRT;
 using ConnectOnion.WinUIClient.Services;
+using ConnectOnion.WinUIClient.Common;
 
 namespace ConnectOnion.WinUIClient.Controls;
 
@@ -382,7 +383,7 @@ public sealed partial class ChatComposer
         // spinner time spent waiting for the recogniser is not part of the recording.
         _recordingStartedAt = DateTimeOffset.Now;
         ResetRecordingVisuals();
-        InputBox.PlaceholderText = "Listening...";
+        InputBox.PlaceholderText = LocalizedStrings.Get("VoiceListening", "Listening...");
         _recordingElapsedTimer.Start();
         _waveformTimer.Start();
     }
@@ -394,7 +395,7 @@ public sealed partial class ChatComposer
         _sampleCount = 0;
         _sampleWritePos = 0;
         Array.Clear(_sampleRing);
-        InputBox.PlaceholderText = "Do anything";
+        InputBox.PlaceholderText = LocalizedStrings.Get("ComposerDoAnything", "Do anything");
     }
 
     private void RecordingElapsedTimer_Tick(object? sender, object e)
@@ -637,9 +638,9 @@ public sealed partial class ChatComposer
 
         var dialog = new ContentDialog
         {
-            Title = "Voice input",
+            Title = LocalizedStrings.Get("VoiceInputTitle", "Voice input"),
             Content = message,
-            CloseButtonText = "OK",
+            CloseButtonText = LocalizedStrings.Get("CommonOk", "OK"),
             XamlRoot = XamlRoot,
         };
         _ = await dialog.ShowAsync();

@@ -42,6 +42,72 @@ public sealed partial class AddAgentForm : UserControl, IDisposable
 
     public AddAgentForm() => InitializeComponent();
 
+    public string LocalizedTestButtonText(bool isTesting)
+        => isTesting
+            ? LocalizedStrings.Get("AddAgentTesting", "Testing…")
+            : LocalizedStrings.Get("AddAgentTestConnection", "Test connection");
+
+    public string LocalizedAddButtonText(bool isAdding)
+        => isAdding
+            ? LocalizedStrings.Get("AddAgentAdding", "Adding…")
+            : LocalizedStrings.Get("AddAgentSubmit", "Add agent");
+
+    public string LocalizedInputHelpText(bool showValidationError)
+        => showValidationError
+            ? LocalizedStrings.Get(
+                "AddAgentValidationError",
+                "Enter a valid agent address or WebSocket URL.")
+            : "";
+
+    public string LocalizedStatusText(string status)
+    {
+        if (string.IsNullOrWhiteSpace(status))
+            return "";
+        if (status.StartsWith("Connected to ", StringComparison.Ordinal))
+        {
+            return LocalizedStrings.Format(
+                "AddAgentConnectedTo",
+                "Connected to {0}",
+                status["Connected to ".Length..]);
+        }
+        if (status.StartsWith("Could not add the agent: ", StringComparison.Ordinal))
+        {
+            return LocalizedStrings.Format(
+                "AddAgentCouldNotAdd",
+                "Could not add the agent: {0}",
+                status["Could not add the agent: ".Length..]);
+        }
+
+        return status switch
+        {
+            "Checking agent health…" => LocalizedStrings.Get(
+                "AddAgentCheckingHealth",
+                "Checking agent health…"),
+            "An agent with this address and Direct URL already exists." => LocalizedStrings.Get(
+                "AddAgentDuplicateAddressAndUrl",
+                "An agent with this address and Direct URL already exists."),
+            "An agent with this address already exists." => LocalizedStrings.Get(
+                "AddAgentDuplicateAddress",
+                "An agent with this address already exists."),
+            "An agent with this Direct URL already exists." => LocalizedStrings.Get(
+                "AddAgentDuplicateUrl",
+                "An agent with this Direct URL already exists."),
+            "Connection timed out." => LocalizedStrings.Get(
+                "AddAgentTimeout",
+                "Connection timed out."),
+            "The agent reported an unhealthy state." => LocalizedStrings.Get(
+                "AddAgentUnhealthy",
+                "The agent reported an unhealthy state."),
+            "The server did not return valid agent information." => LocalizedStrings.Get(
+                "AddAgentInvalidInfo",
+                "The server did not return valid agent information."),
+            "Could not connect to the agent." => LocalizedStrings.Get(
+                "AddAgentCouldNotConnect",
+                "Could not connect to the agent."),
+            _ => status,
+        };
+    }
+
     public void Show(FrameworkElement? focusReturnTarget)
     {
         ThrowIfDisposed();

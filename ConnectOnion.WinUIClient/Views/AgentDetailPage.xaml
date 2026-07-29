@@ -120,7 +120,7 @@
                 <StackPanel Orientation="Horizontal"
                             HorizontalAlignment="Center"
                             Spacing="8">
-                    <Button Content="Share"
+                            <Button x:Uid="AgentDetailShare" Content="Share"
                             Click="Share_Click"
                             Visibility="{x:Bind Vm.CanShareAgent, Mode=OneWay, Converter={StaticResource BoolToVis}}"
                             AutomationProperties.Name="Share this relay agent" />
@@ -130,7 +130,7 @@
                             AutomationProperties.Name="View balance and top up for this agent" />
                 </StackPanel>
 
-                <Button Content="What can you do?"
+                            <Button x:Uid="AgentDetailCapabilities" Content="What can you do?"
                         Tag="What can you do?"
                         MinHeight="36"
                         Margin="0,8,0,0"
@@ -182,7 +182,7 @@
                             <StackPanel Width="420"
                                         MaxWidth="520"
                                         Spacing="8">
-                                <TextBlock Text="Available tools"
+                    <TextBlock x:Uid="AgentDetailTools" Text="Available tools"
                                            FontSize="14"
                                            FontWeight="SemiBold" />
                                 <TextBlock Text="{x:Bind Vm.ToolsDisplayText, Mode=OneWay}"
@@ -204,7 +204,7 @@
                               IsActive="{x:Bind Vm.IsLoading, Mode=OneWay}"
                               Visibility="{x:Bind Vm.IsLoading, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
 
-                <InfoBar Severity="Error"
+                <InfoBar x:Uid="AgentDetailStartError" Severity="Error"
                          Title="Couldn't start the conversation"
                          Message="{x:Bind Vm.StatusText, Mode=OneWay}"
                          IsOpen="{x:Bind Vm.HasError, Mode=OneWay}"

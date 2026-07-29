@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ContentDialog
+    x:Uid="PlanSectionReviewDialog"
     x:Class="ConnectOnion.WinUIClient.Controls.PlanSectionReviewDialog"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -36,18 +37,18 @@
                                                      FontSize="13"
                                                      AutomationProperties.Name="{x:Bind Heading}" />
                             <StackPanel Orientation="Horizontal" Spacing="8">
-                                <ToggleButton Content="Looks good"
+                                <ToggleButton x:Uid="PlanSectionLooksGood" Content="Looks good"
                                               Tag="{x:Bind}"
                                               IsChecked="{x:Bind IsApproved, Mode=OneWay}"
                                               Click="ApproveSection_Click"
                                               AutomationProperties.Name="{x:Bind ApproveAccessibilityName}" />
-                                <ToggleButton Content="Needs changes"
+                                <ToggleButton x:Uid="PlanSectionNeedsChanges" Content="Needs changes"
                                               Tag="{x:Bind}"
                                               IsChecked="{x:Bind NeedsChanges, Mode=OneWay}"
                                               Click="RequestSectionChanges_Click"
                                               AutomationProperties.Name="{x:Bind ChangesAccessibilityName}" />
                             </StackPanel>
-                            <TextBox Text="{x:Bind Feedback, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                            <TextBox x:Uid="PlanSectionFeedback" Text="{x:Bind Feedback, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                      PlaceholderText="Optional feedback for this section…"
                                      AcceptsReturn="True"
                                      TextWrapping="Wrap"
