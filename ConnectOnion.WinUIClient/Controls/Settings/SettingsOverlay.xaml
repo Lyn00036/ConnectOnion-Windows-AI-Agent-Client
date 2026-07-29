@@ -99,7 +99,7 @@
                 </Grid.ColumnDefinitions>
                 <Grid Grid.Column="0" MinWidth="0" Background="{ThemeResource SettingsNavigationBrush}" Padding="14,18">
                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-                    <TextBox x:Name="SearchBox" PlaceholderText="Search settings" TextChanged="SearchBox_TextChanged"
+                <TextBox x:Uid="SettingsSearch" x:Name="SearchBox" PlaceholderText="Search settings" TextChanged="SearchBox_TextChanged"
                              AutomationProperties.Name="Search settings" />
                     <ScrollViewer Grid.Row="1" Margin="0,14,0,0"
                                   HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled"
@@ -109,35 +109,35 @@
                                 Style="{StaticResource SettingsNavButtonStyle}" Click="GeneralNav_Click"
                                 AutomationProperties.AutomationId="GeneralNav"
                                 AutomationProperties.Name="General settings">
-                                <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="Settings"/><TextBlock x:Name="GeneralNavLabel" Text="General"/></StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="Settings"/><TextBlock x:Uid="SettingsCategoryGeneral" x:Name="GeneralNavLabel" Text="General"/></StackPanel>
                             </RadioButton>
                             <RadioButton x:Name="AgentsNav" GroupName="SettingsCategory"
                                 Style="{StaticResource SettingsNavButtonStyle}" Click="AgentsNav_Click"
                                 AutomationProperties.AutomationId="AgentsNav"
                                 AutomationProperties.Name="Agent settings">
-                                <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="Bot"/><TextBlock x:Name="AgentsNavLabel" Text="Agents"/></StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="Bot"/><TextBlock x:Uid="SettingsCategoryAgents" x:Name="AgentsNavLabel" Text="Agents"/></StackPanel>
                             </RadioButton>
                             <RadioButton GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
                                 Click="NotificationsNav_Click" AutomationProperties.Name="Notification settings">
-                                <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="Alert"/><TextBlock x:Name="NotificationsNavLabel" Text="Notifications"/></StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="Alert"/><TextBlock x:Uid="SettingsCategoryNotifications" x:Name="NotificationsNavLabel" Text="Notifications"/></StackPanel>
                             </RadioButton>
                             <RadioButton GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
                                 Click="AudioNav_Click" AutomationProperties.Name="Audio settings">
-                                <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="Speaker2"/><TextBlock x:Name="AudioNavLabel" Text="Audio"/></StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="Speaker2"/><TextBlock x:Uid="SettingsCategoryAudio" x:Name="AudioNavLabel" Text="Audio"/></StackPanel>
                             </RadioButton>
                             <RadioButton GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
                                 Click="KeyboardNav_Click" AutomationProperties.Name="Keyboard shortcuts settings">
-                                <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="Keyboard"/><TextBlock x:Name="KeyboardNavLabel" Text="Keyboard"/></StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="Keyboard"/><TextBlock x:Uid="SettingsCategoryKeyboard" x:Name="KeyboardNavLabel" Text="Keyboard"/></StackPanel>
                             </RadioButton>
                             <RadioButton GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
                                 Click="IdentityNav_Click" AutomationProperties.AutomationId="IdentityNav"
                                 AutomationProperties.Name="Identity settings">
-                                <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="Key"/><TextBlock x:Name="IdentityNavLabel" Text="Identity"/></StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="Key"/><TextBlock x:Uid="SettingsCategoryIdentity" x:Name="IdentityNavLabel" Text="Identity"/></StackPanel>
                             </RadioButton>
                             <RadioButton GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
                                 Click="UsageNav_Click" AutomationProperties.AutomationId="UsageNav"
                                 AutomationProperties.Name="Token usage">
-                                <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="DataUsage"/><TextBlock x:Name="UsageNavLabel" Text="Usage"/></StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="DataUsage"/><TextBlock x:Uid="SettingsCategoryUsage" x:Name="UsageNavLabel" Text="Usage"/></StackPanel>
                             </RadioButton>
                         </StackPanel>
                     </ScrollViewer>
@@ -147,8 +147,8 @@
                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
                     <Grid MinWidth="0" Padding="28,20,20,14">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                        <TextBlock x:Name="CategoryTitle" Text="General" Style="{StaticResource TitleTextBlockStyle}" VerticalAlignment="Center" />
-                        <Button Grid.Column="1" Style="{StaticResource SettingsCloseButtonStyle}" Click="CloseButton_Click"
+                        <TextBlock x:Name="CategoryTitle" x:Uid="SettingsCategoryGeneralHeading" Text="General" Style="{StaticResource TitleTextBlockStyle}" VerticalAlignment="Center" />
+                        <Button x:Uid="SettingsClose" Grid.Column="1" Style="{StaticResource SettingsCloseButtonStyle}" Click="CloseButton_Click"
                                 AutomationProperties.Name="Close settings" ToolTipService.ToolTip="Close settings (Esc)">
                             <ic:FluentIcon Icon="Dismiss" IconVariant="Regular" IconSize="Size20" />
                         </Button>

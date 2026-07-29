@@ -3,11 +3,15 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:ConnectOnion.WinUIClient.Controls"
+    xmlns:common="using:ConnectOnion.WinUIClient.Common"
     xmlns:ic="using:FluentIcons.WinUI"
     xmlns:models="using:ConnectOnion.WinUIClient.Models">
+    <UserControl.Resources>
+        <common:InteractiveTextConverter x:Key="InteractiveText" />
+    </UserControl.Resources>
     <local:InteractiveCard Message="{x:Bind Message, Mode=OneWay}"
         IconGlyph="{x:Bind Message.DiffIconGlyph, Mode=OneWay}"
-        Title="{x:Bind Message.DiffCardTitle, Mode=OneWay}"
+        Title="{x:Bind Message.DiffCardTitle, Mode=OneWay, Converter={StaticResource InteractiveText}}"
         Subtitle="{x:Bind Message.DiffCardSubtitle, Mode=OneWay}"
         HeaderMeta="{x:Bind Message.DiffHeaderMeta, Mode=OneWay}"
         ShowStatusBadge="False"
@@ -98,18 +102,18 @@
                             IsDynamicOverflowEnabled="True"
                             DefaultLabelPosition="Right">
                     <CommandBar.Content>
-                        <TextBlock Text="Unified diff · UTF-8"
+                <TextBlock x:Uid="DiffUnifiedUtf8" Text="Unified diff · UTF-8"
                                    Style="{StaticResource InteractiveHelperTextStyle}"
                                    VerticalAlignment="Center" />
                     </CommandBar.Content>
-                    <AppBarButton Label="{x:Bind Message.DiffWrapLabel, Mode=OneWay}"
+                    <AppBarButton Label="{x:Bind Message.DiffWrapLabel, Mode=OneWay, Converter={StaticResource InteractiveText}}"
                                   Click="ToggleWrap_Click"
                                   Visibility="{x:Bind Message.CanWrapDiff, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-                    <AppBarButton Label="Copy diff"
+                    <AppBarButton x:Uid="DiffCopyUnified" Label="Copy diff"
                                   Click="CopyDiff_Click"
                                   ToolTipService.ToolTip="Copy unified diff without visual line numbers"
                                   AutomationProperties.Name="Copy diff without visual line numbers" />
-                    <AppBarButton Label="Copy path"
+                    <AppBarButton x:Uid="DiffCopyPath" Label="Copy path"
                                   Click="CopyPath_Click"
                                   ToolTipService.ToolTip="Copy full file path"
                                   AutomationProperties.Name="Copy full file path" />
@@ -122,7 +126,7 @@
         </local:InteractiveCard.CardBody>
         <local:InteractiveCard.CardFooter>
             <Button HorizontalAlignment="Right" Margin="8,5" Padding="10,5"
-                Content="{x:Bind Message.DiffToggleLabel, Mode=OneWay}"
+                Content="{x:Bind Message.DiffToggleLabel, Mode=OneWay, Converter={StaticResource InteractiveText}}"
                 Style="{StaticResource InteractiveCardTertiaryButtonStyle}" Click="ToggleExpanded_Click"
                 Visibility="{x:Bind Message.CanToggleDiffVisibility, Mode=OneWay, Converter={StaticResource BoolToVis}}"
                 AutomationProperties.Name="{x:Bind Message.DiffToggleLabel, Mode=OneWay}" />

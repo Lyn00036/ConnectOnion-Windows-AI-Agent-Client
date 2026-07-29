@@ -6,6 +6,7 @@ using System.Globalization;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using ConnectOnion.WinUIClient.Models;
+using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Services;
 using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Views;
@@ -65,7 +66,8 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     private bool _hasExpansionState;
     private bool _loadedPersistedExpansionState;
     private bool _isPinnedExpanded = true;
-    private string _newChatTargetText = "Start a new chat";
+    private string _newChatTargetText =
+        LocalizedStrings.Get("SidebarStartNewChat", "Start a new chat");
 
     public int OnlineAgentCount
     {
@@ -83,9 +85,12 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     public bool HasOnlineAgents => OnlineAgentCount > 0;
     public string OnlineAgentCountText => OnlineAgentCount switch
     {
-        0 => "No agents online",
-        1 => "1 agent online",
-        _ => $"{OnlineAgentCount} agents online",
+        0 => LocalizedStrings.Get("AgentCountNoneOnline", "No agents online"),
+        1 => LocalizedStrings.Get("AgentCountOneOnline", "1 agent online"),
+        _ => LocalizedStrings.Format(
+            "AgentCountOnline",
+            "{0} agents online",
+            OnlineAgentCount),
     };
     public bool HasPinnedSessions => PinnedSessions.Count > 0;
     public double PinnedChevronAngle => IsPinnedExpanded ? 0 : 270;
@@ -148,8 +153,11 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         var newChatAgent = agentsState.Agents.FirstOrDefault(agent => agent.Id == agentsState.SelectedAgentId)
             ?? agentsState.Agents.FirstOrDefault();
         NewChatTargetText = newChatAgent is null
-            ? "Add an agent to start a new chat"
-            : $"Start a new chat with {newChatAgent.Name}";
+            ? LocalizedStrings.Get("SidebarAddAgentToChat", "Add an agent to start a new chat")
+            : LocalizedStrings.Format(
+                "SidebarStartChatWith",
+                "Start a new chat with {0}",
+                newChatAgent.Name);
         await RefreshSessionPreviewCacheAsync(sessionsState.Sessions);
 
         // Must run *before* the Clear below, while the old items still hold their expansion.
@@ -526,8 +534,8 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         {
             Title = title,
             Content = content,
-            PrimaryButtonText = "Delete",
-            CloseButtonText = "Cancel",
+            PrimaryButtonText = LocalizedStrings.Get("CommonDelete", "Delete"),
+            CloseButtonText = LocalizedStrings.Get("CommonCancel", "Cancel"),
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = XamlRoot,
         };

@@ -1,5 +1,6 @@
 using System;
 using ConnectOnion.Protocol;
+using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Services;
 using Microsoft.UI.Xaml;
@@ -50,18 +51,24 @@ public sealed partial class IdentitySettingsContent : UserControl, System.IDispo
         // phrase you can type into any ConnectOnion client, the other only a hex key. Labelling
         // both "recovery phrase" would send someone hunting for words that do not exist.
         var hasPhrase = IdentityStore.ExportBackup().HasMnemonic;
-        ShowBackupButtonText.Text = hasPhrase ? "Show recovery phrase" : "Show private key";
+        ShowBackupButtonText.Text = hasPhrase
+            ? LocalizedStrings.Get("IdentityShowRecoveryPhrase", "Show recovery phrase")
+            : LocalizedStrings.Get("IdentityShowPrivateKey", "Show private key");
         // Set alongside the label, not once in XAML: a static name would have a screen reader
         // announce "recovery phrase" on a button that reveals a key, for exactly the users least
         // able to notice the mismatch.
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
-            ShowBackupButton, hasPhrase ? "Show recovery phrase" : "Show private key");
+            ShowBackupButton,
+            hasPhrase
+                ? LocalizedStrings.Get("IdentityShowRecoveryPhrase", "Show recovery phrase")
+                : LocalizedStrings.Get("IdentityShowPrivateKey", "Show private key"));
         BackupDescriptionText.Text = hasPhrase
-            ? "Your identity is backed by a 12-word recovery phrase. It restores this address on "
-                + "another machine, in the CLI, or in the web client — it is the only copy that "
-                + "survives losing this device."
-            : "This identity predates recovery phrases, so it is backed up as a raw private key. "
-                + "Keep a copy: it is the only thing that restores this address elsewhere.";
+            ? LocalizedStrings.Get(
+                "IdentityRecoveryPhraseDescription",
+                "Your identity is backed by a 12-word recovery phrase. It restores this address on another machine, in the CLI, or in the web client — it is the only copy that survives losing this device.")
+            : LocalizedStrings.Get(
+                "IdentityPrivateKeyDescription",
+                "This identity predates recovery phrases, so it is backed up as a raw private key. Keep a copy: it is the only thing that restores this address elsewhere.");
     }
 
     /// <summary>
@@ -135,8 +142,9 @@ public sealed partial class IdentitySettingsContent : UserControl, System.IDispo
         IdentityActionErrorBar.IsOpen = false;
         if (AppServices.RunManager.GetActiveRuns().Count > 0)
         {
-            IdentityActionErrorBar.Message =
-                "Wait for the running conversation to finish before generating a new identity.";
+            IdentityActionErrorBar.Message = LocalizedStrings.Get(
+                "IdentityGenerateWait",
+                "Wait for the running conversation to finish before generating a new identity.");
             IdentityActionErrorBar.IsOpen = true;
             return;
         }
@@ -144,12 +152,14 @@ public sealed partial class IdentitySettingsContent : UserControl, System.IDispo
         var confirmation = new ContentDialog
         {
             XamlRoot = XamlRoot,
-            Title = "Generate a new identity?",
-            Content = "This replaces your current identity and creates a different OpenOnion "
-                + "account on first sign-in. Your current balance, agent authorizations, and account "
-                + "history do not move to the new address. Back up the current recovery phrase first.",
-            PrimaryButtonText = "Generate",
-            CloseButtonText = "Cancel",
+            Title = LocalizedStrings.Get("IdentityGenerateTitle", "Generate a new identity?"),
+            Content = LocalizedStrings.Get(
+                "IdentityGenerateWarning",
+                "This replaces your current identity and creates a different OpenOnion account on first sign-in. "
+                + "Your current balance, agent authorizations, and account history do not move to the new address. "
+                + "Back up the current recovery phrase first."),
+            PrimaryButtonText = LocalizedStrings.Get("IdentityGenerateConfirm", "Generate"),
+            CloseButtonText = LocalizedStrings.Get("CommonCancel", "Cancel"),
             DefaultButton = ContentDialogButton.Close,
         };
         if (await confirmation.ShowAsync() != ContentDialogResult.Primary) return;
@@ -157,8 +167,9 @@ public sealed partial class IdentitySettingsContent : UserControl, System.IDispo
         // Check again after the confirmation: a run may have started while the dialog was open.
         if (AppServices.RunManager.GetActiveRuns().Count > 0)
         {
-            IdentityActionErrorBar.Message =
-                "A conversation started while the confirmation was open. Wait for it to finish.";
+            IdentityActionErrorBar.Message = LocalizedStrings.Get(
+                "IdentityGenerateConversationStarted",
+                "A conversation started while the confirmation was open. Wait for it to finish.");
             IdentityActionErrorBar.IsOpen = true;
             return;
         }
@@ -216,7 +227,7 @@ public sealed partial class IdentitySettingsContent : UserControl, System.IDispo
             // and is localized, so it cannot be re-derived from a literal here.
             var original = button.Content;
             button.IsHitTestVisible = false;
-            button.Content = "Copied";
+        button.Content = LocalizedStrings.Get("CommonCopied", "Copied");
             var shutdownToken = _shutdownCts.Token;
             try
             {
@@ -277,9 +288,14 @@ public sealed partial class IdentitySettingsContent : UserControl, System.IDispo
     {
         var key = AppServices.OpenOnionAccount.ApiKey ?? "";
         ApiKeyText.Text = _showApiKey ? key : MaskApiKey(key);
-        RevealApiKeyButton.Content = _showApiKey ? "Hide" : "Reveal";
+        RevealApiKeyButton.Content = _showApiKey
+            ? LocalizedStrings.Get("IdentityHideLabel", "Hide")
+            : LocalizedStrings.Get("IdentityRevealLabel", "Reveal");
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
-            ApiKeyText, _showApiKey ? "OpenOnion API key" : "Masked OpenOnion API key");
+            ApiKeyText,
+            _showApiKey
+                ? LocalizedStrings.Get("IdentityApiKeyVisible", "OpenOnion API key")
+                : LocalizedStrings.Get("IdentityApiKeyMasked", "Masked OpenOnion API key"));
     }
 
     private static string MaskApiKey(string value)
@@ -290,7 +306,9 @@ public sealed partial class IdentitySettingsContent : UserControl, System.IDispo
         if (!await AppServices.UriLauncher.LaunchAsync(
                 new Uri("https://o.openonion.ai/purchase")))
         {
-            AccountErrorBar.Message = "Windows could not open the OpenOnion purchase page.";
+            AccountErrorBar.Message = LocalizedStrings.Get(
+                "IdentityPurchaseOpenFailure",
+                "Windows could not open the OpenOnion purchase page.");
             AccountErrorBar.IsOpen = true;
         }
     }

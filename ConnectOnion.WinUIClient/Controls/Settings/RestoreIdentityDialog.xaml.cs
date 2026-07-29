@@ -1,5 +1,6 @@
 using System;
 using ConnectOnion.Protocol;
+using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Services;
 using Microsoft.UI.Xaml;
@@ -98,14 +99,16 @@ public sealed partial class RestoreIdentityDialog : ContentDialog
                 }
                 catch (FormatException)
                 {
-                    error = "That is not a valid private key.";
+                    error = LocalizedStrings.Get("RestoreInvalidPrivateKey", "That is not a valid private key.");
                     return false;
                 }
             }
 
             // Long enough to have been meant as a key, and the wrong length — worth saying.
             if (hex.Length > 128 || hex.Length is > 64 and < 128)
-                error = "A private key must be 64 or 128 hex characters.";
+                error = LocalizedStrings.Get(
+                    "RestorePrivateKeyLength",
+                    "A private key must be 64 or 128 hex characters.");
             return false;
         }
 
@@ -114,7 +117,9 @@ public sealed partial class RestoreIdentityDialog : ContentDialog
 
         if (!Bip39.Validate(trimmed))
         {
-            error = "That phrase is not valid — check the spelling and the order of the words.";
+            error = LocalizedStrings.Get(
+                "RestoreInvalidPhrase",
+                "That phrase is not valid — check the spelling and the order of the words.");
             return false;
         }
 
@@ -150,7 +155,9 @@ public sealed partial class RestoreIdentityDialog : ContentDialog
         if (AppServices.RunManager.GetActiveRuns().Count > 0)
         {
             args.Cancel = true;
-            StatusText.Text = "Wait for the running conversation to finish before restoring an identity.";
+            StatusText.Text = LocalizedStrings.Get(
+                "RestoreWaitForConversation",
+                "Wait for the running conversation to finish before restoring an identity.");
             StatusText.Visibility = Visibility.Visible;
             return;
         }

@@ -155,7 +155,7 @@
                     HorizontalAlignment="Right"
                     Spacing="4"
                     VerticalAlignment="Center">
-            <TextBlock Text="Less"
+            <TextBlock x:Uid="UsageHeatmapLess" Text="Less"
                        Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextSecondaryBrush}"
                        VerticalAlignment="Center"
@@ -165,7 +165,7 @@
             <Rectangle Style="{StaticResource HeatmapLegendSwatchStyle}" Fill="{ThemeResource HeatmapLevel2Brush}" />
             <Rectangle Style="{StaticResource HeatmapLegendSwatchStyle}" Fill="{ThemeResource HeatmapLevel3Brush}" />
             <Rectangle Style="{StaticResource HeatmapLegendSwatchStyle}" Fill="{ThemeResource HeatmapLevel4Brush}" />
-            <TextBlock Text="More"
+            <TextBlock x:Uid="UsageHeatmapMore" Text="More"
                        Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextSecondaryBrush}"
                        VerticalAlignment="Center"

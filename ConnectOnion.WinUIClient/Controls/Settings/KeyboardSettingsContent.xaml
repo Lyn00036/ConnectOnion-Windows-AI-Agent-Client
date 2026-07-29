@@ -4,10 +4,14 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:ConnectOnion.WinUIClient.Controls"
+    xmlns:common="using:ConnectOnion.WinUIClient.Common"
     xmlns:vm="using:ConnectOnion.WinUIClient.ViewModels"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
+    <UserControl.Resources>
+        <common:KeyboardTextConverter x:Key="KeyboardText" />
+    </UserControl.Resources>
 
     <StackPanel Spacing="14">
         <!-- Search is local to this list rather than the overlay's own settings search: it filters
@@ -17,11 +21,11 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBox x:Name="SearchBox"
+            <TextBox x:Uid="KeyboardSearch" x:Name="SearchBox"
                      PlaceholderText="Search shortcuts"
                      TextChanged="SearchBox_TextChanged"
                      AutomationProperties.Name="Search shortcuts" />
-            <Button Grid.Column="1"
+            <Button x:Uid="KeyboardResetAll" Grid.Column="1"
                     x:Name="ResetAllButton"
                     Content="Reset all"
                     Click="ResetAll_Click"
@@ -29,7 +33,7 @@
                     AutomationProperties.Name="Reset all shortcuts to their defaults" />
         </Grid>
 
-        <TextBlock Text="No shortcuts match your search."
+        <TextBlock x:Uid="KeyboardNoMatches" Text="No shortcuts match your search."
                    Foreground="{ThemeResource TextSecondaryBrush}"
                    Visibility="{x:Bind Vm.IsEmpty, Mode=OneWay}" />
 
@@ -37,7 +41,7 @@
             <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:KeyboardShortcutRowGroup">
                     <StackPanel Margin="0,6,0,14" Spacing="6">
-                        <TextBlock Text="{x:Bind Title}"
+                        <TextBlock Text="{x:Bind Title, Converter={StaticResource KeyboardText}}"
                                    Style="{StaticResource BodyStrongTextBlockStyle}"
                                    Foreground="{ThemeResource TextSecondaryBrush}" />
                         <ItemsControl ItemsSource="{x:Bind Rows}">

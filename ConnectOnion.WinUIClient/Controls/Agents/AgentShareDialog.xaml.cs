@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Threading.Tasks;
+using ConnectOnion.WinUIClient.Common;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Imaging;
@@ -44,7 +45,9 @@ public sealed partial class AgentShareDialog : ContentDialog
         }
         catch
         {
-            QrErrorText.Text = "The QR code could not be generated. Copy the web link instead.";
+            QrErrorText.Text = LocalizedStrings.Get(
+                "AgentShareQrError",
+                "The QR code could not be generated. Copy the web link instead.");
             QrErrorText.Visibility = Visibility.Visible;
         }
         finally
@@ -70,7 +73,7 @@ public sealed partial class AgentShareDialog : ContentDialog
         Services.ClipboardService.CopyText(value);
         if (sender is not Button button) return;
         var original = button.Content;
-        button.Content = "Copied";
+        button.Content = LocalizedStrings.Get("CommonCopied", "Copied");
         button.IsEnabled = false;
         await Task.Delay(800);
         button.Content = original;

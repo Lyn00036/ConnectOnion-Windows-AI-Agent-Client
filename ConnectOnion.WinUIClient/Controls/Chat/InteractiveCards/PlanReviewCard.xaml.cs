@@ -37,7 +37,7 @@ public sealed partial class PlanReviewCard : UserControl
         Services.ClipboardService.CopyText(Message.EventDetail ?? "");
         if (sender is not Button button) return;
         var original = button.Content;
-        button.Content = "Copied";
+        button.Content = Common.LocalizedStrings.Get("CommonCopied", "Copied");
         button.IsEnabled = false;
         await System.Threading.Tasks.Task.Delay(800);
         button.Content = original;

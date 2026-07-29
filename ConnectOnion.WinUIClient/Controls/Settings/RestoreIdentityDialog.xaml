@@ -3,6 +3,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:ic="using:FluentIcons.WinUI"
+    x:Uid="RestoreIdentityDialog"
     Title="Restore an identity"
     PrimaryButtonText="Replace identity"
     CloseButtonText="Cancel"
@@ -22,7 +23,7 @@
                 </Grid.ColumnDefinitions>
                 <ic:FluentIcon Grid.Column="0" Icon="Warning" IconVariant="Regular" IconSize="Size16"
                                Foreground="{ThemeResource DangerBrush}" VerticalAlignment="Top" />
-                <TextBlock Grid.Column="1" TextWrapping="Wrap" MinWidth="0" Style="{StaticResource CaptionTextBlockStyle}"
+                <TextBlock x:Uid="RestoreIdentityWarning" Grid.Column="1" TextWrapping="Wrap" MinWidth="0" Style="{StaticResource CaptionTextBlockStyle}"
                            Text="This replaces the identity on this device. The current one is erased and cannot be recovered without its own backup, and agents that authorized the current address will have to authorize the restored one." />
             </Grid>
         </Border>
@@ -33,19 +34,19 @@
         <Button x:Name="BackupCurrentButton" Click="BackupCurrent_Click" HorizontalAlignment="Left">
             <StackPanel Orientation="Horizontal" Spacing="8">
                 <ic:FluentIcon Icon="Key" IconVariant="Regular" IconSize="Size16" />
-                <TextBlock Text="Back up the current identity first" />
+                <TextBlock x:Uid="RestoreIdentityBackupFirst" Text="Back up the current identity first" />
             </StackPanel>
         </Button>
 
         <StackPanel Spacing="6">
-            <TextBlock Text="Recovery phrase" Style="{StaticResource BodyStrongTextBlockStyle}" />
-            <TextBox x:Name="PhraseBox" AcceptsReturn="True" TextWrapping="Wrap"
+        <TextBlock x:Uid="RestoreIdentityPhrase" Text="Recovery phrase" Style="{StaticResource BodyStrongTextBlockStyle}" />
+            <TextBox x:Uid="RestoreIdentityInput" x:Name="PhraseBox" AcceptsReturn="True" TextWrapping="Wrap"
                      Height="96" MinWidth="0"
                      FontFamily="{StaticResource JetBrainsMonoFontFamily}"
                      PlaceholderText="Enter your 12-word recovery phrase"
                      TextChanged="Phrase_TextChanged"
                      AutomationProperties.Name="Recovery phrase or private key" />
-            <TextBlock TextWrapping="Wrap" MinWidth="0" Style="{StaticResource CaptionTextBlockStyle}"
+            <TextBlock x:Uid="RestoreIdentityLegacyHint" TextWrapping="Wrap" MinWidth="0" Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextSecondaryBrush}"
                        Text="A private key in hex also works, for an identity created before recovery phrases." />
         </StackPanel>
@@ -59,7 +60,7 @@
                 CornerRadius="8" Padding="12,10">
             <StackPanel Spacing="8">
                 <StackPanel Spacing="2">
-                    <TextBlock Text="Current address" Style="{StaticResource CaptionTextBlockStyle}"
+                    <TextBlock x:Uid="RestoreIdentityCurrent" Text="Current address" Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextSecondaryBrush}" />
                     <TextBlock x:Name="CurrentAddressText" TextWrapping="Wrap" MinWidth="0"
                                Style="{StaticResource CaptionTextBlockStyle}"
@@ -67,7 +68,7 @@
                                Foreground="{ThemeResource TextSecondaryBrush}" />
                 </StackPanel>
                 <StackPanel Spacing="2">
-                    <TextBlock Text="Restores to" Style="{StaticResource CaptionTextBlockStyle}"
+                    <TextBlock x:Uid="RestoreIdentityTarget" Text="Restores to" Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextSecondaryBrush}" />
                     <TextBlock x:Name="RestoredAddressText" TextWrapping="Wrap" MinWidth="0"
                                Style="{StaticResource CaptionTextBlockStyle}"

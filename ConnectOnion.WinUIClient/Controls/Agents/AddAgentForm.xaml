@@ -33,27 +33,27 @@
 
             <StackPanel Padding="24"
                         Spacing="0">
-                <TextBlock Text="Add an agent"
+                <TextBlock x:Uid="AddAgentTitle" Text="Add an agent"
                            FontSize="24"
                            FontWeight="SemiBold" />
 
                 <StackPanel Margin="0,20,0,0"
                             Spacing="8">
-                    <TextBlock Text="Address or Direct URL"
+                    <TextBlock x:Uid="AddAgentAddressLabel" Text="Address or Direct URL"
                                FontWeight="SemiBold" />
                     <TextBox x:Name="InputBox"
                              AutomationProperties.AutomationId="AgentAddressInput"
-                             AutomationProperties.HelpText="{x:Bind Vm.InputHelpText, Mode=OneWay}"
+                             AutomationProperties.HelpText="{x:Bind LocalizedInputHelpText(Vm.ShowValidationError), Mode=OneWay}"
                              PlaceholderText="0x… or wss://example.com/agent"
                              Text="{x:Bind Vm.Input, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                              IsEnabled="{x:Bind Vm.IsInputEnabled, Mode=OneWay}"
                              LostFocus="InputBox_LostFocus"
                              KeyDown="InputBox_KeyDown" />
-                    <TextBlock Text="Enter an agent address or a direct WebSocket URL."
+                    <TextBlock x:Uid="AddAgentAddressHint" Text="Enter an agent address or a direct WebSocket URL."
                                FontSize="12"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                TextWrapping="Wrap" />
-                    <TextBlock Text="Enter a valid agent address or WebSocket URL."
+                    <TextBlock x:Uid="AddAgentAddressError" Text="Enter a valid agent address or WebSocket URL."
                                FontSize="12"
                                Foreground="{ThemeResource DangerBrush}"
                                TextWrapping="Wrap"
@@ -75,14 +75,14 @@
                             HorizontalAlignment="Left"
                             IsEnabled="{x:Bind Vm.CanTest, Mode=OneWay}"
                             Click="TestConnection_Click"
-                            AutomationProperties.Name="{x:Bind Vm.TestButtonText, Mode=OneWay}">
+                            AutomationProperties.Name="{x:Bind LocalizedTestButtonText(Vm.IsTesting), Mode=OneWay}">
                         <StackPanel Orientation="Horizontal"
                                     Spacing="8">
                             <ProgressRing Width="16"
                                           Height="16"
                                           IsActive="{x:Bind Vm.IsTesting, Mode=OneWay}"
                                           Visibility="{x:Bind Vm.IsTesting, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-                            <TextBlock Text="{x:Bind Vm.TestButtonText, Mode=OneWay}"
+                            <TextBlock Text="{x:Bind LocalizedTestButtonText(Vm.IsTesting), Mode=OneWay}"
                                        VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
@@ -97,7 +97,7 @@
                             <ProgressRing Width="14"
                                           Height="14"
                                           IsActive="{x:Bind Vm.IsTesting, Mode=OneWay}" />
-                            <TextBlock Text="{x:Bind Vm.StatusText, Mode=OneWay}"
+                            <TextBlock Text="{x:Bind LocalizedStatusText(Vm.StatusText), Mode=OneWay}"
                                        FontSize="12"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        TextWrapping="Wrap"
@@ -113,7 +113,7 @@
                                            IconSize="Size16"
                                            Foreground="{ThemeResource SuccessBrush}"
                                            AutomationProperties.Name="Connection successful" />
-                            <TextBlock Text="{x:Bind Vm.StatusText, Mode=OneWay}"
+                            <TextBlock Text="{x:Bind LocalizedStatusText(Vm.StatusText), Mode=OneWay}"
                                        FontSize="12"
                                        Foreground="{ThemeResource SuccessBrush}"
                                        TextWrapping="Wrap"
@@ -129,7 +129,7 @@
                                            IconSize="Size16"
                                            Foreground="{ThemeResource DangerBrush}"
                                            AutomationProperties.Name="Connection failed" />
-                            <TextBlock Text="{x:Bind Vm.StatusText, Mode=OneWay}"
+                            <TextBlock Text="{x:Bind LocalizedStatusText(Vm.StatusText), Mode=OneWay}"
                                        FontSize="12"
                                        Foreground="{ThemeResource DangerBrush}"
                                        TextWrapping="Wrap"
@@ -143,7 +143,7 @@
                             Orientation="Horizontal"
                             Spacing="8"
                             HorizontalAlignment="Right">
-                    <Button Width="96"
+                    <Button x:Uid="AddAgentCancel" Width="96"
                             Height="40"
                             Content="Cancel"
                             Click="Cancel_Click"
@@ -155,7 +155,7 @@
                             IsEnabled="{x:Bind Vm.CanAdd, Mode=OneWay}"
                             Click="AddAgent_Click"
                             AutomationProperties.AutomationId="SubmitAgentButton"
-                            AutomationProperties.Name="{x:Bind Vm.AddButtonText, Mode=OneWay}">
+                            AutomationProperties.Name="{x:Bind LocalizedAddButtonText(Vm.IsAdding), Mode=OneWay}">
                         <StackPanel Orientation="Horizontal"
                                     HorizontalAlignment="Center"
                                     Spacing="8">
@@ -163,7 +163,7 @@
                                           Height="16"
                                           IsActive="{x:Bind Vm.IsAdding, Mode=OneWay}"
                                           Visibility="{x:Bind Vm.IsAdding, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-                            <TextBlock Text="{x:Bind Vm.AddButtonText, Mode=OneWay}"
+                            <TextBlock Text="{x:Bind LocalizedAddButtonText(Vm.IsAdding), Mode=OneWay}"
                                        VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>

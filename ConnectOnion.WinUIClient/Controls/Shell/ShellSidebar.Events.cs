@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using ConnectOnion.WinUIClient.Models;
+using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Services;
 using ConnectOnion.WinUIClient.Views;
 using Microsoft.UI.Xaml;
@@ -68,7 +69,11 @@ public sealed partial class ShellSidebar
         var agent = agentsState.Agents.FirstOrDefault(entry => entry.Id == agentId);
         if (agent is null) return false;
 
-        if (!await ConfirmDeleteAsync($"Delete {agent.DisplayName}?", "This agent and all of its local sessions will be removed.")) return false;
+        if (!await ConfirmDeleteAsync(
+                LocalizedStrings.Format("DeleteAgentTitle", "Delete {0}?", agent.DisplayName),
+                LocalizedStrings.Get(
+                    "DeleteAgentWarning",
+                    "This agent and all of its local sessions will be removed."))) return false;
 
         var sessionsState = await AppServices.Sessions.LoadAsync();
         // Tear each of this agent's conversations down completely before its sessions rows go,
@@ -161,7 +166,11 @@ public sealed partial class ShellSidebar
         var session = sessionsState.Sessions.FirstOrDefault(entry => entry.Id == sessionId);
         if (session is null) return;
 
-        if (!await ConfirmDeleteAsync($"Delete {session.Title}?", "This local conversation will be removed.")) return;
+        if (!await ConfirmDeleteAsync(
+                LocalizedStrings.Format("DeleteConversationTitle", "Delete {0}?", session.Title),
+                LocalizedStrings.Get(
+                    "DeleteConversationWarning",
+                    "This local conversation will be removed."))) return;
 
         sessionsState.Sessions.Remove(session);
         ConversationCache.Invalidate(sessionId);

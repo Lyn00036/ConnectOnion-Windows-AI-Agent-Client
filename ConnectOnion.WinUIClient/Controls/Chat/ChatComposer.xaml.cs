@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -17,6 +18,7 @@ using Windows.ApplicationModel.DataTransfer;
 using Windows.System;
 using Windows.UI.Core;
 using ConnectOnion.Protocol;
+using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
 using ConnectOnion.WinUIClient.Services.Attachments;
@@ -130,7 +132,7 @@ public sealed partial class ChatComposer : UserControl, IDisposable
             nameof(PlaceholderText),
             typeof(string),
             typeof(ChatComposer),
-            new PropertyMetadata("Write a message..."));
+            new PropertyMetadata(LocalizedStrings.Get("ComposerWriteMessage", "Write a message...")));
 
     public static readonly DependencyProperty ShowConnectionStatusProperty =
         DependencyProperty.Register(
@@ -452,13 +454,34 @@ public sealed partial class ChatComposer : UserControl, IDisposable
     private void ApplySuggestionVisibility(double width)
     {
         var room = ShowSuggestions && width >= 620;
-        var offers = SuggestionPrompts;
+        var offers = FilterSuggestionsForActiveLanguage(SuggestionPrompts);
         var hasOffers = offers is { Count: > 0 };
 
         SkillSuggestionList.ItemsSource = hasOffers ? offers : null;
         SkillSuggestionList.Visibility = room && hasOffers ? Visibility.Visible : Visibility.Collapsed;
         SuggestionPanel.Visibility = room && !hasOffers ? Visibility.Visible : Visibility.Collapsed;
     }
+
+    private static IReadOnlyList<string>? FilterSuggestionsForActiveLanguage(
+        IReadOnlyList<string>? offers)
+    {
+        if (offers is not { Count: > 0 } ||
+            !string.Equals(
+                CultureInfo.CurrentUICulture.Name,
+                Services.LanguagePreferenceStore.SimplifiedChinese,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return offers;
+        }
+
+        var localized = offers.Where(ContainsCjkCharacter).ToList();
+        return localized.Count > 0 ? localized : null;
+    }
+
+    private static bool ContainsCjkCharacter(string text)
+        => text.Any(character =>
+            character is >= '\u3400' and <= '\u4DBF' or
+            >= '\u4E00' and <= '\u9FFF');
 
     private async void Send_Click(object sender, RoutedEventArgs e)
     {
@@ -519,10 +542,16 @@ public sealed partial class ChatComposer : UserControl, IDisposable
     {
         if (_attachmentFlyout is null)
         {
-            _addImageItem = new MenuFlyoutItem { Text = "Add image..." };
+        _addImageItem = new MenuFlyoutItem
+        {
+            Text = Common.LocalizedStrings.Get("ComposerAddImage", "Add image...")
+        };
             _addImageItem.Click += async (_, _) => await AddAttachmentsAsync(AttachmentKind.Image);
 
-            _addFileItem = new MenuFlyoutItem { Text = "Add file..." };
+        _addFileItem = new MenuFlyoutItem
+        {
+            Text = Common.LocalizedStrings.Get("ComposerAddFile", "Add file...")
+        };
             _addFileItem.Click += async (_, _) => await AddAttachmentsAsync(AttachmentKind.File);
 
             _attachmentFlyout = new MenuFlyout();
@@ -693,7 +722,9 @@ public sealed partial class ChatComposer : UserControl, IDisposable
         catch (Exception ex)
         {
             attachment.Status = AttachmentStatus.Failed;
-            attachment.Error = "Could not read this file.";
+            attachment.Error = Common.LocalizedStrings.Get(
+                "ComposerFileReadFailure",
+                "Could not read this file.");
             System.Diagnostics.Debug.WriteLine($"[Attachment] encode failed name={attachment.FileName} error={ex.GetType().Name}");
         }
         RefreshSendButtonState();
@@ -711,7 +742,19 @@ public sealed partial class ChatComposer : UserControl, IDisposable
     private void Suggestion_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.Tag is not string prompt) return;
-        SetDraft(prompt);
+        SetDraft(prompt switch
+        {
+            "What can you do?" => LocalizedStrings.Get(
+                "ComposerSuggestionCapabilitiesPrompt",
+                "What can you do?"),
+            "Show system info" => LocalizedStrings.Get(
+                "ComposerSuggestionSystemPrompt",
+                "Show system info"),
+            "List files in current directory" => LocalizedStrings.Get(
+                "ComposerSuggestionFilesPrompt",
+                "List files in current directory"),
+            _ => prompt,
+        });
     }
 
     private void InputBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -887,7 +930,9 @@ public sealed partial class ChatComposer : UserControl, IDisposable
         StopGlyph.Visibility = IsStopping ? Visibility.Collapsed : Visibility.Visible;
         StopLabel.Visibility = IsStopping ? Visibility.Visible : Visibility.Collapsed;
         StopRing.Foreground = Brush("AppBackgroundBrush");
-        var stopLabel = IsStopping ? "Stopping..." : "Stop";
+        var stopLabel = IsStopping
+            ? LocalizedStrings.Get("RuntimeComposerStopping", "Stopping...")
+            : LocalizedStrings.Get("RuntimeComposerStop", "Stop");
         ToolTipService.SetToolTip(StopButton, stopLabel);
         AutomationProperties.SetName(StopButton, stopLabel);
 

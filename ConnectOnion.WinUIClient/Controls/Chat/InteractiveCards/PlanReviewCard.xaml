@@ -4,7 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:ConnectOnion.WinUIClient.Controls"
     xmlns:models="using:ConnectOnion.WinUIClient.Models">
-    <local:InteractiveCard Message="{x:Bind Message, Mode=OneWay}" IconGlyph="&#xE9D5;"
+    <local:InteractiveCard x:Uid="PlanReviewCard" Message="{x:Bind Message, Mode=OneWay}" IconGlyph="&#xE9D5;"
         Title="Review execution plan" Subtitle="The agent will not execute until you respond."
         StatusLabel="{x:Bind Message.InteractiveStateLabel, Mode=OneWay}"
         AccessibilityName="{x:Bind Message.InteractiveAccessibilityName, Mode=OneWay}">
@@ -12,17 +12,17 @@
             <StackPanel Padding="16,14" Spacing="12">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <Border Padding="7,3" CornerRadius="4" Background="{ThemeResource SurfaceSecondaryBrush}">
-                        <TextBlock Text="Plan mode" FontSize="11" FontWeight="SemiBold" Foreground="{ThemeResource TextSecondaryBrush}" />
+                        <TextBlock x:Uid="PlanReviewMode" Text="Plan mode" FontSize="11" FontWeight="SemiBold" Foreground="{ThemeResource TextSecondaryBrush}" />
                     </Border>
-                    <TextBlock Text="Review scope, ordering, and risks before approving."
+                    <TextBlock x:Uid="PlanReviewHint" Text="Review scope, ordering, and risks before approving."
                         Style="{StaticResource InteractiveHelperTextStyle}" VerticalAlignment="Center" />
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" Spacing="8">
-                    <Button Content="Review sections…"
+                    <Button x:Uid="PlanReviewSections" Content="Review sections…"
                             Click="ReviewSections_Click"
                             IsEnabled="{x:Bind Message.IsInteractiveEditable, Mode=OneWay}"
                             AutomationProperties.Name="Open full plan and review each section" />
-                    <Button Content="Copy plan"
+                    <Button x:Uid="PlanReviewCopy" Content="Copy plan"
                             Click="CopyPlan_Click"
                             AutomationProperties.Name="Copy execution plan" />
                 </StackPanel>
@@ -33,30 +33,30 @@
                 </ScrollViewer>
 
                 <StackPanel Spacing="8" Visibility="{x:Bind Message.IsPlanFeedbackOpen, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                    <TextBlock Text="What should the agent change?" Style="{StaticResource InteractiveFieldLabelStyle}" />
-                    <TextBox Text="{x:Bind Message.PlanFeedback, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                    <TextBlock x:Uid="PlanReviewChangeQuestion" Text="What should the agent change?" Style="{StaticResource InteractiveFieldLabelStyle}" />
+                    <TextBox x:Uid="PlanReviewFeedback" Text="{x:Bind Message.PlanFeedback, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                         PlaceholderText="Describe the revision you want…" AcceptsReturn="True" TextWrapping="Wrap"
                         MinHeight="72" MaxHeight="150" IsEnabled="{x:Bind Message.IsInteractiveEditable, Mode=OneWay}"
                         KeyDown="Feedback_KeyDown" />
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
-                        <Button Content="Cancel" Style="{StaticResource InteractiveCardTertiaryButtonStyle}" Click="CancelFeedback_Click" />
-                        <Button Content="Send feedback" Style="{StaticResource InteractiveCardPrimaryButtonStyle}"
+                        <Button x:Uid="CommonCancelButton" Content="Cancel" Style="{StaticResource InteractiveCardTertiaryButtonStyle}" Click="CancelFeedback_Click" />
+                        <Button x:Uid="PlanReviewSendFeedback" Content="Send feedback" Style="{StaticResource InteractiveCardPrimaryButtonStyle}"
                             IsEnabled="{x:Bind Message.CanSendPlanFeedback, Mode=OneWay}" Click="SendFeedback_Click" />
                     </StackPanel>
                 </StackPanel>
 
                 <StackPanel Spacing="8" Visibility="{x:Bind Message.IsPlanRejectConfirmOpen, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                    <TextBlock Text="Reject this plan?" Style="{StaticResource InteractiveFieldLabelStyle}" />
-                    <TextBlock Text="The agent will be told not to execute this plan. Optional feedback above will be included."
+                    <TextBlock x:Uid="PlanReviewRejectQuestion" Text="Reject this plan?" Style="{StaticResource InteractiveFieldLabelStyle}" />
+                    <TextBlock x:Uid="PlanReviewRejectWarning" Text="The agent will be told not to execute this plan. Optional feedback above will be included."
                         Style="{StaticResource InteractiveHelperTextStyle}" />
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
-                        <Button Content="Cancel" Style="{StaticResource InteractiveCardTertiaryButtonStyle}" Click="CancelReject_Click" />
-                        <Button Content="Confirm rejection" Style="{StaticResource InteractiveCardButtonStyle}" Click="ConfirmReject_Click" />
+                        <Button x:Uid="CommonCancelButton" Content="Cancel" Style="{StaticResource InteractiveCardTertiaryButtonStyle}" Click="CancelReject_Click" />
+                        <Button x:Uid="PlanReviewConfirmReject" Content="Confirm rejection" Style="{StaticResource InteractiveCardButtonStyle}" Click="ConfirmReject_Click" />
                     </StackPanel>
                 </StackPanel>
 
                 <StackPanel Spacing="4" Visibility="{x:Bind Message.ShowInteractiveResult, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                    <TextBlock Text="Review completed" Style="{StaticResource InteractiveFieldLabelStyle}" />
+                    <TextBlock x:Uid="PlanReviewCompleted" Text="Review completed" Style="{StaticResource InteractiveFieldLabelStyle}" />
                     <TextBlock Text="{x:Bind Message.InteractiveOutcome, Mode=OneWay}" TextWrapping="Wrap" Foreground="{ThemeResource TextSecondaryBrush}" />
                 </StackPanel>
                 <TextBlock Text="{x:Bind Message.InteractiveErrorText, Mode=OneWay}" FontSize="11" TextWrapping="Wrap"
@@ -74,11 +74,11 @@
                             Spacing="8"
                             HorizontalAlignment="Right"
                             Visibility="{x:Bind Message.ShowInteractiveActions, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                    <Button Content="Reject"
+                    <Button x:Uid="PlanReviewReject" Content="Reject"
                             Style="{StaticResource InteractiveCardTertiaryButtonStyle}"
                             IsEnabled="{x:Bind Message.IsInteractiveEditable, Mode=OneWay}"
                             Click="Reject_Click" />
-                    <Button Content="Request changes"
+                    <Button x:Uid="PlanReviewRequestChanges" Content="Request changes"
                             Style="{StaticResource InteractiveCardButtonStyle}"
                             IsEnabled="{x:Bind Message.IsInteractiveEditable, Mode=OneWay}"
                             Click="RequestChanges_Click" />

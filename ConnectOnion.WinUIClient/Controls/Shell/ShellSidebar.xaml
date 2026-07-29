@@ -84,7 +84,7 @@
                                FontWeight="SemiBold"
                                Foreground="{ThemeResource TextPrimaryBrush}"
                                TextTrimming="CharacterEllipsis" />
-                    <TextBlock Text="Agent workspace"
+                    <TextBlock x:Uid="SidebarWorkspace" Text="Agent workspace"
                                Style="{StaticResource SidebarCaptionStyle}" />
                 </StackPanel>
             </Grid>
@@ -110,7 +110,7 @@
                                IconVariant="Regular"
                                IconSize="Size16"
                                VerticalAlignment="Center" />
-                <TextBlock Grid.Column="1"
+                <TextBlock x:Uid="SidebarNewChat" Grid.Column="1"
                            Text="New Chat"
                            FontSize="13"
                            FontWeight="SemiBold"
@@ -131,7 +131,7 @@
                 <!-- Pinned conversations remain a fast cross-agent jump list. -->
                 <StackPanel Spacing="2"
                             Visibility="{Binding HasPinnedSessions, Converter={StaticResource BoolToVis}}">
-                    <Button Style="{StaticResource SidebarNavButtonStyle}"
+                    <Button x:Uid="SidebarTogglePinned" Style="{StaticResource SidebarNavButtonStyle}"
                             Click="TogglePinned_Click"
                             MinHeight="32"
                             Padding="6,0"
@@ -154,7 +154,7 @@
                                     <RotateTransform Angle="{Binding PinnedChevronAngle}" />
                                 </ic:FluentIcon.RenderTransform>
                             </ic:FluentIcon>
-                            <TextBlock Grid.Column="1"
+                            <TextBlock x:Uid="SidebarPinned" Grid.Column="1"
                                        Text="Pinned"
                                        Style="{StaticResource SidebarSectionHeaderStyle}" />
                         </Grid>
@@ -230,7 +230,7 @@
                                                    Margin="0,0,4,0"
                                                    TextWrapping="NoWrap"
                                                    Visibility="{Binding AreActionsVisible, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
-                                        <Button Style="{StaticResource SidebarActionButtonStyle}"
+                                        <Button x:Uid="SidebarMoreActions" Style="{StaticResource SidebarActionButtonStyle}"
                                                 HorizontalAlignment="Right"
                                                 VerticalAlignment="Center"
                                                 Visibility="{Binding AreActionsVisible, Converter={StaticResource BoolToVis}}"
@@ -246,7 +246,7 @@
                                                                     Click="TogglePinSession_Click"
                                                                     Tag="{Binding Id}" />
                                                     <MenuFlyoutSeparator />
-                                                    <MenuFlyoutItem Text="Delete chat"
+                                                    <MenuFlyoutItem x:Uid="SidebarDeleteChat" Text="Delete chat"
                                                                     Click="DeleteSession_Click"
                                                                     Tag="{Binding Id}"
                                                                     Foreground="{ThemeResource DangerBrush}" />
@@ -260,7 +260,7 @@
                     </ItemsRepeater>
                 </StackPanel>
 
-                <TextBlock Text="Agents"
+                <TextBlock x:Uid="SidebarAgents" Text="Agents"
                            Style="{StaticResource SidebarSectionHeaderStyle}"
                            Margin="10,16,0,6" />
 
@@ -301,7 +301,7 @@
                                                 Background="{ThemeResource SidebarItemHoverBrush}"
                                                 Visibility="{Binding ShowRowBackground, Converter={StaticResource BoolToVis}}" />
 
-                                        <Button Grid.Column="0"
+                                        <Button x:Uid="SidebarToggleAgentChats" Grid.Column="0"
                                                 Style="{StaticResource SmallIconButtonStyle}"
                                                 Width="24"
                                                 Height="24"
@@ -373,7 +373,7 @@
                                                     Spacing="2"
                                                     VerticalAlignment="Center"
                                                     Visibility="{Binding AreActionsVisible, Converter={StaticResource BoolToVis}}">
-                                            <Button Style="{StaticResource SidebarActionButtonStyle}"
+                                            <Button x:Uid="SidebarMoreActions" Style="{StaticResource SidebarActionButtonStyle}"
                                                     Click="AddChat_Click"
                                                     Tag="{Binding Id}"
                                                     AutomationProperties.Name="New chat"
@@ -383,7 +383,7 @@
                                                                IconSize="Size16"
                                                                Foreground="{ThemeResource TextSecondaryBrush}" />
                                             </Button>
-                                            <Button Style="{StaticResource SidebarActionButtonStyle}"
+                                            <Button x:Uid="SidebarMoreActions" Style="{StaticResource SidebarActionButtonStyle}"
                                                     AutomationProperties.Name="More agent actions"
                                                     ToolTipService.ToolTip="More actions">
                                                 <ic:FluentIcon Icon="MoreHorizontal"
@@ -392,14 +392,14 @@
                                                                Foreground="{ThemeResource TextSecondaryBrush}" />
                                                 <Button.Flyout>
                                                     <MenuFlyout Placement="Bottom">
-                                                        <MenuFlyoutItem Text="New chat"
+                                                        <MenuFlyoutItem x:Uid="SidebarAgentNewChat" Text="New chat"
                                                                         Click="AddChat_Click"
                                                                         Tag="{Binding Id}" />
-                                                        <MenuFlyoutItem Text="Agent details"
+                                                        <MenuFlyoutItem x:Uid="SidebarAgentDetails" Text="Agent details"
                                                                         Click="Agent_Click"
                                                                         Tag="{Binding Id}" />
                                                         <MenuFlyoutSeparator />
-                                                        <MenuFlyoutItem Text="Delete agent"
+                                                        <MenuFlyoutItem x:Uid="SidebarDeleteAgent" Text="Delete agent"
                                                                         Click="DeleteAgent_Click"
                                                                         Tag="{Binding Id}"
                                                                         Foreground="{ThemeResource DangerBrush}" />
@@ -491,7 +491,7 @@
                                                                                Margin="0,0,4,0"
                                                                                TextWrapping="NoWrap"
                                                                                Visibility="{Binding AreActionsVisible, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
-                                                                    <Button Style="{StaticResource SidebarActionButtonStyle}"
+                                                                    <Button x:Uid="SidebarMoreActions" Style="{StaticResource SidebarActionButtonStyle}"
                                                                             HorizontalAlignment="Right"
                                                                             VerticalAlignment="Center"
                                                                             Visibility="{Binding AreActionsVisible, Converter={StaticResource BoolToVis}}"
@@ -507,7 +507,7 @@
                                                                                                 Click="TogglePinSession_Click"
                                                                                                 Tag="{Binding Id}" />
                                                                                 <MenuFlyoutSeparator />
-                                                                                <MenuFlyoutItem Text="Delete chat"
+                                                                                <MenuFlyoutItem x:Uid="SidebarDeleteChat" Text="Delete chat"
                                                                                                 Click="DeleteSession_Click"
                                                                                                 Tag="{Binding Id}"
                                                                                                 Foreground="{ThemeResource DangerBrush}" />
@@ -541,7 +541,7 @@
                     Click="AddAgent_Click"
                     AutomationProperties.AutomationId="AddAgentButton"
                     AutomationProperties.Name="Add agent">
-                <local:IconText Glyph="Add"
+                <local:IconText x:Uid="SidebarAddAgent" Glyph="Add"
                                 IconSize="Size16"
                                 Spacing="10"
                                 FontSize="13"
@@ -570,7 +570,7 @@
                         <StackPanel Grid.Column="1"
                                     VerticalAlignment="Center"
                                     Spacing="2">
-                            <TextBlock Text="Local Client"
+                            <TextBlock x:Uid="SidebarLocalClient" Text="Local Client"
                                        FontSize="13"
                                        FontWeight="SemiBold"
                                        Foreground="{ThemeResource TextPrimaryBrush}"
@@ -621,7 +621,7 @@
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock Text="Settings" FontSize="14" />
+                                            <TextBlock x:Uid="SidebarSettings" Text="Settings" FontSize="14" />
                                             <TextBlock Grid.Column="1"
                                                        Text="Ctrl+,"
                                                        FontSize="12"
@@ -637,7 +637,7 @@
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock Text="Keyboard Shortcuts" FontSize="14" />
+                                            <TextBlock x:Uid="SidebarKeyboardShortcuts" Text="Keyboard Shortcuts" FontSize="14" />
                                             <TextBlock Grid.Column="1"
                                                        Text="Ctrl+Shift+/"
                                                        FontSize="12"
@@ -651,7 +651,7 @@
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock Text="Theme" FontSize="14" />
+                                            <TextBlock x:Uid="SidebarTheme" Text="Theme" FontSize="14" />
                                             <!-- The menu intentionally uses text only; no trailing icon. -->
                                             <!-- <TextBlock Grid.Column="1"
                                                        Text="›"
@@ -660,13 +660,13 @@
                                         </Grid>
                                         <Button.Flyout>
                                             <MenuFlyout Placement="RightEdgeAlignedTop">
-                                                <MenuFlyoutItem Text="Use system setting"
+                                                <MenuFlyoutItem x:Uid="SidebarThemeSystem" Text="Use system setting"
                                                                 Tag="System"
                                                                 Click="BottomTheme_Click" />
-                                                <MenuFlyoutItem Text="Light"
+                                                <MenuFlyoutItem x:Uid="SidebarThemeLight" Text="Light"
                                                                 Tag="Light"
                                                                 Click="BottomTheme_Click" />
-                                                <MenuFlyoutItem Text="Dark"
+                                                <MenuFlyoutItem x:Uid="SidebarThemeDark" Text="Dark"
                                                                 Tag="Dark"
                                                                 Click="BottomTheme_Click" />
                                             </MenuFlyout>
@@ -678,7 +678,7 @@
                                     <Button Style="{StaticResource AccountFlyoutRowStyle}"
                                             Click="BottomAbout_Click"
                                             AutomationProperties.Name="About ConnectOnion">
-                                        <TextBlock Text="About ConnectOnion" FontSize="14" />
+                                        <TextBlock x:Uid="SidebarAbout" Text="About ConnectOnion" FontSize="14" />
                                     </Button>
                                     <Border Height="1"
                                             Margin="4,4"
@@ -691,7 +691,7 @@
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock Text="Exit" FontSize="14" />
+                                        <TextBlock x:Uid="SidebarExit" Text="Exit" FontSize="14" />
                                             <TextBlock Grid.Column="1"
                                                        Text="Ctrl+Q"
                                                        FontSize="12"

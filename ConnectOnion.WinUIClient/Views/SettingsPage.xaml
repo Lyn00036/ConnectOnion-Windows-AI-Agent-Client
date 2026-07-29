@@ -34,6 +34,27 @@
                         <x:String>Dark</x:String>
                     </RadioButtons>
                 </ctk:SettingsCard>
+
+                <ctk:SettingsCard x:Uid="SettingsLanguage" Header="Language"
+                                  Description="Choose the language used by ConnectOnion.">
+                    <ComboBox x:Name="LanguageChoice"
+                              MinWidth="180"
+                              HorizontalAlignment="Right"
+                              AutomationProperties.AutomationId="LanguageChoice"
+                              AutomationProperties.Name="Application language"
+                              SelectionChanged="LanguageChoice_SelectionChanged">
+                        <ComboBoxItem x:Uid="SettingsLanguageEnglish" Content="English" />
+                        <ComboBoxItem x:Uid="SettingsLanguageChinese" Content="Simplified Chinese" />
+                    </ComboBox>
+                </ctk:SettingsCard>
+
+                <InfoBar x:Name="LanguageRestartInfo"
+                         x:Uid="SettingsLanguageRestart"
+                         IsOpen="False"
+                         IsClosable="True"
+                         Severity="Informational"
+                         Title="Restart required"
+                         Message="Restart ConnectOnion to apply the selected language." />
             </StackPanel>
 
             <StackPanel x:Name="ChatSection" Spacing="4">
@@ -53,6 +74,9 @@
                 <ctk:SettingsCard x:Uid="SettingsEnterToSend" Header="Enter to send"
                                   Description="When enabled, Enter sends and Shift+Enter inserts a new line.">
                     <ToggleSwitch x:Name="EnterToSendSwitch"
+                                  x:Uid="SettingsEnterToSendSwitch"
+                                  OnContent="On"
+                                  OffContent="Off"
                                   AutomationProperties.Name="Enter to send"
                                   Toggled="EnterToSendSwitch_Toggled" />
                 </ctk:SettingsCard>

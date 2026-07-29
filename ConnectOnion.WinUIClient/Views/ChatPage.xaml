@@ -97,7 +97,7 @@
                                            FontSize="10"
                                            Foreground="{ThemeResource TextSecondaryBrush}" />
                             </StackPanel>
-                            <Button Grid.Column="2"
+                            <Button x:Uid="ChatSaveAttachment" Grid.Column="2"
                                     Width="28"
                                     Height="28"
                                     Padding="0"
@@ -183,7 +183,7 @@
                                 <StackPanel.OpacityTransition>
                                     <ScalarTransition Duration="0:0:0.16" />
                                 </StackPanel.OpacityTransition>
-                                <Button Tag="{x:Bind}"
+                                <Button x:Uid="ChatRetryFromMessage" Tag="{x:Bind}"
                                         Padding="3"
                                         MinWidth="24"
                                         MinHeight="24"
@@ -206,7 +206,7 @@
                                         </ic:FluentIcon.RenderTransform>
                                     </ic:FluentIcon>
                                 </Button>
-                                <Button Tag="{x:Bind}"
+                                <Button x:Uid="ChatEditMessage" Tag="{x:Bind}"
                                         Padding="3"
                                         MinWidth="24"
                                         MinHeight="24"
@@ -225,7 +225,7 @@
                                         </ic:FluentIcon.RenderTransform>
                                     </ic:FluentIcon>
                                 </Button>
-                                <Button Padding="3"
+                                <Button x:Uid="ChatCopyMessage" Padding="3"
                                         MinWidth="24"
                                         MinHeight="24"
                                         Background="Transparent"
@@ -269,16 +269,16 @@
                                     <ic:FluentIcon Icon="Info" IconVariant="Regular" IconSize="Size16"
                                                    Margin="0,2,0,0"
                                                    Foreground="{ThemeResource TextSecondaryBrush}" />
-                                    <TextBlock Text="Editing creates a new conversation from this point. The original remains in the sidebar."
+                                    <TextBlock x:Uid="ChatEditBranchDescription" Text="Editing creates a new conversation from this point. The original remains in the sidebar."
                                                TextWrapping="Wrap"
                                                FontSize="12"
                                                Foreground="{ThemeResource TextSecondaryBrush}" />
                                 </StackPanel>
                                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                                    <Button Tag="{x:Bind}"
+                                    <Button x:Uid="ChatEditCancel" Tag="{x:Bind}"
                                             Content="Cancel"
                                             Click="CancelEditUserMessage_Click" />
-                                    <Button Tag="{x:Bind}"
+                                    <Button x:Uid="ChatEditSave" Tag="{x:Bind}"
                                             Content="Save"
                                             Style="{StaticResource AccentButtonStyle}"
                                             IsEnabled="{x:Bind CanSaveEdit, Mode=OneWay}"
@@ -359,7 +359,7 @@
                         </Grid.ColumnDefinitions>
                         <Border Grid.Column="0" Height="1" VerticalAlignment="Center"
                                 Background="{ThemeResource BorderSubtleBrush}" />
-                        <TextBlock Grid.Column="1" Text="or"
+                            <TextBlock x:Uid="ChatOr" Grid.Column="1" Text="or"
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextTertiaryBrush}" />
                         <Border Grid.Column="2" Height="1" VerticalAlignment="Center"
@@ -414,7 +414,7 @@
                             <StackPanel.OpacityTransition>
                                 <ScalarTransition Duration="0:0:0.16" />
                             </StackPanel.OpacityTransition>
-                            <Button Tag="{x:Bind}"
+                            <Button x:Uid="ChatRetryResponse" Tag="{x:Bind}"
                                     Padding="3"
                                     MinWidth="24"
                                     MinHeight="24"
@@ -433,7 +433,7 @@
                                     </ic:FluentIcon.RenderTransform>
                                 </ic:FluentIcon>
                             </Button>
-                            <Button Padding="3"
+                            <Button x:Uid="ChatCopyResponse" Padding="3"
                                     MinWidth="24"
                                     MinHeight="24"
                                     Background="Transparent"
@@ -976,7 +976,7 @@
              dropping the ThemeShadow is what keeps it from looking like a raised card. A truly
              transparent fill was tried and is wrong: body text bleeds through the ring and the
              glyph collides with whatever line it happens to land on. -->
-        <Button x:Name="ScrollToLatestButton"
+        <Button x:Uid="ChatJumpToLatest" x:Name="ScrollToLatestButton"
                 Grid.Row="1"
                 Width="40"
                 Height="40"

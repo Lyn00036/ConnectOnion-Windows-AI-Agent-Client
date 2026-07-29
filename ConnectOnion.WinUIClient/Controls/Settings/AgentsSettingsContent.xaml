@@ -8,7 +8,7 @@
     xmlns:models="using:ConnectOnion.WinUIClient.Models">
 
     <StackPanel Spacing="16">
-        <TextBlock Text="Manage the agents connected to this device. Removing an agent also removes its local conversations."
+        <TextBlock x:Uid="AgentsSettingsDescription" Text="Manage the agents connected to this device. Removing an agent also removes its local conversations."
                    Foreground="{ThemeResource TextSecondaryBrush}"
                    TextWrapping="WrapWholeWords" />
 
@@ -64,7 +64,7 @@
                                                ToolTipService.ToolTip="{x:Bind ConnectionTarget}" />
                                 </StackPanel>
 
-                                <Button Grid.Column="2"
+                                <Button x:Uid="AgentSettingsCopyAddress" Grid.Column="2"
                                         Width="36"
                                         Height="36"
                                         Style="{StaticResource SmallIconButtonStyle}"
@@ -78,7 +78,7 @@
                                                    Foreground="{ThemeResource TextSecondaryBrush}" />
                                 </Button>
 
-                                <Button Grid.Column="3"
+                                <Button x:Uid="AgentSettingsDeleteAgent" Grid.Column="3"
                                         Width="36"
                                         Height="36"
                                         Style="{StaticResource SmallIconButtonStyle}"
@@ -108,7 +108,7 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock VerticalAlignment="Center"
+                    <TextBlock x:Uid="AgentsSettingsConnectAnother" VerticalAlignment="Center"
                                Text="Connect another agent to start new conversations."
                                Foreground="{ThemeResource TextSecondaryBrush}"
                                TextWrapping="WrapWholeWords" />
@@ -124,7 +124,7 @@
                             <ic:FluentIcon Icon="Add"
                                            IconVariant="Regular"
                                            IconSize="Size16" />
-                            <TextBlock Text="Add agent" />
+                            <TextBlock x:Uid="AgentsSettingsAdd" Text="Add agent" />
                         </StackPanel>
                     </Button>
                 </Grid>
@@ -140,10 +140,10 @@
                            IconVariant="Regular"
                            IconSize="Size24"
                            Foreground="{ThemeResource TextTertiaryBrush}" />
-            <TextBlock Text="No agents connected"
+            <TextBlock x:Uid="AgentsSettingsEmpty" Text="No agents connected"
                        FontWeight="SemiBold"
                        TextAlignment="Center" />
-            <TextBlock Text="Add an agent to start a conversation."
+            <TextBlock x:Uid="AgentsSettingsEmptyHint" Text="Add an agent to start a conversation."
                        Foreground="{ThemeResource TextSecondaryBrush}"
                        TextAlignment="Center" />
             <Button Height="40"
@@ -157,7 +157,7 @@
                     <ic:FluentIcon Icon="Add"
                                    IconVariant="Regular"
                                    IconSize="Size16" />
-                    <TextBlock Text="Add agent" />
+                    <TextBlock x:Uid="AgentsSettingsAdd" Text="Add agent" />
                 </StackPanel>
             </Button>
         </StackPanel>

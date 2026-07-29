@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using ConnectOnion.WinUIClient.Data;
+using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -48,7 +48,9 @@ public sealed partial class RecoveryPhraseDialog : ContentDialog
         ArgumentNullException.ThrowIfNull(backup);
         InitializeComponent();
 
-        PrimaryButtonText = isFirstReveal ? "I've saved it" : "Done";
+        PrimaryButtonText = isFirstReveal
+            ? LocalizedStrings.Get("RecoverySaved", "I've saved it")
+            : LocalizedStrings.Get("CommonDone", "Done");
         AddressText.Text = backup.Address;
 
         if (backup.HasMnemonic)
@@ -56,18 +58,20 @@ public sealed partial class RecoveryPhraseDialog : ContentDialog
             _copyValue = backup.Mnemonic!;
             // Titled for what is actually on screen. A pre-phrase identity shown under a
             // "Recovery phrase" heading reads as though the words failed to load.
-            Title = isFirstReveal ? "Save your recovery phrase" : "Recovery phrase";
-            WarningText.Text = "Anyone with these words controls this identity. "
-                + "Never share them, and never paste them into a chat.";
+            Title = isFirstReveal
+                ? LocalizedStrings.Get("RecoverySaveTitle", "Save your recovery phrase")
+                : LocalizedStrings.Get("RecoveryPhraseTitle", "Recovery phrase");
+            WarningText.Text = LocalizedStrings.Get(
+                "RecoveryPhraseWarning",
+                "Anyone with these words controls this identity. Never share them, and never paste them into a chat.");
             IntroText.Text = isFirstReveal
-                ? "This device just created a ConnectOnion identity. Write these words down in order "
-                    + "and keep them somewhere offline — they are the only way to restore this address "
-                    + "on another machine, and nobody can recover them for you. You can see them again "
-                    + "later in Settings → Identity."
-                : "Write these words down in order and keep them somewhere offline. Entering them in "
-                    + "ConnectOnion on another machine — or in the CLI or the web client — restores this "
-                    + "same address.";
-            CopyButtonText.Text = "Copy phrase";
+                ? LocalizedStrings.Get(
+                    "RecoveryFirstRevealIntro",
+                    "This device just created a ConnectOnion identity. Write these words down in order and keep them somewhere offline — they are the only way to restore this address on another machine, and nobody can recover them for you. You can see them again later in Settings → Identity.")
+                : LocalizedStrings.Get(
+                    "RecoveryPhraseIntro",
+                    "Write these words down in order and keep them somewhere offline. Entering them in ConnectOnion on another machine — or in the CLI or the web client — restores this same address.");
+            CopyButtonText.Text = LocalizedStrings.Get("RecoveryCopyPhrase", "Copy phrase");
             WordsRepeater.ItemsSource = BuildWords(backup.Mnemonic!);
             WordsRepeater.Visibility = Visibility.Visible;
         }
@@ -76,13 +80,14 @@ public sealed partial class RecoveryPhraseDialog : ContentDialog
             // No phrase can be invented for a seed that was never derived from one — BIP39 only
             // runs phrase → seed. Say that plainly instead of implying the user lost something.
             _copyValue = backup.SeedHex;
-            Title = "Private key";
-            WarningText.Text = "Anyone with this key controls this identity. "
-                + "Never share it, and never paste it into a chat.";
-            IntroText.Text = "This identity was created before ConnectOnion used recovery phrases, so it "
-                + "has none — a phrase cannot be worked out from an existing key. Back up the private "
-                + "key below instead; it restores this address the same way.";
-            CopyButtonText.Text = "Copy private key";
+            Title = LocalizedStrings.Get("RecoveryPrivateKeyTitle", "Private key");
+            WarningText.Text = LocalizedStrings.Get(
+                "RecoveryPrivateKeyWarning",
+                "Anyone with this key controls this identity. Never share it, and never paste it into a chat.");
+            IntroText.Text = LocalizedStrings.Get(
+                "RecoveryLegacyIdentityIntro",
+                "This identity was created before ConnectOnion used recovery phrases, so it has none — a phrase cannot be worked out from an existing key. Back up the private key below instead; it restores this address the same way.");
+            CopyButtonText.Text = LocalizedStrings.Get("RecoveryCopyPrivateKey", "Copy private key");
             SeedText.Text = backup.SeedHex;
             SeedBlock.Visibility = Visibility.Visible;
         }
@@ -100,7 +105,7 @@ public sealed partial class RecoveryPhraseDialog : ContentDialog
                 // follows their locale's digits — same call as the other user-facing counts
                 // (UsageViewModel, UsageHeatmapView). The phrase's *words* are the cross-client
                 // BIP39 contract; their numbering is not.
-                Position = (i + 1).ToString(CultureInfo.CurrentCulture),
+                Position = RecoveryPhraseNumberFormatter.Format(i + 1),
                 Word = parts[i],
             });
         }
@@ -110,6 +115,6 @@ public sealed partial class RecoveryPhraseDialog : ContentDialog
     private void Copy_Click(object sender, RoutedEventArgs e)
     {
         ClipboardService.CopyText(_copyValue);
-        CopyButtonText.Text = "Copied";
+        CopyButtonText.Text = LocalizedStrings.Get("CommonCopied", "Copied");
     }
 }

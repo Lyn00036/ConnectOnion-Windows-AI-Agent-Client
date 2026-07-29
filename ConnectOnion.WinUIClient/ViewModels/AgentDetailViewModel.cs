@@ -93,8 +93,8 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
     public bool CanShareAgent => _agent?.IsRelayOnly == true;
     public bool HasAgent => _agent is not null;
     public string ComposerPlaceholder => string.IsNullOrWhiteSpace(AgentDisplayName)
-        ? "Ask this agent anything"
-        : $"Ask {AgentDisplayName} anything";
+        ? LocalizedStrings.Get("ComposerAskAgent", "Ask this agent anything")
+        : LocalizedStrings.Format("ComposerAskNamedAgent", "Ask {0} anything", AgentDisplayName);
 
     public bool CanStartConversation => HasAgent && IsOnline;
 
@@ -148,9 +148,17 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
     }
 
     public ObservableCollection<string> ToolNames { get; } = new();
-    public string ToolsDisplayText => $"Tools: {string.Join(" · ", ToolNames)}";
+    public string ToolsDisplayText => LocalizedStrings.Format(
+        "AgentDetailToolsList",
+        "Tools: {0}",
+        string.Join(" · ", ToolNames));
     public string ToolsToggleLabel
-        => $"View {ToolCount} {(ToolCount == 1 ? "tool" : "tools")}";
+        => ToolCount == 1
+            ? LocalizedStrings.Get("AgentDetailViewOneTool", "View 1 tool")
+            : LocalizedStrings.Format(
+                "AgentDetailViewTools",
+                "View {0} tools",
+                ToolCount);
 
     public string ShortAddress
         => string.IsNullOrWhiteSpace(AgentAddress)
@@ -178,11 +186,24 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
         {
             if (AcceptedInputs is null) return "";
             var parts = new List<string>();
-            if (AcceptedInputs.Text == true) parts.Add("text");
-            if (AcceptedInputs.Images == true) parts.Add("images");
+            if (AcceptedInputs.Text == true)
+                parts.Add(LocalizedStrings.Get("AgentInputText", "text"));
+            if (AcceptedInputs.Images == true)
+                parts.Add(LocalizedStrings.Get("AgentInputImages", "images"));
             if (AcceptedInputs.Files is { } files)
-                parts.Add($"files ({files.MaxFileSizeMb} MB, up to {files.MaxFilesPerRequest})");
-            return parts.Count == 0 ? "No declared inputs" : $"Accepts {string.Join(" · ", parts)}";
+            {
+                parts.Add(LocalizedStrings.Format(
+                    "AgentInputFiles",
+                    "files ({0} MB, up to {1})",
+                    files.MaxFileSizeMb,
+                    files.MaxFilesPerRequest));
+            }
+            return parts.Count == 0
+                ? LocalizedStrings.Get("AgentNoDeclaredInputs", "No declared inputs")
+                : LocalizedStrings.Format(
+                    "AgentAcceptsInputs",
+                    "Accepts {0}",
+                    string.Join(" · ", parts));
         }
     }
     public bool HasAcceptedInputsSummary => AcceptedInputs is not null;
@@ -222,7 +243,9 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
         if (!IsOnline)
         {
             HasError = true;
-            StatusText = "The agent is not online. Recheck the connection before starting a conversation.";
+            StatusText = LocalizedStrings.Get(
+                "AgentDetailOfflineError",
+                "The agent is not online. Recheck the connection before starting a conversation.");
             return false;
         }
 
@@ -248,7 +271,10 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
         catch (Exception ex)
         {
             HasError = true;
-            StatusText = $"Could not start the conversation: {ex.Message}";
+            StatusText = LocalizedStrings.Format(
+                "AgentDetailStartFailure",
+                "Could not start the conversation: {0}",
+                ex.Message);
             return false;
         }
     }
@@ -288,7 +314,7 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
         if (!string.IsNullOrWhiteSpace(Agent.InfoJson))
         {
             PopulateFromCachedJson(Agent.InfoJson);
-            StatusText = $"Cached — {LastUpdated}";
+        StatusText = LocalizedStrings.Format("AgentDetailCached", "Cached — {0}", LastUpdated);
             if (AgentInfoService.IsCacheFresh(Agent)) return;
         }
 
@@ -332,19 +358,19 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
                     HasError = false;
                     PopulateFromCachedJson(freshJson);
                     OnPropertyChanged(nameof(LastUpdated));
-                    StatusText = $"Updated - {LastUpdated}";
+            StatusText = LocalizedStrings.Format("AgentDetailUpdated", "Updated - {0}", LastUpdated);
                 }
                 else if (hadCache)
                 {
                     HasError = false;
-                    StatusText = $"Cached - {LastUpdated}";
+            StatusText = LocalizedStrings.Format("AgentDetailCachedDash", "Cached - {0}", LastUpdated);
                 }
                 else
                 {
                     InfoFields.Clear();
                     InfoJson = "";
                     HasError = true;
-                    StatusText = "Could not load agent info.";
+            StatusText = LocalizedStrings.Get("AgentDetailLoadFailure", "Could not load agent info.");
                 }
             }
             finally

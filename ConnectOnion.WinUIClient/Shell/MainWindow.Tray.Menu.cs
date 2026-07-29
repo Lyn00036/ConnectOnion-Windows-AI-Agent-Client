@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.Input;
+using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
 using Microsoft.UI.Xaml.Controls;
@@ -71,7 +72,7 @@ public sealed partial class MainWindow
         {
             TrayContextMenu.Items.Insert(1, new MenuFlyoutItem
             {
-                Text = "No recent chats",
+                Text = LocalizedStrings.Get("TrayNoRecentChats", "No recent chats"),
                 IsEnabled = false,
             });
             return;
@@ -88,7 +89,7 @@ public sealed partial class MainWindow
         {
             var moreItem = new MenuFlyoutSubItem
             {
-                Text = "More",
+                Text = LocalizedStrings.Get("CommonMore", "More"),
             };
             // PopupMenu mode maps this submenu to a native HMENU. Windows constrains an
             // oversized submenu to the monitor work area and supplies native wheel/arrow
@@ -108,7 +109,7 @@ public sealed partial class MainWindow
     {
         var agentName = agentNames.TryGetValue(session.AgentId, out var name)
             ? name
-            : "Unknown agent";
+            : LocalizedStrings.Get("UnknownAgent", "Unknown agent");
         var item = new MenuFlyoutItem
         {
             Text = CompactTrayLabel(session.Title, agentName),

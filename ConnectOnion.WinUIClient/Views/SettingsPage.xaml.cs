@@ -1,4 +1,5 @@
 using System;
+using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
 using ConnectOnion.WinUIClient.ViewModels;
@@ -34,22 +35,40 @@ public sealed partial class SettingsPage : Page
     public SettingsPage()
     {
         InitializeComponent();
+        ThemeChoice.ItemsSource = new string[]
+        {
+            LocalizedStrings.Get("SettingsThemeSystem", "System"),
+            LocalizedStrings.Get("SettingsThemeLight", "Light"),
+            LocalizedStrings.Get("SettingsThemeDark", "Dark"),
+        };
+        FontChoice.ItemsSource = new string[]
+        {
+            LocalizedStrings.Get("SettingsFontSmall", "Small"),
+            LocalizedStrings.Get("SettingsFontMedium", "Medium"),
+            LocalizedStrings.Get("SettingsFontLarge", "Large"),
+        };
         Loaded += OnLoaded;
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
-        await _vm.LoadAsync();
+        _initializing = true;
+        try
+        {
+            await _vm.LoadAsync();
 
         // Everything between here and the reset must stay assignment-only — any call that
         // could await would let a real user toggle land while the guard is up and be dropped.
-        _initializing = true;
         ThemeChoice.SelectedIndex = _vm.Theme switch
         {
             ThemeMode.Light => 1,
             ThemeMode.Dark => 2,
             _ => 0,
         };
+        LanguageChoice.SelectedIndex =
+            AppServices.LanguagePreference.Current == LanguagePreferenceStore.SimplifiedChinese
+                ? 1
+                : 0;
         FontChoice.SelectedIndex = _vm.MessageFontSize switch
         {
             MessageFontSize.Sm => 0,
@@ -63,7 +82,15 @@ public sealed partial class SettingsPage : Page
 
         LoadNotificationSettings();
 
-        _initializing = false;
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Settings page could not be initialized");
+        }
+        finally
+        {
+            _initializing = false;
+        }
     }
 
     private void LoadNotificationSettings()
@@ -127,6 +154,34 @@ public sealed partial class SettingsPage : Page
         await _vm.SetThemeAsync(theme);
     }
 
+    private async void LanguageChoice_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_initializing || LanguageChoice.SelectedIndex < 0) return;
+
+        var language = LanguageChoice.SelectedIndex switch
+        {
+            1 => LanguagePreferenceStore.SimplifiedChinese,
+            _ => LanguagePreferenceStore.English,
+        };
+        if (string.Equals(
+                AppServices.LanguagePreference.Current,
+                language,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        try
+        {
+            await AppServices.LanguagePreference.SaveAsync(language);
+            LanguageRestartInfo.IsOpen = true;
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Application language could not be saved");
+        }
+    }
+
     private async void FontChoice_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_initializing) return;
@@ -186,7 +241,7 @@ public sealed partial class SettingsPage : Page
         }
 
         var value = query.Trim();
-        GeneralSection.Visibility = Contains(value, "general appearance theme light dark system") ? Visibility.Visible : Visibility.Collapsed;
+        GeneralSection.Visibility = Contains(value, "general appearance theme light dark system language english chinese 中文 语言") ? Visibility.Visible : Visibility.Collapsed;
         ChatSection.Visibility = Contains(value, "general chat message text size font enter send newline") ? Visibility.Visible : Visibility.Collapsed;
         NotificationsSection.Visibility = Contains(value, "notifications agent replies task completion approval connection sound preview") ? Visibility.Visible : Visibility.Collapsed;
         AudioSection.Visibility = Contains(value, "audio microphone voice input") ? Visibility.Visible : Visibility.Collapsed;

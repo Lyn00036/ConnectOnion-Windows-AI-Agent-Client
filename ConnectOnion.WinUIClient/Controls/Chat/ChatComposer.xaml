@@ -89,7 +89,7 @@
                                                Visibility="{x:Bind IsFailed, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                                 </StackPanel>
 
-                                <Button Grid.Column="2"
+                                <Button x:Uid="ComposerRemoveAttachment" Grid.Column="2"
                                         Width="22"
                                         Height="22"
                                         Padding="0"
@@ -233,7 +233,7 @@
                 <Border BorderBrush="{ThemeResource BorderSubtleBrush}"
                         BorderThickness="0,1,0,0"
                         Padding="14,5">
-                    <TextBlock Text="↑↓ navigate · Tab or Enter to complete · Esc to dismiss"
+                            <TextBlock x:Uid="ComposerCommandNavigation" Text="↑↓ navigate · Tab or Enter to complete · Esc to dismiss"
                                FontSize="11"
                                Foreground="{ThemeResource TextTertiaryBrush}" />
                 </Border>
@@ -311,7 +311,7 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
-                    <Button x:Name="AddAttachmentButton"
+                    <Button x:Uid="ComposerAddAttachment" x:Name="AddAttachmentButton"
                             AutomationProperties.Name="Add attachment"
                             Grid.Column="0"
                             Width="34"
@@ -439,7 +439,7 @@
                                    Margin="0,0,8,3" />
                     </Grid>
 
-                    <Button x:Name="SpeechButton"
+                    <Button x:Uid="ComposerVoiceInput" x:Name="SpeechButton"
                             AutomationProperties.Name="Voice input"
                             Grid.Column="3"
                             Width="34"
@@ -466,7 +466,7 @@
                         </Grid>
                     </Button>
 
-                    <Button x:Name="StopSpeechButton"
+                    <Button x:Uid="ComposerStopVoiceInput" x:Name="StopSpeechButton"
                             AutomationProperties.AutomationId="StopVoiceInputButton"
                             AutomationProperties.Name="Stop voice input"
                             Grid.Column="3"
@@ -488,7 +488,7 @@
                                    Fill="{ThemeResource ComposerStopButtonForegroundBrush}" />
                     </Button>
 
-                    <Button x:Name="SendButton"
+                    <Button x:Uid="ComposerSendMessage" x:Name="SendButton"
                             AutomationProperties.AutomationId="SendMessageButton"
                             AutomationProperties.Name="Send message"
                             Grid.Column="4"
@@ -544,7 +544,7 @@
                                        HorizontalAlignment="Center"
                                        VerticalAlignment="Center"
                                        Fill="{ThemeResource ComposerPrimaryButtonForegroundBrush}" />
-                            <TextBlock x:Name="StopLabel" Text="Stopping..." FontSize="12"
+                            <TextBlock x:Uid="ComposerStopping" x:Name="StopLabel" Text="Stopping..." FontSize="12"
                                        VerticalAlignment="Center" Visibility="Collapsed" />
                         </StackPanel>
                     </Button>
