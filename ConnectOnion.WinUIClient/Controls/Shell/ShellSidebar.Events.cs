@@ -122,6 +122,7 @@ public sealed partial class ShellSidebar
 
             await DeleteIconQuietlyAsync(previousIconPath);
             await RefreshAsync();
+            RefreshCurrentAgentSurface();
         }
         catch (Exception exception)
         {
@@ -158,6 +159,7 @@ public sealed partial class ShellSidebar
 
             await DeleteIconQuietlyAsync(previousIconPath);
             await RefreshAsync();
+            RefreshCurrentAgentSurface();
         }
         catch (Exception exception)
         {
@@ -187,6 +189,23 @@ public sealed partial class ShellSidebar
         {
             LogIconCleanupFailed(
                 AppServices.Logging.CreateLogger<ShellSidebar>(), relativePath, exception);
+        }
+    }
+
+    /// <summary>
+    /// Keeps the currently visible agent surface in sync with the sidebar after an icon change.
+    ///
+    /// Both pages already implement <see cref="IReloadablePage"/>, and <see cref="MainWindow"/>
+    /// handles a forced same-page navigation by reloading that live instance in place. Reusing
+    /// that path avoids a second icon-specific notification system and preserves the detail
+    /// page's cached composer.
+    /// </summary>
+    private void RefreshCurrentAgentSurface()
+    {
+        if (_currentPageType == typeof(HomePage)
+            || _currentPageType == typeof(AgentDetailPage))
+        {
+            RequestNavigation(_currentPageType, forceReload: true);
         }
     }
 
