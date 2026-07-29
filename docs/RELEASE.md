@@ -94,10 +94,12 @@ inspect the archive and deliberately re-ratify the baseline in both this documen
 Before the first public release, test the extracted ZIP on a clean supported Windows profile:
 
 1. Confirm `ConnectOnion.WinUIClient.exe` launches without installing .NET or Windows App SDK.
-2. Create an identity and conversation, then close the app.
+2. Create an identity and conversation, give an agent a custom icon, then close the app.
 3. Extract the next build to a new directory and launch it.
-4. Confirm the address, recovery material, conversations, notifications, and tray behavior remain
-   correct.
+4. Confirm the address, recovery material, conversations, agent icons, notifications, and tray
+   behavior remain correct. The icon is worth checking explicitly: it is the one piece of user data
+   held as a file next to the database rather than inside it, so a root that resolved differently
+   would show the initial avatar instead of failing loudly.
 5. Confirm deleting the extracted application directory does not delete `%AppData%\ConnectOnion`.
 
 The headless `ReleaseUpgradeTests` still covers SQLite and DPAPI compatibility. The old

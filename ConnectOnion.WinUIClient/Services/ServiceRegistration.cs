@@ -55,6 +55,7 @@ public static class ServiceRegistration
         services.AddSingleton<IUriLauncher, SystemUriLauncher>();
         services.AddSingleton<OpenOnionAccountService>();
         services.AddSingleton<ConnectionTester>();
+        services.AddSingleton<IAgentIconService, AgentIconService>();
 
         // ---- SQLite repositories ----
         services.AddSingleton<AgentRepository>();

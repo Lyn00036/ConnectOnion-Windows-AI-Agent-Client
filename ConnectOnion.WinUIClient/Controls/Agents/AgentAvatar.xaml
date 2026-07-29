@@ -106,12 +106,32 @@
                 </VisualState>
             </VisualStateGroup>
         </VisualStateManager.VisualStateGroups>
-        <TextBlock x:Name="InitialText"
-                   Text="{x:Bind Initial, Mode=OneWay}"
-                   Foreground="{ThemeResource AvatarForegroundBrush}"
-                   FontSize="{x:Bind FontSize, Mode=OneWay}"
-                   FontWeight="SemiBold"
-                   HorizontalAlignment="Center"
-                   VerticalAlignment="Center" />
+        <Grid>
+            <!-- Shown whenever there is no usable custom image: none set, the file is missing, or
+                 it failed to decode. Its colours come from the palette states above. -->
+            <TextBlock x:Name="InitialText"
+                       Text="{x:Bind Initial, Mode=OneWay}"
+                       Foreground="{ThemeResource AvatarForegroundBrush}"
+                       FontSize="{x:Bind FontSize, Mode=OneWay}"
+                       FontWeight="SemiBold"
+                       MaxLines="1"
+                       TextAlignment="Center"
+                       TextTrimming="CharacterEllipsis"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       IsHitTestVisible="False" />
+
+            <!-- Source is assigned from code-behind once ImagePath resolves to a file inside the
+                 managed avatar directories. UniformToFill keeps the layout intact even if the
+                 stored file was replaced by hand with something that is not square. -->
+            <Image x:Name="CustomAvatarImage"
+                   Stretch="UniformToFill"
+                   HorizontalAlignment="Stretch"
+                   VerticalAlignment="Stretch"
+                   ImageFailed="CustomImage_ImageFailed"
+                   AutomationProperties.AccessibilityView="Raw"
+                   IsHitTestVisible="False"
+                   Visibility="Collapsed" />
+        </Grid>
     </Border>
 </UserControl>

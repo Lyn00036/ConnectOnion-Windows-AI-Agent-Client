@@ -92,6 +92,12 @@ namespace ConnectOnion.WinUIClient
             InitializeComponent();
 
             AppStorage.EnsureDirectories();
+
+            // Anything in the temporary avatar directory belongs to an Add Agent form that never
+            // finished, so nothing in the database points at it. Sweep it off the startup path —
+            // the folder would otherwise grow by one PNG per interrupted pick, forever.
+            _ = Task.Run(AppStorage.PurgeTemporaryAgentIcons);
+
             // The three Override categories are all framework chatter that reports success, not
             // behaviour. HttpClient logs four lines per request and the resilience pipeline one
             // per attempt, so every presence probe sweep writes ~30 lines; left at Information
@@ -121,7 +127,11 @@ namespace ConnectOnion.WinUIClient
             builder.Services.AddSerilog(Log.Logger, dispose: false);
             _host = builder.Build();
             Services = _host.Services;
-            NotificationLog.Configure(_host.Services.GetRequiredService<ILoggerFactory>());
+            // The two static facades in Core. Both are reached from places with no instance for
+            // the container to inject into, and both no-op until this runs.
+            var loggerFactory = _host.Services.GetRequiredService<ILoggerFactory>();
+            NotificationLog.Configure(loggerFactory);
+            IdentityStore.Configure(loggerFactory);
         }
 
         /// <summary>

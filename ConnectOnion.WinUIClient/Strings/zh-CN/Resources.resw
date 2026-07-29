@@ -559,4 +559,21 @@
   <data name="AgentInputFiles" xml:space="preserve"><value>文件（{0} MB，最多 {1} 个）</value></data>
   <data name="AgentNoDeclaredInputs" xml:space="preserve"><value>未声明支持的输入类型</value></data>
   <data name="AgentAcceptsInputs" xml:space="preserve"><value>支持 {0}</value></data>
+  <data name="MenuChangeAgentIcon.Text" xml:space="preserve"><value>更改图标</value></data>
+  <data name="MenuRemoveAgentIcon.Text" xml:space="preserve"><value>移除自定义图标</value></data>
+  <data name="AddAgentIconHeader.Text" xml:space="preserve"><value>Agent 图标</value></data>
+  <data name="AddAgentChooseIcon.Content" xml:space="preserve"><value>选择图片</value></data>
+  <data name="AddAgentRemoveIcon.Content" xml:space="preserve"><value>移除</value></data>
+  <data name="AddAgentIconHint.Text" xml:space="preserve"><value>可选。支持 PNG、JPG、JPEG 或 WebP，最大 5 MB。</value></data>
+  <data name="AgentIconToastTitle" xml:space="preserve"><value>Agent 图标</value></data>
+  <data name="AgentIconChangeFailed" xml:space="preserve"><value>无法更改 Agent 图标。</value></data>
+  <data name="AgentIconRemoveFailed" xml:space="preserve"><value>无法移除 Agent 图标。</value></data>
+  <data name="AgentIconPickerFailed" xml:space="preserve"><value>无法打开图片选择器。</value></data>
+  <data name="AgentIconUnsupportedType" xml:space="preserve"><value>请选择 PNG、JPG、JPEG 或 WebP 图片。</value></data>
+  <data name="AgentIconFileTooLarge" xml:space="preserve"><value>图片大小不能超过 5 MB。</value></data>
+  <data name="AgentIconImageTooLarge" xml:space="preserve"><value>图片尺寸过大。</value></data>
+  <data name="AgentIconInvalidImage" xml:space="preserve"><value>应用无法读取该图片文件。</value></data>
+  <data name="AgentIconProcessFailed" xml:space="preserve"><value>无法处理所选图片。</value></data>
+  <data name="AgentIconSaveFailed" xml:space="preserve"><value>无法保存 Agent 图标。</value></data>
+  <data name="AgentIconDeleteFailed" xml:space="preserve"><value>无法移除 Agent 图标。</value></data>
 </root>

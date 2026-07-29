@@ -177,7 +177,7 @@ Implementations must be synchronous, idempotent, and disarm-only.
 The teardown is instrumented end to end, because its failure mode is invisible: skipping a disarm
 does not throw, it leaves a timer armed, and the access violation that eventually follows carries
 no managed stack and no link back to the step that caused it. A clean exit looks like this
-(`%AppData%\ConnectOnion\logs`):
+(in `<data root>\logs`, i.e. `%AppData%\ConnectOnion\logs` unpackaged):
 
 ```
 [INF] Exit requested; tearing down window

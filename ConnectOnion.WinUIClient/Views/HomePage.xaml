@@ -237,6 +237,7 @@
                                                                   FontSize="12"
                                                                   Initial="{x:Bind Initial}"
                                                                   PaletteIndex="{x:Bind AvatarPaletteIndex}"
+                                                                  ImagePath="{x:Bind IconPath}"
                                                                   IsHitTestVisible="False"
                                                                   VerticalAlignment="Center" />
 

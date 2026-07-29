@@ -129,9 +129,20 @@
     -->
     <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">False</PublishTrimmed>
     <GenerateAppInstallerFile>False</GenerateAppInstallerFile>
-    <AppxPackageSigningEnabled>True</AppxPackageSigningEnabled>
-    <PackageCertificateThumbprint>35589B9A6EF8FF79618AE60A00A484F0520338D7</PackageCertificateThumbprint>
-    <AppxPackageSigningTimestampDigestAlgorithm>SHA256</AppxPackageSigningTimestampDigestAlgorithm>
+    <!--
+      Local packaging is deliberately unsigned. A PackageCertificateThumbprint resolves against
+      the building machine's certificate store, so a committed thumbprint fails every clone but
+      the one machine that happens to hold that certificate. Nothing in the pipeline needs it:
+      the release workflow ships a self-contained portable ZIP, not an MSIX, and
+      PackageIdentityTests asserts signtool and the signing secrets stay out of it.
+
+      Developer-mode F5/Deploy still works — it registers the loose layout rather than installing
+      a package, which does not check a signature. Only an actual .msix install does, so if you
+      ever need one (scripts\Test-ReleaseUpgrade.ps1), sign it out of band: create a certificate
+      whose subject is byte-for-byte Package.appxmanifest's Publisher (CN=ConnectOnion) and pass
+      -p:AppxPackageSigningEnabled=true -p:PackageCertificateThumbprint=... on that build only.
+    -->
+    <AppxPackageSigningEnabled>False</AppxPackageSigningEnabled>
     <AppxAutoIncrementPackageRevision>True</AppxAutoIncrementPackageRevision>
     <GenerateTestArtifacts>False</GenerateTestArtifacts>
     <AppxBundle>Never</AppxBundle>

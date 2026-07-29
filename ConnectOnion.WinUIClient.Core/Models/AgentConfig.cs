@@ -54,6 +54,13 @@ public sealed partial class AgentConfig : Common.ObservableObject
         => !string.IsNullOrWhiteSpace(Address)
             && string.IsNullOrWhiteSpace(DirectUrl);
 
+    /// <summary>Path to the user's chosen icon, relative to the data root (<c>avatars/….png</c>).
+    /// Null means no custom icon was ever set and the name-initial avatar is used; the path is
+    /// stored rather than the bytes so the image never travels through SQLite.</summary>
+    [ObservableProperty]
+    [JsonPropertyName("iconPath")]
+    public partial string? IconPath { get; set; }
+
     /// <summary>Invite code submitted automatically if the agent's trust gate asks for onboarding.</summary>
     [ObservableProperty]
     [JsonPropertyName("inviteCode")]

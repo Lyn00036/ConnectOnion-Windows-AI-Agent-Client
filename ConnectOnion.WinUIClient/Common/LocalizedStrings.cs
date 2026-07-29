@@ -21,6 +21,7 @@ public static class LocalizedStrings
         }
         catch (Exception ex)
         {
+            // An unpackaged host with no PRI loaded still has to render its UI in English.
             Serilog.Log.Warning(ex, "Localization resources could not be loaded; using English");
             return null;
         }

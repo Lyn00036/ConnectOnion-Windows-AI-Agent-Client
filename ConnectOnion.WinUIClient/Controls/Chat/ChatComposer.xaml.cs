@@ -22,6 +22,7 @@ using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
 using ConnectOnion.WinUIClient.Services.Attachments;
+using Microsoft.Extensions.Logging;
 
 namespace ConnectOnion.WinUIClient.Controls;
 
@@ -30,6 +31,28 @@ public sealed record ComposerSubmission(string Text, IReadOnlyList<PendingAttach
 
 public sealed partial class ChatComposer : UserControl, IDisposable
 {
+    // The attachment pipeline swallows its failures so a bad file cannot take the composer down.
+    // These are what stops "I picked a file and nothing happened" from being untraceable; the
+    // successful steps are deliberately not logged, because a working attachment reports itself
+    // on screen. WinUI constructs this control, so the logger comes from AppServices rather than
+    // a constructor parameter.
+    private static readonly Action<ILogger, string, Exception?> LogAttachmentRestoreFailed =
+        LoggerMessage.Define<string>(LogLevel.Warning, new EventId(1, "AttachmentRestoreFailed"),
+            "Draft attachment {FileName} could not be restored and was dropped");
+
+    private static readonly Action<ILogger, string, Exception?> LogAttachmentPickFailed =
+        LoggerMessage.Define<string>(LogLevel.Warning, new EventId(2, "AttachmentPickFailed"),
+            "Picking a {Kind} attachment failed");
+
+    private static readonly Action<ILogger, Exception?> LogAttachmentDropFailed =
+        LoggerMessage.Define(LogLevel.Warning, new EventId(3, "AttachmentDropFailed"),
+            "A dropped attachment could not be accepted");
+
+    private static readonly Action<ILogger, string, Exception?> LogAttachmentEncodeFailed =
+        LoggerMessage.Define<string>(LogLevel.Warning, new EventId(4, "AttachmentEncodeFailed"),
+            "Attachment {FileName} could not be encoded for sending");
+
+    private static ILogger Log => AppServices.Logging.CreateLogger<ChatComposer>();
 
     public static readonly DependencyProperty CanSubmitProperty =
         DependencyProperty.Register(
@@ -386,7 +409,7 @@ public sealed partial class ChatComposer : UserControl, IDisposable
             {
                 // A file that has moved or become unreadable simply does not come back. Restoring
                 // it as a chip that cannot be sent would be worse than losing it quietly here.
-                Debug.WriteLine($"[composer] could not restore attachment {attachment.FileName}: {ex}");
+                LogAttachmentRestoreFailed(Log, attachment.FileName, ex);
             }
         }
 
@@ -585,7 +608,7 @@ public sealed partial class ChatComposer : UserControl, IDisposable
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[Attachment] pick failed kind={kind} error={ex.GetType().Name}");
+            LogAttachmentPickFailed(Log, kind.ToString(), ex);
             return;
         }
 
@@ -604,9 +627,6 @@ public sealed partial class ChatComposer : UserControl, IDisposable
     {
         foreach (var attachment in candidates)
         {
-            System.Diagnostics.Debug.WriteLine(
-                $"[Attachment] selected name={attachment.FileName} mime={attachment.MimeType} size={attachment.SizeBytes}");
-
             // Counted per-kind and re-read each iteration: a mixed drop of images and files
             // is checked against each kind's own count limit, including the ones just added.
             var existingCount = PendingAttachments.Count(p => p.Kind == attachment.Kind);
@@ -617,8 +637,8 @@ public sealed partial class ChatComposer : UserControl, IDisposable
             if (error is not null)
             {
                 attachment.Status = AttachmentStatus.Failed;
+                // Not logged: the rejection reason is already on the chip in front of the user.
                 attachment.Error = error;
-                System.Diagnostics.Debug.WriteLine($"[Attachment] rejected name={attachment.FileName} reason={error}");
                 continue;
             }
 
@@ -695,7 +715,7 @@ public sealed partial class ChatComposer : UserControl, IDisposable
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[Attachment] drop failed error={ex.GetType().Name}");
+            LogAttachmentDropFailed(Log, ex);
         }
         finally
         {
@@ -713,7 +733,6 @@ public sealed partial class ChatComposer : UserControl, IDisposable
                 .ConfigureAwait(true);
             attachment.DataUrl = dataUrl;
             attachment.Status = AttachmentStatus.Ready;
-            System.Diagnostics.Debug.WriteLine($"[Attachment] encoded name={attachment.FileName} bytes={attachment.SizeBytes}");
         }
         catch (OperationCanceledException)
         {
@@ -725,7 +744,7 @@ public sealed partial class ChatComposer : UserControl, IDisposable
             attachment.Error = Common.LocalizedStrings.Get(
                 "ComposerFileReadFailure",
                 "Could not read this file.");
-            System.Diagnostics.Debug.WriteLine($"[Attachment] encode failed name={attachment.FileName} error={ex.GetType().Name}");
+            LogAttachmentEncodeFailed(Log, attachment.FileName, ex);
         }
         RefreshSendButtonState();
     }

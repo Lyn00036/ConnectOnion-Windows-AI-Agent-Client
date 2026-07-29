@@ -273,6 +273,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         : Common.FriendlyAgentName.From(_agent.Name);
 
     public string SelectedAgentInitial => NameInitial.From(_agent?.Name);
+    public string? SelectedAgentIconPath => _agent?.IconPath;
     public int SelectedAgentAvatarPaletteIndex => AvatarPalette.From(_agent?.Name);
     public string SessionShortId => _session is null ? "" : _session.Id[..Math.Min(8, _session.Id.Length)];
     public string? SessionId => _session?.Id;
@@ -672,6 +673,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         OnPropertyChanged(nameof(SelectedAgentName));
         OnPropertyChanged(nameof(SelectedAgentDisplayName));
         OnPropertyChanged(nameof(SelectedAgentInitial));
+        OnPropertyChanged(nameof(SelectedAgentIconPath));
         OnPropertyChanged(nameof(SelectedAgentAvatarPaletteIndex));
         OnPropertyChanged(nameof(SessionShortId));
     }
