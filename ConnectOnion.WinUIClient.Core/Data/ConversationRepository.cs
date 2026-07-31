@@ -204,6 +204,79 @@ public sealed partial class ConversationRepository
     }
 
     /// <summary>
+    /// Finds conversations whose transcript contains <paramref name="query"/>, returning one
+    /// excerpt per conversation (the most recent matching message).
+    ///
+    /// <para>This is the only path in the app that searches what was actually <i>said</i>. The
+    /// sidebar's conversation search matches titles and previews, and Ctrl+F only searches the
+    /// page already open, so "find the chat where we discussed the migration" had no answer
+    /// unless those words happened to be in the first message that became the title.</para>
+    ///
+    /// <para>Restricted to <c>user</c> and <c>agent</c> rows on purpose: the same table holds
+    /// tool arguments, tool output and process narration, and matching those would return
+    /// conversations on the strength of a file path scrolling past inside a tool card. Ordering by
+    /// <c>created_at DESC</c> before the group means the excerpt is the newest hit, and
+    /// <paramref name="limit"/> bounds the scan on a large history.</para>
+    /// </summary>
+    /// <returns>Conversation id → excerpt. Empty on a blank query or on failure; this backs a
+    /// search box, so a broken query degrades to "no content matches" rather than an error.</returns>
+    public async Task<IReadOnlyDictionary<string, string>> SearchMessageContentAsync(
+        string query,
+        int limit = 200,
+        CancellationToken ct = default)
+    {
+        var results = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (string.IsNullOrWhiteSpace(query)) return results;
+
+        try
+        {
+            await using var connection = await AppDatabase.OpenAsync(ct).ConfigureAwait(false);
+            await using var command = connection.CreateCommand();
+            // GROUP BY over a DESC-ordered subquery: SQLite's bare-column rule makes the selected
+            // content come from the first row of each group, which is the newest match.
+            command.CommandText = """
+                SELECT conversation_id, content FROM (
+                    SELECT conversation_id, content, created_at
+                    FROM messages
+                    WHERE role IN ('user', 'agent')
+                      AND content IS NOT NULL
+                      AND content <> ''
+                      AND content LIKE $pattern ESCAPE '\'
+                    ORDER BY created_at DESC
+                    LIMIT $limit
+                )
+                GROUP BY conversation_id;
+                """;
+            AppDatabase.Add(command, "$pattern", $"%{EscapeLike(query.Trim())}%");
+            AppDatabase.Add(command, "$limit", limit);
+
+            await using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
+            while (await reader.ReadAsync(ct).ConfigureAwait(false))
+            {
+                results[reader.GetString(0)] = reader.GetString(1);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // The user typed another character; this query's results are already stale.
+            return results;
+        }
+        catch (Exception ex)
+        {
+            LogFailure(nameof(SearchMessageContentAsync), query, ex);
+        }
+
+        return results;
+    }
+
+    /// <summary>Neutralizes the LIKE wildcards so a query containing % or _ searches for those
+    /// characters instead of matching everything. Paired with <c>ESCAPE '\'</c> above.</summary>
+    private static string EscapeLike(string value)
+        => value.Replace("\\", "\\\\", StringComparison.Ordinal)
+                .Replace("%", "\\%", StringComparison.Ordinal)
+                .Replace("_", "\\_", StringComparison.Ordinal);
+
+    /// <summary>
     /// The conversation's most recent agent bubble (with its attachments), or null if it has
     /// none yet. This is the only pre-existing row a turn's projection can still touch — an
     /// <c>agent_image</c> event hangs its attachment on the last agent bubble, and the final

@@ -20,10 +20,13 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
+            <!-- Tone rail. Drawn only when the tone actually carries a signal — see
+                 ShowChromeRail for why a Neutral card must not paint one. -->
             <Border Grid.RowSpan="4"
                     Width="3"
                     HorizontalAlignment="Left"
                     Background="{x:Bind ChromeTone, Mode=OneWay, Converter={StaticResource InteractiveToneToBrush}}"
+                    Visibility="{x:Bind ShowChromeRail, Mode=OneWay, Converter={StaticResource BoolToVis}}"
                     AutomationProperties.AccessibilityView="Raw" />
             <Grid Padding="{x:Bind IsCompact, Mode=OneWay, Converter={StaticResource BoolToThickness}, ConverterParameter='12,9|14,12'}" ColumnSpacing="12">
                 <Grid.ColumnDefinitions>

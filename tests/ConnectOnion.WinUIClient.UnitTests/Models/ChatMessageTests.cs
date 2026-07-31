@@ -4,6 +4,29 @@ namespace ConnectOnion.WinUIClient.UnitTests.Models;
 
 public sealed class ChatMessageTests
 {
+    [Fact]
+    public void MessageActions_AreInvisibleUntilHoveredOrFocused()
+    {
+        var message = new ChatMessage
+        {
+            Role = ChatRole.User,
+            Content = "hello",
+        };
+
+        Assert.False(message.ShowUserActions);
+        Assert.Equal(0d, message.UserActionsOpacity);
+
+        message.AreUserActionsVisible = true;
+
+        Assert.True(message.ShowUserActions);
+        Assert.Equal(1d, message.UserActionsOpacity);
+
+        message.BeginEditing();
+
+        Assert.False(message.ShowUserActions);
+        Assert.Equal(0d, message.UserActionsOpacity);
+    }
+
     // The turn-usage row splits its metadata into "model · duration" over the rest. The split is a
     // display concern computed from EventTitle + EventMeta, so pin the segment boundaries down.
     [Fact]
@@ -196,6 +219,46 @@ public sealed class ChatMessageTests
 
         Assert.False(message.IsThinkingRunning);
         Assert.Equal("Thought process", message.ActivityHeaderTitle);
+    }
+
+    [Fact]
+    public void ThinkingActivity_WithTransientStatus_NarratesTheConnectionPhase()
+    {
+        var message = new ChatMessage
+        {
+            Role = ChatRole.Event,
+            EventKind = "activity",
+            EventTitle = "Thinking",
+            TransientStatusText = "Connecting…",
+            Status = EventStatus.Running,
+        };
+
+        Assert.True(message.IsThinkingRunning);
+        Assert.True(message.IsRunningProgressActivity);
+        Assert.Equal("Connecting…", message.ActivityHeaderTitle);
+        Assert.Equal("Connecting…", message.ActivityAccessibilityName);
+    }
+
+    [Fact]
+    public void ReconnectActivity_UsesProgressPresentationOnlyWhileRunning()
+    {
+        var message = new ChatMessage
+        {
+            Role = ChatRole.Event,
+            EventKind = "activity",
+            EventKey = "reconnect",
+            EventTitle = "Reconnecting (1/5)",
+            Status = EventStatus.Running,
+        };
+
+        Assert.True(message.IsRunningProgressActivity);
+        Assert.False(message.IsPlainSingleActivity);
+        Assert.Equal("Reconnecting (1/5)", message.ActivityHeaderTitle);
+
+        message.Status = EventStatus.Done;
+
+        Assert.False(message.IsRunningProgressActivity);
+        Assert.True(message.IsPlainSingleActivity);
     }
 
     [Fact]

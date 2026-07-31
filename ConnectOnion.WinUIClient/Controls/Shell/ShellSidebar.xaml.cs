@@ -39,12 +39,8 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     public ObservableCollection<ShellSessionItem> PinnedSessions { get; } = new();
 
     public event Action<Type, bool>? NavigationRequested;
-    public event Action? NewChatRequested;
     public event Action<FrameworkElement>? SettingsRequested;
-    public event Action<FrameworkElement>? KeyboardShortcutsRequested;
-    public event Action<FrameworkElement>? AboutRequested;
     public event Action<FrameworkElement>? SessionSearchRequested;
-    public event Action? ExitRequested;
     /// <summary>The sidebar click means "I want the
     /// add-agent form open", not merely "show me the landing page" — the shell answers it by
     /// opening the overlay without navigating. The button is passed back for focus restoration.</summary>
@@ -67,8 +63,6 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     private bool _hasExpansionState;
     private bool _loadedPersistedExpansionState;
     private bool _isPinnedExpanded = true;
-    private string _newChatTargetText =
-        LocalizedStrings.Get("SidebarStartNewChat", "Start a new chat");
 
     public int OnlineAgentCount
     {
@@ -79,10 +73,12 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
             _onlineAgentCount = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(OnlineAgentCountText));
+            OnPropertyChanged(nameof(OnlineAgentStatusText));
             OnPropertyChanged(nameof(HasOnlineAgents));
         }
     }
 
+    public string AppVersionBadgeText => $"v{AppVersionService.DisplayVersion}";
     public bool HasOnlineAgents => OnlineAgentCount > 0;
     public string OnlineAgentCountText => OnlineAgentCount switch
     {
@@ -93,19 +89,9 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
             "{0} agents online",
             OnlineAgentCount),
     };
+    public string OnlineAgentStatusText => OnlineAgentCountText.ToUpper(CultureInfo.CurrentUICulture);
     public bool HasPinnedSessions => PinnedSessions.Count > 0;
     public double PinnedChevronAngle => IsPinnedExpanded ? 0 : 270;
-    public string NewChatTargetText
-    {
-        get => _newChatTargetText;
-        private set
-        {
-            if (_newChatTargetText == value) return;
-            _newChatTargetText = value;
-            OnPropertyChanged();
-        }
-    }
-
     public bool IsPinnedExpanded
     {
         get => _isPinnedExpanded;
@@ -144,6 +130,9 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     public void SetCurrentPage(Type? pageType)
         => _currentPageType = pageType;
 
+    public void FocusFirstNavigation()
+        => AgentsNavigationButton.Focus(FocusState.Programmatic);
+
     /// <summary>Rebuilds the entire tree from storage. Called after anything that could change
     /// what the sidebar shows — agent added/renamed/deleted, conversation created/pinned/removed,
     /// navigation. Cheap enough to be unconditional at this scale (tens of rows).</summary>
@@ -151,14 +140,6 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     {
         var agentsState = await AppServices.Agents.LoadAsync();
         var sessionsState = await AppServices.Sessions.LoadAsync();
-        var newChatAgent = agentsState.Agents.FirstOrDefault(agent => agent.Id == agentsState.SelectedAgentId)
-            ?? agentsState.Agents.FirstOrDefault();
-        NewChatTargetText = newChatAgent is null
-            ? LocalizedStrings.Get("SidebarAddAgentToChat", "Add an agent to start a new chat")
-            : LocalizedStrings.Format(
-                "SidebarStartChatWith",
-                "Start a new chat with {0}",
-                newChatAgent.Name);
         await RefreshSessionPreviewCacheAsync(sessionsState.Sessions);
 
         // Must run *before* the Clear below, while the old items still hold their expansion.
@@ -234,8 +215,8 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         _hasExpansionState = true;
     }
 
-    /// <summary>Ctrl+N / "New chat". Returns false when there is no agent to chat with at all,
-    /// which is the caller's cue to send the user to the add-agent flow instead.</summary>
+    /// <summary>Ctrl+N / "New chat". Returns false when there is no agent to chat with, which
+    /// lets the window surface the add-agent requirement.</summary>
     public async System.Threading.Tasks.Task<bool> StartNewChatAsync()
     {
         var agentsState = await AppServices.Agents.LoadAsync();
@@ -251,7 +232,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         // No session is created here. AgentDetailPage is the start-a-chat surface and creates one
         // when the user actually sends their first message, so a shortcut pressed by accident
         // leaves nothing behind — the sidebar used to collect an empty conversation per stray
-        // Ctrl+N. Same path the agent row's "+" takes (ShellSidebar.Events.AddChat_Click), so the
+        // Same path the agent row's "+" takes (ShellSidebar.Events.AddChat_Click), so the sidebar's
         // two entry points into "new chat" behave identically.
         FocusAgentInSidebar(agent.Id);
         await RefreshAsync();
@@ -303,8 +284,6 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
             Id = session.Id,
             Title = session.Title,
             Preview = preview,
-            UpdatedAt = session.UpdatedAt,
-            RelativeTime = FormatRelativeTime(updatedAt),
             TimeGroup = FormatTimeGroup(updatedAt),
             AgentName = agentNames.TryGetValue(session.AgentId, out var agentName) ? agentName : "",
             IsPinned = session.IsPinned,
@@ -365,19 +344,6 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         if (date == today) return "Today";
         if (date == today.AddDays(-1)) return "Yesterday";
         return "Earlier";
-    }
-
-    private static string FormatRelativeTime(DateTimeOffset? updatedAt)
-    {
-        if (updatedAt is null) return "";
-
-        var elapsed = DateTimeOffset.Now - updatedAt.Value;
-        if (elapsed < TimeSpan.Zero || elapsed < TimeSpan.FromMinutes(1)) return "Now";
-        if (elapsed < TimeSpan.FromHours(1)) return $"{Math.Max(1, (int)elapsed.TotalMinutes)} min ago";
-        if (elapsed < TimeSpan.FromDays(1)) return $"{Math.Max(1, (int)elapsed.TotalHours)} hr ago";
-        if (elapsed < TimeSpan.FromDays(7))
-            return updatedAt.Value.ToString("ddd", CultureInfo.CurrentCulture);
-        return updatedAt.Value.ToString("MMM d", CultureInfo.CurrentCulture);
     }
 
     /// <summary>Whether an agent row renders as selected. Selection is page-dependent: an agent
@@ -490,7 +456,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     private static async System.Threading.Tasks.Task<string> CreateAndActivateSessionAsync(
         SessionsState sessionsState, string agentId)
     {
-        var session = SessionSummary.NewConversation(agentId, sessionsState.Sessions);
+        var session = SessionSummary.NewConversation(agentId, sessionsState.Sessions, Common.SessionTitles.PlaceholderFormat);
         sessionsState.Sessions.Add(session);
         sessionsState.ActiveSessionId = session.Id;
         await AppServices.Sessions.SaveAsync(sessionsState);

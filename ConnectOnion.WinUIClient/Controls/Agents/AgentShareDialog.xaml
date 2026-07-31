@@ -22,12 +22,12 @@
                 BorderBrush="{ThemeResource BorderDefaultBrush}"
                 BorderThickness="1">
             <Grid>
-                <Image x:Name="QrImage"
+                <Image x:Uid="AgentShareQrCode" x:Name="QrImage"
                        Width="208"
                        Height="208"
                        Stretch="Uniform"
                        AutomationProperties.Name="QR code for the agent web chat" />
-                <ProgressRing x:Name="QrProgress"
+                <ProgressRing x:Uid="AgentShareQrProgress" x:Name="QrProgress"
                               Width="24"
                               Height="24"
                               IsActive="True"

@@ -45,7 +45,33 @@ public sealed partial class SessionSearchViewModel : Common.ObservableObject
             SearchText = "";
     }
 
-    partial void OnSearchTextChanged(string value) => ApplyFilter();
+    partial void OnSearchTextChanged(string value)
+    {
+        // A new query invalidates whatever content matches the previous one produced. Cleared
+        // here rather than when the next batch lands, so results never briefly show an excerpt
+        // belonging to a query the user has already moved on from.
+        _contentMatches = EmptyMatches;
+        ApplyFilter();
+    }
+
+    private static readonly IReadOnlyDictionary<string, string> EmptyMatches =
+        new Dictionary<string, string>(StringComparer.Ordinal);
+
+    private IReadOnlyDictionary<string, string> _contentMatches = EmptyMatches;
+
+    /// <summary>
+    /// Folds in the conversations whose <i>messages</i> match, which the in-memory catalog cannot
+    /// know about — it holds titles and agent names only. Called by the overlay once the database
+    /// query for <paramref name="query"/> returns; a result for a query the user has already typed
+    /// past is dropped rather than merged.
+    /// </summary>
+    public void ApplyContentMatches(string query, IReadOnlyDictionary<string, string> matchesBySessionId)
+    {
+        if (!string.Equals(query.Trim(), SearchText.Trim(), StringComparison.Ordinal)) return;
+
+        _contentMatches = matchesBySessionId;
+        ApplyFilter();
+    }
 
     private void ApplyFilter()
     {
@@ -53,7 +79,18 @@ public sealed partial class SessionSearchViewModel : Common.ObservableObject
         Results.Clear();
         foreach (var item in _allItems)
         {
-            if (item.Matches(query)) Results.Add(item);
+            var matchedContent = _contentMatches.TryGetValue(item.SessionId, out var content);
+
+            if (!item.Matches(query) && !matchedContent) continue;
+
+            // The excerpt is shown only when the content is what brought the row back. A title
+            // match already explains itself, and pinning an excerpt under it would suggest the
+            // hit was somewhere else in the conversation.
+            item.Snippet = matchedContent && !item.Matches(query)
+                ? SessionSearchItem.BuildSnippet(content!, query)
+                : "";
+
+            Results.Add(item);
         }
 
         HasResults = Results.Count > 0;

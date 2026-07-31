@@ -40,8 +40,8 @@
   <data name="ChatRetry.Text" xml:space="preserve"><value>重试</value></data>
   <data name="ComposerInput.PlaceholderText" xml:space="preserve"><value>输入任何任务</value></data>
   <data name="MenuNewChat.Text" xml:space="preserve"><value>新建聊天</value></data>
-  <data name="MenuOpenFolder.Text" xml:space="preserve"><value>打开文件夹...</value></data>
-  <data name="MenuClose.Text" xml:space="preserve"><value>关闭</value></data>
+  <data name="MenuOpenFolder.Text" xml:space="preserve"><value>打开数据文件夹</value></data>
+  <data name="MenuClose.Text" xml:space="preserve"><value>隐藏到托盘</value></data>
   <data name="MenuSettings.Text" xml:space="preserve"><value>设置...</value></data>
   <data name="MenuExit.Text" xml:space="preserve"><value>退出</value></data>
   <data name="MenuUndo.Text" xml:space="preserve"><value>撤销</value></data>
@@ -52,7 +52,7 @@
   <data name="MenuDelete.Text" xml:space="preserve"><value>删除</value></data>
   <data name="MenuSelectAll.Text" xml:space="preserve"><value>全选</value></data>
   <data name="MenuToggleSidebar.Text" xml:space="preserve"><value>切换侧边栏</value></data>
-  <data name="MenuOpenTerminal.Text" xml:space="preserve"><value>打开终端</value></data>
+  <data name="MenuOpenTerminal.Text" xml:space="preserve"><value>在数据文件夹中打开终端</value></data>
   <data name="MenuFind.Text" xml:space="preserve"><value>查找</value></data>
   <data name="MenuBack.Text" xml:space="preserve"><value>后退</value></data>
   <data name="MenuForward.Text" xml:space="preserve"><value>前进</value></data>
@@ -104,21 +104,23 @@
   <data name="SettingsMessagePreview.Description" xml:space="preserve"><value>在通知中包含回复摘要。关闭后，通知只提示有新回复。</value></data>
   <data name="SettingsMicrophone.Description" xml:space="preserve"><value>选择用于语音输入的麦克风。</value></data>
   <data name="SidebarWorkspace.Text" xml:space="preserve"><value>Agent 工作区</value></data>
-  <data name="SidebarNewChat.Text" xml:space="preserve"><value>新建聊天</value></data>
+  <data name="SidebarAgentsNavigation.ToolTipService.ToolTip" xml:space="preserve"><value>Agents</value></data>
+  <data name="SidebarAgentsNavigation.AutomationProperties.Name" xml:space="preserve"><value>Agents</value></data>
+  <data name="SidebarAgentsNavigationLabel.Text" xml:space="preserve"><value>Agents</value></data>
   <data name="SidebarSearchChats.ToolTipService.ToolTip" xml:space="preserve"><value>搜索聊天</value></data>
   <data name="SidebarSearchChats.AutomationProperties.Name" xml:space="preserve"><value>搜索聊天</value></data>
   <data name="SidebarPinned.Text" xml:space="preserve"><value>已固定</value></data>
-  <data name="SidebarAgents.Text" xml:space="preserve"><value>Agent</value></data>
+  <data name="SidebarConversations.Text" xml:space="preserve"><value>对话</value></data>
   <data name="SidebarDeleteChat.Text" xml:space="preserve"><value>删除聊天</value></data>
   <data name="SidebarAgentNewChat.Text" xml:space="preserve"><value>新建聊天</value></data>
   <data name="SidebarAgentDetails.Text" xml:space="preserve"><value>Agent 详情</value></data>
   <data name="SidebarDeleteAgent.Text" xml:space="preserve"><value>删除 Agent</value></data>
   <data name="SidebarAddAgent.Text" xml:space="preserve"><value>添加 Agent</value></data>
-  <data name="SidebarLocalClient.Text" xml:space="preserve"><value>本地客户端</value></data>
   <data name="SidebarSettings.Text" xml:space="preserve"><value>设置</value></data>
-  <data name="SidebarKeyboardShortcuts.Text" xml:space="preserve"><value>键盘快捷键</value></data>
-  <data name="SidebarAbout.Text" xml:space="preserve"><value>关于 ConnectOnion</value></data>
-  <data name="SidebarExit.Text" xml:space="preserve"><value>退出</value></data>
+  <data name="SidebarSettingsButton.AutomationProperties.Name" xml:space="preserve"><value>设置</value></data>
+  <data name="SidebarSettingsButton.ToolTipService.ToolTip" xml:space="preserve"><value>设置</value></data>
+  <data name="SidebarResizeHandle.AutomationProperties.Name" xml:space="preserve"><value>调整侧边栏宽度</value></data>
+  <data name="SidebarResizeHandle.AutomationProperties.HelpText" xml:space="preserve"><value>水平拖动以调整宽度；向左拖过最小宽度可收起侧边栏。</value></data>
   <data name="AboutTitle.Text" xml:space="preserve"><value>关于 ConnectOnion</value></data>
   <data name="AboutClose.AutomationProperties.Name" xml:space="preserve"><value>关闭“关于 ConnectOnion”</value></data>
   <data name="AboutClose.ToolTipService.ToolTip" xml:space="preserve"><value>关闭 (Esc)</value></data>
@@ -132,9 +134,9 @@
   <data name="SettingsFontMedium" xml:space="preserve"><value>中</value></data>
   <data name="SettingsFontLarge" xml:space="preserve"><value>大</value></data>
   <data name="AddAgentTitle.Text" xml:space="preserve"><value>添加 Agent</value></data>
-  <data name="AddAgentAddressLabel.Text" xml:space="preserve"><value>地址或直连 URL</value></data>
-  <data name="AddAgentAddressHint.Text" xml:space="preserve"><value>输入 Agent 地址或 WebSocket 直连 URL。</value></data>
-  <data name="AddAgentAddressError.Text" xml:space="preserve"><value>请输入有效的 Agent 地址或 WebSocket URL。</value></data>
+  <data name="AddAgentAddressLabel.Text" xml:space="preserve"><value>Agent 连接信息</value></data>
+  <data name="AddAgentAddressHint.Text" xml:space="preserve"><value>共享中继 Agent 使用 0x 地址；直连使用 HTTP URL。</value></data>
+  <data name="AddAgentAddressError.Text" xml:space="preserve"><value>请输入有效的 Agent 地址或 HTTP URL。</value></data>
   <data name="AgentShareDialog.Title" xml:space="preserve"><value>分享 Agent</value></data>
   <data name="AgentShareDialog.PrimaryButtonText" xml:space="preserve"><value>打开网页聊天</value></data>
   <data name="AgentShareDialog.CloseButtonText" xml:space="preserve"><value>关闭</value></data>
@@ -143,14 +145,14 @@
   <data name="AgentShareAddress.Text" xml:space="preserve"><value>Agent 地址</value></data>
   <data name="AgentShareCopyAddress.Content" xml:space="preserve"><value>复制地址</value></data>
   <data name="AgentShareCopyLink.Content" xml:space="preserve"><value>复制链接</value></data>
-  <data name="HomeAgentsTitle.Text" xml:space="preserve"><value>Agent</value></data>
-  <data name="HomeAgentsDescription.Text" xml:space="preserve"><value>打开一个 Agent，继续其最近的对话。</value></data>
+  <data name="HomeAgentsTitle.Text" xml:space="preserve"><value>Agent 库</value></data>
+  <data name="HomeAgentsDescription.Text" xml:space="preserve"><value>在这里管理 Agent；使用侧栏切换不同对话。</value></data>
   <data name="HomeAddAgent.Text" xml:space="preserve"><value>添加 Agent</value></data>
   <data name="HomeAvailableAgents.Text" xml:space="preserve"><value>可用的 Agent</value></data>
   <data name="HomeLastUsed.Text" xml:space="preserve"><value>最近使用</value></data>
   <data name="HomeOpening.Text" xml:space="preserve"><value>正在打开</value></data>
   <data name="HomeNoAgents.Text" xml:space="preserve"><value>还没有 Agent</value></data>
-  <data name="HomeNoAgentsHint.Text" xml:space="preserve"><value>添加 Agent 以开始对话。</value></data>
+  <data name="HomeNoAgentsHint.Text" xml:space="preserve"><value>智能体是你要连接的、兼容 ConnectOnion 的助手。你需要它的 0x 地址或 HTTP 链接 —— 运行该智能体的人可以从其“分享”界面提供给你。</value></data>
   <data name="AgentDetailShare.Content" xml:space="preserve"><value>分享</value></data>
   <data name="AgentDetailCapabilities.Content" xml:space="preserve"><value>你能做什么？</value></data>
   <data name="AgentDetailTools.Text" xml:space="preserve"><value>可用工具</value></data>
@@ -224,7 +226,6 @@
   <data name="ToolAllowSession.Text" xml:space="preserve"><value>本次会话允许</value></data>
   <data name="ToolAllowOnce.Text" xml:space="preserve"><value>仅允许一次</value></data>
   <data name="HistoryRecentChats.Text" xml:space="preserve"><value>最近聊天</value></data>
-  <data name="HistoryNewChat.Text" xml:space="preserve"><value>新建聊天</value></data>
   <data name="HistoryExit.Text" xml:space="preserve"><value>退出</value></data>
   <data name="MenuFile.Title" xml:space="preserve"><value>文件</value></data>
   <data name="MenuEdit.Title" xml:space="preserve"><value>编辑</value></data>
@@ -234,7 +235,7 @@
   <data name="DiffUnifiedUtf8.Text" xml:space="preserve"><value>统一差异 · UTF-8</value></data>
   <data name="ChatEditBranchDescription.Text" xml:space="preserve"><value>编辑将从此处创建新对话，原对话仍保留在侧边栏中。</value></data>
   <data name="ChatEditCancel.Content" xml:space="preserve"><value>取消</value></data>
-  <data name="ChatEditSave.Content" xml:space="preserve"><value>保存</value></data>
+  <data name="ChatEditSave.Content" xml:space="preserve"><value>发送</value></data>
   <data name="ChatOr.Text" xml:space="preserve"><value>或</value></data>
   <data name="ShortcutsDialogTitle.Text" xml:space="preserve"><value>键盘快捷键</value></data>
   <data name="ShortcutsDialogSearch.PlaceholderText" xml:space="preserve"><value>搜索快捷键</value></data>
@@ -278,9 +279,22 @@
   <data name="CommonOk" xml:space="preserve"><value>确定</value></data>
   <data name="ComposerAddImage" xml:space="preserve"><value>添加图片...</value></data>
   <data name="ComposerAddFile" xml:space="preserve"><value>添加文件...</value></data>
+  <data name="SessionPlaceholderTitleFormat" xml:space="preserve"><value>对话 {0}</value></data>
   <data name="ComposerFileReadFailure" xml:space="preserve"><value>无法读取此文件。</value></data>
+  <data name="ComposerAttachmentPickFailure" xml:space="preserve"><value>无法添加该附件，请重试。</value></data>
+  <data name="ComposerAttachmentDropFailure" xml:space="preserve"><value>无法读取拖入的文件。</value></data>
   <data name="CommonCancel" xml:space="preserve"><value>取消</value></data>
   <data name="CommonDelete" xml:space="preserve"><value>删除</value></data>
+  <data name="SettingsWindow.Text" xml:space="preserve"><value>窗口</value></data>
+  <data name="SettingsCloseBehavior.Header" xml:space="preserve"><value>关闭窗口时</value></data>
+  <data name="SettingsCloseBehavior.Description" xml:space="preserve"><value>关闭窗口可以让智能体继续在托盘中运行，也可以直接退出应用。</value></data>
+  <data name="SettingsCloseBehaviorAsk.Content" xml:space="preserve"><value>每次询问</value></data>
+  <data name="SettingsCloseBehaviorTray.Content" xml:space="preserve"><value>保持在托盘中运行</value></data>
+  <data name="SettingsCloseBehaviorExit.Content" xml:space="preserve"><value>退出 ConnectOnion</value></data>
+  <data name="CommonSave" xml:space="preserve"><value>保存</value></data>
+  <data name="SidebarRenameChat.Text" xml:space="preserve"><value>重命名</value></data>
+  <data name="RenameConversationTitle" xml:space="preserve"><value>重命名对话</value></data>
+  <data name="RenameConversationFieldName" xml:space="preserve"><value>对话名称</value></data>
   <data name="IdentityGenerateWait" xml:space="preserve"><value>请等待正在运行的对话结束后再生成新身份。</value></data>
   <data name="IdentityGenerateTitle" xml:space="preserve"><value>生成新身份？</value></data>
   <data name="IdentityGenerateWarning" xml:space="preserve"><value>首次登录时，此操作会替换当前身份并创建新的 OpenOnion 账户。当前余额、Agent 授权和账户历史不会迁移到新地址。请先备份当前恢复短语。</value></data>
@@ -311,9 +325,6 @@
   <data name="CommonMore" xml:space="preserve"><value>更多</value></data>
   <data name="UnknownAgent" xml:space="preserve"><value>未知代理</value></data>
   <data name="ImageLoadFailed" xml:space="preserve"><value>无法加载图片。</value></data>
-  <data name="SidebarStartNewChat" xml:space="preserve"><value>开始新聊天</value></data>
-  <data name="SidebarAddAgentToChat" xml:space="preserve"><value>添加代理以开始新聊天</value></data>
-  <data name="SidebarStartChatWith" xml:space="preserve"><value>与 {0} 开始新聊天</value></data>
   <data name="RecoveryFirstRevealIntro" xml:space="preserve"><value>此设备刚刚创建了一个 ConnectOnion 身份。请按顺序记下这些单词，并将其离线保存在安全位置——这是在其他设备上恢复此地址的唯一方式，任何人都无法替你找回。你以后可以在“设置 → 身份”中再次查看。</value></data>
   <data name="RecoveryPhraseIntro" xml:space="preserve"><value>请按顺序记下这些单词，并将其离线保存在安全位置。在另一台设备、命令行工具或网页客户端中输入它们，即可恢复同一个 ConnectOnion 地址。</value></data>
   <data name="RecoveryLegacyIdentityIntro" xml:space="preserve"><value>此身份创建于 ConnectOnion 使用恢复短语之前，因此没有恢复短语，也无法从已有密钥反推出短语。请改为备份下方的私钥；它同样可以恢复此地址。</value></data>
@@ -361,6 +372,7 @@
   <data name="PresenceUnavailable" xml:space="preserve"><value>不可用</value></data>
   <data name="PresenceNotConnected" xml:space="preserve"><value>未连接</value></data>
   <data name="ConnectionReady" xml:space="preserve"><value>就绪</value></data>
+  <data name="ConnectionStarting" xml:space="preserve"><value>正在启动…</value></data>
   <data name="ConnectionWorking" xml:space="preserve"><value>正在工作</value></data>
   <data name="ConnectionWaitingApproval" xml:space="preserve"><value>正在等待批准</value></data>
   <data name="ConnectionReconnecting" xml:space="preserve"><value>正在重新连接 {0}/{1}</value></data>
@@ -470,8 +482,8 @@
   <data name="TimeGroupToday" xml:space="preserve"><value>今天</value></data>
   <data name="TimeGroupYesterday" xml:space="preserve"><value>昨天</value></data>
   <data name="TimeGroupEarlier" xml:space="preserve"><value>更早</value></data>
-  <data name="SidebarMoreActions.ToolTipService.ToolTip" xml:space="preserve"><value>更多操作</value></data>
-  <data name="SidebarMoreActions.AutomationProperties.Name" xml:space="preserve"><value>更多操作</value></data>
+  <data name="SidebarAgentNewChatButton.ToolTipService.ToolTip" xml:space="preserve"><value>新建聊天</value></data>
+  <data name="SidebarAgentNewChatButton.AutomationProperties.Name" xml:space="preserve"><value>新建聊天</value></data>
   <data name="MainToggleSidebar.ToolTipService.ToolTip" xml:space="preserve"><value>切换侧栏</value></data>
   <data name="MainToggleSidebar.AutomationProperties.Name" xml:space="preserve"><value>切换侧栏</value></data>
   <data name="MainNavigateBack.ToolTipService.ToolTip" xml:space="preserve"><value>后退</value></data>
@@ -489,19 +501,20 @@
   <data name="MainZoomIn.ToolTipService.ToolTip" xml:space="preserve"><value>放大</value></data>
   <data name="MainZoomIn.AutomationProperties.Name" xml:space="preserve"><value>放大</value></data>
   <data name="ChatSaveAttachment.ToolTipService.ToolTip" xml:space="preserve"><value>保存副本</value></data>
-  <data name="ChatRetryFromMessage.ToolTipService.ToolTip" xml:space="preserve"><value>从此消息重试</value></data>
-  <data name="ChatRetryFromMessage.AutomationProperties.Name" xml:space="preserve"><value>从此消息重试</value></data>
-  <data name="ChatEditMessage.ToolTipService.ToolTip" xml:space="preserve"><value>编辑消息</value></data>
-  <data name="ChatEditMessage.AutomationProperties.Name" xml:space="preserve"><value>编辑消息</value></data>
+  <data name="ChatRetryFromMessage.ToolTipService.ToolTip" xml:space="preserve"><value>在当前对话中重试</value></data>
+  <data name="ChatRetryFromMessage.AutomationProperties.Name" xml:space="preserve"><value>在当前对话中重试</value></data>
+  <data name="ChatEditMessage.ToolTipService.ToolTip" xml:space="preserve"><value>在新对话中编辑</value></data>
+  <data name="ChatEditMessage.AutomationProperties.Name" xml:space="preserve"><value>在新对话中编辑</value></data>
   <data name="ChatCopyMessage.ToolTipService.ToolTip" xml:space="preserve"><value>复制消息</value></data>
   <data name="ChatCopyMessage.AutomationProperties.Name" xml:space="preserve"><value>复制消息</value></data>
-  <data name="ChatRetryResponse.ToolTipService.ToolTip" xml:space="preserve"><value>重试此回复</value></data>
-  <data name="ChatRetryResponse.AutomationProperties.Name" xml:space="preserve"><value>重试此回复</value></data>
+  <data name="ChatRetryResponse.ToolTipService.ToolTip" xml:space="preserve"><value>在当前对话中重试此回复</value></data>
+  <data name="ChatRetryResponse.AutomationProperties.Name" xml:space="preserve"><value>在当前对话中重试此回复</value></data>
   <data name="ChatCopyResponse.ToolTipService.ToolTip" xml:space="preserve"><value>复制回复</value></data>
   <data name="ChatCopyResponse.AutomationProperties.Name" xml:space="preserve"><value>复制回复</value></data>
   <data name="ChatJumpToLatest.ToolTipService.ToolTip" xml:space="preserve"><value>跳转到最新消息</value></data>
   <data name="ChatJumpToLatest.AutomationProperties.Name" xml:space="preserve"><value>跳转到最新消息</value></data>
   <data name="ComposerRemoveAttachment.ToolTipService.ToolTip" xml:space="preserve"><value>移除</value></data>
+  <data name="ComposerRemoveAttachment.AutomationProperties.Name" xml:space="preserve"><value>移除附件</value></data>
   <data name="ComposerAddAttachment.ToolTipService.ToolTip" xml:space="preserve"><value>添加附件</value></data>
   <data name="ComposerAddAttachment.AutomationProperties.Name" xml:space="preserve"><value>添加附件</value></data>
   <data name="ComposerVoiceInput.ToolTipService.ToolTip" xml:space="preserve"><value>语音输入</value></data>
@@ -543,7 +556,7 @@
   <data name="RuntimeComposerStop" xml:space="preserve"><value>停止</value></data>
   <data name="FindNoResults" xml:space="preserve"><value>0 / 0 个结果</value></data>
   <data name="AttachmentGenericFileType" xml:space="preserve"><value>文件</value></data>
-  <data name="AddAgentValidationError" xml:space="preserve"><value>请输入有效的 Agent 地址或 WebSocket URL。</value></data>
+  <data name="AddAgentValidationError" xml:space="preserve"><value>请输入有效的 Agent 地址或 HTTP URL。</value></data>
   <data name="AddAgentConnectedTo" xml:space="preserve"><value>已连接到 {0}</value></data>
   <data name="AddAgentCouldNotAdd" xml:space="preserve"><value>无法添加 Agent：{0}</value></data>
   <data name="AddAgentCheckingHealth" xml:space="preserve"><value>正在检查 Agent 状态…</value></data>
@@ -579,4 +592,120 @@
   <data name="AgentIconProcessFailed" xml:space="preserve"><value>无法处理所选图片。</value></data>
   <data name="AgentIconSaveFailed" xml:space="preserve"><value>无法保存 Agent 图标。</value></data>
   <data name="AgentIconDeleteFailed" xml:space="preserve"><value>无法移除 Agent 图标。</value></data>
+  <data name="AddAgentIntro.Text" xml:space="preserve"><value>粘贴 Agent“共享”界面提供的连接信息。</value></data>
+  <data name="AddAgentInput.PlaceholderText" xml:space="preserve"><value>0x… 或 https://example.com/agent</value></data>
+  <data name="AddAgentAppearance.Header" xml:space="preserve"><value>自定义外观（可选）</value></data>
+  <data name="SettingsCompactCategoryGeneral.Content" xml:space="preserve"><value>常规</value></data>
+  <data name="SettingsCompactCategoryAgents.Content" xml:space="preserve"><value>Agent</value></data>
+  <data name="SettingsCompactCategoryNotifications.Content" xml:space="preserve"><value>通知</value></data>
+  <data name="SettingsCompactCategoryAudio.Content" xml:space="preserve"><value>音频</value></data>
+  <data name="SettingsCompactCategoryKeyboard.Content" xml:space="preserve"><value>键盘</value></data>
+  <data name="SettingsCompactCategoryIdentity.Content" xml:space="preserve"><value>身份</value></data>
+  <data name="SettingsCompactCategoryUsage.Content" xml:space="preserve"><value>用量</value></data>
+  <data name="SettingsCompactSearch.PlaceholderText" xml:space="preserve"><value>搜索设置</value></data>
+  <data name="SettingsCompactSearch.AutomationProperties.Name" xml:space="preserve"><value>搜索设置</value></data>
+  <data name="CloseBehaviorTitle" xml:space="preserve"><value>关闭 ConnectOnion？</value></data>
+  <data name="CloseBehaviorDescription" xml:space="preserve"><value>让 Agent 任务继续在后台运行，或完全退出应用。我们会记住你的选择。</value></data>
+  <data name="CloseBehaviorKeepRunning" xml:space="preserve"><value>继续在后台运行</value></data>
+  <data name="CommonExit" xml:space="preserve"><value>退出</value></data>
+  <data name="SettingsCategoryGeneralName" xml:space="preserve"><value>常规</value></data>
+  <data name="SettingsCategoryAgentsName" xml:space="preserve"><value>Agent</value></data>
+  <data name="SettingsCategoryNotificationsName" xml:space="preserve"><value>通知</value></data>
+  <data name="SettingsCategoryAudioName" xml:space="preserve"><value>音频</value></data>
+  <data name="SettingsCategoryKeyboardName" xml:space="preserve"><value>键盘</value></data>
+  <data name="SettingsCategoryIdentityName" xml:space="preserve"><value>身份</value></data>
+  <data name="SettingsCategoryUsageName" xml:space="preserve"><value>用量</value></data>
+  <data name="AddAgentChooseIcon.AutomationProperties.Name" xml:space="preserve"><value>选择智能体图标</value></data>
+  <data name="AddAgentRemoveIcon.AutomationProperties.Name" xml:space="preserve"><value>移除已选的智能体图标</value></data>
+  <data name="AddAgentCancel.AutomationProperties.Name" xml:space="preserve"><value>取消添加智能体</value></data>
+  <data name="AgentShareCopyAddress.AutomationProperties.Name" xml:space="preserve"><value>复制智能体地址</value></data>
+  <data name="AgentShareCopyLink.AutomationProperties.Name" xml:space="preserve"><value>复制智能体网页对话链接</value></data>
+  <data name="AskUserSkip.AutomationProperties.Name" xml:space="preserve"><value>跳过此问题</value></data>
+  <data name="PlanReviewSections.AutomationProperties.Name" xml:space="preserve"><value>打开完整计划并逐节审阅</value></data>
+  <data name="PlanReviewCopy.AutomationProperties.Name" xml:space="preserve"><value>复制执行计划</value></data>
+  <data name="ToolApprovalRequired.AutomationProperties.Name" xml:space="preserve"><value>需要批准</value></data>
+  <data name="ToolOpen.AutomationProperties.Name" xml:space="preserve"><value>打开工具链接</value></data>
+  <data name="ToolOpen.ToolTipService.ToolTip" xml:space="preserve"><value>在默认浏览器中打开此链接</value></data>
+  <data name="ToolCopyCommand.AutomationProperties.Name" xml:space="preserve"><value>复制命令</value></data>
+  <data name="ToolCopyCommand.ToolTipService.ToolTip" xml:space="preserve"><value>复制完整命令</value></data>
+  <data name="ToolRetry.AutomationProperties.Name" xml:space="preserve"><value>重试批准响应</value></data>
+  <data name="ToolExplainWhy.AutomationProperties.Name" xml:space="preserve"><value>请智能体说明为何需要此操作</value></data>
+  <data name="ToolStopTask.ToolTipService.ToolTip" xml:space="preserve"><value>这会停止整个智能体任务，而不只是这条命令。</value></data>
+  <data name="ToolDecline.AutomationProperties.Name" xml:space="preserve"><value>拒绝此命令</value></data>
+  <data name="ToolDecline.ToolTipService.ToolTip" xml:space="preserve"><value>仅拒绝这条命令，智能体可以继续。</value></data>
+  <data name="IdentityRefresh.AutomationProperties.Name" xml:space="preserve"><value>刷新 OpenOnion 余额</value></data>
+  <data name="IdentityReveal.AutomationProperties.Name" xml:space="preserve"><value>显示 OpenOnion API 密钥</value></data>
+  <data name="IdentityCopy.AutomationProperties.Name" xml:space="preserve"><value>复制 OpenOnion API 密钥</value></data>
+  <data name="IdentityTopUp.AutomationProperties.Name" xml:space="preserve"><value>打开 OpenOnion 充值页面</value></data>
+  <data name="KeyboardSearch.AutomationProperties.Name" xml:space="preserve"><value>搜索快捷键</value></data>
+  <data name="KeyboardResetAll.AutomationProperties.Name" xml:space="preserve"><value>将所有快捷键恢复为默认值</value></data>
+  <data name="ShortcutsDialogSearch.AutomationProperties.Name" xml:space="preserve"><value>搜索快捷键</value></data>
+  <data name="RestoreIdentityInput.AutomationProperties.Name" xml:space="preserve"><value>恢复短语或私钥</value></data>
+  <data name="SettingsSearch.AutomationProperties.Name" xml:space="preserve"><value>搜索设置</value></data>
+  <data name="UsageClear.AutomationProperties.Name" xml:space="preserve"><value>清除全部已记录的 token 用量</value></data>
+  <data name="AgentDetailShare.AutomationProperties.Name" xml:space="preserve"><value>分享此中继智能体</value></data>
+  <data name="AgentDetailCapabilities.AutomationProperties.Name" xml:space="preserve"><value>起草提问：你能做什么？</value></data>
+  <data name="ChatEmptyTitle.Text" xml:space="preserve"><value>还没有消息</value></data>
+  <data name="ChatEmptyDescription.Text" xml:space="preserve"><value>在下方输入消息即可开始对话。</value></data>
+  <data name="SettingsEnterToSendSwitch.AutomationProperties.Name" xml:space="preserve"><value>回车发送</value></data>
+  <data name="AddAgentRoot.AutomationProperties.Name" xml:space="preserve"><value>添加智能体</value></data>
+  <data name="AddAgentIconPreview.AutomationProperties.Name" xml:space="preserve"><value>智能体图标预览</value></data>
+  <data name="AddAgentConnectionOk.AutomationProperties.Name" xml:space="preserve"><value>连接成功</value></data>
+  <data name="AddAgentConnectionFailed.AutomationProperties.Name" xml:space="preserve"><value>连接失败</value></data>
+  <data name="AgentShareQrCode.AutomationProperties.Name" xml:space="preserve"><value>智能体网页对话的二维码</value></data>
+  <data name="AgentShareQrProgress.AutomationProperties.Name" xml:space="preserve"><value>正在生成二维码</value></data>
+  <data name="ComposerSkillList.AutomationProperties.Name" xml:space="preserve"><value>智能体技能</value></data>
+  <data name="ComposerPendingAttachments.AutomationProperties.Name" xml:space="preserve"><value>待发送的附件</value></data>
+  <data name="ComposerStopResponse.AutomationProperties.Name" xml:space="preserve"><value>停止回复</value></data>
+  <data name="AskUserImage.AutomationProperties.Name" xml:space="preserve"><value>问题配图。在默认查看器中打开。</value></data>
+  <data name="AskUserPassword.AutomationProperties.HelpText" xml:space="preserve"><value>敏感内容，字符已隐藏。</value></data>
+  <data name="AskUserSubmit.AutomationProperties.Name" xml:space="preserve"><value>提交回答</value></data>
+  <data name="PlanReviewBody.AutomationProperties.Name" xml:space="preserve"><value>执行计划</value></data>
+  <data name="PlanSectionList.AutomationProperties.Name" xml:space="preserve"><value>计划分节</value></data>
+  <data name="ToolRiskWarning.AutomationProperties.Name" xml:space="preserve"><value>风险警告</value></data>
+  <data name="IdentityAccountProgress.AutomationProperties.Name" xml:space="preserve"><value>正在加载 OpenOnion 账户</value></data>
+  <data name="IdentityMaskedKey.AutomationProperties.Name" xml:space="preserve"><value>已隐藏的 OpenOnion API 密钥</value></data>
+  <data name="IdentityShowPhraseButton.AutomationProperties.Name" xml:space="preserve"><value>显示恢复短语</value></data>
+  <data name="IdentityRestoreButton.AutomationProperties.Name" xml:space="preserve"><value>从恢复短语恢复身份</value></data>
+  <data name="IdentityRegenerate.AutomationProperties.Name" xml:space="preserve"><value>生成新的 ConnectOnion 身份</value></data>
+  <data name="SettingsNavGeneral.AutomationProperties.Name" xml:space="preserve"><value>常规设置</value></data>
+  <data name="SettingsNavAgents.AutomationProperties.Name" xml:space="preserve"><value>智能体设置</value></data>
+  <data name="SettingsNavNotifications.AutomationProperties.Name" xml:space="preserve"><value>通知设置</value></data>
+  <data name="SettingsNavAudio.AutomationProperties.Name" xml:space="preserve"><value>音频设置</value></data>
+  <data name="SettingsNavKeyboard.AutomationProperties.Name" xml:space="preserve"><value>快捷键设置</value></data>
+  <data name="SettingsNavIdentity.AutomationProperties.Name" xml:space="preserve"><value>身份设置</value></data>
+  <data name="SettingsNavUsage.AutomationProperties.Name" xml:space="preserve"><value>Token 用量</value></data>
+  <data name="SettingsCategoryPicker.AutomationProperties.Name" xml:space="preserve"><value>设置分类</value></data>
+  <data name="AboutLogo.AutomationProperties.Name" xml:space="preserve"><value>ConnectOnion 标志</value></data>
+  <data name="SidebarLogo.AutomationProperties.Name" xml:space="preserve"><value>ConnectOnion 标志</value></data>
+  <data name="SidebarDismissLayer.AutomationProperties.Name" xml:space="preserve"><value>关闭导航抽屉</value></data>
+  <data name="AgentDetailIcon.AutomationProperties.Name" xml:space="preserve"><value>智能体图标</value></data>
+  <data name="AgentDetailBalance.AutomationProperties.Name" xml:space="preserve"><value>查看余额并为此智能体充值</value></data>
+  <data name="AgentDetailCapabilitiesProgress.AutomationProperties.Name" xml:space="preserve"><value>正在加载智能体能力</value></data>
+  <data name="ChatEditMessageInput.AutomationProperties.Name" xml:space="preserve"><value>编辑消息内容</value></data>
+  <data name="HomeAddAgentButton.AutomationProperties.Name" xml:space="preserve"><value>添加另一个智能体</value></data>
+  <data name="HomeOpeningAgent.AutomationProperties.Name" xml:space="preserve"><value>正在打开智能体</value></data>
+  <data name="SettingsThemeChoice.AutomationProperties.Name" xml:space="preserve"><value>主题</value></data>
+  <data name="SettingsLanguageChoice.AutomationProperties.Name" xml:space="preserve"><value>应用语言</value></data>
+  <data name="SettingsCloseBehaviorChoice.AutomationProperties.Name" xml:space="preserve"><value>窗口关闭行为</value></data>
+  <data name="SettingsFontChoice.AutomationProperties.Name" xml:space="preserve"><value>消息字号</value></data>
+  <data name="SettingsNotificationsSwitch.AutomationProperties.Name" xml:space="preserve"><value>启用通知</value></data>
+  <data name="SettingsNotifyReplies.AutomationProperties.Name" xml:space="preserve"><value>智能体回复时通知</value></data>
+  <data name="SettingsNotifyTasks.AutomationProperties.Name" xml:space="preserve"><value>任务完成时通知</value></data>
+  <data name="SettingsNotifyApprovals.AutomationProperties.Name" xml:space="preserve"><value>需要批准时通知</value></data>
+  <data name="SettingsNotifyConnection.AutomationProperties.Name" xml:space="preserve"><value>连接异常时通知</value></data>
+  <data name="SettingsNotifySound.AutomationProperties.Name" xml:space="preserve"><value>播放通知声音</value></data>
+  <data name="SettingsNotifyPreview.AutomationProperties.Name" xml:space="preserve"><value>显示消息预览</value></data>
+  <data name="SettingsMicChoice.AutomationProperties.Name" xml:space="preserve"><value>麦克风</value></data>
+  <data name="SettingsAgentsAddButton.AutomationProperties.Name" xml:space="preserve"><value>添加智能体</value></data>
+  <data name="SidebarAddAgentButton.AutomationProperties.Name" xml:space="preserve"><value>添加智能体</value></data>
+  <data name="NoAgentsTitle" xml:space="preserve"><value>没有可用的智能体</value></data>
+  <data name="NoAgentsBody" xml:space="preserve"><value>开始对话前请先添加一个智能体。</value></data>
+  <data name="SettingsLanguageRestartNow.Content" xml:space="preserve"><value>立即重启</value></data>
+  <data name="HomeEmptyAddAgent.Content" xml:space="preserve"><value>添加第一个智能体</value></data>
+  <data name="HomeEmptyDocs.Content" xml:space="preserve"><value>如何获取？</value></data>
+  <data name="HomeDocsOpenFailedTitle" xml:space="preserve"><value>无法打开文档</value></data>
+  <data name="HomeDocsOpenFailedBody" xml:space="preserve"><value>请在浏览器中访问 {0}。</value></data>
+  <data name="AddAgentWhereToGetOne.Content" xml:space="preserve"><value>到哪里获取智能体地址？</value></data>
+  <data name="AddAgentDocsOpenFailed" xml:space="preserve"><value>无法打开文档。请在浏览器中访问 {0}。</value></data>
 </root>

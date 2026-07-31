@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace ConnectOnion.WinUIClient.Models;
@@ -51,6 +52,21 @@ public sealed partial class SessionSummary : Common.ObservableObject
     [JsonPropertyName("isPinned")]
     public partial bool IsPinned { get; set; }
 
+    /// <summary>
+    /// False while <see cref="Title"/> is still the "Conversation N" placeholder that
+    /// <see cref="NewConversation"/> stamped on it; true once the title has been settled — either
+    /// derived from the conversation's first message or typed by the user in a rename.
+    ///
+    /// This exists so that "is the title still a placeholder?" is a stored fact rather than a
+    /// pattern match on the title text. The old <c>^Conversation \d+$</c> test made the
+    /// placeholder untranslatable (a localized placeholder stops matching, so the conversation
+    /// never picks up a real title) and made rename unsafe (a user-chosen title that happened to
+    /// match would be overwritten by the next message). See schema migration v7.
+    /// </summary>
+    [ObservableProperty]
+    [JsonPropertyName("hasCustomTitle")]
+    public partial bool HasCustomTitle { get; set; }
+
     private string _mode = Protocol.AgentModes.Safe;
 
     /// <summary>
@@ -68,21 +84,79 @@ public sealed partial class SessionSummary : Common.ObservableObject
         set => SetProperty(ref _mode, Protocol.AgentModes.IsValid(value) ? value : Protocol.AgentModes.Safe);
     }
 
+    /// <summary>Collapses runs of whitespace so a multi-line prompt becomes a single-line title.</summary>
+    private static readonly Regex Whitespace = new(@"\s+", RegexOptions.Compiled);
+
+    /// <summary>Longest auto-derived or user-entered title kept, in chars.</summary>
+    public const int MaxTitleLength = 48;
+
     /// <summary>
-    /// Builds a fresh "Conversation N" session for an agent, numbering it after
-    /// the agent's existing conversations. This is the single source of truth for
-    /// new-session shape (id/title/timestamps) — callers still Add/Insert it into
-    /// their list and persist. <paramref name="existing"/> is only read to compute N.
+    /// Replaces a still-placeholder title with the conversation's opening prompt, and marks it
+    /// settled. Does nothing once <see cref="HasCustomTitle"/> is true — that covers both a title
+    /// already derived from the first message and one the user typed, neither of which a later
+    /// message may overwrite.
     /// </summary>
-    public static SessionSummary NewConversation(string agentId, IEnumerable<SessionSummary> existing)
+    /// <returns>True if the title changed.</returns>
+    public bool TryApplyTitleFromPrompt(string? prompt)
+    {
+        if (HasCustomTitle || string.IsNullOrWhiteSpace(prompt)) return false;
+
+        var title = Whitespace.Replace(prompt.Trim(), " ");
+        Title = title.Length > MaxTitleLength ? title[..MaxTitleLength] : title;
+        HasCustomTitle = true;
+        return true;
+    }
+
+    /// <summary>
+    /// Applies a user-chosen title. Blank input is rejected rather than stored: an empty title is
+    /// treated as a corrupt row by <see cref="Data.SessionRepository"/> and would drop the
+    /// conversation out of every list on the next load.
+    /// </summary>
+    /// <returns>True if the title changed.</returns>
+    public bool TryRename(string? title)
+    {
+        if (string.IsNullOrWhiteSpace(title)) return false;
+
+        var trimmed = Whitespace.Replace(title.Trim(), " ");
+        if (trimmed.Length > MaxTitleLength) trimmed = trimmed[..MaxTitleLength];
+        if (string.Equals(trimmed, Title, StringComparison.Ordinal) && HasCustomTitle) return false;
+
+        Title = trimmed;
+        HasCustomTitle = true;
+        return true;
+    }
+
+    /// <summary>The untranslated placeholder shape, used when a caller supplies no format.
+    /// Core cannot reach the app's resource map, so the localized wording is passed in.</summary>
+    public const string DefaultTitleFormat = "Conversation {0}";
+
+    /// <summary>
+    /// Builds a fresh placeholder-titled session for an agent, numbering it after the agent's
+    /// existing conversations. This is the single source of truth for new-session shape
+    /// (id/title/timestamps) — callers still Add/Insert it into their list and persist.
+    /// <paramref name="existing"/> is only read to compute N.
+    /// </summary>
+    /// <param name="titleFormat">
+    /// A composite format whose <c>{0}</c> is the conversation number, e.g. "Conversation {0}".
+    /// The app project passes the localized string; Core has no resource map of its own. Null or
+    /// blank falls back to <see cref="DefaultTitleFormat"/>. The result is marked
+    /// <see cref="HasCustomTitle"/> = false regardless of wording, which is what lets the
+    /// placeholder be translated without breaking auto-titling.
+    /// </param>
+    public static SessionSummary NewConversation(
+        string agentId,
+        IEnumerable<SessionSummary> existing,
+        string? titleFormat = null)
     {
         var count = existing.Count(s => s.AgentId == agentId) + 1;
         var timestamp = DateTime.UtcNow.ToString("o");
+        var format = string.IsNullOrWhiteSpace(titleFormat) ? DefaultTitleFormat : titleFormat;
         return new SessionSummary
         {
             Id = Guid.NewGuid().ToString(),
             AgentId = agentId,
-            Title = $"Conversation {count}",
+            Title = string.Format(System.Globalization.CultureInfo.CurrentCulture, format, count),
+            HasCustomTitle = false,
             CreatedAt = timestamp,
             UpdatedAt = timestamp,
         };

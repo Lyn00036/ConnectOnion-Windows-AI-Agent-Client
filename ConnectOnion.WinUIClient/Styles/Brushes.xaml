@@ -121,30 +121,6 @@
             <SolidColorBrush x:Key="AvatarBackgroundBrush" Color="{ThemeResource AvatarBackgroundColor}" />
             <SolidColorBrush x:Key="AvatarForegroundBrush" Color="{ThemeResource AvatarForegroundColor}" />
             <SolidColorBrush x:Key="AvatarBorderBrush" Color="{ThemeResource AvatarBorderColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteBlueBackgroundBrush" Color="{ThemeResource AvatarPaletteBlueBackgroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteBlueForegroundBrush" Color="{ThemeResource AvatarPaletteBlueForegroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteVioletBackgroundBrush" Color="{ThemeResource AvatarPaletteVioletBackgroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteVioletForegroundBrush" Color="{ThemeResource AvatarPaletteVioletForegroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteTealBackgroundBrush" Color="{ThemeResource AvatarPaletteTealBackgroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteTealForegroundBrush" Color="{ThemeResource AvatarPaletteTealForegroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteCoralBackgroundBrush" Color="{ThemeResource AvatarPaletteCoralBackgroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteCoralForegroundBrush" Color="{ThemeResource AvatarPaletteCoralForegroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteIndigoBackgroundBrush" Color="{ThemeResource AvatarPaletteIndigoBackgroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteIndigoForegroundBrush" Color="{ThemeResource AvatarPaletteIndigoForegroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteCyanBackgroundBrush" Color="{ThemeResource AvatarPaletteCyanBackgroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteCyanForegroundBrush" Color="{ThemeResource AvatarPaletteCyanForegroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteEmeraldBackgroundBrush" Color="{ThemeResource AvatarPaletteEmeraldBackgroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteEmeraldForegroundBrush" Color="{ThemeResource AvatarPaletteEmeraldForegroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteAmberBackgroundBrush" Color="{ThemeResource AvatarPaletteAmberBackgroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteAmberForegroundBrush" Color="{ThemeResource AvatarPaletteAmberForegroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteRoseBackgroundBrush" Color="{ThemeResource AvatarPaletteRoseBackgroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteRoseForegroundBrush" Color="{ThemeResource AvatarPaletteRoseForegroundColor}" />
-            <SolidColorBrush x:Key="AvatarPalettePlumBackgroundBrush" Color="{ThemeResource AvatarPalettePlumBackgroundColor}" />
-            <SolidColorBrush x:Key="AvatarPalettePlumForegroundBrush" Color="{ThemeResource AvatarPalettePlumForegroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteSlateBackgroundBrush" Color="{ThemeResource AvatarPaletteSlateBackgroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteSlateForegroundBrush" Color="{ThemeResource AvatarPaletteSlateForegroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteOliveBackgroundBrush" Color="{ThemeResource AvatarPaletteOliveBackgroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteOliveForegroundBrush" Color="{ThemeResource AvatarPaletteOliveForegroundColor}" />
 
             <!-- Usage heatmap ramp. Read by HeatmapLevelToBrushConverter through
                  Application.Current.Resources, so both themes must define all five keys. -->
@@ -308,30 +284,6 @@
             <SolidColorBrush x:Key="AvatarBackgroundBrush" Color="{ThemeResource AvatarBackgroundColor}" />
             <SolidColorBrush x:Key="AvatarForegroundBrush" Color="{ThemeResource AvatarForegroundColor}" />
             <SolidColorBrush x:Key="AvatarBorderBrush" Color="{ThemeResource AvatarBorderColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteBlueBackgroundBrush" Color="{ThemeResource AvatarPaletteBlueBackgroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteBlueForegroundBrush" Color="{ThemeResource AvatarPaletteBlueForegroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteVioletBackgroundBrush" Color="{ThemeResource AvatarPaletteVioletBackgroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteVioletForegroundBrush" Color="{ThemeResource AvatarPaletteVioletForegroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteTealBackgroundBrush" Color="{ThemeResource AvatarPaletteTealBackgroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteTealForegroundBrush" Color="{ThemeResource AvatarPaletteTealForegroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteCoralBackgroundBrush" Color="{ThemeResource AvatarPaletteCoralBackgroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteCoralForegroundBrush" Color="{ThemeResource AvatarPaletteCoralForegroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteIndigoBackgroundBrush" Color="{ThemeResource AvatarPaletteIndigoBackgroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteIndigoForegroundBrush" Color="{ThemeResource AvatarPaletteIndigoForegroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteCyanBackgroundBrush" Color="{ThemeResource AvatarPaletteCyanBackgroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteCyanForegroundBrush" Color="{ThemeResource AvatarPaletteCyanForegroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteEmeraldBackgroundBrush" Color="{ThemeResource AvatarPaletteEmeraldBackgroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteEmeraldForegroundBrush" Color="{ThemeResource AvatarPaletteEmeraldForegroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteAmberBackgroundBrush" Color="{ThemeResource AvatarPaletteAmberBackgroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteAmberForegroundBrush" Color="{ThemeResource AvatarPaletteAmberForegroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteRoseBackgroundBrush" Color="{ThemeResource AvatarPaletteRoseBackgroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteRoseForegroundBrush" Color="{ThemeResource AvatarPaletteRoseForegroundColor}" />
-            <SolidColorBrush x:Key="AvatarPalettePlumBackgroundBrush" Color="{ThemeResource AvatarPalettePlumBackgroundColor}" />
-            <SolidColorBrush x:Key="AvatarPalettePlumForegroundBrush" Color="{ThemeResource AvatarPalettePlumForegroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteSlateBackgroundBrush" Color="{ThemeResource AvatarPaletteSlateBackgroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteSlateForegroundBrush" Color="{ThemeResource AvatarPaletteSlateForegroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteOliveBackgroundBrush" Color="{ThemeResource AvatarPaletteOliveBackgroundColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteOliveForegroundBrush" Color="{ThemeResource AvatarPaletteOliveForegroundColor}" />
 
             <!-- Usage heatmap ramp. Read by HeatmapLevelToBrushConverter through
                  Application.Current.Resources, so both themes must define all five keys. -->
@@ -473,30 +425,6 @@
             <SolidColorBrush x:Key="AvatarBackgroundBrush" Color="{ThemeResource SystemColorHighlightColor}" />
             <SolidColorBrush x:Key="AvatarForegroundBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
             <SolidColorBrush x:Key="AvatarBorderBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteBlueBackgroundBrush" Color="{ThemeResource SystemColorHighlightColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteBlueForegroundBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteVioletBackgroundBrush" Color="{ThemeResource SystemColorHighlightColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteVioletForegroundBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteTealBackgroundBrush" Color="{ThemeResource SystemColorHighlightColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteTealForegroundBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteCoralBackgroundBrush" Color="{ThemeResource SystemColorHighlightColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteCoralForegroundBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteIndigoBackgroundBrush" Color="{ThemeResource SystemColorHighlightColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteIndigoForegroundBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteCyanBackgroundBrush" Color="{ThemeResource SystemColorHighlightColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteCyanForegroundBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteEmeraldBackgroundBrush" Color="{ThemeResource SystemColorHighlightColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteEmeraldForegroundBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteAmberBackgroundBrush" Color="{ThemeResource SystemColorHighlightColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteAmberForegroundBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteRoseBackgroundBrush" Color="{ThemeResource SystemColorHighlightColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteRoseForegroundBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
-            <SolidColorBrush x:Key="AvatarPalettePlumBackgroundBrush" Color="{ThemeResource SystemColorHighlightColor}" />
-            <SolidColorBrush x:Key="AvatarPalettePlumForegroundBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteSlateBackgroundBrush" Color="{ThemeResource SystemColorHighlightColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteSlateForegroundBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteOliveBackgroundBrush" Color="{ThemeResource SystemColorHighlightColor}" />
-            <SolidColorBrush x:Key="AvatarPaletteOliveForegroundBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
 
             <SolidColorBrush x:Key="HeatmapLevel0Brush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="HeatmapLevel1Brush" Color="{ThemeResource SystemColorButtonFaceColor}" />

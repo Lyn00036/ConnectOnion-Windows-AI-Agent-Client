@@ -80,7 +80,7 @@ public sealed class AddAgentIconTests
             repository,
             new ConnectionTester(new HttpClient(new HealthyAgentHandler())))
         {
-            Input = $"wss://{host}.example.test/agent",
+            Input = $"https://{host}.example.test/agent",
         };
 
         await viewModel.TestConnectionAsync(CancellationToken.None);

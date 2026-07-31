@@ -161,11 +161,12 @@
                                                            FontSize="{x:Bind MessageFontSize, Mode=OneWay}"
                                                            Foreground="{ThemeResource TextPrimaryBrush}" />
                         </Border>
-                        <!-- The reserved row now carries useful time metadata at rest. Actions
-                             fade into the adjacent slot without moving the transcript. -->
-                        <Grid MinHeight="24"
+                        <!-- Reserve the action row so hovering never shifts later messages. Time
+                             and commands fade in together when this bubble is hovered or focused. -->
+                        <Grid MinHeight="36"
                               HorizontalAlignment="Right"
-                              ColumnSpacing="4">
+                              ColumnSpacing="4"
+                              Opacity="{x:Bind UserActionsOpacity, Mode=OneWay}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
@@ -177,22 +178,18 @@
                             <StackPanel Grid.Column="1"
                                         Orientation="Horizontal"
                                          HorizontalAlignment="Right"
-                                         Spacing="2"
-                                         Opacity="{x:Bind UserActionsOpacity, Mode=OneWay}"
-                                        IsHitTestVisible="{x:Bind ShowUserActions, Mode=OneWay}">
-                                <StackPanel.OpacityTransition>
-                                    <ScalarTransition Duration="0:0:0.16" />
-                                </StackPanel.OpacityTransition>
+                                         Spacing="0"
+                                         Opacity="0.78">
                                 <Button x:Uid="ChatRetryFromMessage" Tag="{x:Bind}"
                                         Padding="3"
-                                        MinWidth="24"
-                                        MinHeight="24"
+                                        MinWidth="36"
+                                        MinHeight="36"
                                         Background="Transparent"
                                         BorderThickness="0"
-                                        IsTabStop="{x:Bind ShowUserActions, Mode=OneWay}"
+                                        IsTabStop="True"
                                         Click="RetryUserMessage_Click"
-                                        AutomationProperties.Name="Retry from this message"
-                                        ToolTipService.ToolTip="Retry from this message"
+                                        AutomationProperties.Name="Retry in this conversation"
+                                        ToolTipService.ToolTip="Retry in this conversation"
                                         Visibility="{x:Bind CanEdit, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                                     <!-- All three action icons take the Size16-scaled-to-12 treatment, even
                                          the two that do have a Size12 glyph: mixing the two fonts in one row
@@ -208,14 +205,14 @@
                                 </Button>
                                 <Button x:Uid="ChatEditMessage" Tag="{x:Bind}"
                                         Padding="3"
-                                        MinWidth="24"
-                                        MinHeight="24"
+                                        MinWidth="36"
+                                        MinHeight="36"
                                         Background="Transparent"
                                         BorderThickness="0"
-                                        IsTabStop="{x:Bind ShowUserActions, Mode=OneWay}"
+                                        IsTabStop="True"
                                         Click="EditUserMessage_Click"
-                                        AutomationProperties.Name="Edit message"
-                                        ToolTipService.ToolTip="Edit message"
+                                        AutomationProperties.Name="Edit in a new conversation"
+                                        ToolTipService.ToolTip="Edit in a new conversation"
                                         Visibility="{x:Bind CanEdit, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                                     <ic:FluentIcon Icon="Edit" IconVariant="Regular" IconSize="Size16"
                                                    RenderTransformOrigin="0.5,0.5"
@@ -226,11 +223,11 @@
                                     </ic:FluentIcon>
                                 </Button>
                                 <Button x:Uid="ChatCopyMessage" Padding="3"
-                                        MinWidth="24"
-                                        MinHeight="24"
+                                        MinWidth="36"
+                                        MinHeight="36"
                                         Background="Transparent"
                                         BorderThickness="0"
-                                        IsTabStop="{x:Bind ShowUserActions, Mode=OneWay}"
+                                        IsTabStop="True"
                                         Click="CopyMessage_Click"
                                         AutomationProperties.Name="Copy message"
                                         ToolTipService.ToolTip="Copy message">
@@ -254,7 +251,7 @@
                             Visibility="{x:Bind IsEditing, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                         <StackPanel Spacing="10">
                             <!-- Top: this wraps, so it opts out of the implicit style's centring. -->
-                            <TextBox Text="{x:Bind EditDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                            <TextBox x:Uid="ChatEditMessageInput" Text="{x:Bind EditDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                      VerticalContentAlignment="Top"
                                      AcceptsReturn="True"
                                      TextWrapping="Wrap"
@@ -279,7 +276,7 @@
                                             Content="Cancel"
                                             Click="CancelEditUserMessage_Click" />
                                     <Button x:Uid="ChatEditSave" Tag="{x:Bind}"
-                                            Content="Save"
+                                            Content="Send"
                                             Style="{StaticResource AccentButtonStyle}"
                                             IsEnabled="{x:Bind CanSaveEdit, Mode=OneWay}"
                                             Click="SaveEditUserMessage_Click" />
@@ -395,9 +392,10 @@
                                 Click="SubmitOnboardPayment_Click"
                                 IsEnabled="{x:Bind IsOnboardingInputEnabled, Mode=OneWay}" />
                     </StackPanel>
-                    <Grid MinHeight="24"
+                    <Grid MinHeight="36"
                           HorizontalAlignment="Left"
-                          ColumnSpacing="4">
+                          ColumnSpacing="4"
+                          Opacity="{x:Bind UserActionsOpacity, Mode=OneWay}">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
@@ -408,22 +406,18 @@
                                    Foreground="{ThemeResource TextTertiaryBrush}" />
                         <StackPanel Grid.Column="1"
                                     Orientation="Horizontal"
-                                    Spacing="2"
-                                    Opacity="{x:Bind UserActionsOpacity, Mode=OneWay}"
-                                    IsHitTestVisible="{x:Bind ShowUserActions, Mode=OneWay}">
-                            <StackPanel.OpacityTransition>
-                                <ScalarTransition Duration="0:0:0.16" />
-                            </StackPanel.OpacityTransition>
+                                    Spacing="0"
+                                    Opacity="0.78">
                             <Button x:Uid="ChatRetryResponse" Tag="{x:Bind}"
                                     Padding="3"
-                                    MinWidth="24"
-                                    MinHeight="24"
+                                    MinWidth="36"
+                                    MinHeight="36"
                                     Background="Transparent"
                                     BorderThickness="0"
-                                    IsTabStop="{x:Bind ShowUserActions, Mode=OneWay}"
+                                    IsTabStop="True"
                                     Click="RetryAgentMessage_Click"
-                                    AutomationProperties.Name="Retry this response"
-                                    ToolTipService.ToolTip="Retry this response">
+                                    AutomationProperties.Name="Retry response in this conversation"
+                                    ToolTipService.ToolTip="Retry response in this conversation">
                                 <!-- Matches the user-message action row above: same font, same scale. -->
                                 <ic:FluentIcon Icon="ArrowClockwise" IconVariant="Regular" IconSize="Size16"
                                                RenderTransformOrigin="0.5,0.5"
@@ -434,11 +428,11 @@
                                 </ic:FluentIcon>
                             </Button>
                             <Button x:Uid="ChatCopyResponse" Padding="3"
-                                    MinWidth="24"
-                                    MinHeight="24"
+                                    MinWidth="36"
+                                    MinHeight="36"
                                     Background="Transparent"
                                     BorderThickness="0"
-                                    IsTabStop="{x:Bind ShowUserActions, Mode=OneWay}"
+                                    IsTabStop="True"
                                     Click="CopyMessage_Click"
                                     AutomationProperties.Name="Copy response"
                                     ToolTipService.ToolTip="Copy response">
@@ -480,11 +474,11 @@
                          StackPanel reserves the gap for a collapsed slot too — which is what left
                          a blank strip under the tool-activity header. Gaps go on margins. -->
                     <StackPanel>
-                        <!-- Running label, for the window before any text has streamed in. -->
+                        <!-- Running label for thinking, pre-stream connection work, and reconnect. -->
                         <StackPanel Orientation="Horizontal"
                                     Spacing="6"
                                     Padding="0,4"
-                                    Visibility="{x:Bind IsThinkingRunning, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                                    Visibility="{x:Bind IsRunningProgressActivity, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                             <!-- Win2D starburst, not a ProgressRing: a spinner in a transcript
                                  reads as a progress bar and invites "how far along is it?", which
                                  this state cannot answer. IsActive is the message's own running
@@ -501,8 +495,8 @@
                                  rather than one per row ever seen. -->
                             <!-- x:Name is required by x:Load; it is not referenced from code. -->
                             <controls:ThinkingIndicator x:Name="ThinkingMark"
-                                                        x:Load="{x:Bind IsThinkingRunning, Mode=OneWay}"
-                                                        IsActive="{x:Bind IsThinkingRunning, Mode=OneWay}"
+                                                        x:Load="{x:Bind IsRunningProgressActivity, Mode=OneWay}"
+                                                        IsActive="{x:Bind IsRunningProgressActivity, Mode=OneWay}"
                                                         VerticalAlignment="Center" />
                             <TextBlock Text="{x:Bind ActivityHeaderTitle, Mode=OneWay}"
                                        FontSize="14"
@@ -656,8 +650,10 @@
                 </Grid>
             </DataTemplate>
 
-            <!-- A turn's model/token cost is supporting metadata, not another process card.
-                 Keep it to one quiet line immediately before the final assistant output. -->
+            <!-- A turn's model/token cost is supporting metadata, not another process card. It sits
+                 immediately *before* the final assistant output, so the process records end
+                 together and the turn ends on the answer rather than on a token count.
+                 ChatTurnProjection.AppendCompletedTurn owns that ordering. -->
             <!-- Turn metadata, two lines: "model · duration" over "tokens · context · tools". The
                  second line is quieter and hides when there's nothing beyond the first segment, so
                  short turns stay one line. AutomationProperties.Name keeps the full single-line
@@ -772,13 +768,13 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <controls:AgentAvatar Size="32"
                                       CornerRadius="16"
                                       FontSize="11"
                                       VerticalAlignment="Center"
                                       Initial="{x:Bind Vm.SelectedAgentInitial, Mode=OneWay}"
-                                      PaletteIndex="{x:Bind Vm.SelectedAgentAvatarPaletteIndex, Mode=OneWay}"
                                       ImagePath="{x:Bind Vm.SelectedAgentIconPath, Mode=OneWay}" />
                 <StackPanel Grid.Column="1"
                             VerticalAlignment="Center"
@@ -812,6 +808,16 @@
                                    Visibility="{x:Bind Vm.PresenceDetail, Mode=OneWay, Converter={StaticResource StringToVis}}" />
                     </StackPanel>
                 </StackPanel>
+                <TextBlock Grid.Column="2"
+                           Margin="8,0,0,0"
+                           MaxWidth="180"
+                           VerticalAlignment="Center"
+                           Text="{x:Bind Vm.SessionUpdatedTimeText, Mode=OneWay}"
+                           FontSize="11"
+                           Foreground="{ThemeResource TextTertiaryBrush}"
+                           TextTrimming="CharacterEllipsis"
+                           TextWrapping="NoWrap"
+                           Visibility="{x:Bind Vm.SessionUpdatedTimeText, Mode=OneWay, Converter={StaticResource StringToVis}}" />
             </Grid>
         </Border>
 
@@ -827,66 +833,11 @@
                   Padding="24,14,24,26"
                   HorizontalAlignment="Stretch"
                   HorizontalContentAlignment="Stretch">
-            <!-- Conversation identity belongs to the transcript, not permanent page chrome.
-                 Keeping it in the ListView header makes it available at the start of a chat and
-                 lets it scroll away once the user is reading the conversation. A lightweight
-                 identity block — avatar, friendly agent name, presence + connection detail —
-                 under a hairline divider, so "who am I talking to and is it there" is answered at
-                 a glance without a heavy fixed header duplicating the window title bar. Live
-                 connection phase stays always-visible below the composer. -->
-            <ListView.Header>
-                <Grid MaxWidth="{StaticResource ChatColumnWidth}"
-                      Margin="0,0,0,16"
-                      HorizontalAlignment="Stretch"
-                      Visibility="Collapsed">
-                    <Border BorderBrush="{ThemeResource BorderSubtleBrush}"
-                            BorderThickness="0,0,0,1"
-                            Padding="0,2,0,14"
-                            Visibility="{x:Bind Vm.HasAgent, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                        <Grid ColumnSpacing="12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <controls:AgentAvatar Grid.Column="0"
-                                                  Size="40"
-                                                  CornerRadius="20"
-                                                  FontSize="16"
-                                                  VerticalAlignment="Center"
-                                                  Initial="{x:Bind Vm.SelectedAgentInitial, Mode=OneWay}"
-                                                  PaletteIndex="{x:Bind Vm.SelectedAgentAvatarPaletteIndex, Mode=OneWay}"
-                                                  ImagePath="{x:Bind Vm.SelectedAgentIconPath, Mode=OneWay}" />
-                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="3">
-                                <TextBlock Text="{x:Bind Vm.SelectedAgentDisplayName, Mode=OneWay}"
-                                           FontSize="16"
-                                           FontWeight="SemiBold"
-                                           Foreground="{ThemeResource TextPrimaryBrush}"
-                                           TextTrimming="CharacterEllipsis" />
-                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                    <Ellipse Width="7" Height="7"
-                                             VerticalAlignment="Center"
-                                             Fill="{x:Bind Vm.Presence, Mode=OneWay, Converter={StaticResource PresenceToBrush}}" />
-                                    <TextBlock Text="{x:Bind Vm.PresenceLabel, Mode=OneWay}"
-                                               FontSize="12"
-                                               VerticalAlignment="Center"
-                                               Foreground="{ThemeResource TextSecondaryBrush}" />
-                                    <TextBlock Text="·"
-                                               FontSize="12"
-                                               VerticalAlignment="Center"
-                                               Foreground="{ThemeResource TextTertiaryBrush}"
-                                               Visibility="{x:Bind Vm.PresenceDetail, Mode=OneWay, Converter={StaticResource StringToVis}}" />
-                                    <TextBlock Text="{x:Bind Vm.PresenceDetail, Mode=OneWay}"
-                                               FontSize="12"
-                                               VerticalAlignment="Center"
-                                               TextTrimming="CharacterEllipsis"
-                                               Foreground="{ThemeResource TextTertiaryBrush}"
-                                               Visibility="{x:Bind Vm.PresenceDetail, Mode=OneWay, Converter={StaticResource StringToVis}}" />
-                                </StackPanel>
-                            </StackPanel>
-                        </Grid>
-                    </Border>
-                </Grid>
-            </ListView.Header>
+            <!-- No ListView.Header. Conversation identity is the pinned Row-0 header above:
+                 it stays visible through long tool runs, which is the whole point of having it.
+                 A second copy used to live here, scrolling with the transcript, and had been
+                 hardcoded Visibility="Collapsed" — so every chat page built an agent avatar,
+                 name and presence block that could never render. -->
             <ListView.ItemContainerStyle>
                 <Style TargetType="ListViewItem">
                     <Setter Property="HorizontalContentAlignment" Value="Stretch" />
@@ -945,8 +896,8 @@
                     </animations:Implicit.ShowAnimations>
                 </controls:OfflineNoticeBar>
 
-                <!-- Transport state belongs to the composer surface; client-side failures
-                     still surface inline in the conversation as Error activity bubbles. -->
+                <!-- Transport progress lives in the transcript; the composer keeps the live
+                     usage readout but does not duplicate Connecting/Working beneath it. -->
                 <controls:ChatComposer x:Name="Composer"
                                        CanSubmit="{x:Bind Vm.CanSend, Mode=OneWay}"
                                        EnterToSubmit="{x:Bind Vm.EnterToSend, Mode=OneWay}"
@@ -954,7 +905,7 @@
                                        CanStop="{x:Bind Vm.CanStop, Mode=OneWay}"
                                        Mode="{x:Bind Vm.CurrentMode, Mode=OneWay}"
                                        ShowModeSelector="True"
-                                       ShowConnectionStatus="True"
+                                       ShowConnectionStatus="False"
                                        ConnectionPhase="{x:Bind Vm.ConnectionPhase, Mode=OneWay}"
                                        ConnectionStatusText="{x:Bind Vm.ConnectionPhaseText, Mode=OneWay}"
                                        UsageText="{x:Bind Vm.LiveUsageText, Mode=OneWay}"

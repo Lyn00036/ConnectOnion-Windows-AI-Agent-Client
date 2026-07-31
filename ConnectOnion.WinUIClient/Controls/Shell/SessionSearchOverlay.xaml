@@ -98,16 +98,27 @@
                         <ListView.ItemTemplate>
                             <DataTemplate x:DataType="models:SessionSearchItem">
                                 <Grid ColumnSpacing="16"
-                                      AutomationProperties.Name="{x:Bind AccessibilityName}">
+                                      AutomationProperties.Name="{x:Bind AccessibilityName, Mode=OneWay}">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Text="{x:Bind Title}"
-                                               FontSize="13"
-                                               Foreground="{ThemeResource TextPrimaryBrush}"
-                                               TextTrimming="CharacterEllipsis"
-                                               VerticalAlignment="Center" />
+                                    <StackPanel Spacing="2" VerticalAlignment="Center">
+                                        <TextBlock Text="{x:Bind Title}"
+                                                   FontSize="13"
+                                                   Foreground="{ThemeResource TextPrimaryBrush}"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <!-- Present only when the transcript, not the title, is
+                                             what matched — so the row can show why it came back.
+                                             A title match needs no explanation. -->
+                                        <TextBlock Text="{x:Bind Snippet, Mode=OneWay}"
+                                                   FontSize="11"
+                                                   Foreground="{ThemeResource TextTertiaryBrush}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   TextWrapping="NoWrap"
+                                                   MaxLines="1"
+                                                   Visibility="{x:Bind HasSnippet, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                                    </StackPanel>
                                     <TextBlock Grid.Column="1"
                                                MaxWidth="160"
                                                Text="{x:Bind AgentDisplayName}"

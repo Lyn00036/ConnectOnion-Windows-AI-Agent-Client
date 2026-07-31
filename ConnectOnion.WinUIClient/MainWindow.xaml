@@ -70,17 +70,6 @@
                         IsEnabled="False" />
                     <MenuFlyoutSeparator x:Name="RecentChatsEndSeparator" />
                     <MenuFlyoutItem
-                        x:Uid="HistoryNewChat"
-                        Text="New Chat"
-                        Command="{x:Bind NewChatFromTrayCommand}">
-                        <MenuFlyoutItem.Icon>
-                            <ic:FluentIcon Icon="Add"
-                                           IconVariant="Regular"
-                                           IconSize="Size16" />
-                        </MenuFlyoutItem.Icon>
-                    </MenuFlyoutItem>
-                    <MenuFlyoutSeparator />
-                    <MenuFlyoutItem
                         x:Uid="HistoryExit"
                         Text="Exit"
                         Command="{x:Bind ExitFromTrayCommand}" />
@@ -141,17 +130,17 @@
                                    IconSize="Size20"
                                    Foreground="{ThemeResource TextSecondaryBrush}" />
                 </Button>
-                <MenuBar Background="Transparent"
-                         BorderThickness="0"
-                         VerticalAlignment="Center">
+            <MenuBar Background="Transparent"
+                     BorderThickness="0"
+                     VerticalAlignment="Center">
             <MenuBarItem x:Uid="MenuFile" Title="File">
                         <MenuFlyoutItem x:Uid="MenuNewChat" x:Name="NewChatMenuItem" Text="New Chat"
                                         KeyboardAcceleratorTextOverride="Ctrl+N"
                                         Click="NewChat_Click" />
-                        <MenuFlyoutItem x:Uid="MenuOpenFolder" x:Name="OpenFolderMenuItem" Text="Open Folder..."
+                        <MenuFlyoutItem x:Uid="MenuOpenFolder" x:Name="OpenFolderMenuItem" Text="Open Data Folder"
                                         KeyboardAcceleratorTextOverride="Ctrl+O"
                                         Click="OpenFolder_Click" />
-                        <MenuFlyoutItem x:Uid="MenuClose" x:Name="CloseWindowMenuItem" Text="Close"
+                        <MenuFlyoutItem x:Uid="MenuClose" x:Name="CloseWindowMenuItem" Text="Hide to Tray"
                                         KeyboardAcceleratorTextOverride="Ctrl+W"
                                         Click="CloseWindow_Click" />
                         <MenuFlyoutSeparator />
@@ -191,7 +180,7 @@
                         <MenuFlyoutItem x:Uid="MenuToggleSidebar" x:Name="ToggleSidebarMenuItem" Text="Toggle Sidebar"
                                         KeyboardAcceleratorTextOverride="Ctrl+B"
                                         Click="ToggleSidebarMenu_Click" />
-                        <MenuFlyoutItem x:Uid="MenuOpenTerminal" x:Name="OpenTerminalMenuItem" Text="Open Terminal"
+                        <MenuFlyoutItem x:Uid="MenuOpenTerminal" x:Name="OpenTerminalMenuItem" Text="Open Terminal in Data Folder"
                                         KeyboardAcceleratorTextOverride="Ctrl+`"
                                         Click="OpenTerminal_Click" />
                         <MenuFlyoutItem x:Uid="MenuFind" x:Name="FindMenuItem" Text="Find"
@@ -240,13 +229,46 @@
               Grid.Row="1"
               Background="{ThemeResource SidebarBackgroundBrush}">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition x:Name="ShellSidebarColumn" Width="264" />
+                <ColumnDefinition x:Name="ShellSidebarColumn" Width="288" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
+
+            <Rectangle x:Uid="SidebarDismissLayer" x:Name="SidebarDismissLayer"
+                       Grid.ColumnSpan="2"
+                       Canvas.ZIndex="9"
+                       Fill="{ThemeResource SettingsBackdropBrush}"
+                       Visibility="Collapsed"
+                       Tapped="SidebarDismissLayer_Tapped"
+                       AutomationProperties.Name="Close navigation drawer" />
 
             <controls:ShellSidebar x:Name="ShellSidebar"
                                    Grid.Column="0"
                                    Canvas.ZIndex="10" />
+
+            <controls:SidebarResizeHandle x:Uid="SidebarResizeHandle"
+                                          x:Name="SidebarResizeHandle"
+                                          Grid.Column="0"
+                                          Canvas.ZIndex="12"
+                                          Width="10"
+                                          HorizontalAlignment="Right"
+                                          VerticalAlignment="Stretch"
+                                          Background="Transparent"
+                                          IsTabStop="True"
+                                          PointerPressed="SidebarResizeHandle_PointerPressed"
+                                          PointerMoved="SidebarResizeHandle_PointerMoved"
+                                          PointerReleased="SidebarResizeHandle_PointerReleased"
+                                          PointerCanceled="SidebarResizeHandle_PointerCanceled"
+                                          PointerCaptureLost="SidebarResizeHandle_PointerCaptureLost"
+                                          KeyDown="SidebarResizeHandle_KeyDown"
+                                          AutomationProperties.AutomationId="SidebarResizeHandle"
+                                          AutomationProperties.Name="Resize sidebar"
+                                          AutomationProperties.HelpText="Drag horizontally to resize. Drag left past the minimum to collapse.">
+                <controls:SidebarResizeHandle.Template>
+                    <ControlTemplate TargetType="controls:SidebarResizeHandle">
+                        <controls:SidebarResizeCursorSurface Background="Transparent" />
+                    </ControlTemplate>
+                </controls:SidebarResizeHandle.Template>
+            </controls:SidebarResizeHandle>
 
             <!-- Both hairlines — title bar → content, and sidebar → content — are one continuous
                  stroke drawn by this Border, so they meet in a rounded corner instead of a square

@@ -7,6 +7,8 @@ using ConnectOnion.WinUIClient.Views;
 using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Input;
+using Windows.System;
 
 namespace ConnectOnion.WinUIClient;
 
@@ -18,22 +20,28 @@ public sealed partial class MainWindow : Window
     private readonly AppWindow _appWindow;
     private readonly IntPtr _hwnd;
     private readonly SessionRepository _sessionRepository;
+    private readonly PreferencesRepository _preferencesRepository;
     private readonly WindowPlacementStore _windowPlacementStore;
     private int _windowServicesDetached;
     private int _windowPlacementSaved;
     private bool _isSidebarVisible = true;
+    private bool _wasCompactLayout;
+    private double _sidebarWidth = SidebarLayoutPolicy.DefaultWidth;
+    private double _sidebarResizeStartWidth;
+    private double _sidebarResizeStartPointerX;
+    private uint _sidebarResizePointerId;
+    private bool _isSidebarResizing;
 
     public IRelayCommand OpenWindowCommand { get; }
-    public IRelayCommand NewChatFromTrayCommand { get; }
     public IRelayCommand ExitFromTrayCommand { get; }
 
     public MainWindow()
     {
         OpenWindowCommand = new RelayCommand(RestoreFromTray);
-        NewChatFromTrayCommand = new RelayCommand(OpenNewChatFromTray);
         ExitFromTrayCommand = new RelayCommand(ExitApplication);
         InitializeComponent();
         _sessionRepository = AppServices.Sessions;
+        _preferencesRepository = AppServices.Preferences;
         // Capture DI-owned services while the host is alive. Closed can run after App.Exit has
         // already disposed the provider, so teardown code must never resolve a fresh service.
         _windowPlacementStore = AppServices.WindowPlacement;
@@ -46,12 +54,8 @@ public sealed partial class MainWindow : Window
         InitializeTrayBehavior();
         Diagnostics.StartupTelemetry.ArmPerformanceExit(DispatcherQueue, ExitApplication);
         ShellSidebar.NavigationRequested += NavigateTo;
-        ShellSidebar.NewChatRequested += Sidebar_NewChatRequested;
         ShellSidebar.SettingsRequested += ShowSettingsOverlay;
-        ShellSidebar.KeyboardShortcutsRequested += ShowKeyboardShortcutsOverlay;
-        ShellSidebar.AboutRequested += ShowAboutOverlay;
         ShellSidebar.SessionSearchRequested += ShowSessionSearchOverlay;
-        ShellSidebar.ExitRequested += ExitApplication;
         ShellSidebar.AddAgentRequested += ShowAddAgentOverlay;
         AddAgentOverlay.AgentAdded += AddAgentOverlay_AgentAdded;
         SettingsOverlay.CloseRequested += (_, _) => CloseSettingsOverlay();
@@ -67,12 +71,9 @@ public sealed partial class MainWindow : Window
                 UpdateNavigationButtons();
                 CloseFindOverlay();
                 await ShellSidebar.RefreshAsync();
-                if (RootGrid.ActualWidth < 720 && _isSidebarVisible)
+                if (SidebarLayoutPolicy.IsCompactWindow(EffectiveContentWidth) && _isSidebarVisible)
                 {
-                    _isSidebarVisible = false;
-                    ShellSidebar.Visibility = Visibility.Collapsed;
-                    ApplySidebarWidth(RootGrid.ActualWidth);
-                    SidebarToggleButton.Opacity = 0.65;
+                    SetSidebarVisible(false);
                 }
             }
             catch
@@ -93,6 +94,10 @@ public sealed partial class MainWindow : Window
         // handler below shows the shell and the first page in the default theme before flipping
         // them, and a throwing sidebar refresh would leave the theme unapplied entirely.
         _ = ApplyStartupThemeAsync();
+        // Same reasoning as the theme: the saved zoom is a view preference the user set once and
+        // expects back, so it must not wait on the sidebar load. It measures RootGrid, so it runs
+        // once the layout exists rather than from the constructor.
+        RootGrid.Loaded += async (_, _) => await RestoreZoomAsync();
         RootGrid.GotFocus += (_, _) =>
             Diagnostics.StartupTelemetry.Mark(Diagnostics.StartupPhases.FirstInteractive);
         RootGrid.Loaded += async (_, _) =>
@@ -199,37 +204,49 @@ public sealed partial class MainWindow : Window
 
     private void RootGrid_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        ApplySidebarWidth(e.NewSize.Width);
+        var windowWidth = e.NewSize.Width / _zoomFactor;
+        var isCompact = SidebarLayoutPolicy.IsCompactWindow(windowWidth);
+        if (isCompact && !_wasCompactLayout && _isSidebarVisible)
+            SetSidebarVisible(false);
+        _wasCompactLayout = isCompact;
+
+        ApplySidebarWidth(windowWidth);
+        UpdateZoomLayout();
         UpdateZoomPopupPosition();
         UpdateFindOverlayPosition();
     }
+
+    private double EffectiveContentWidth => RootGrid.ActualWidth / _zoomFactor;
 
     private void ApplySidebarWidth(double windowWidth)
     {
         if (!_isSidebarVisible)
         {
             ShellSidebarColumn.Width = new GridLength(0);
+            SidebarResizeHandle.Visibility = Visibility.Collapsed;
+            SidebarDismissLayer.Visibility = Visibility.Collapsed;
             return;
         }
 
         // Below the compact breakpoint the sidebar becomes an overlay. Keeping a fixed rail in
         // the layout at this width squeezed blocking approval controls and the reading column.
         // The existing title-bar toggle remains the single show/hide interaction.
-        if (windowWidth < 720)
+        if (SidebarLayoutPolicy.IsCompactWindow(windowWidth))
         {
             ShellSidebarColumn.Width = new GridLength(0);
-            ShellSidebar.Width = Math.Max(208, Math.Min(264, windowWidth - 48));
+            ShellSidebar.Width = SidebarLayoutPolicy.ClampOverlayWidth(_sidebarWidth, windowWidth);
             ShellSidebar.HorizontalAlignment = HorizontalAlignment.Left;
+            SidebarResizeHandle.Visibility = Visibility.Collapsed;
+            SidebarDismissLayer.Visibility = Visibility.Visible;
             return;
         }
 
+        SidebarDismissLayer.Visibility = Visibility.Collapsed;
         ShellSidebar.ClearValue(FrameworkElement.WidthProperty);
         ShellSidebar.HorizontalAlignment = HorizontalAlignment.Stretch;
-        ShellSidebarColumn.Width = windowWidth switch
-        {
-            < 980 => new GridLength(232),
-            _ => new GridLength(264),
-        };
+        ShellSidebarColumn.Width = new GridLength(
+            SidebarLayoutPolicy.ClampDockedWidth(_sidebarWidth, windowWidth));
+        SidebarResizeHandle.Visibility = Visibility.Visible;
     }
 
     private void SidebarToggle_Click(object sender, RoutedEventArgs e)
@@ -237,10 +254,117 @@ public sealed partial class MainWindow : Window
 
     private void ToggleSidebarCommand()
     {
-        _isSidebarVisible = !_isSidebarVisible;
-        ShellSidebar.Visibility = _isSidebarVisible ? Visibility.Visible : Visibility.Collapsed;
-        ApplySidebarWidth(RootGrid.ActualWidth);
-        SidebarToggleButton.Opacity = _isSidebarVisible ? 1 : 0.65;
+        SetSidebarVisible(!_isSidebarVisible);
+        if (_isSidebarVisible && SidebarLayoutPolicy.IsCompactWindow(EffectiveContentWidth))
+            ShellSidebar.FocusFirstNavigation();
+    }
+
+    private void SetSidebarVisible(bool visible)
+    {
+        _isSidebarVisible = visible;
+        ShellSidebar.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        SidebarToggleButton.Opacity = visible ? 1 : 0.65;
+        ApplySidebarWidth(EffectiveContentWidth);
+    }
+
+    private void SidebarDismissLayer_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (!_isSidebarVisible || !SidebarLayoutPolicy.IsCompactWindow(EffectiveContentWidth))
+            return;
+
+        SetSidebarVisible(false);
+        ContentFrame.Focus(FocusState.Programmatic);
+    }
+
+    private void SidebarResizeHandle_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        var point = e.GetCurrentPoint(MainContentArea);
+        if (!point.Properties.IsLeftButtonPressed) return;
+
+        _sidebarResizeStartWidth = ShellSidebarColumn.ActualWidth > 0
+            ? ShellSidebarColumn.ActualWidth
+            : _sidebarWidth;
+        _sidebarResizeStartPointerX = point.Position.X;
+        _sidebarResizePointerId = e.Pointer.PointerId;
+        _isSidebarResizing = SidebarResizeHandle.CapturePointer(e.Pointer);
+        e.Handled = _isSidebarResizing;
+    }
+
+    private void SidebarResizeHandle_PointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_isSidebarResizing
+            || e.Pointer.PointerId != _sidebarResizePointerId
+            || !_isSidebarVisible
+            || SidebarLayoutPolicy.IsCompactWindow(EffectiveContentWidth))
+            return;
+
+        var pointerX = e.GetCurrentPoint(MainContentArea).Position.X;
+        var requestedWidth = _sidebarResizeStartWidth + pointerX - _sidebarResizeStartPointerX;
+        if (SidebarLayoutPolicy.ShouldCollapseFromDrag(requestedWidth))
+        {
+            _isSidebarResizing = false;
+            SidebarResizeHandle.ReleasePointerCaptures();
+            SetSidebarVisible(false);
+            ContentFrame.Focus(FocusState.Programmatic);
+            e.Handled = true;
+            return;
+        }
+
+        _sidebarWidth = SidebarLayoutPolicy.ClampDockedWidth(requestedWidth, EffectiveContentWidth);
+        ApplySidebarWidth(EffectiveContentWidth);
+        e.Handled = true;
+    }
+
+    private void SidebarResizeHandle_PointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        if (e.Pointer.PointerId != _sidebarResizePointerId) return;
+        EndSidebarResize();
+        e.Handled = true;
+    }
+
+    private void SidebarResizeHandle_PointerCanceled(object sender, PointerRoutedEventArgs e)
+        => EndSidebarResize();
+
+    private void SidebarResizeHandle_PointerCaptureLost(object sender, PointerRoutedEventArgs e)
+        => _isSidebarResizing = false;
+
+    private void EndSidebarResize()
+    {
+        _isSidebarResizing = false;
+        SidebarResizeHandle.ReleasePointerCaptures();
+        if (_isSidebarVisible)
+            ApplySidebarWidth(EffectiveContentWidth);
+    }
+
+    private void SidebarResizeHandle_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        const double keyboardStep = 16;
+        if (e.Key == VirtualKey.Left)
+        {
+            if (_sidebarWidth <= SidebarLayoutPolicy.MinimumWidth + 0.5)
+            {
+                SetSidebarVisible(false);
+                ContentFrame.Focus(FocusState.Programmatic);
+            }
+            else
+            {
+                _sidebarWidth = SidebarLayoutPolicy.ClampDockedWidth(
+                    _sidebarWidth - keyboardStep,
+                    EffectiveContentWidth);
+                ApplySidebarWidth(EffectiveContentWidth);
+            }
+
+            e.Handled = true;
+        }
+        else if (e.Key == VirtualKey.Right)
+        {
+            _sidebarWidth = SidebarLayoutPolicy.ClampDockedWidth(
+                _sidebarWidth + keyboardStep,
+                EffectiveContentWidth);
+            ApplySidebarWidth(EffectiveContentWidth);
+            e.Handled = true;
+        }
     }
 
     private void Back_Click(object sender, RoutedEventArgs e)
@@ -280,6 +404,7 @@ public sealed partial class MainWindow : Window
     {
         BackButton.IsEnabled = ContentFrame.CanGoBack;
         ForwardButton.IsEnabled = ContentFrame.CanGoForward;
+        FindMenuItem.IsEnabled = ContentFrame.Content is Views.IFindHost;
 
         // Disabled Back/Forward keep the title bar's own (transparent) background — see
         // their inline ButtonBackgroundDisabled override in XAML — so the muted arrow color

@@ -1,6 +1,10 @@
 using System;
+using System.Threading.Tasks;
+using ConnectOnion.WinUIClient.Common;
+using ConnectOnion.WinUIClient.Models;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 
 namespace ConnectOnion.WinUIClient;
 
@@ -30,6 +34,9 @@ public sealed partial class MainWindow
     private SUBCLASSPROC? _subclassProc;
     private bool _isTrayDisposed;
     private bool _isHiddenToTray;
+    private bool _closeBehaviorLoaded;
+    private bool _closePromptOpen;
+    private WindowCloseBehavior _closeBehavior = WindowCloseBehavior.Ask;
 
     private void InitializeTrayBehavior()
     {
@@ -55,6 +62,8 @@ public sealed partial class MainWindow
             // not prevent the primary window from opening.
             Serilog.Log.Warning(ex, "Could not create the system tray icon immediately");
         }
+
+        _ = LoadCloseBehaviorAsync();
     }
 
     private IntPtr WindowSubclassProc(
@@ -84,10 +93,9 @@ public sealed partial class MainWindow
 
             if (message == WmClose && !_isExiting)
             {
-                // Caption Close and Alt+F4 are both WM_CLOSE. Hide immediately and consume the
-                // message; an explicit Exit command remains the only path that tears down the
-                // host, sockets and tray icon.
-                MinimizeToTray();
+                // Caption Close and Alt+F4 are both WM_CLOSE. Consume the native close while the
+                // UI thread applies the user's explicit choice (or asks on first use).
+                RequestWindowClose();
                 return IntPtr.Zero;
             }
 
@@ -96,6 +104,120 @@ public sealed partial class MainWindow
         catch
         {
             return DefSubclassProc(hwnd, message, wParam, lParam);
+        }
+    }
+
+    private void RequestWindowClose()
+    {
+        if (_isExiting || _closePromptOpen)
+            return;
+
+        _ = DispatcherQueue.TryEnqueue(async () => await HandleWindowCloseAsync());
+    }
+
+    private async Task HandleWindowCloseAsync()
+    {
+        if (_isExiting || _closePromptOpen)
+            return;
+
+        _closePromptOpen = true;
+        try
+        {
+            await LoadCloseBehaviorAsync();
+            switch (_closeBehavior)
+            {
+                case WindowCloseBehavior.HideToTray:
+                    MinimizeToTray();
+                    return;
+                case WindowCloseBehavior.Exit:
+                    ExitApplication();
+                    return;
+            }
+
+            var dialog = new ContentDialog
+            {
+                XamlRoot = RootGrid.XamlRoot,
+                Title = LocalizedStrings.Get("CloseBehaviorTitle", "Close ConnectOnion?"),
+                Content = LocalizedStrings.Get(
+                    "CloseBehaviorDescription",
+                    "Keep agent turns running in the background, or exit completely. We’ll remember your choice."),
+                PrimaryButtonText = LocalizedStrings.Get("CloseBehaviorKeepRunning", "Keep running"),
+                SecondaryButtonText = LocalizedStrings.Get("CommonExit", "Exit"),
+                CloseButtonText = LocalizedStrings.Get("CommonCancel", "Cancel"),
+                DefaultButton = ContentDialogButton.Primary,
+            };
+
+            var result = await dialog.ShowThemedAsync();
+            if (result == ContentDialogResult.None)
+                return;
+
+            _closeBehavior = result == ContentDialogResult.Primary
+                ? WindowCloseBehavior.HideToTray
+                : WindowCloseBehavior.Exit;
+            await SaveCloseBehaviorAsync(_closeBehavior);
+
+            if (_closeBehavior == WindowCloseBehavior.HideToTray)
+                MinimizeToTray();
+            else
+                ExitApplication();
+        }
+        catch (Exception ex)
+        {
+            // Failure to show or persist the choice must never silently turn into either
+            // hiding or exiting. Leave the window open so the user remains in control.
+            Serilog.Log.Warning(ex, "Could not resolve the window close behavior");
+        }
+        finally
+        {
+            _closePromptOpen = false;
+        }
+    }
+
+    /// <summary>
+    /// Drops the cached close behavior so the next close re-reads it. Settings writes the
+    /// preference straight to the database; without this the live window would keep answering
+    /// with whatever it read the first time the user closed it, and the new setting would only
+    /// take effect after a restart.
+    /// </summary>
+    internal static void InvalidateCloseBehaviorCache()
+    {
+        if (App.MainWindow is MainWindow window)
+            window._closeBehaviorLoaded = false;
+    }
+
+    private async Task LoadCloseBehaviorAsync()
+    {
+        if (_closeBehaviorLoaded)
+            return;
+
+        try
+        {
+            _closeBehavior = (await _preferencesRepository.LoadAsync()).CloseBehavior;
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Warning(ex, "Could not load the window close behavior; asking the user");
+            _closeBehavior = WindowCloseBehavior.Ask;
+        }
+        finally
+        {
+            _closeBehaviorLoaded = true;
+        }
+    }
+
+    private async Task SaveCloseBehaviorAsync(WindowCloseBehavior behavior)
+    {
+        try
+        {
+            var preferences = await _preferencesRepository.LoadAsync();
+            preferences.CloseBehavior = behavior;
+            await _preferencesRepository.SaveAsync(preferences);
+        }
+        catch (Exception ex)
+        {
+            // Apply the choice for this process even if persistence is temporarily unavailable;
+            // the next launch will ask again rather than guessing.
+            Serilog.Log.Warning(ex, "Could not persist the window close behavior");
         }
     }
 

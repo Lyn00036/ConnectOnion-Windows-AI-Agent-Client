@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using ConnectOnion.WinUIClient.Common;
+using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Services;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -23,11 +24,13 @@ namespace ConnectOnion.WinUIClient;
 /// </summary>
 public sealed partial class MainWindow
 {
-    // Zoom is clamped to a modest range on purpose: this scales the entire UI including chrome,
-    // so anything beyond these bounds starts clipping layouts rather than just enlarging text.
+    // Zoom scales the whole content area, and because UpdateZoomLayout divides the logical size
+    // by the factor before scaling up, a larger zoom reflows rather than clips. The old ceiling
+    // of 1.4 was well short of what someone actually enlarging the UI for readability needs;
+    // 2.0 matches what a browser offers, and 0.67 is the matching step down.
     private const double ZoomStep = 0.1;
-    private const double MinZoom = 0.8;
-    private const double MaxZoom = 1.4;
+    private const double MinZoom = 0.67;
+    private const double MaxZoom = 2.0;
     private const double DefaultZoom = 1.0;
     private const double ZoomPopupMarginFromCaption = 8;
     private const double ZoomPopupTopOffset = 18;
@@ -169,7 +172,7 @@ public sealed partial class MainWindow
         e.Handled = true;
     }
 
-    /// <summary>Opens a terminal at the user's profile directory. Prefers Windows Terminal and
+    /// <summary>Opens a terminal at the app data directory. Prefers Windows Terminal and
     /// falls back to PowerShell, which is always present — <c>wt.exe</c> is not installed on
     /// every Windows build. Both go through the shell (<c>UseShellExecute</c>) so PATH
     /// resolution and the app-execution aliases work.</summary>
@@ -180,7 +183,7 @@ public sealed partial class MainWindow
             Process.Start(new ProcessStartInfo
             {
                 FileName = "wt.exe",
-                WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                WorkingDirectory = AppStorage.RootDir,
                 UseShellExecute = true,
             });
         }
@@ -189,15 +192,14 @@ public sealed partial class MainWindow
             Process.Start(new ProcessStartInfo
             {
                 FileName = "powershell.exe",
-                WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                WorkingDirectory = AppStorage.RootDir,
                 UseShellExecute = true,
             });
         }
     }
 
-    /// <summary>Ctrl+F. Silently does nothing on a page that does not implement
-    /// <see cref="Views.IFindHost"/> — showing a find bar that cannot search anything would be
-    /// worse than no response.</summary>
+    /// <summary>Ctrl+F. The command is disabled outside pages that implement
+    /// <see cref="Views.IFindHost"/>; keep the guard for shortcut races during navigation.</summary>
     private void FindCommand()
     {
         if (ContentFrame.Content is not Views.IFindHost findHost) return;
@@ -237,22 +239,105 @@ public sealed partial class MainWindow
         RestartZoomPopupIdleTimer();
     }
 
-    /// <summary>Applies zoom as a render transform over the content area. A transform, not a
-    /// font-size change: it scales the whole UI uniformly and costs nothing to apply, at the
-    /// cost of not reflowing — which is why the zoom range above is deliberately narrow.
-    /// Origin is top-left so zooming grows downward-right rather than drifting the content.</summary>
-    private void SetZoom(double zoomFactor)
+    /// <summary>Applies zoom while preserving the visible viewport. The logical content size is
+    /// divided by the scale before the transform is applied, so a larger zoom reflows the page
+    /// instead of clipping its right and bottom edges.</summary>
+    private void SetZoom(double zoomFactor, bool persist = true)
     {
         // Rounded to 2dp so repeated ±0.1 steps land back exactly on 1.0 rather than
         // accumulating float error and leaving "Reset" permanently enabled at 100%.
-        _zoomFactor = Math.Round(zoomFactor, 2);
+        var clamped = Math.Round(Math.Clamp(zoomFactor, MinZoom, MaxZoom), 2);
+        var changed = Math.Abs(clamped - _zoomFactor) > 0.001;
+        _zoomFactor = clamped;
         UpdateZoomPercentText();
-        MainContentArea.RenderTransformOrigin = new Windows.Foundation.Point(0, 0);
-        MainContentArea.RenderTransform = new ScaleTransform
+        UpdateZoomLayout();
+        ApplySidebarWidth(EffectiveContentWidth);
+
+        // Every other view preference (theme, language, message size) survives a restart; zoom
+        // silently did not, so a user who enlarged the UI for readability had to redo it on every
+        // launch. Fire-and-forget: a failed write must not block the visual change.
+        if (persist && changed) _ = SaveZoomAsync(clamped);
+    }
+
+    private async System.Threading.Tasks.Task SaveZoomAsync(double zoomFactor)
+    {
+        try
+        {
+            var preferences = await _preferencesRepository.LoadAsync();
+            preferences.ZoomFactor = zoomFactor;
+            await _preferencesRepository.SaveAsync(preferences);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Warning(ex, "Could not persist the zoom level");
+        }
+    }
+
+    /// <summary>Restores the saved zoom at startup. Applied with <c>persist: false</c> so
+    /// restoring the stored value does not immediately write it back.</summary>
+    internal async System.Threading.Tasks.Task RestoreZoomAsync()
+    {
+        try
+        {
+            var saved = (await _preferencesRepository.LoadAsync()).ZoomFactor;
+            if (Math.Abs(saved - DefaultZoom) > 0.001)
+                SetZoom(saved, persist: false);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Warning(ex, "Could not restore the saved zoom level");
+        }
+    }
+
+    private void UpdateZoomLayout()
+    {
+        if (RootGrid.ActualWidth <= 0 || RootGrid.ActualHeight <= 0)
+            return;
+
+        var contentHeight = Math.Max(0, RootGrid.ActualHeight - TitleBarArea.ActualHeight);
+
+        // The content area starts below the title bar; the overlay layer and the toast host both
+        // span the full window (they are declared Grid.Row="0" Grid.RowSpan="2"), so they get the
+        // window's own height rather than the content height.
+        //
+        // Scaling all three matters: zoom used to apply to MainContentArea alone, which left the
+        // settings modal, the About and shortcuts dialogs, the find bar and every toast rendering
+        // at 100% while the chat behind them was at 140%. They are siblings of MainContentArea,
+        // not children, so nothing carried the transform to them.
+        ApplyZoomTo(MainContentArea, RootGrid.ActualWidth, contentHeight);
+        ApplyZoomTo(FloatingOverlayLayer, RootGrid.ActualWidth, RootGrid.ActualHeight);
+        ApplyZoomTo(InAppNotifications, RootGrid.ActualWidth, RootGrid.ActualHeight);
+    }
+
+    /// <summary>
+    /// Scales one top-level layer, sizing its logical box to <paramref name="logicalWidth"/> /
+    /// <paramref name="logicalHeight"/> divided by the factor so the scaled result fills exactly
+    /// the same physical area. At 1.0 the explicit size and transform are cleared rather than set
+    /// to identity, so normal Stretch layout resumes.
+    /// </summary>
+    private void ApplyZoomTo(FrameworkElement layer, double logicalWidth, double logicalHeight)
+    {
+        layer.RenderTransformOrigin = new Windows.Foundation.Point(0, 0);
+        layer.RenderTransform = new ScaleTransform
         {
             ScaleX = _zoomFactor,
             ScaleY = _zoomFactor,
         };
+
+        if (Math.Abs(_zoomFactor - DefaultZoom) < 0.001)
+        {
+            layer.ClearValue(FrameworkElement.WidthProperty);
+            layer.ClearValue(FrameworkElement.HeightProperty);
+            layer.HorizontalAlignment = HorizontalAlignment.Stretch;
+            layer.VerticalAlignment = VerticalAlignment.Stretch;
+            layer.ClearValue(UIElement.RenderTransformProperty);
+            return;
+        }
+
+        layer.HorizontalAlignment = HorizontalAlignment.Left;
+        layer.VerticalAlignment = VerticalAlignment.Top;
+        layer.Width = logicalWidth / _zoomFactor;
+        layer.Height = logicalHeight / _zoomFactor;
     }
 
     private void UpdateZoomPercentText()

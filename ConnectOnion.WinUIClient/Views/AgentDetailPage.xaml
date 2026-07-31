@@ -11,27 +11,25 @@
     mc:Ignorable="d">
 
     <Grid x:Name="AgentRoot"
-          Background="{ThemeResource AppBackgroundBrush}">
+          Background="{ThemeResource AppBackgroundBrush}"
+          SizeChanged="AgentRoot_SizeChanged">
+        <!-- Driven by the page's own SizeChanged rather than AdaptiveTrigger: the content pane is
+             up to 288px narrower than the window once the sidebar is open, so a MinWindowWidth
+             trigger switched this page to its roomier padding while it actually had ~430px. -->
         <VisualStateManager.VisualStateGroups>
             <VisualStateGroup x:Name="WindowWidthStates">
                 <VisualState x:Name="Narrow">
-                    <VisualState.StateTriggers>
-                        <AdaptiveTrigger MinWindowWidth="0" />
-                    </VisualState.StateTriggers>
                     <VisualState.Setters>
                         <Setter Target="ContentScroll.Padding" Value="16,12,16,12" />
                         <Setter Target="ProfilePanel.Margin" Value="0,8,0,12" />
-                        <Setter Target="AgentNameText.FontSize" Value="20" />
+                        <Setter Target="AgentNameText.FontSize" Value="22" />
                     </VisualState.Setters>
                 </VisualState>
                 <VisualState x:Name="Wide">
-                    <VisualState.StateTriggers>
-                        <AdaptiveTrigger MinWindowWidth="720" />
-                    </VisualState.StateTriggers>
                     <VisualState.Setters>
                         <Setter Target="ContentScroll.Padding" Value="24,20,24,20" />
                         <Setter Target="ProfilePanel.Margin" Value="0,12,0,16" />
-                        <Setter Target="AgentNameText.FontSize" Value="24" />
+                        <Setter Target="AgentNameText.FontSize" Value="28" />
                     </VisualState.Setters>
                 </VisualState>
             </VisualStateGroup>
@@ -53,88 +51,107 @@
                       VerticalScrollBarVisibility="Auto"
                       VerticalContentAlignment="Center"
                       Visibility="{x:Bind Vm.HasAgent, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+            <!-- Four tiers, separated by gap size rather than by added chrome: identity, what the
+                 agent is, the one action, then quiet affordances. The panel's own Spacing is 0 on
+                 purpose — every gap is a margin declared by the tier that opens, so the rhythm
+                 (6 within a tier, 18-26 between them) is visible in one place and reviewable.
+                 A uniform Spacing="10" is what made seven unrelated elements read as one list. -->
             <StackPanel x:Name="ProfilePanel"
                         MaxWidth="620"
                         Margin="0,12,0,16"
                         HorizontalAlignment="Center"
                         VerticalAlignment="Center"
-                        Spacing="10">
-                <controls:AgentAvatar Size="56"
-                                      CornerRadius="16"
-                                      FontSize="18"
+                        Spacing="0">
+
+                <!-- Tier 1 · Identity. The name owns its own line now; presence moved beneath it
+                     rather than sitting alongside at 12px, where it competed for the same line and
+                     capped how large the name could get. -->
+                <controls:AgentAvatar x:Uid="AgentDetailIcon" Size="64"
+                                      CornerRadius="20"
+                                      FontSize="20"
                                       HorizontalAlignment="Center"
                                       Initial="{x:Bind Vm.AgentInitial, Mode=OneWay}"
-                                      PaletteIndex="{x:Bind Vm.AgentAvatarPaletteIndex, Mode=OneWay}"
                                       ImagePath="{x:Bind Vm.AgentIconPath, Mode=OneWay}"
                                       AutomationProperties.Name="Agent icon" />
 
-                <StackPanel HorizontalAlignment="Center"
-                            Spacing="4">
-                    <StackPanel Orientation="Horizontal"
-                                HorizontalAlignment="Center"
-                                Spacing="8">
-                        <TextBlock x:Name="AgentNameText"
-                                   Text="{x:Bind Vm.AgentDisplayName, Mode=OneWay}"
-                                   MaxWidth="440"
-                                   FontSize="24"
-                                   FontWeight="SemiBold"
-                                   TextAlignment="Center"
-                                   TextTrimming="CharacterEllipsis"
-                                   VerticalAlignment="Center" />
-
-                        <StackPanel Orientation="Horizontal"
-                                    Spacing="5"
-                                    VerticalAlignment="Center"
-                                    AutomationProperties.Name="{x:Bind Vm.PresenceLabel, Mode=OneWay}">
-                            <ProgressRing Width="12"
-                                          Height="12"
-                                          IsActive="{x:Bind Vm.IsCheckingPresence, Mode=OneWay}"
-                                          Visibility="{x:Bind Vm.IsCheckingPresence, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-                            <Ellipse Width="7"
-                                     Height="7"
-                                     Fill="{x:Bind Vm.Presence, Mode=OneWay, Converter={StaticResource PresenceToBrush}}"
-                                     Visibility="{x:Bind Vm.IsCheckingPresence, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
-                            <TextBlock Text="{x:Bind Vm.PresenceLabel, Mode=OneWay}"
-                                       FontSize="12"
-                                       Foreground="{x:Bind Vm.Presence, Mode=OneWay, Converter={StaticResource PresenceToBrush}}"
-                                       VerticalAlignment="Center" />
-                        </StackPanel>
-                    </StackPanel>
-
-                    <TextBlock Text="{x:Bind Vm.ProfileMetadata, Mode=OneWay}"
-                               FontSize="12"
-                               Foreground="{ThemeResource TextSecondaryBrush}"
-                               HorizontalAlignment="Center"
-                               TextAlignment="Center"
-                               TextTrimming="CharacterEllipsis"
-                               Visibility="{x:Bind Vm.HasProfileMetadata, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-                    <TextBlock Text="{x:Bind Vm.AcceptedInputsSummary, Mode=OneWay}"
-                               FontSize="11"
-                               Foreground="{ThemeResource TextTertiaryBrush}"
-                               HorizontalAlignment="Center"
-                               TextAlignment="Center"
-                               TextWrapping="Wrap"
-                               Visibility="{x:Bind Vm.HasAcceptedInputsSummary, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-                </StackPanel>
+                <TextBlock x:Name="AgentNameText"
+                           Text="{x:Bind Vm.AgentDisplayName, Mode=OneWay}"
+                           MaxWidth="520"
+                           Margin="0,14,0,0"
+                           FontSize="28"
+                           FontWeight="SemiBold"
+                           HorizontalAlignment="Center"
+                           TextAlignment="Center"
+                           TextTrimming="CharacterEllipsis" />
 
                 <StackPanel Orientation="Horizontal"
+                            Margin="0,6,0,0"
+                            Spacing="6"
                             HorizontalAlignment="Center"
-                            Spacing="8">
-                            <Button x:Uid="AgentDetailShare" Content="Share"
-                            Click="Share_Click"
-                            Visibility="{x:Bind Vm.CanShareAgent, Mode=OneWay, Converter={StaticResource BoolToVis}}"
-                            AutomationProperties.Name="Share this relay agent" />
-                    <Button x:Name="BalanceButton"
-                            Visibility="Collapsed"
-                            Click="Balance_Click"
-                            AutomationProperties.Name="View balance and top up for this agent" />
+                            AutomationProperties.Name="{x:Bind Vm.PresenceLabel, Mode=OneWay}">
+                    <ProgressRing Width="12"
+                                  Height="12"
+                                  VerticalAlignment="Center"
+                                  IsActive="{x:Bind Vm.IsCheckingPresence, Mode=OneWay}"
+                                  Visibility="{x:Bind Vm.IsCheckingPresence, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                    <Ellipse Width="7"
+                             Height="7"
+                             VerticalAlignment="Center"
+                             Fill="{x:Bind Vm.Presence, Mode=OneWay, Converter={StaticResource PresenceToBrush}}"
+                             Visibility="{x:Bind Vm.IsCheckingPresence, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
+                    <TextBlock Text="{x:Bind Vm.PresenceLabel, Mode=OneWay}"
+                               FontSize="13"
+                               VerticalAlignment="Center"
+                               Foreground="{x:Bind Vm.Presence, Mode=OneWay, Converter={StaticResource PresenceToBrush}}" />
                 </StackPanel>
 
-                            <Button x:Uid="AgentDetailCapabilities" Content="What can you do?"
+                <!-- Tier 2 · What it is. The model is the one fact here a reader acts on, so it
+                     gets a chip of its own instead of being the first third of a run-on line. -->
+                <StackPanel Orientation="Horizontal"
+                            Margin="0,18,0,0"
+                            Spacing="6"
+                            HorizontalAlignment="Center">
+                    <Border Padding="9,3"
+                            CornerRadius="6"
+                            Background="{ThemeResource SurfaceSecondaryBrush}"
+                            BorderBrush="{ThemeResource BorderSubtleBrush}"
+                            BorderThickness="1"
+                            Visibility="{x:Bind Vm.HasDisplayModel, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="{x:Bind Vm.DisplayModel, Mode=OneWay}"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   Foreground="{ThemeResource TextSecondaryBrush}" />
+                    </Border>
+                    <Border Padding="9,3"
+                            CornerRadius="6"
+                            Background="{ThemeResource SurfaceSecondaryBrush}"
+                            BorderBrush="{ThemeResource BorderSubtleBrush}"
+                            BorderThickness="1"
+                            Visibility="{x:Bind Vm.HasProfileDetail, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="{x:Bind Vm.ProfileDetail, Mode=OneWay}"
+                                   FontSize="12"
+                                   Foreground="{ThemeResource TextTertiaryBrush}" />
+                    </Border>
+                </StackPanel>
+
+                <TextBlock Text="{x:Bind Vm.AcceptedInputsSummary, Mode=OneWay}"
+                           Margin="0,8,0,0"
+                           FontSize="12"
+                           Foreground="{ThemeResource TextTertiaryBrush}"
+                           HorizontalAlignment="Center"
+                           TextAlignment="Center"
+                           TextWrapping="Wrap"
+                           Visibility="{x:Bind Vm.HasAcceptedInputsSummary, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+
+                <!-- Tier 3 · The one action. This inverted pill is the page's single bold element,
+                     so everything around it stays quiet — which is why Balance and Share below are
+                     links rather than the buttons they used to be, competing with it at the same
+                     weight and sitting between the identity and the thing to press. -->
+                <Button x:Uid="AgentDetailCapabilities" Content="What can you do?"
                         Tag="What can you do?"
                         MinHeight="36"
-                        Margin="0,8,0,0"
-                        Padding="16,0"
+                        Margin="0,26,0,0"
+                        Padding="18,0"
                         CornerRadius="9"
                         HorizontalAlignment="Center"
                         Background="{ThemeResource TextPrimaryBrush}"
@@ -155,49 +172,79 @@
                     </Button.Resources>
                 </Button>
 
-                <Button MinWidth="0"
-                        MinHeight="32"
-                        Padding="10,0"
-                        CornerRadius="8"
-                        HorizontalAlignment="Center"
-                        Background="Transparent"
-                        BorderThickness="0"
-                        UseSystemFocusVisuals="True"
-                        AutomationProperties.Name="{x:Bind Vm.ToolsToggleLabel, Mode=OneWay}"
-                        Visibility="{x:Bind Vm.HasToolSummary, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                    <StackPanel Orientation="Horizontal"
-                                Spacing="5">
-                        <TextBlock Text="{x:Bind Vm.ToolsToggleLabel, Mode=OneWay}"
-                                   FontSize="12"
-                                   Foreground="{ThemeResource TextSecondaryBrush}"
-                                   VerticalAlignment="Center" />
-                        <ic:FluentIcon Icon="ChevronDown"
-                                       IconVariant="Regular"
-                                       IconSize="Size12"
+                <!-- Tier 4 · Quiet affordances, one row at one weight. Tools, balance and share
+                     are all "things you can consult or do about this agent"; they were previously
+                     spread across two rows at two different button weights, which read as three
+                     competing calls to action. -->
+                <StackPanel Orientation="Horizontal"
+                            Margin="0,14,0,0"
+                            Spacing="2"
+                            HorizontalAlignment="Center">
+                    <Button MinWidth="0"
+                            MinHeight="32"
+                            Padding="10,0"
+                            CornerRadius="8"
+                            Style="{StaticResource TransparentButtonStyle}"
+                            UseSystemFocusVisuals="True"
+                            AutomationProperties.Name="{x:Bind Vm.ToolsToggleLabel, Mode=OneWay}"
+                            Visibility="{x:Bind Vm.HasToolSummary, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                        <StackPanel Orientation="Horizontal" Spacing="5">
+                            <TextBlock Text="{x:Bind Vm.ToolsToggleLabel, Mode=OneWay}"
+                                       FontSize="12"
                                        Foreground="{ThemeResource TextSecondaryBrush}"
                                        VerticalAlignment="Center" />
-                    </StackPanel>
-                    <Button.Flyout>
-                        <Flyout Placement="Bottom">
-                            <StackPanel Width="420"
-                                        MaxWidth="520"
-                                        Spacing="8">
-                    <TextBlock x:Uid="AgentDetailTools" Text="Available tools"
-                                           FontSize="14"
-                                           FontWeight="SemiBold" />
-                                <TextBlock Text="{x:Bind Vm.ToolsDisplayText, Mode=OneWay}"
-                                           FontSize="13"
+                            <ic:FluentIcon Icon="ChevronDown"
+                                           IconVariant="Regular"
+                                           IconSize="Size12"
                                            Foreground="{ThemeResource TextSecondaryBrush}"
-                                           TextWrapping="Wrap"
-                                           AutomationProperties.Name="{x:Bind Vm.ToolsDisplayText, Mode=OneWay}" />
-                            </StackPanel>
-                        </Flyout>
-                    </Button.Flyout>
-                </Button>
+                                           VerticalAlignment="Center" />
+                        </StackPanel>
+                        <Button.Flyout>
+                            <Flyout Placement="Bottom">
+                                <StackPanel Width="420"
+                                            MaxWidth="520"
+                                            Spacing="8">
+                                    <TextBlock x:Uid="AgentDetailTools" Text="Available tools"
+                                               FontSize="14"
+                                               FontWeight="SemiBold" />
+                                    <TextBlock Text="{x:Bind Vm.ToolsDisplayText, Mode=OneWay}"
+                                               FontSize="13"
+                                               Foreground="{ThemeResource TextSecondaryBrush}"
+                                               TextWrapping="Wrap"
+                                               AutomationProperties.Name="{x:Bind Vm.ToolsDisplayText, Mode=OneWay}" />
+                                </StackPanel>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
 
-                <ProgressRing Width="18"
+                    <Button x:Uid="AgentDetailBalance" x:Name="BalanceButton"
+                            MinWidth="0"
+                            MinHeight="32"
+                            Padding="10,0"
+                            CornerRadius="8"
+                            FontSize="12"
+                            Foreground="{ThemeResource TextSecondaryBrush}"
+                            Style="{StaticResource TransparentButtonStyle}"
+                            Visibility="Collapsed"
+                            Click="Balance_Click"
+                            AutomationProperties.Name="View balance and top up for this agent" />
+
+                    <Button x:Uid="AgentDetailShare" Content="Share"
+                            MinWidth="0"
+                            MinHeight="32"
+                            Padding="10,0"
+                            CornerRadius="8"
+                            FontSize="12"
+                            Foreground="{ThemeResource TextSecondaryBrush}"
+                            Style="{StaticResource TransparentButtonStyle}"
+                            Click="Share_Click"
+                            Visibility="{x:Bind Vm.CanShareAgent, Mode=OneWay, Converter={StaticResource BoolToVis}}"
+                            AutomationProperties.Name="Share this relay agent" />
+                </StackPanel>
+
+                <ProgressRing x:Uid="AgentDetailCapabilitiesProgress" Width="18"
                               Height="18"
-                              Margin="0,2,0,0"
+                              Margin="0,14,0,0"
                               HorizontalAlignment="Center"
                               AutomationProperties.AutomationId="AgentCapabilitiesLoadingIndicator"
                               AutomationProperties.Name="Loading agent capabilities"
@@ -205,6 +252,7 @@
                               Visibility="{x:Bind Vm.IsLoading, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
 
                 <InfoBar x:Uid="AgentDetailStartError" Severity="Error"
+                         Margin="0,18,0,0"
                          Title="Couldn't start the conversation"
                          Message="{x:Bind Vm.StatusText, Mode=OneWay}"
                          IsOpen="{x:Bind Vm.HasError, Mode=OneWay}"
@@ -213,6 +261,7 @@
                          AutomationProperties.LiveSetting="Assertive" />
 
                 <controls:OfflineNoticeBar MaxWidth="620"
+                                           Margin="0,18,0,0"
                                            HorizontalAlignment="Stretch"
                                            Detail="{x:Bind Vm.PresenceDetail, Mode=OneWay}"
                                            CanRecheck="{x:Bind Vm.HasAgent, Mode=OneWay}"

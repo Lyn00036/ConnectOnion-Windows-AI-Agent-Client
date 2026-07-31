@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using ConnectOnion.WinUIClient.Common;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -26,6 +27,8 @@ public sealed partial class SettingsOverlay : UserControl
         _focusReturnTarget = focusReturnTarget;
         GeneralNav.IsChecked = true;
         SearchBox.Text = string.Empty;
+        CompactSearchBox.Text = string.Empty;
+        CompactCategoryPicker.SelectedIndex = 0;
 
         // Go through SelectCategory rather than setting the title by hand: it is what resets the
         // pane visibility too. Setting only the title left the previously shown standalone pane
@@ -35,7 +38,13 @@ public sealed partial class SettingsOverlay : UserControl
         Visibility = Visibility.Visible;
         IsHitTestVisible = true;
         UpdateModalSize(ActualWidth, ActualHeight);
-        DispatcherQueue.TryEnqueue(() => SearchBox.Focus(FocusState.Programmatic));
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            var focusTarget = ActualWidth < 640
+                ? (Control)CompactCategoryPicker
+                : SearchBox;
+            focusTarget.Focus(FocusState.Programmatic);
+        });
     }
 
     public void Hide()
@@ -53,9 +62,9 @@ public sealed partial class SettingsOverlay : UserControl
     private void UpdateModalSize(double width, double height)
     {
         if (width <= 0 || height <= 0) return;
-        var safeMargin = width >= 860 ? 64d : 48d;
-        ModalContainer.Width = Math.Max(0, Math.Min(1100, Math.Min(width * 0.82, width - safeMargin)));
-        ModalContainer.Height = Math.Max(520, Math.Min(760, Math.Min(height * 0.82, height - safeMargin)));
+        var safeMargin = width >= 860 && height >= 640 ? 64d : width >= 640 ? 48d : 16d;
+        ModalContainer.Width = Math.Max(0, Math.Min(1100, width - safeMargin));
+        ModalContainer.Height = Math.Max(0, Math.Min(760, height - safeMargin));
     }
 
     private void RequestClose() => CloseRequested?.Invoke(this, EventArgs.Empty);
@@ -83,7 +92,7 @@ public sealed partial class SettingsOverlay : UserControl
     /// </summary>
     private void SelectCategory(string category)
     {
-        CategoryTitle.Text = category;
+        CategoryTitle.Text = LocalizedCategoryName(category);
 
         var isIdentity = category == "Identity";
         var isAgents = category == "Agents";
@@ -115,4 +124,23 @@ public sealed partial class SettingsOverlay : UserControl
 
     public Task RefreshAgentsAsync() => AgentsContent.RefreshAsync();
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) => SettingsContent.Filter(SearchBox.Text);
+    private void CompactSearchBox_TextChanged(object sender, TextChangedEventArgs e)
+        => SettingsContent.Filter(CompactSearchBox.Text);
+
+    private void CompactCategoryPicker_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (CompactCategoryPicker.SelectedItem is ComboBoxItem { Tag: string category })
+            SelectCategory(category);
+    }
+
+    private static string LocalizedCategoryName(string category) => category switch
+    {
+        "Agents" => LocalizedStrings.Get("SettingsCategoryAgentsName", "Agents"),
+        "Notifications" => LocalizedStrings.Get("SettingsCategoryNotificationsName", "Notifications"),
+        "Audio" => LocalizedStrings.Get("SettingsCategoryAudioName", "Audio"),
+        "Keyboard" => LocalizedStrings.Get("SettingsCategoryKeyboardName", "Keyboard"),
+        "Identity" => LocalizedStrings.Get("SettingsCategoryIdentityName", "Identity"),
+        "Usage" => LocalizedStrings.Get("SettingsCategoryUsageName", "Usage"),
+        _ => LocalizedStrings.Get("SettingsCategoryGeneralName", "General"),
+    };
 }

@@ -74,7 +74,22 @@
           SizeChanged="PageRoot_SizeChanged">
         <VisualStateManager.VisualStateGroups>
             <VisualStateGroup x:Name="WindowWidthStates">
-                <VisualState x:Name="Adaptive" />
+                <VisualState x:Name="Narrow">
+                    <VisualState.Setters>
+                        <Setter Target="ContentRoot.Margin" Value="16,16,16,28" />
+                        <Setter Target="AgentHeader.MinHeight" Value="0" />
+                        <Setter Target="AddAgentHeaderButton.(Grid.Row)" Value="1" />
+                        <Setter Target="AddAgentHeaderButton.(Grid.Column)" Value="0" />
+                        <Setter Target="AddAgentHeaderButton.HorizontalAlignment" Value="Left" />
+                        <Setter Target="AddAgentHeaderButton.Margin" Value="0,14,0,0" />
+                        <Setter Target="AutomaticStatusText.Visibility" Value="Collapsed" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="Adaptive">
+                    <VisualState.Setters>
+                        <Setter Target="ContentRoot.Margin" Value="32,24,32,36" />
+                    </VisualState.Setters>
+                </VisualState>
                 <VisualState x:Name="Wide">
                     <VisualState.Setters>
                         <Setter Target="ContentRoot.Width" Value="960" />
@@ -104,26 +119,32 @@
                 <StackPanel>
                     <!-- The home page is an Agent launcher, so the title is compact and top-aligned.
                          The list begins immediately below instead of floating under a hero logo. -->
-                    <Grid MinHeight="64">
+                    <Grid x:Name="AgentHeader"
+                          MinHeight="64">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
 
                         <StackPanel VerticalAlignment="Center"
                                     Spacing="4">
-                    <TextBlock x:Uid="HomeAgentsTitle" Text="Agents"
+                    <TextBlock x:Uid="HomeAgentsTitle" Text="Agent library"
                                        FontSize="28"
                                        FontWeight="SemiBold"
                                        Foreground="{ThemeResource TextPrimaryBrush}" />
-                    <TextBlock x:Uid="HomeAgentsDescription" Text="Open an agent to continue its most recent conversation."
+                    <TextBlock x:Uid="HomeAgentsDescription" Text="Manage agents here. Use the sidebar to move between conversations."
                                        FontSize="14"
                                        Foreground="{ThemeResource TextSecondaryBrush}"
                                        TextWrapping="Wrap" />
                         </StackPanel>
 
-                        <Button Grid.Column="1"
-                                MinHeight="36"
+                        <Button x:Uid="HomeAddAgentButton" x:Name="AddAgentHeaderButton"
+                                Grid.Column="1"
+                                MinHeight="40"
                                 Padding="12,0"
                                 VerticalAlignment="Center"
                                 Style="{StaticResource DefaultButtonStyle}"
@@ -161,7 +182,9 @@
                                    FontSize="14"
                                    FontWeight="SemiBold"
                                    Foreground="{ThemeResource TextPrimaryBrush}" />
-                        <TextBlock x:Uid="HomeStatusAuto" Grid.Column="1"
+                        <TextBlock x:Uid="HomeStatusAuto"
+                                   x:Name="AutomaticStatusText"
+                                   Grid.Column="1"
                                    Text="Status updates automatically"
                                    FontSize="11"
                                    Foreground="{ThemeResource TextTertiaryBrush}"
@@ -194,26 +217,33 @@
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="Auto" />
                                                 <ColumnDefinition Width="*" />
-                                                <ColumnDefinition x:Name="LastUsedColumn" Width="0" />
-                                                <ColumnDefinition Width="112" />
+                                                <!-- Auto, with the fixed measure carried by the
+                                                     content instead (see LastUsedPanel and the
+                                                     status slot below). Every row is its own Grid
+                                                     and WinUI has no SharedSizeGroup, so an Auto
+                                                     column sized by its own text makes each row
+                                                     land in a different place — "11 min ago" and
+                                                     "Not used yet" produced visibly different
+                                                     columns. Giving the *content* a fixed width
+                                                     keeps the rows aligned while still letting a
+                                                     collapsed panel measure zero and close the
+                                                     column at narrow widths. Binding the
+                                                     ColumnDefinition itself is not an option:
+                                                     ColumnDefinition is not in the visual tree and
+                                                     does not inherit DataContext. -->
+                                                <ColumnDefinition x:Name="LastUsedColumn" Width="Auto" />
+                                                <ColumnDefinition x:Name="StatusColumn" Width="Auto" />
                                                 <ColumnDefinition Width="16" />
                                             </Grid.ColumnDefinitions>
 
-                                            <VisualStateManager.VisualStateGroups>
-                                                <VisualStateGroup x:Name="AgentRowWidthStates">
-                                                    <VisualState x:Name="CompactRow" />
-                                                    <VisualState x:Name="DetailedRow">
-                                                        <VisualState.StateTriggers>
-                                                            <AdaptiveTrigger MinWindowWidth="920" />
-                                                        </VisualState.StateTriggers>
-                                                        <VisualState.Setters>
-                                                            <Setter Target="LastUsedColumn.Width" Value="116" />
-                                                            <Setter Target="LastUsedPanel.Visibility" Value="Visible" />
-                                                            <Setter Target="EndpointText.Visibility" Value="Visible" />
-                                                        </VisualState.Setters>
-                                                    </VisualState>
-                                                </VisualStateGroup>
-                                            </VisualStateManager.VisualStateGroups>
+                                            <!-- Row density comes from HomeAgentItem, set by
+                                                 HomePage.ApplyRowDensity from the page's own
+                                                 measured width. This was an AdaptiveTrigger group,
+                                                 but AdaptiveTrigger measures the *window*, and the
+                                                 sidebar takes up to 288px of it — so a 920px
+                                                 window put the detailed columns into a ~630px row.
+                                                 A VisualStateManager inside a DataTemplate cannot
+                                                 see its own viewport, so the page decides. -->
 
                                             <Border Grid.ColumnSpan="5"
                                                     Margin="-12,-8"
@@ -236,7 +266,6 @@
                                                                   CornerRadius="21"
                                                                   FontSize="12"
                                                                   Initial="{x:Bind Initial}"
-                                                                  PaletteIndex="{x:Bind AvatarPaletteIndex}"
                                                                   ImagePath="{x:Bind IconPath}"
                                                                   IsHitTestVisible="False"
                                                                   VerticalAlignment="Center" />
@@ -259,14 +288,20 @@
                                                            Foreground="{ThemeResource TextTertiaryBrush}"
                                                            TextTrimming="CharacterEllipsis"
                                                            ToolTipService.ToolTip="{x:Bind FullAddress}"
-                                                           Visibility="Collapsed" />
+                                                           Visibility="{x:Bind ShowEndpoint, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                                             </StackPanel>
 
+                                            <!-- Fixed width so every row's "Last used" column lands
+                                                 in the same place regardless of whether its value
+                                                 reads "11 min ago" or "Not used yet". Collapsed
+                                                 still measures zero, which is what closes the
+                                                 column on a narrow page. -->
                                             <StackPanel x:Name="LastUsedPanel"
                                                         Grid.Column="2"
+                                                        Width="116"
                                                         Spacing="3"
                                                         VerticalAlignment="Center"
-                                                        Visibility="Collapsed">
+                                                        Visibility="{x:Bind ShowLastUsed, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                                         <TextBlock x:Uid="HomeLastUsed" Text="Last used"
                                                            Style="{StaticResource HomeMetadataLabelStyle}" />
                                                 <TextBlock Text="{x:Bind LastUsedLabel}"
@@ -282,38 +317,67 @@
                                                             HorizontalAlignment="Right"
                                                             AutomationProperties.Name="{x:Bind StatusAutomationName}"
                                                             Visibility="{x:Bind IsOpening, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}">
-                                                    <ProgressRing Width="12"
-                                                                  Height="12"
-                                                                  IsActive="{x:Bind IsChecking, Mode=OneWay}"
-                                                                  AutomationProperties.Name="{x:Bind StatusAutomationName}"
-                                                                  Visibility="{x:Bind IsChecking, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-                                                    <Ellipse Width="8"
-                                                             Height="8"
-                                                             Fill="{x:Bind Presence, Mode=OneWay, Converter={StaticResource PresenceToBrush}}"
-                                                             AutomationProperties.Name="{x:Bind StatusAutomationName}"
-                                                             Visibility="{x:Bind IsStandardStatus, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-                                                    <Ellipse Width="8"
-                                                             Height="8"
-                                                             Fill="{ThemeResource WarningBrush}"
-                                                             AutomationProperties.Name="{x:Bind StatusAutomationName}"
-                                                             Visibility="{x:Bind IsUnavailable, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-                                                    <TextBlock Text="{x:Bind StatusLabel, Mode=OneWay}"
+                                                    <!-- One fixed-width slot for whichever indicator
+                                                         is showing: the checking ring is 12px and
+                                                         the dots are 8px, so without this the
+                                                         column changed width the moment a presence
+                                                         probe started and every row left of it
+                                                         shifted. -->
+                                                    <Grid Width="12" VerticalAlignment="Center">
+                                                        <ProgressRing Width="12"
+                                                                      Height="12"
+                                                                      IsActive="{x:Bind IsChecking, Mode=OneWay}"
+                                                                      AutomationProperties.Name="{x:Bind StatusAutomationName}"
+                                                                      Visibility="{x:Bind IsChecking, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                                                        <Ellipse Width="8"
+                                                                 Height="8"
+                                                                 Fill="{x:Bind Presence, Mode=OneWay, Converter={StaticResource PresenceToBrush}}"
+                                                                 AutomationProperties.Name="{x:Bind StatusAutomationName}"
+                                                                 Visibility="{x:Bind IsStandardStatus, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                                                        <Ellipse Width="8"
+                                                                 Height="8"
+                                                                 Fill="{ThemeResource WarningBrush}"
+                                                                 AutomationProperties.Name="{x:Bind StatusAutomationName}"
+                                                                 Visibility="{x:Bind IsUnavailable, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                                                    </Grid>
+                                                    <!-- Fixed too: "Online", "Checking" and
+                                                         "Unavailable" are different widths, and an
+                                                         Auto column sized by them would put each
+                                                         row's status in a different place. -->
+                                                    <TextBlock x:Name="StatusLabelText"
+                                                               Width="76"
+                                                               Text="{x:Bind StatusLabel, Mode=OneWay}"
                                                                FontSize="12"
                                                                Foreground="{ThemeResource TextSecondaryBrush}"
-                                                               VerticalAlignment="Center" />
+                                                               TextTrimming="CharacterEllipsis"
+                                                               TextWrapping="NoWrap"
+                                                               VerticalAlignment="Center"
+                                                               Visibility="{x:Bind ShowStatusLabel, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                                                 </StackPanel>
 
-                                                <StackPanel Orientation="Horizontal"
+                                                <!-- Shares the cell with the status panel above and
+                                                     is deliberately measured the same (12px
+                                                     indicator slot, 76px label): this swaps in the
+                                                     moment a row is clicked, and a different width
+                                                     would make the whole row twitch on click. -->
+                                                <StackPanel x:Uid="HomeOpeningAgent" Orientation="Horizontal"
                                                             Spacing="7"
                                                             HorizontalAlignment="Right"
                                                             AutomationProperties.Name="Opening agent"
                                                             Visibility="{x:Bind IsOpening, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                                                    <ProgressRing Width="14"
-                                                                  Height="14"
+                                                    <ProgressRing Width="12"
+                                                                  Height="12"
+                                                                  VerticalAlignment="Center"
                                                                   IsActive="{x:Bind IsOpening, Mode=OneWay}" />
-                                    <TextBlock x:Uid="HomeOpening" Text="Opening"
+                                                    <TextBlock x:Uid="HomeOpening"
+                                                               x:Name="OpeningLabelText"
+                                                               Width="76"
+                                                               Text="Opening"
                                                                FontSize="12"
-                                                               VerticalAlignment="Center" />
+                                                               TextTrimming="CharacterEllipsis"
+                                                               TextWrapping="NoWrap"
+                                                               VerticalAlignment="Center"
+                                                               Visibility="{x:Bind ShowStatusLabel, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                                                 </StackPanel>
                                             </Grid>
 
@@ -347,9 +411,16 @@
                             BorderThickness="1"
                             CornerRadius="10"
                             Visibility="{x:Bind HasAgents, Mode=OneTime, Converter={StaticResource BoolToVis}, ConverterParameter=invert}">
+                        <!-- First-run dead end, fixed. This state used to say only "Add an agent to
+                             start a conversation", which is unactionable advice for the one user
+                             who sees it: a fresh install has no agent, and the Add Agent form asks
+                             for a 0x address or URL that a new user has no way to have. It now
+                             says what an agent address is, offers the action inline, and links to
+                             the docs that explain how to get one. -->
                         <StackPanel HorizontalAlignment="Center"
                                     VerticalAlignment="Center"
-                                    Spacing="8">
+                                    MaxWidth="420"
+                                    Spacing="10">
                             <ic:FluentIcon Icon="Bot"
                                            IconVariant="Regular"
                                            IconSize="Size24"
@@ -359,10 +430,27 @@
                                        FontSize="15"
                                        FontWeight="SemiBold"
                                        HorizontalAlignment="Center" />
-                            <TextBlock x:Uid="HomeNoAgentsHint" Text="Add an agent to start a conversation."
+                            <TextBlock x:Uid="HomeNoAgentsHint"
+                                       Text="An agent is a ConnectOnion-compatible assistant you connect to. You need its 0x address or its HTTP URL — whoever runs the agent can give you one from its Share screen."
                                        FontSize="12"
                                        Foreground="{ThemeResource TextSecondaryBrush}"
+                                       TextAlignment="Center"
+                                       TextWrapping="Wrap"
                                        HorizontalAlignment="Center" />
+                            <StackPanel Orientation="Horizontal"
+                                        HorizontalAlignment="Center"
+                                        Spacing="8"
+                                        Margin="0,4,0,0">
+                                <Button x:Uid="HomeEmptyAddAgent"
+                                        Content="Add your first agent"
+                                        Style="{StaticResource AccentButtonStyle}"
+                                        AutomationProperties.AutomationId="EmptyStateAddAgentButton"
+                                        Click="AddAnotherAgent_Click" />
+                                <HyperlinkButton x:Uid="HomeEmptyDocs"
+                                                 Content="How do I get one?"
+                                                 AutomationProperties.AutomationId="EmptyStateDocsLink"
+                                                 Click="EmptyStateDocs_Click" />
+                            </StackPanel>
                         </StackPanel>
                     </Border>
                 </StackPanel>

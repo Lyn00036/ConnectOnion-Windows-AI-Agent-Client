@@ -613,7 +613,7 @@ Known deployed development agents:
 - Speech-to-text dictation input in the chat composer
 - System tray icon with left-click restore, right-click menu (Open Window / Exit)
 - Close button (X) dialog with Minimize to tray / Exit / Cancel options
-- File menu with keyboard shortcuts (Ctrl+N new chat, Ctrl+Shift+N new window, Ctrl+W close)
+- File menu with keyboard shortcuts (Ctrl+N new chat, Ctrl+O open data folder, Ctrl+W hide to tray)
 - Edit menu (undo/redo/cut/copy/paste/select all) and View menu (sidebar, zoom, full screen, find)
 - Help menu (keyboard shortcuts dialog, ConnectOnion docs, About overlay)
 - Protocol conformance test gate

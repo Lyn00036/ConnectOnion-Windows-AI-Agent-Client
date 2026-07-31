@@ -171,7 +171,9 @@ public sealed class ToolActivityProjector
         // past this; the untruncated payload is already in trace_events if it's ever needed.
         var result = Cap(String(root, "result") ?? String(root, "message") ?? String(root, "error") ?? "");
         var transportStatus = String(root, "status");
-        var classification = Classify(transportStatus, result);
+        // The step's own tool name, not the frame's: the result frame does not always carry one,
+        // and the step was correlated by id anyway.
+        var classification = Classify(transportStatus, result, step.ToolName);
         step.Status = classification.Status;
         step.Result = string.IsNullOrWhiteSpace(result) ? null : SanitizeText(result);
         step.Error = classification.Status == ToolStepStatus.Failed ? SanitizeText(result) : null;
@@ -582,11 +584,34 @@ public sealed class ToolActivityProjector
     /// <summary>Decides how a completed step reads. The host's own <c>status</c> field is
     /// authoritative for failure; everything else is inferred from the result text, because
     /// most tools report their problems in prose and never set a status at all. Order matters:
-    /// failure beats warning, and an empty result is a warning rather than a success.</summary>
-    private static (ToolStepStatus Status, string Summary) Classify(string? transportStatus, string result)
+    /// failure beats warning, and an empty result is a warning rather than a success.
+    ///
+    /// <para><b>The prose heuristics are skipped entirely for a tool that returns content</b>
+    /// (<see cref="ToolInvocations.ReturnsContent"/>). Scanning a result for words like "failed"
+    /// only makes sense when that result is the tool talking about itself; when it is a file, a
+    /// document or a set of search hits, those words are the content's, and matching them marked
+    /// perfectly successful reads red — a system prompt describing error handling, a log file, any
+    /// source file containing "exception". Such a step can still fail, but only the host may say
+    /// so, via <paramref name="transportStatus"/>.</para></summary>
+    private static (ToolStepStatus Status, string Summary) Classify(
+        string? transportStatus,
+        string result,
+        string? toolName)
     {
         var text = result ?? "";
-        if (string.Equals(transportStatus, "error", StringComparison.OrdinalIgnoreCase) || FailurePatterns.Any(pattern => text.Contains(pattern, StringComparison.OrdinalIgnoreCase)))
+
+        // Always authoritative, for every kind of tool.
+        if (string.Equals(transportStatus, "error", StringComparison.OrdinalIgnoreCase))
+            return (ToolStepStatus.Failed, FriendlyProblem(text));
+
+        if (ToolInvocations.ReturnsContent(toolName))
+        {
+            return string.IsNullOrWhiteSpace(text)
+                ? (ToolStepStatus.Warning, "No content returned")
+                : (ToolStepStatus.Success, ResultSummary(text));
+        }
+
+        if (FailurePatterns.Any(pattern => text.Contains(pattern, StringComparison.OrdinalIgnoreCase)))
             return (ToolStepStatus.Failed, FriendlyProblem(text));
         if (string.IsNullOrWhiteSpace(text)
             || WarningPatterns.Any(pattern => text.Contains(pattern, StringComparison.OrdinalIgnoreCase))

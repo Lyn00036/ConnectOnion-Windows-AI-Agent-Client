@@ -54,7 +54,7 @@ public sealed class SessionRepository
             // Same stability rule as the agent list: sort_order is the user's arrangement,
             // then most-recent-first, then id purely so rows never swap places between reads.
             command.CommandText = """
-                SELECT id, agent_id, title, remote_session_id, last_processed_event_id, created_at, updated_at, mode
+                SELECT id, agent_id, title, remote_session_id, last_processed_event_id, created_at, updated_at, mode, has_custom_title
                 FROM sessions
                 ORDER BY sort_order, updated_at DESC, id;
                 """;
@@ -73,6 +73,7 @@ public sealed class SessionRepository
                     // The setter rejects anything the host wouldn't honour, so a stale or unknown
                     // mode reads back as Safe rather than being silently trusted.
                     Mode = reader.GetString(7),
+                    HasCustomTitle = reader.GetInt64(8) != 0,
                     IsPinned = pinnedIds.Contains(reader.GetString(0)),
                 });
             }
@@ -114,6 +115,7 @@ public sealed class SessionRepository
         command.CommandText = """
             UPDATE sessions
             SET title = $title,
+                has_custom_title = $has_custom_title,
                 remote_session_id = $remote_session_id,
                 last_processed_event_id = $last_processed_event_id,
                 updated_at = $updated_at,
@@ -121,6 +123,7 @@ public sealed class SessionRepository
             WHERE id = $id;
             """;
         AppDatabase.Add(command, "$title", session.Title);
+        AppDatabase.Add(command, "$has_custom_title", session.HasCustomTitle ? 1 : 0);
         AppDatabase.Add(command, "$remote_session_id", session.RemoteSessionId);
         AppDatabase.Add(command, "$last_processed_event_id", session.LastProcessedEventId);
         AppDatabase.Add(command, "$updated_at", session.UpdatedAt);
@@ -154,11 +157,12 @@ public sealed class SessionRepository
             await using var upsert = connection.CreateCommand();
             upsert.Transaction = transaction;
             upsert.CommandText = """
-                INSERT INTO sessions (id, agent_id, title, remote_session_id, last_processed_event_id, created_at, updated_at, sort_order, mode)
-                VALUES ($id, $agent_id, $title, $remote_session_id, $last_processed_event_id, $created_at, $updated_at, $sort_order, $mode)
+                INSERT INTO sessions (id, agent_id, title, has_custom_title, remote_session_id, last_processed_event_id, created_at, updated_at, sort_order, mode)
+                VALUES ($id, $agent_id, $title, $has_custom_title, $remote_session_id, $last_processed_event_id, $created_at, $updated_at, $sort_order, $mode)
                 ON CONFLICT(id) DO UPDATE SET
                     agent_id = excluded.agent_id,
                     title = excluded.title,
+                    has_custom_title = excluded.has_custom_title,
                     remote_session_id = excluded.remote_session_id,
                     last_processed_event_id = excluded.last_processed_event_id,
                     updated_at = excluded.updated_at,
@@ -168,6 +172,7 @@ public sealed class SessionRepository
             AppDatabase.Add(upsert, "$id", session.Id);
             AppDatabase.Add(upsert, "$agent_id", session.AgentId);
             AppDatabase.Add(upsert, "$title", session.Title);
+            AppDatabase.Add(upsert, "$has_custom_title", session.HasCustomTitle ? 1 : 0);
             AppDatabase.Add(upsert, "$remote_session_id", session.RemoteSessionId);
             AppDatabase.Add(upsert, "$last_processed_event_id", session.LastProcessedEventId);
             AppDatabase.Add(upsert, "$created_at", session.CreatedAt);

@@ -23,7 +23,7 @@ public sealed partial class AutomationContractTests
         "AboutMenuItem",
         "ConnectOnionDocsMenuItem",
         "KeyboardShortcutsMenuItem",
-        "AccountKeyboardShortcutsMenuItem",
+        "SidebarResizeHandle",
         "SettingsOverlay",
         "AgentsNav",
         "SettingsAgentList",

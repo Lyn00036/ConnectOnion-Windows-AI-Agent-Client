@@ -57,4 +57,16 @@ public sealed partial class PendingAttachment : Common.ObservableObject
     public bool IsBusy => Status is AttachmentStatus.Encoding or AttachmentStatus.Sending;
     public bool IsReady => Status == AttachmentStatus.Ready;
     public string SizeLabel => ChatAttachment.FormatSize(SizeBytes);
+
+    /// <summary>Compact, locale-neutral metadata for the composer's file card.</summary>
+    public string MetadataLabel
+    {
+        get
+        {
+            var extension = Path.GetExtension(FileName).TrimStart('.').ToUpperInvariant();
+            var size = SizeLabel;
+            if (string.IsNullOrEmpty(extension)) return size;
+            return string.IsNullOrEmpty(size) ? extension : $"{extension} · {size}";
+        }
+    }
 }

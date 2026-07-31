@@ -78,7 +78,6 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
             OnPropertyChanged(nameof(CanShareAgent));
             OnPropertyChanged(nameof(HasAgent));
             OnPropertyChanged(nameof(AgentInitial));
-            OnPropertyChanged(nameof(AgentAvatarPaletteIndex));
             OnPropertyChanged(nameof(AgentIconPath));
             RaisePresenceProperties();
             RaiseProfileSummaryProperties();
@@ -88,10 +87,9 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
     public string AgentName => _agent?.Name ?? "";
     public string AgentDisplayName => _agent?.DisplayName ?? "";
     public string AgentInitial => NameInitial.From(AgentDisplayName);
-    public int AgentAvatarPaletteIndex => AvatarPalette.From(AgentName);
 
     /// <summary>The agent's chosen icon, relative to the data root. Null falls back to
-    /// <see cref="AgentInitial"/> on its palette colour.</summary>
+    /// <see cref="AgentInitial"/> on a theme-neutral background.</summary>
     public string? AgentIconPath => _agent?.IconPath;
 
     public string AgentAddress => _agent?.Address ?? "";
@@ -132,15 +130,18 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
     public string DisplayModel => GetInfoValue("model") ?? "";
 
     public bool HasDisplayModel => !string.IsNullOrWhiteSpace(DisplayModel);
-    public string Trust => GetInfoValue("trust") ?? "";
     public string Version => GetInfoValue("version") ?? "";
-    public string ProfileMetadata => string.Join(" · ", new[]
-    {
-        DisplayModel,
-        Trust,
-        string.IsNullOrWhiteSpace(Version) ? "" : $"v{Version}",
-    }.Where(value => !string.IsNullOrWhiteSpace(value)));
-    public bool HasProfileMetadata => !string.IsNullOrWhiteSpace(ProfileMetadata);
+
+    /// <summary>
+    /// Provenance shown under the identity block. Version only — <c>/info</c>'s <c>trust</c> is
+    /// deliberately not surfaced: agents report it as an absolute path to a policy file, so it
+    /// rendered as the widest line on the page, middle-truncated to
+    /// <c>…/remote-admin-agent/.co/trust-pol…</c>, competing with the agent's own name while
+    /// saying nothing a reader could act on.
+    /// </summary>
+    public string ProfileDetail
+        => string.IsNullOrWhiteSpace(Version) ? "" : $"v{Version}";
+    public bool HasProfileDetail => !string.IsNullOrWhiteSpace(ProfileDetail);
 
     public bool HasToolSummary => ToolNames.Count > 0;
     public int ToolCount => ToolNames.Count;
@@ -268,7 +269,7 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
             await _agents.SaveAsync(agentsState);
 
             var sessionsState = await _sessions.LoadAsync();
-            var session = SessionSummary.NewConversation(Agent.Id, sessionsState.Sessions);
+            var session = SessionSummary.NewConversation(Agent.Id, sessionsState.Sessions, Common.SessionTitles.PlaceholderFormat);
             sessionsState.Sessions.Add(session);
             sessionsState.ActiveSessionId = session.Id;
             await _sessions.SaveAsync(sessionsState);
@@ -480,10 +481,9 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
         RefreshToolNames();
         OnPropertyChanged(nameof(DisplayModel));
         OnPropertyChanged(nameof(HasDisplayModel));
-        OnPropertyChanged(nameof(Trust));
         OnPropertyChanged(nameof(Version));
-        OnPropertyChanged(nameof(ProfileMetadata));
-        OnPropertyChanged(nameof(HasProfileMetadata));
+        OnPropertyChanged(nameof(ProfileDetail));
+        OnPropertyChanged(nameof(HasProfileDetail));
         OnPropertyChanged(nameof(HasToolSummary));
         OnPropertyChanged(nameof(ToolCount));
         OnPropertyChanged(nameof(ModelAndToolCount));

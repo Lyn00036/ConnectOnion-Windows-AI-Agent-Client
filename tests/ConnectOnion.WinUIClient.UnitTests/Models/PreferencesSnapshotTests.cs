@@ -33,4 +33,44 @@ public sealed class PreferencesSnapshotTests
         Assert.False(preferences.ShortcutOverrides.ContainsKey("composer.enterKey"));
         Assert.Equal("keep", preferences.ShortcutOverrides["other"]);
     }
+
+    [Theory]
+    [InlineData(WindowCloseBehavior.Ask, null)]
+    [InlineData(WindowCloseBehavior.HideToTray, "tray")]
+    [InlineData(WindowCloseBehavior.Exit, "exit")]
+    public void CloseBehavior_RoundTripsThroughSharedPreferenceMap(
+        WindowCloseBehavior behavior,
+        string? storedValue)
+    {
+        var preferences = new PreferencesSnapshot
+        {
+            ShortcutOverrides = new Dictionary<string, string>
+            {
+                ["other"] = "keep",
+            },
+        };
+
+        preferences.CloseBehavior = behavior;
+
+        Assert.Equal(behavior, preferences.CloseBehavior);
+        Assert.Equal("keep", preferences.ShortcutOverrides["other"]);
+        if (storedValue is null)
+            Assert.False(preferences.ShortcutOverrides.ContainsKey("window.closeBehavior"));
+        else
+            Assert.Equal(storedValue, preferences.ShortcutOverrides["window.closeBehavior"]);
+    }
+
+    [Fact]
+    public void CloseBehavior_UnknownStoredValue_FallsBackToAsk()
+    {
+        var preferences = new PreferencesSnapshot
+        {
+            ShortcutOverrides = new Dictionary<string, string>
+            {
+                ["window.closeBehavior"] = "future-value",
+            },
+        };
+
+        Assert.Equal(WindowCloseBehavior.Ask, preferences.CloseBehavior);
+    }
 }

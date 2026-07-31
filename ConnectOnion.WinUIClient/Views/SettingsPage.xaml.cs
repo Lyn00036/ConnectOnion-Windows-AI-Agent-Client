@@ -76,6 +76,12 @@ public sealed partial class SettingsPage : Page
             _ => 1,
         };
         EnterToSendSwitch.IsOn = _vm.EnterToSend;
+        CloseBehaviorChoice.SelectedIndex = _vm.CloseBehavior switch
+        {
+            WindowCloseBehavior.HideToTray => 1,
+            WindowCloseBehavior.Exit => 2,
+            _ => 0,
+        };
 
         MicChoice.ItemsSource = _vm.Microphones;
         MicChoice.SelectedIndex = _vm.SelectedMicIndex;
@@ -200,6 +206,43 @@ public sealed partial class SettingsPage : Page
         await _vm.SetEnterToSendAsync(EnterToSendSwitch.IsOn);
     }
 
+    /// <summary>
+    /// Restarts the app so the new language takes effect.
+    ///
+    /// <c>AppInstance.Restart</c> is the Windows App SDK call that survives the single-instance
+    /// redirection in <c>Program</c> — a plain <c>Process.Start</c> of our own exe would be
+    /// redirected straight back into the instance that is trying to exit.
+    /// </summary>
+    private async void LanguageRestartNow_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            // Drain runs and flush the database first; Restart terminates this process outright,
+            // so anything not shut down here is simply lost.
+            if (Application.Current is App app)
+                await app.ShutdownAsync();
+            Microsoft.Windows.AppLifecycle.AppInstance.Restart("");
+        }
+        catch (Exception ex)
+        {
+            // The setting is already saved either way — the user can restart by hand.
+            Serilog.Log.Warning(ex, "Could not restart to apply the language change");
+        }
+    }
+
+    private async void CloseBehaviorChoice_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_initializing || CloseBehaviorChoice.SelectedIndex < 0) return;
+
+        var behavior = CloseBehaviorChoice.SelectedIndex switch
+        {
+            1 => WindowCloseBehavior.HideToTray,
+            2 => WindowCloseBehavior.Exit,
+            _ => WindowCloseBehavior.Ask,
+        };
+        await _vm.SetCloseBehaviorAsync(behavior);
+    }
+
     private void MicChoice_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_initializing) return;
@@ -216,6 +259,7 @@ public sealed partial class SettingsPage : Page
         // "General" is two cards: Appearance (how the app looks) and Chat (how chat behaves/reads).
         var isGeneral = category == "General";
         GeneralSection.Visibility = isGeneral ? Visibility.Visible : Visibility.Collapsed;
+        WindowSection.Visibility = isGeneral ? Visibility.Visible : Visibility.Collapsed;
         ChatSection.Visibility = isGeneral ? Visibility.Visible : Visibility.Collapsed;
 
         NotificationsSection.Visibility = category == "Notifications" ? Visibility.Visible : Visibility.Collapsed;
@@ -242,6 +286,7 @@ public sealed partial class SettingsPage : Page
 
         var value = query.Trim();
         GeneralSection.Visibility = Contains(value, "general appearance theme light dark system language english chinese 中文 语言") ? Visibility.Visible : Visibility.Collapsed;
+        WindowSection.Visibility = Contains(value, "general window close closing exit quit tray minimize background 关闭 退出 托盘") ? Visibility.Visible : Visibility.Collapsed;
         ChatSection.Visibility = Contains(value, "general chat message text size font enter send newline") ? Visibility.Visible : Visibility.Collapsed;
         NotificationsSection.Visibility = Contains(value, "notifications agent replies task completion approval connection sound preview") ? Visibility.Visible : Visibility.Collapsed;
         AudioSection.Visibility = Contains(value, "audio microphone voice input") ? Visibility.Visible : Visibility.Collapsed;

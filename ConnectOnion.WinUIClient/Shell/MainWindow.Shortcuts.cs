@@ -9,7 +9,7 @@ namespace ConnectOnion.WinUIClient;
 /// XAML literal, which was fine while the bindings were themselves hard-coded — now that they can
 /// be rebound, a literal would advertise a combination that no longer does anything.
 ///
-/// <para>Only the 14 customizable items are listed. The Edit group keeps its literals because
+/// <para>Only the customizable items are listed. The Edit group keeps its literals because
 /// <c>TextBox</c> owns those keys and they cannot be rebound (see
 /// <see cref="KeyboardShortcutCatalog"/>), so their text can never drift.</para>
 /// </summary>

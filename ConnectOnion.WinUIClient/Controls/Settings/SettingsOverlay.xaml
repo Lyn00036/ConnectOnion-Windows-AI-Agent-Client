@@ -95,7 +95,8 @@
             <Grid MinWidth="0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition x:Name="NavigationColumn" Width="210" />
-                    <ColumnDefinition Width="1" /><ColumnDefinition Width="*" />
+                    <ColumnDefinition x:Name="NavigationDividerColumn" Width="1" />
+                    <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <Grid Grid.Column="0" MinWidth="0" Background="{ThemeResource SettingsNavigationBrush}" Padding="14,18">
                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
@@ -105,36 +106,36 @@
                                   HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled"
                                   VerticalScrollMode="Enabled" VerticalScrollBarVisibility="Auto">
                         <StackPanel>
-                            <RadioButton x:Name="GeneralNav" GroupName="SettingsCategory" IsChecked="True"
+                            <RadioButton x:Uid="SettingsNavGeneral" x:Name="GeneralNav" GroupName="SettingsCategory" IsChecked="True"
                                 Style="{StaticResource SettingsNavButtonStyle}" Click="GeneralNav_Click"
                                 AutomationProperties.AutomationId="GeneralNav"
                                 AutomationProperties.Name="General settings">
                         <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="Settings"/><TextBlock x:Uid="SettingsCategoryGeneral" x:Name="GeneralNavLabel" Text="General"/></StackPanel>
                             </RadioButton>
-                            <RadioButton x:Name="AgentsNav" GroupName="SettingsCategory"
+                            <RadioButton x:Uid="SettingsNavAgents" x:Name="AgentsNav" GroupName="SettingsCategory"
                                 Style="{StaticResource SettingsNavButtonStyle}" Click="AgentsNav_Click"
                                 AutomationProperties.AutomationId="AgentsNav"
                                 AutomationProperties.Name="Agent settings">
                         <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="Bot"/><TextBlock x:Uid="SettingsCategoryAgents" x:Name="AgentsNavLabel" Text="Agents"/></StackPanel>
                             </RadioButton>
-                            <RadioButton GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
+                            <RadioButton x:Uid="SettingsNavNotifications" GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
                                 Click="NotificationsNav_Click" AutomationProperties.Name="Notification settings">
                         <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="Alert"/><TextBlock x:Uid="SettingsCategoryNotifications" x:Name="NotificationsNavLabel" Text="Notifications"/></StackPanel>
                             </RadioButton>
-                            <RadioButton GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
+                            <RadioButton x:Uid="SettingsNavAudio" GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
                                 Click="AudioNav_Click" AutomationProperties.Name="Audio settings">
                         <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="Speaker2"/><TextBlock x:Uid="SettingsCategoryAudio" x:Name="AudioNavLabel" Text="Audio"/></StackPanel>
                             </RadioButton>
-                            <RadioButton GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
+                            <RadioButton x:Uid="SettingsNavKeyboard" GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
                                 Click="KeyboardNav_Click" AutomationProperties.Name="Keyboard shortcuts settings">
                         <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="Keyboard"/><TextBlock x:Uid="SettingsCategoryKeyboard" x:Name="KeyboardNavLabel" Text="Keyboard"/></StackPanel>
                             </RadioButton>
-                            <RadioButton GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
+                            <RadioButton x:Uid="SettingsNavIdentity" GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
                                 Click="IdentityNav_Click" AutomationProperties.AutomationId="IdentityNav"
                                 AutomationProperties.Name="Identity settings">
                         <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="Key"/><TextBlock x:Uid="SettingsCategoryIdentity" x:Name="IdentityNavLabel" Text="Identity"/></StackPanel>
                             </RadioButton>
-                            <RadioButton GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
+                            <RadioButton x:Uid="SettingsNavUsage" GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
                                 Click="UsageNav_Click" AutomationProperties.AutomationId="UsageNav"
                                 AutomationProperties.Name="Token usage">
                         <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="DataUsage"/><TextBlock x:Uid="SettingsCategoryUsage" x:Name="UsageNavLabel" Text="Usage"/></StackPanel>
@@ -142,12 +143,39 @@
                         </StackPanel>
                     </ScrollViewer>
                 </Grid>
-                <Rectangle Grid.Column="1" Fill="{ThemeResource DividerBrush}" />
+                <Rectangle x:Name="NavigationDivider"
+                           Grid.Column="1"
+                           Fill="{ThemeResource DividerBrush}" />
                 <Grid Grid.Column="2" MinWidth="0" HorizontalAlignment="Stretch">
                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-                    <Grid MinWidth="0" Padding="28,20,20,14">
+                    <Grid x:Name="ContentHeader"
+                          MinWidth="0"
+                          Padding="28,20,20,14">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                         <TextBlock x:Name="CategoryTitle" x:Uid="SettingsCategoryGeneralHeading" Text="General" Style="{StaticResource TitleTextBlockStyle}" VerticalAlignment="Center" />
+                        <StackPanel x:Name="CompactNavigation"
+                                    MaxWidth="420"
+                                    Margin="0,0,12,0"
+                                    Spacing="8"
+                                    Visibility="Collapsed">
+                            <ComboBox x:Uid="SettingsCategoryPicker" x:Name="CompactCategoryPicker"
+                                      HorizontalAlignment="Stretch"
+                                      SelectionChanged="CompactCategoryPicker_SelectionChanged"
+                                      AutomationProperties.Name="Settings category">
+                                <ComboBoxItem x:Uid="SettingsCompactCategoryGeneral" Content="General" Tag="General" />
+                                <ComboBoxItem x:Uid="SettingsCompactCategoryAgents" Content="Agents" Tag="Agents" />
+                                <ComboBoxItem x:Uid="SettingsCompactCategoryNotifications" Content="Notifications" Tag="Notifications" />
+                                <ComboBoxItem x:Uid="SettingsCompactCategoryAudio" Content="Audio" Tag="Audio" />
+                                <ComboBoxItem x:Uid="SettingsCompactCategoryKeyboard" Content="Keyboard" Tag="Keyboard" />
+                                <ComboBoxItem x:Uid="SettingsCompactCategoryIdentity" Content="Identity" Tag="Identity" />
+                                <ComboBoxItem x:Uid="SettingsCompactCategoryUsage" Content="Usage" Tag="Usage" />
+                            </ComboBox>
+                            <TextBox x:Uid="SettingsCompactSearch"
+                                     x:Name="CompactSearchBox"
+                                     PlaceholderText="Search settings"
+                                     TextChanged="CompactSearchBox_TextChanged"
+                                     AutomationProperties.Name="Search settings" />
+                        </StackPanel>
                         <Button x:Uid="SettingsClose" Grid.Column="1" Style="{StaticResource SettingsCloseButtonStyle}" Click="CloseButton_Click"
                                 AutomationProperties.Name="Close settings" ToolTipService.ToolTip="Close settings (Esc)">
                             <ic:FluentIcon Icon="Dismiss" IconVariant="Regular" IconSize="Size20" />
@@ -187,24 +215,29 @@
                 <VisualState x:Name="Narrow">
                     <VisualState.StateTriggers><AdaptiveTrigger MinWindowWidth="0" /></VisualState.StateTriggers>
                     <VisualState.Setters>
-                        <Setter Target="NavigationColumn.Width" Value="58" />
-                        <Setter Target="ModalContainer.Margin" Value="12" />
-                        <Setter Target="SearchBox.Visibility" Value="Collapsed" />
-                        <Setter Target="GeneralNavLabel.Visibility" Value="Collapsed" />
-                        <Setter Target="AgentsNavLabel.Visibility" Value="Collapsed" />
-                        <Setter Target="NotificationsNavLabel.Visibility" Value="Collapsed" />
-                        <Setter Target="AudioNavLabel.Visibility" Value="Collapsed" />
-                        <Setter Target="KeyboardNavLabel.Visibility" Value="Collapsed" />
-                        <Setter Target="IdentityNavLabel.Visibility" Value="Collapsed" />
-                        <Setter Target="UsageNavLabel.Visibility" Value="Collapsed" />
+                        <Setter Target="NavigationColumn.Width" Value="0" />
+                        <Setter Target="NavigationDividerColumn.Width" Value="0" />
+                        <Setter Target="NavigationDivider.Visibility" Value="Collapsed" />
+                        <Setter Target="ModalContainer.Margin" Value="8" />
+                        <Setter Target="ContentHeader.Padding" Value="16,14,12,10" />
+                        <Setter Target="CategoryTitle.Visibility" Value="Collapsed" />
+                        <Setter Target="CompactNavigation.Visibility" Value="Visible" />
+                        <Setter Target="IdentityContent.Margin" Value="16,6,16,20" />
+                        <Setter Target="AgentsContent.Margin" Value="16,6,16,20" />
+                        <Setter Target="UsageContent.Margin" Value="16,6,16,20" />
+                        <Setter Target="KeyboardContent.Margin" Value="16,6,16,20" />
                     </VisualState.Setters>
                 </VisualState>
                 <VisualState x:Name="Compact">
                     <VisualState.StateTriggers><AdaptiveTrigger MinWindowWidth="640" /></VisualState.StateTriggers>
                     <VisualState.Setters>
                         <Setter Target="NavigationColumn.Width" Value="156" />
+                        <Setter Target="NavigationDividerColumn.Width" Value="1" />
+                        <Setter Target="NavigationDivider.Visibility" Value="Visible" />
                         <Setter Target="ModalContainer.Margin" Value="24" />
                         <Setter Target="SearchBox.Visibility" Value="Visible" />
+                        <Setter Target="CategoryTitle.Visibility" Value="Visible" />
+                        <Setter Target="CompactNavigation.Visibility" Value="Collapsed" />
                         <Setter Target="GeneralNavLabel.Visibility" Value="Visible" />
                         <Setter Target="AgentsNavLabel.Visibility" Value="Visible" />
                         <Setter Target="NotificationsNavLabel.Visibility" Value="Visible" />
@@ -218,6 +251,7 @@
                     <VisualState.StateTriggers><AdaptiveTrigger MinWindowWidth="860" /></VisualState.StateTriggers>
                     <VisualState.Setters>
                         <Setter Target="NavigationColumn.Width" Value="210" />
+                        <Setter Target="NavigationDividerColumn.Width" Value="1" />
                         <Setter Target="ModalContainer.Margin" Value="32" />
                     </VisualState.Setters>
                 </VisualState>

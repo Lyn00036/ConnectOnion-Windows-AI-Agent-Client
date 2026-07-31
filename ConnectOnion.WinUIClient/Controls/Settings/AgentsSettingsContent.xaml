@@ -37,7 +37,6 @@
                                                           CornerRadius="19"
                                                           FontSize="14"
                                                           Initial="{x:Bind Initial}"
-                                                          PaletteIndex="{x:Bind AvatarPaletteIndex}"
                                                           ImagePath="{x:Bind IconPath}" />
                                     <Ellipse Width="9"
                                              Height="9"
@@ -113,7 +112,7 @@
                                Text="Connect another agent to start new conversations."
                                Foreground="{ThemeResource TextSecondaryBrush}"
                                TextWrapping="WrapWholeWords" />
-                    <Button Grid.Column="1"
+                    <Button x:Uid="SettingsAgentsAddButton" Grid.Column="1"
                             MinWidth="112"
                             Height="40"
                             Style="{StaticResource AccentButtonStyle}"
@@ -147,7 +146,7 @@
             <TextBlock x:Uid="AgentsSettingsEmptyHint" Text="Add an agent to start a conversation."
                        Foreground="{ThemeResource TextSecondaryBrush}"
                        TextAlignment="Center" />
-            <Button Height="40"
+            <Button x:Uid="SettingsAgentsAddButton" Height="40"
                     Margin="0,8,0,0"
                     HorizontalAlignment="Center"
                     Style="{StaticResource AccentButtonStyle}"

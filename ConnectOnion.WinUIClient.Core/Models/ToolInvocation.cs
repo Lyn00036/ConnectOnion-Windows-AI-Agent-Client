@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace ConnectOnion.WinUIClient.Models;
 
@@ -164,6 +165,52 @@ public static class ToolInvocations
             && (MarkdownResultTools.Contains(toolName)
                 // Same two-pass shape as the family lookup: remote_load_guide is still a guide.
                 || toolName.Contains("guide", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Tools whose <i>result</i> is the content they were asked to fetch — a file's text, a
+    /// document, a page's body, a list of search hits — rather than a report about what happened.
+    ///
+    /// <para><b>This is what stops a read from being painted as a failure.</b> Most tools never set
+    /// a status field and describe their problems in prose, so <c>ToolActivityProjector.Classify</c>
+    /// scans the result text for words like "failed", "exception" and "timeout". For an action that
+    /// is a fair inference. For a tool that hands back a document it is a category error: the words
+    /// belong to the document, not to the tool. Reading a system prompt that explains error
+    /// handling, a log file, or a source file with a `catch` block would mark the step red, and a
+    /// file mentioning a 404 anywhere would mark it amber.</para>
+    ///
+    /// <para>Explicit list plus a token-boundary keyword pass, exactly like
+    /// <see cref="MarkdownResultTools"/> — never inferred from the result, because "does this text
+    /// look like an error" is precisely the question that cannot be answered by looking at it.
+    /// Writes and deletes are deliberately absent: their result really is a status report.</para>
+    /// </summary>
+    private static readonly HashSet<string> ContentResultTools = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "read", "read_file", "cat", "view", "view_file", "open_file", "get_file", "head", "tail",
+        "grep", "glob", "search", "find", "search_files", "search_web", "web_search",
+        "get_text", "get_page_text", "read_page", "get_page_content", "extract_data",
+        "get_element_text_by_selector", "get_links_from_page",
+    };
+
+    /// <summary>
+    /// Matches "read"/"grep" at the start of a name segment, so prefixed variants
+    /// (<c>remote_read_file</c>, <c>fs.readFile</c>) are covered without catching names that merely
+    /// contain the letters — <c>create_thread</c> has "read" inside "thread" and must not qualify.
+    ///
+    /// <para><c>\b</c> is deliberately <b>not</b> used: <c>_</c> is a word character in .NET regex,
+    /// so <c>\bread</c> finds no boundary in <c>remote_read_file</c> — the exact case this pattern
+    /// exists to cover. "Start of string, or preceded by a non-letter" is the rule that actually
+    /// separates tool-name segments.</para>
+    /// </summary>
+    private static readonly Regex ContentResultKeywords =
+        new(@"(?:^|[^A-Za-z])(?:read|grep)", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    /// <summary>Whether this tool's result is content to be shown, not a status to be judged.
+    /// Callers must not run failure/warning prose heuristics against such a result.</summary>
+    public static bool ReturnsContent(string? toolName)
+        => !string.IsNullOrEmpty(toolName)
+            && (ContentResultTools.Contains(toolName)
+                || ProducesMarkdown(toolName)
+                || ContentResultKeywords.IsMatch(toolName));
 
     /// <summary>Ordered keyword fallback; first substring hit wins. Ordered most-identifying first
     /// for the same reason <see cref="ToolIcons"/>'s list is: real names carry several matching

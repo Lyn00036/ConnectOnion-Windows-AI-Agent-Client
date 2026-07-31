@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Data;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -15,23 +14,11 @@ namespace ConnectOnion.WinUIClient.Controls;
 /// <summary>
 /// The agent's face, shared by the home cards, the agent detail page, the chat header and the
 /// sidebar. Shows the user's chosen image when <see cref="ImagePath"/> resolves to one, and the
-/// name initial on its stable palette colour when it does not — missing, unreadable and never-set
+/// name initial on a theme-neutral background when it does not — missing, unreadable and never-set
 /// all land on the initial, because an agent row with a blank avatar is worse than a lettered one.
 /// </summary>
 public sealed partial class AgentAvatar : UserControl
 {
-    /// <summary>
-    /// Must match the <c>PaletteStates</c> visual states in the XAML, in order — the index picks a
-    /// state by position. Those states live on the control's <i>content root</i>: GoToState looks
-    /// the group up on the control's first child, so a group declared any deeper is silently never
-    /// found and every avatar quietly falls back to the neutral colours.
-    /// </summary>
-    private static readonly string[] PaletteStateNames =
-    [
-        "Blue", "Violet", "Teal", "Coral", "Indigo", "Cyan",
-        "Emerald", "Amber", "Rose", "Plum", "Slate", "Olive",
-    ];
-
     /// <summary>Committed icons are 256px squares but the largest slot on screen is 56px, so the
     /// decode is capped: decoding at full size costs ~256 KB of pixels to draw a 28px circle, and
     /// the sidebar builds one of these per agent.</summary>
@@ -53,7 +40,7 @@ public sealed partial class AgentAvatar : UserControl
             nameof(Initial),
             typeof(string),
             typeof(AgentAvatar),
-            new PropertyMetadata("?", OnPaletteInputChanged));
+            new PropertyMetadata("?"));
 
     public static readonly DependencyProperty SizeProperty =
         DependencyProperty.Register(
@@ -61,13 +48,6 @@ public sealed partial class AgentAvatar : UserControl
             typeof(double),
             typeof(AgentAvatar),
             new PropertyMetadata(32.0));
-
-    public static readonly DependencyProperty PaletteIndexProperty =
-        DependencyProperty.Register(
-            nameof(PaletteIndex),
-            typeof(int),
-            typeof(AgentAvatar),
-            new PropertyMetadata(-1, OnPaletteInputChanged));
 
     public static readonly DependencyProperty ImagePathProperty =
         DependencyProperty.Register(
@@ -83,17 +63,9 @@ public sealed partial class AgentAvatar : UserControl
     /// </summary>
     private int _imageLoadVersion;
 
-    /// <summary>
-    /// True while a custom image is on screen. The palette is the initial's identity colour, so an
-    /// agent showing its own picture drops it entirely — the picture already identifies the agent,
-    /// and tinting the ring around it competes with whatever colours are in the image.
-    /// </summary>
-    private bool _showingCustomImage;
-
     public AgentAvatar()
     {
         InitializeComponent();
-        ApplyPalette();
     }
 
     /// <summary>Letter shown when no custom image is available.</summary>
@@ -111,16 +83,6 @@ public sealed partial class AgentAvatar : UserControl
     }
 
     /// <summary>
-    /// Palette slot for the fallback initial. Negative derives one from <see cref="Initial"/>, so
-    /// a caller that has no stable agent name to hash still gets a consistent colour.
-    /// </summary>
-    public int PaletteIndex
-    {
-        get => (int)GetValue(PaletteIndexProperty);
-        set => SetValue(PaletteIndexProperty, value);
-    }
-
-    /// <summary>
     /// The image to show. Normally the stored relative path (<c>avatars/agent-….png</c>), but an
     /// absolute path is accepted too so the Add Agent form can preview a pick that has not been
     /// committed yet. Either way it must land inside the managed avatar directories —
@@ -135,36 +97,6 @@ public sealed partial class AgentAvatar : UserControl
 
     private static void OnImagePathChanged(DependencyObject sender, DependencyPropertyChangedEventArgs args)
         => ((AgentAvatar)sender).BeginLoadCustomImage();
-
-    private static void OnPaletteInputChanged(DependencyObject sender, DependencyPropertyChangedEventArgs args)
-        => ((AgentAvatar)sender).ApplyPalette();
-
-    /// <summary>
-    /// Selects the identity colour behind the fallback initial, or clears it while a custom image
-    /// is showing. Re-runs whenever the inputs change or the control switches face, so an image
-    /// that fails to load later still lands on the agent's own colour rather than a neutral one.
-    /// </summary>
-    private void ApplyPalette()
-    {
-        string state;
-        if (_showingCustomImage || (PaletteIndex < 0 && string.IsNullOrWhiteSpace(Initial)))
-        {
-            state = "Neutral";
-        }
-        else
-        {
-            var index = PaletteIndex < 0
-                ? AvatarPalette.From(Initial)
-                : PaletteIndex % PaletteStateNames.Length;
-
-            // A caller passing a negative index other than "derive it" would otherwise index
-            // backwards off the array.
-            if (index < 0) index += PaletteStateNames.Length;
-            state = PaletteStateNames[index];
-        }
-
-        VisualStateManager.GoToState(this, state, useTransitions: false);
-    }
 
     private void BeginLoadCustomImage()
     {
@@ -278,8 +210,6 @@ public sealed partial class AgentAvatar : UserControl
         CustomAvatarImage.Visibility = Visibility.Visible;
         InitialText.Visibility = Visibility.Collapsed;
 
-        _showingCustomImage = true;
-        ApplyPalette();
     }
 
     private void ShowInitial()
@@ -288,8 +218,6 @@ public sealed partial class AgentAvatar : UserControl
         CustomAvatarImage.Visibility = Visibility.Collapsed;
         InitialText.Visibility = Visibility.Visible;
 
-        _showingCustomImage = false;
-        ApplyPalette();
     }
 
     /// <summary>

@@ -4,15 +4,18 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:vm="using:ConnectOnion.WinUIClient.ViewModels"
     xmlns:controls="using:ConnectOnion.WinUIClient.Controls"
-    MinWidth="0" HorizontalAlignment="Stretch">
+    MinWidth="0" HorizontalAlignment="Stretch"
+    SizeChanged="UsageContent_SizeChanged">
 
+    <!-- The states are chosen from this control's own measured width (see the code-behind), not
+         from AdaptiveTrigger's window width. This content sits inside the settings modal, whose
+         body is roughly 850px at its widest no matter how large the window gets — so a
+         MinWindowWidth="1000" trigger put four totals columns into a box that never had room for
+         them. -->
     <StackPanel MinWidth="0" HorizontalAlignment="Stretch" Spacing="16">
         <VisualStateManager.VisualStateGroups>
             <VisualStateGroup x:Name="UsageWidthStates">
                 <VisualState x:Name="CompactUsage">
-                    <VisualState.StateTriggers>
-                        <AdaptiveTrigger MinWindowWidth="0" />
-                    </VisualState.StateTriggers>
                     <VisualState.Setters>
                         <Setter Target="TotalsGrid.RowSpacing" Value="12" />
                         <Setter Target="TotalColumn0.Width" Value="*" />
@@ -28,9 +31,6 @@
                     </VisualState.Setters>
                 </VisualState>
                 <VisualState x:Name="WideUsage">
-                    <VisualState.StateTriggers>
-                        <AdaptiveTrigger MinWindowWidth="1000" />
-                    </VisualState.StateTriggers>
                     <VisualState.Setters>
                         <Setter Target="TotalsGrid.RowSpacing" Value="0" />
                         <Setter Target="TotalColumn0.Width" Value="*" />

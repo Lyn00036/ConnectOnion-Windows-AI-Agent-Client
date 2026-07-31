@@ -31,6 +31,7 @@ public sealed partial class SettingsViewModel : Common.ObservableObject
     public MessageFontSize MessageFontSize => _prefs.MessageFontSize;
     public bool EnterToSend => _prefs.EnterToSend;
     public string MicrophoneDeviceId => _prefs.MicrophoneDeviceId;
+    public WindowCloseBehavior CloseBehavior => _prefs.CloseBehavior;
 
     public IReadOnlyList<MicrophoneItem> Microphones { get; private set; } = [];
 
@@ -111,6 +112,20 @@ public sealed partial class SettingsViewModel : Common.ObservableObject
         _prefs.EnterToSend = enterToSend;
         OnPropertyChanged(nameof(EnterToSend));
         await _repo.SaveAsync(_prefs);
+    }
+
+    /// <summary>
+    /// Changes what the title-bar close button does. <see cref="MainWindow"/> caches this value
+    /// after its first read, so it is told to re-read rather than left holding the old one until
+    /// the next launch.
+    /// </summary>
+    public async Task SetCloseBehaviorAsync(WindowCloseBehavior behavior)
+    {
+        if (!_loaded || _prefs.CloseBehavior == behavior) return;
+        _prefs.CloseBehavior = behavior;
+        OnPropertyChanged(nameof(CloseBehavior));
+        await _repo.SaveAsync(_prefs);
+        MainWindow.InvalidateCloseBehaviorCache();
     }
 
     private async Task SetMicrophoneAsync(string deviceId)

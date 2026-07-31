@@ -1,7 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Models;
@@ -18,13 +17,6 @@ namespace ConnectOnion.WinUIClient.ViewModels;
 /// </summary>
 public sealed class SessionsViewModel : ObservableObject
 {
-    /// <summary>Matches the placeholder title <see cref="SessionSummary.NewConversation"/>
-    /// assigns. Only a title still in this shape gets replaced by the opening prompt — a user
-    /// who renamed a conversation must never have that overwritten.</summary>
-    private static readonly Regex GenericTitle = new(@"^Conversation \d+$", RegexOptions.Compiled);
-    /// <summary>Collapses runs of whitespace so a multi-line prompt becomes a single-line title.</summary>
-    private static readonly Regex Whitespace = new(@"\s+", RegexOptions.Compiled);
-
     private readonly SessionRepository _repo;
     private readonly ConversationRepository _conversations;
     private readonly AgentSessionManager _runManager;
@@ -87,7 +79,7 @@ public sealed class SessionsViewModel : ObservableObject
     /// <summary>Creates a new conversation for the given agent and selects it.</summary>
     public SessionSummary StartNewSession(string agentId)
     {
-        var session = SessionSummary.NewConversation(agentId, Sessions);
+        var session = SessionSummary.NewConversation(agentId, Sessions, Common.SessionTitles.PlaceholderFormat);
         Sessions.Insert(0, session);
         Selected = session;
         _ = SaveAsync();
@@ -103,11 +95,7 @@ public sealed class SessionsViewModel : ObservableObject
         var session = Sessions.FirstOrDefault(s => s.Id == sessionId);
         if (session is null) return;
 
-        if (GenericTitle.IsMatch(session.Title) && !string.IsNullOrWhiteSpace(prompt))
-        {
-            var title = Whitespace.Replace(prompt.Trim(), " ");
-            session.Title = title.Length > 48 ? title[..48] : title;
-        }
+        session.TryApplyTitleFromPrompt(prompt);
         // ISO-8601 round-trip ("o") and UTC, because the sidebar sorts these as *strings* —
         // lexicographic order is only chronological if every row uses this exact format.
         session.UpdatedAt = DateTime.UtcNow.ToString("o");

@@ -7,9 +7,9 @@ namespace ConnectOnion.WinUIClient.ViewModels;
 
 /// <summary>
 /// <see cref="ChatViewModel"/>: operations that change <i>which</i> conversation the page is on —
-/// starting a new one, branching an existing one at a message, and retrying a turn by branching.
-/// Each one re-points the run subscription, so they are grouped away from the single-conversation
-/// lifecycle in the main file.
+/// starting a new one, branching an existing one at an edited message, and retrying a turn in the
+/// current conversation. Conversation-changing operations re-point the run subscription; retry
+/// deliberately leaves it attached to the current session.
 /// </summary>
 public sealed partial class ChatViewModel
 {
@@ -51,7 +51,7 @@ public sealed partial class ChatViewModel
         IsStopping = false;
         _optimisticStopRunId = null;
 
-        _session = SessionSummary.NewConversation(_agent.Id, _sessionsState.Sessions);
+        _session = SessionSummary.NewConversation(_agent.Id, _sessionsState.Sessions, Common.SessionTitles.PlaceholderFormat);
         // A new conversation starts at the default mode rather than inheriting the last one: the
         // modes that skip approvals are exactly the ones nobody should acquire by accident.
         _sessionsState.Sessions.Add(_session);
@@ -106,7 +106,7 @@ public sealed partial class ChatViewModel
         IsStopping = false;
         _optimisticStopRunId = null;
 
-        _session = SessionSummary.NewConversation(_agent.Id, _sessionsState.Sessions);
+        _session = SessionSummary.NewConversation(_agent.Id, _sessionsState.Sessions, Common.SessionTitles.PlaceholderFormat);
         _session.Mode = inheritedMode;
         _sessionsState.Sessions.Add(_session);
         _sessionsState.ActiveSessionId = _session.Id;
@@ -137,8 +137,24 @@ public sealed partial class ChatViewModel
         return true;
     }
 
-    /// <summary>Retries the user turn that produced an agent response by branching from the
-    /// nearest preceding user message. Event cards between the pair do not affect the lookup.</summary>
+    /// <summary>Re-sends an earlier user message in the current session. The previous turn remains
+    /// visible and the new user bubble is appended at the end, so Retry never changes sidebar
+    /// selection or creates a hidden branch.</summary>
+    public async Task<bool> RetryUserMessageAsync(ChatMessage source)
+    {
+        if (_agent is null || _session is null || IsProcessing || !CanSend
+            || !source.CanEdit || Messages.IndexOf(source) < 0)
+        {
+            return false;
+        }
+
+        await SendAsync(source.Content);
+        return true;
+    }
+
+    /// <summary>Retries the user turn that produced an agent response in the current session by
+    /// locating the nearest preceding user message. Event cards between the pair do not affect
+    /// the lookup.</summary>
     public Task<bool> RetryFromAgentMessageAsync(ChatMessage response)
     {
         var responseIndex = Messages.IndexOf(response);
@@ -148,7 +164,7 @@ public sealed partial class ChatViewModel
         {
             if (Messages[i] is { IsUser: true } source)
             {
-                return BranchFromMessageAsync(source, source.Content);
+                return RetryUserMessageAsync(source);
             }
         }
 

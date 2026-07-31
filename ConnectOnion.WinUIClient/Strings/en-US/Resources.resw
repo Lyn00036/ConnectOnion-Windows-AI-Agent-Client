@@ -40,8 +40,8 @@
   <data name="ChatRetry.Text" xml:space="preserve"><value>Retry</value></data>
   <data name="ComposerInput.PlaceholderText" xml:space="preserve"><value>Do anything</value></data>
   <data name="MenuNewChat.Text" xml:space="preserve"><value>New Chat</value></data>
-  <data name="MenuOpenFolder.Text" xml:space="preserve"><value>Open Folder...</value></data>
-  <data name="MenuClose.Text" xml:space="preserve"><value>Close</value></data>
+  <data name="MenuOpenFolder.Text" xml:space="preserve"><value>Open Data Folder</value></data>
+  <data name="MenuClose.Text" xml:space="preserve"><value>Hide to Tray</value></data>
   <data name="MenuSettings.Text" xml:space="preserve"><value>Settings...</value></data>
   <data name="MenuExit.Text" xml:space="preserve"><value>Exit</value></data>
   <data name="MenuUndo.Text" xml:space="preserve"><value>Undo</value></data>
@@ -52,7 +52,7 @@
   <data name="MenuDelete.Text" xml:space="preserve"><value>Delete</value></data>
   <data name="MenuSelectAll.Text" xml:space="preserve"><value>Select All</value></data>
   <data name="MenuToggleSidebar.Text" xml:space="preserve"><value>Toggle Sidebar</value></data>
-  <data name="MenuOpenTerminal.Text" xml:space="preserve"><value>Open Terminal</value></data>
+  <data name="MenuOpenTerminal.Text" xml:space="preserve"><value>Open Terminal in Data Folder</value></data>
   <data name="MenuFind.Text" xml:space="preserve"><value>Find</value></data>
   <data name="MenuBack.Text" xml:space="preserve"><value>Back</value></data>
   <data name="MenuForward.Text" xml:space="preserve"><value>Forward</value></data>
@@ -104,21 +104,23 @@
   <data name="SettingsMessagePreview.Description" xml:space="preserve"><value>Include a snippet of the reply. When off, notifications only say you have a new response.</value></data>
   <data name="SettingsMicrophone.Description" xml:space="preserve"><value>Choose the microphone for voice input.</value></data>
   <data name="SidebarWorkspace.Text" xml:space="preserve"><value>Agent workspace</value></data>
-  <data name="SidebarNewChat.Text" xml:space="preserve"><value>New Chat</value></data>
+  <data name="SidebarAgentsNavigation.ToolTipService.ToolTip" xml:space="preserve"><value>Agents</value></data>
+  <data name="SidebarAgentsNavigation.AutomationProperties.Name" xml:space="preserve"><value>Agents</value></data>
+  <data name="SidebarAgentsNavigationLabel.Text" xml:space="preserve"><value>Agents</value></data>
   <data name="SidebarSearchChats.ToolTipService.ToolTip" xml:space="preserve"><value>Search chats</value></data>
   <data name="SidebarSearchChats.AutomationProperties.Name" xml:space="preserve"><value>Search chats</value></data>
   <data name="SidebarPinned.Text" xml:space="preserve"><value>Pinned</value></data>
-  <data name="SidebarAgents.Text" xml:space="preserve"><value>Agents</value></data>
+  <data name="SidebarConversations.Text" xml:space="preserve"><value>Conversations</value></data>
   <data name="SidebarDeleteChat.Text" xml:space="preserve"><value>Delete chat</value></data>
   <data name="SidebarAgentNewChat.Text" xml:space="preserve"><value>New chat</value></data>
   <data name="SidebarAgentDetails.Text" xml:space="preserve"><value>Agent details</value></data>
   <data name="SidebarDeleteAgent.Text" xml:space="preserve"><value>Delete agent</value></data>
   <data name="SidebarAddAgent.Text" xml:space="preserve"><value>Add Agent</value></data>
-  <data name="SidebarLocalClient.Text" xml:space="preserve"><value>Local Client</value></data>
   <data name="SidebarSettings.Text" xml:space="preserve"><value>Settings</value></data>
-  <data name="SidebarKeyboardShortcuts.Text" xml:space="preserve"><value>Keyboard Shortcuts</value></data>
-  <data name="SidebarAbout.Text" xml:space="preserve"><value>About ConnectOnion</value></data>
-  <data name="SidebarExit.Text" xml:space="preserve"><value>Exit</value></data>
+  <data name="SidebarSettingsButton.AutomationProperties.Name" xml:space="preserve"><value>Settings</value></data>
+  <data name="SidebarSettingsButton.ToolTipService.ToolTip" xml:space="preserve"><value>Settings</value></data>
+  <data name="SidebarResizeHandle.AutomationProperties.Name" xml:space="preserve"><value>Resize sidebar</value></data>
+  <data name="SidebarResizeHandle.AutomationProperties.HelpText" xml:space="preserve"><value>Drag horizontally to resize. Drag left past the minimum to collapse.</value></data>
   <data name="AboutTitle.Text" xml:space="preserve"><value>About ConnectOnion</value></data>
   <data name="AboutClose.AutomationProperties.Name" xml:space="preserve"><value>Close About ConnectOnion</value></data>
   <data name="AboutClose.ToolTipService.ToolTip" xml:space="preserve"><value>Close (Esc)</value></data>
@@ -132,9 +134,9 @@
   <data name="SettingsFontMedium" xml:space="preserve"><value>Medium</value></data>
   <data name="SettingsFontLarge" xml:space="preserve"><value>Large</value></data>
   <data name="AddAgentTitle.Text" xml:space="preserve"><value>Add an agent</value></data>
-  <data name="AddAgentAddressLabel.Text" xml:space="preserve"><value>Address or Direct URL</value></data>
-  <data name="AddAgentAddressHint.Text" xml:space="preserve"><value>Enter an agent address or a direct WebSocket URL.</value></data>
-  <data name="AddAgentAddressError.Text" xml:space="preserve"><value>Enter a valid agent address or WebSocket URL.</value></data>
+  <data name="AddAgentAddressLabel.Text" xml:space="preserve"><value>Agent connection</value></data>
+  <data name="AddAgentAddressHint.Text" xml:space="preserve"><value>Use a 0x address for a shared relay agent, or an HTTP URL for a direct connection.</value></data>
+  <data name="AddAgentAddressError.Text" xml:space="preserve"><value>Enter a valid agent address or HTTP URL.</value></data>
   <data name="AgentShareDialog.Title" xml:space="preserve"><value>Share agent</value></data>
   <data name="AgentShareDialog.PrimaryButtonText" xml:space="preserve"><value>Open web chat</value></data>
   <data name="AgentShareDialog.CloseButtonText" xml:space="preserve"><value>Close</value></data>
@@ -143,14 +145,14 @@
   <data name="AgentShareAddress.Text" xml:space="preserve"><value>Agent address</value></data>
   <data name="AgentShareCopyAddress.Content" xml:space="preserve"><value>Copy address</value></data>
   <data name="AgentShareCopyLink.Content" xml:space="preserve"><value>Copy link</value></data>
-  <data name="HomeAgentsTitle.Text" xml:space="preserve"><value>Agents</value></data>
-  <data name="HomeAgentsDescription.Text" xml:space="preserve"><value>Open an agent to continue its most recent conversation.</value></data>
+  <data name="HomeAgentsTitle.Text" xml:space="preserve"><value>Agent library</value></data>
+  <data name="HomeAgentsDescription.Text" xml:space="preserve"><value>Manage agents here. Use the sidebar to move between conversations.</value></data>
   <data name="HomeAddAgent.Text" xml:space="preserve"><value>Add Agent</value></data>
   <data name="HomeAvailableAgents.Text" xml:space="preserve"><value>Available agents</value></data>
   <data name="HomeLastUsed.Text" xml:space="preserve"><value>Last used</value></data>
   <data name="HomeOpening.Text" xml:space="preserve"><value>Opening</value></data>
   <data name="HomeNoAgents.Text" xml:space="preserve"><value>No agents yet</value></data>
-  <data name="HomeNoAgentsHint.Text" xml:space="preserve"><value>Add an agent to start a conversation.</value></data>
+  <data name="HomeNoAgentsHint.Text" xml:space="preserve"><value>An agent is a ConnectOnion-compatible assistant you connect to. You need its 0x address or its HTTP URL — whoever runs the agent can give you one from its Share screen.</value></data>
   <data name="AgentDetailShare.Content" xml:space="preserve"><value>Share</value></data>
   <data name="AgentDetailCapabilities.Content" xml:space="preserve"><value>What can you do?</value></data>
   <data name="AgentDetailTools.Text" xml:space="preserve"><value>Available tools</value></data>
@@ -224,7 +226,6 @@
   <data name="ToolAllowSession.Text" xml:space="preserve"><value>Allow for session</value></data>
   <data name="ToolAllowOnce.Text" xml:space="preserve"><value>Allow once</value></data>
   <data name="HistoryRecentChats.Text" xml:space="preserve"><value>Recent chats</value></data>
-  <data name="HistoryNewChat.Text" xml:space="preserve"><value>New Chat</value></data>
   <data name="HistoryExit.Text" xml:space="preserve"><value>Exit</value></data>
   <data name="MenuFile.Title" xml:space="preserve"><value>File</value></data>
   <data name="MenuEdit.Title" xml:space="preserve"><value>Edit</value></data>
@@ -234,7 +235,7 @@
   <data name="DiffUnifiedUtf8.Text" xml:space="preserve"><value>Unified diff · UTF-8</value></data>
   <data name="ChatEditBranchDescription.Text" xml:space="preserve"><value>Editing creates a new conversation from this point. The original remains in the sidebar.</value></data>
   <data name="ChatEditCancel.Content" xml:space="preserve"><value>Cancel</value></data>
-  <data name="ChatEditSave.Content" xml:space="preserve"><value>Save</value></data>
+  <data name="ChatEditSave.Content" xml:space="preserve"><value>Send</value></data>
   <data name="ChatOr.Text" xml:space="preserve"><value>or</value></data>
   <data name="ShortcutsDialogTitle.Text" xml:space="preserve"><value>Keyboard shortcuts</value></data>
   <data name="ShortcutsDialogSearch.PlaceholderText" xml:space="preserve"><value>Search shortcuts</value></data>
@@ -278,9 +279,22 @@
   <data name="CommonOk" xml:space="preserve"><value>OK</value></data>
   <data name="ComposerAddImage" xml:space="preserve"><value>Add image...</value></data>
   <data name="ComposerAddFile" xml:space="preserve"><value>Add file...</value></data>
+  <data name="SessionPlaceholderTitleFormat" xml:space="preserve"><value>Conversation {0}</value></data>
   <data name="ComposerFileReadFailure" xml:space="preserve"><value>Could not read this file.</value></data>
+  <data name="ComposerAttachmentPickFailure" xml:space="preserve"><value>Could not add that attachment. Please try again.</value></data>
+  <data name="ComposerAttachmentDropFailure" xml:space="preserve"><value>Could not read the dropped files.</value></data>
   <data name="CommonCancel" xml:space="preserve"><value>Cancel</value></data>
   <data name="CommonDelete" xml:space="preserve"><value>Delete</value></data>
+  <data name="SettingsWindow.Text" xml:space="preserve"><value>Window</value></data>
+  <data name="SettingsCloseBehavior.Header" xml:space="preserve"><value>When you close the window</value></data>
+  <data name="SettingsCloseBehavior.Description" xml:space="preserve"><value>Closing can keep agent turns running in the tray, or exit the app.</value></data>
+  <data name="SettingsCloseBehaviorAsk.Content" xml:space="preserve"><value>Ask every time</value></data>
+  <data name="SettingsCloseBehaviorTray.Content" xml:space="preserve"><value>Keep running in the tray</value></data>
+  <data name="SettingsCloseBehaviorExit.Content" xml:space="preserve"><value>Exit ConnectOnion</value></data>
+  <data name="CommonSave" xml:space="preserve"><value>Save</value></data>
+  <data name="SidebarRenameChat.Text" xml:space="preserve"><value>Rename</value></data>
+  <data name="RenameConversationTitle" xml:space="preserve"><value>Rename conversation</value></data>
+  <data name="RenameConversationFieldName" xml:space="preserve"><value>Conversation name</value></data>
   <data name="IdentityGenerateWait" xml:space="preserve"><value>Wait for the running conversation to finish before generating a new identity.</value></data>
   <data name="IdentityGenerateTitle" xml:space="preserve"><value>Generate a new identity?</value></data>
   <data name="IdentityGenerateWarning" xml:space="preserve"><value>This replaces your current identity and creates a different OpenOnion account on first sign-in. Your current balance, agent authorizations, and account history do not move to the new address. Back up the current recovery phrase first.</value></data>
@@ -311,9 +325,6 @@
   <data name="CommonMore" xml:space="preserve"><value>More</value></data>
   <data name="UnknownAgent" xml:space="preserve"><value>Unknown agent</value></data>
   <data name="ImageLoadFailed" xml:space="preserve"><value>Image could not be loaded.</value></data>
-  <data name="SidebarStartNewChat" xml:space="preserve"><value>Start a new chat</value></data>
-  <data name="SidebarAddAgentToChat" xml:space="preserve"><value>Add an agent to start a new chat</value></data>
-  <data name="SidebarStartChatWith" xml:space="preserve"><value>Start a new chat with {0}</value></data>
   <data name="RecoveryFirstRevealIntro" xml:space="preserve"><value>This device just created a ConnectOnion identity. Write these words down in order and keep them somewhere offline — they are the only way to restore this address on another machine, and nobody can recover them for you. You can see them again later in Settings → Identity.</value></data>
   <data name="RecoveryPhraseIntro" xml:space="preserve"><value>Write these words down in order and keep them somewhere offline. Entering them in ConnectOnion on another machine — or in the CLI or the web client — restores this same address.</value></data>
   <data name="RecoveryLegacyIdentityIntro" xml:space="preserve"><value>This identity was created before ConnectOnion used recovery phrases, so it has none — a phrase cannot be worked out from an existing key. Back up the private key below instead; it restores this address the same way.</value></data>
@@ -361,6 +372,7 @@
   <data name="PresenceUnavailable" xml:space="preserve"><value>Unavailable</value></data>
   <data name="PresenceNotConnected" xml:space="preserve"><value>Not connected</value></data>
   <data name="ConnectionReady" xml:space="preserve"><value>Ready</value></data>
+  <data name="ConnectionStarting" xml:space="preserve"><value>Starting…</value></data>
   <data name="ConnectionWorking" xml:space="preserve"><value>Working</value></data>
   <data name="ConnectionWaitingApproval" xml:space="preserve"><value>Waiting for approval</value></data>
   <data name="ConnectionReconnecting" xml:space="preserve"><value>Reconnecting {0}/{1}</value></data>
@@ -470,8 +482,8 @@
   <data name="TimeGroupToday" xml:space="preserve"><value>Today</value></data>
   <data name="TimeGroupYesterday" xml:space="preserve"><value>Yesterday</value></data>
   <data name="TimeGroupEarlier" xml:space="preserve"><value>Earlier</value></data>
-  <data name="SidebarMoreActions.ToolTipService.ToolTip" xml:space="preserve"><value>More actions</value></data>
-  <data name="SidebarMoreActions.AutomationProperties.Name" xml:space="preserve"><value>More actions</value></data>
+  <data name="SidebarAgentNewChatButton.ToolTipService.ToolTip" xml:space="preserve"><value>New chat</value></data>
+  <data name="SidebarAgentNewChatButton.AutomationProperties.Name" xml:space="preserve"><value>New chat</value></data>
   <data name="MainToggleSidebar.ToolTipService.ToolTip" xml:space="preserve"><value>Toggle sidebar</value></data>
   <data name="MainToggleSidebar.AutomationProperties.Name" xml:space="preserve"><value>Toggle sidebar</value></data>
   <data name="MainNavigateBack.ToolTipService.ToolTip" xml:space="preserve"><value>Back</value></data>
@@ -489,19 +501,20 @@
   <data name="MainZoomIn.ToolTipService.ToolTip" xml:space="preserve"><value>Zoom in</value></data>
   <data name="MainZoomIn.AutomationProperties.Name" xml:space="preserve"><value>Zoom in</value></data>
   <data name="ChatSaveAttachment.ToolTipService.ToolTip" xml:space="preserve"><value>Save a copy</value></data>
-  <data name="ChatRetryFromMessage.ToolTipService.ToolTip" xml:space="preserve"><value>Retry from this message</value></data>
-  <data name="ChatRetryFromMessage.AutomationProperties.Name" xml:space="preserve"><value>Retry from this message</value></data>
-  <data name="ChatEditMessage.ToolTipService.ToolTip" xml:space="preserve"><value>Edit message</value></data>
-  <data name="ChatEditMessage.AutomationProperties.Name" xml:space="preserve"><value>Edit message</value></data>
+  <data name="ChatRetryFromMessage.ToolTipService.ToolTip" xml:space="preserve"><value>Retry in this conversation</value></data>
+  <data name="ChatRetryFromMessage.AutomationProperties.Name" xml:space="preserve"><value>Retry in this conversation</value></data>
+  <data name="ChatEditMessage.ToolTipService.ToolTip" xml:space="preserve"><value>Edit in a new conversation</value></data>
+  <data name="ChatEditMessage.AutomationProperties.Name" xml:space="preserve"><value>Edit in a new conversation</value></data>
   <data name="ChatCopyMessage.ToolTipService.ToolTip" xml:space="preserve"><value>Copy message</value></data>
   <data name="ChatCopyMessage.AutomationProperties.Name" xml:space="preserve"><value>Copy message</value></data>
-  <data name="ChatRetryResponse.ToolTipService.ToolTip" xml:space="preserve"><value>Retry this response</value></data>
-  <data name="ChatRetryResponse.AutomationProperties.Name" xml:space="preserve"><value>Retry this response</value></data>
+  <data name="ChatRetryResponse.ToolTipService.ToolTip" xml:space="preserve"><value>Retry response in this conversation</value></data>
+  <data name="ChatRetryResponse.AutomationProperties.Name" xml:space="preserve"><value>Retry response in this conversation</value></data>
   <data name="ChatCopyResponse.ToolTipService.ToolTip" xml:space="preserve"><value>Copy response</value></data>
   <data name="ChatCopyResponse.AutomationProperties.Name" xml:space="preserve"><value>Copy response</value></data>
   <data name="ChatJumpToLatest.ToolTipService.ToolTip" xml:space="preserve"><value>Jump to latest</value></data>
   <data name="ChatJumpToLatest.AutomationProperties.Name" xml:space="preserve"><value>Jump to latest message</value></data>
   <data name="ComposerRemoveAttachment.ToolTipService.ToolTip" xml:space="preserve"><value>Remove</value></data>
+  <data name="ComposerRemoveAttachment.AutomationProperties.Name" xml:space="preserve"><value>Remove attachment</value></data>
   <data name="ComposerAddAttachment.ToolTipService.ToolTip" xml:space="preserve"><value>Add attachment</value></data>
   <data name="ComposerAddAttachment.AutomationProperties.Name" xml:space="preserve"><value>Add attachment</value></data>
   <data name="ComposerVoiceInput.ToolTipService.ToolTip" xml:space="preserve"><value>Voice input</value></data>
@@ -543,7 +556,7 @@
   <data name="RuntimeComposerStop" xml:space="preserve"><value>Stop</value></data>
   <data name="FindNoResults" xml:space="preserve"><value>0 / 0 results</value></data>
   <data name="AttachmentGenericFileType" xml:space="preserve"><value>File</value></data>
-  <data name="AddAgentValidationError" xml:space="preserve"><value>Enter a valid agent address or WebSocket URL.</value></data>
+  <data name="AddAgentValidationError" xml:space="preserve"><value>Enter a valid agent address or HTTP URL.</value></data>
   <data name="AddAgentConnectedTo" xml:space="preserve"><value>Connected to {0}</value></data>
   <data name="AddAgentCouldNotAdd" xml:space="preserve"><value>Could not add the agent: {0}</value></data>
   <data name="AddAgentCheckingHealth" xml:space="preserve"><value>Checking agent health…</value></data>
@@ -579,4 +592,120 @@
   <data name="AgentIconProcessFailed" xml:space="preserve"><value>The selected image could not be processed.</value></data>
   <data name="AgentIconSaveFailed" xml:space="preserve"><value>The agent icon could not be saved.</value></data>
   <data name="AgentIconDeleteFailed" xml:space="preserve"><value>The agent icon could not be removed.</value></data>
+  <data name="AddAgentIntro.Text" xml:space="preserve"><value>Paste the connection details from the agent's Share screen.</value></data>
+  <data name="AddAgentInput.PlaceholderText" xml:space="preserve"><value>0x… or https://example.com/agent</value></data>
+  <data name="AddAgentAppearance.Header" xml:space="preserve"><value>Customize appearance (optional)</value></data>
+  <data name="SettingsCompactCategoryGeneral.Content" xml:space="preserve"><value>General</value></data>
+  <data name="SettingsCompactCategoryAgents.Content" xml:space="preserve"><value>Agents</value></data>
+  <data name="SettingsCompactCategoryNotifications.Content" xml:space="preserve"><value>Notifications</value></data>
+  <data name="SettingsCompactCategoryAudio.Content" xml:space="preserve"><value>Audio</value></data>
+  <data name="SettingsCompactCategoryKeyboard.Content" xml:space="preserve"><value>Keyboard</value></data>
+  <data name="SettingsCompactCategoryIdentity.Content" xml:space="preserve"><value>Identity</value></data>
+  <data name="SettingsCompactCategoryUsage.Content" xml:space="preserve"><value>Usage</value></data>
+  <data name="SettingsCompactSearch.PlaceholderText" xml:space="preserve"><value>Search settings</value></data>
+  <data name="SettingsCompactSearch.AutomationProperties.Name" xml:space="preserve"><value>Search settings</value></data>
+  <data name="CloseBehaviorTitle" xml:space="preserve"><value>Close ConnectOnion?</value></data>
+  <data name="CloseBehaviorDescription" xml:space="preserve"><value>Keep agent turns running in the background, or exit completely. We’ll remember your choice.</value></data>
+  <data name="CloseBehaviorKeepRunning" xml:space="preserve"><value>Keep running</value></data>
+  <data name="CommonExit" xml:space="preserve"><value>Exit</value></data>
+  <data name="SettingsCategoryGeneralName" xml:space="preserve"><value>General</value></data>
+  <data name="SettingsCategoryAgentsName" xml:space="preserve"><value>Agents</value></data>
+  <data name="SettingsCategoryNotificationsName" xml:space="preserve"><value>Notifications</value></data>
+  <data name="SettingsCategoryAudioName" xml:space="preserve"><value>Audio</value></data>
+  <data name="SettingsCategoryKeyboardName" xml:space="preserve"><value>Keyboard</value></data>
+  <data name="SettingsCategoryIdentityName" xml:space="preserve"><value>Identity</value></data>
+  <data name="SettingsCategoryUsageName" xml:space="preserve"><value>Usage</value></data>
+  <data name="AddAgentChooseIcon.AutomationProperties.Name" xml:space="preserve"><value>Choose an agent icon</value></data>
+  <data name="AddAgentRemoveIcon.AutomationProperties.Name" xml:space="preserve"><value>Remove the selected agent icon</value></data>
+  <data name="AddAgentCancel.AutomationProperties.Name" xml:space="preserve"><value>Cancel adding agent</value></data>
+  <data name="AgentShareCopyAddress.AutomationProperties.Name" xml:space="preserve"><value>Copy agent address</value></data>
+  <data name="AgentShareCopyLink.AutomationProperties.Name" xml:space="preserve"><value>Copy agent web chat link</value></data>
+  <data name="AskUserSkip.AutomationProperties.Name" xml:space="preserve"><value>Skip this question</value></data>
+  <data name="PlanReviewSections.AutomationProperties.Name" xml:space="preserve"><value>Open full plan and review each section</value></data>
+  <data name="PlanReviewCopy.AutomationProperties.Name" xml:space="preserve"><value>Copy execution plan</value></data>
+  <data name="ToolApprovalRequired.AutomationProperties.Name" xml:space="preserve"><value>Approval required</value></data>
+  <data name="ToolOpen.AutomationProperties.Name" xml:space="preserve"><value>Open tool URL</value></data>
+  <data name="ToolOpen.ToolTipService.ToolTip" xml:space="preserve"><value>Open this URL in the default browser</value></data>
+  <data name="ToolCopyCommand.AutomationProperties.Name" xml:space="preserve"><value>Copy command</value></data>
+  <data name="ToolCopyCommand.ToolTipService.ToolTip" xml:space="preserve"><value>Copy the complete command</value></data>
+  <data name="ToolRetry.AutomationProperties.Name" xml:space="preserve"><value>Retry approval response</value></data>
+  <data name="ToolExplainWhy.AutomationProperties.Name" xml:space="preserve"><value>Ask the agent to explain why this operation is required</value></data>
+  <data name="ToolStopTask.ToolTipService.ToolTip" xml:space="preserve"><value>This stops the entire agent task, not only this command.</value></data>
+  <data name="ToolDecline.AutomationProperties.Name" xml:space="preserve"><value>Decline this command</value></data>
+  <data name="ToolDecline.ToolTipService.ToolTip" xml:space="preserve"><value>Decline only this command; the agent may continue.</value></data>
+  <data name="IdentityRefresh.AutomationProperties.Name" xml:space="preserve"><value>Refresh OpenOnion balance</value></data>
+  <data name="IdentityReveal.AutomationProperties.Name" xml:space="preserve"><value>Reveal OpenOnion API key</value></data>
+  <data name="IdentityCopy.AutomationProperties.Name" xml:space="preserve"><value>Copy OpenOnion API key</value></data>
+  <data name="IdentityTopUp.AutomationProperties.Name" xml:space="preserve"><value>Open the OpenOnion purchase page</value></data>
+  <data name="KeyboardSearch.AutomationProperties.Name" xml:space="preserve"><value>Search shortcuts</value></data>
+  <data name="KeyboardResetAll.AutomationProperties.Name" xml:space="preserve"><value>Reset all shortcuts to their defaults</value></data>
+  <data name="ShortcutsDialogSearch.AutomationProperties.Name" xml:space="preserve"><value>Search shortcuts</value></data>
+  <data name="RestoreIdentityInput.AutomationProperties.Name" xml:space="preserve"><value>Recovery phrase or private key</value></data>
+  <data name="SettingsSearch.AutomationProperties.Name" xml:space="preserve"><value>Search settings</value></data>
+  <data name="UsageClear.AutomationProperties.Name" xml:space="preserve"><value>Clear all recorded token usage</value></data>
+  <data name="AgentDetailShare.AutomationProperties.Name" xml:space="preserve"><value>Share this relay agent</value></data>
+  <data name="AgentDetailCapabilities.AutomationProperties.Name" xml:space="preserve"><value>Draft the prompt: What can you do?</value></data>
+  <data name="ChatEmptyTitle.Text" xml:space="preserve"><value>No messages yet</value></data>
+  <data name="ChatEmptyDescription.Text" xml:space="preserve"><value>Type a message below to start the conversation.</value></data>
+  <data name="SettingsEnterToSendSwitch.AutomationProperties.Name" xml:space="preserve"><value>Enter to send</value></data>
+  <data name="AddAgentRoot.AutomationProperties.Name" xml:space="preserve"><value>Add an agent</value></data>
+  <data name="AddAgentIconPreview.AutomationProperties.Name" xml:space="preserve"><value>Agent icon preview</value></data>
+  <data name="AddAgentConnectionOk.AutomationProperties.Name" xml:space="preserve"><value>Connection successful</value></data>
+  <data name="AddAgentConnectionFailed.AutomationProperties.Name" xml:space="preserve"><value>Connection failed</value></data>
+  <data name="AgentShareQrCode.AutomationProperties.Name" xml:space="preserve"><value>QR code for the agent web chat</value></data>
+  <data name="AgentShareQrProgress.AutomationProperties.Name" xml:space="preserve"><value>Generating QR code</value></data>
+  <data name="ComposerSkillList.AutomationProperties.Name" xml:space="preserve"><value>Agent skills</value></data>
+  <data name="ComposerPendingAttachments.AutomationProperties.Name" xml:space="preserve"><value>Pending attachments</value></data>
+  <data name="ComposerStopResponse.AutomationProperties.Name" xml:space="preserve"><value>Stop response</value></data>
+  <data name="AskUserImage.AutomationProperties.Name" xml:space="preserve"><value>Question image. Open in the default viewer.</value></data>
+  <data name="AskUserPassword.AutomationProperties.HelpText" xml:space="preserve"><value>Sensitive value. Characters are hidden.</value></data>
+  <data name="AskUserSubmit.AutomationProperties.Name" xml:space="preserve"><value>Submit answer</value></data>
+  <data name="PlanReviewBody.AutomationProperties.Name" xml:space="preserve"><value>Execution plan</value></data>
+  <data name="PlanSectionList.AutomationProperties.Name" xml:space="preserve"><value>Plan sections</value></data>
+  <data name="ToolRiskWarning.AutomationProperties.Name" xml:space="preserve"><value>Risk warning</value></data>
+  <data name="IdentityAccountProgress.AutomationProperties.Name" xml:space="preserve"><value>Loading OpenOnion account</value></data>
+  <data name="IdentityMaskedKey.AutomationProperties.Name" xml:space="preserve"><value>Masked OpenOnion API key</value></data>
+  <data name="IdentityShowPhraseButton.AutomationProperties.Name" xml:space="preserve"><value>Show recovery phrase</value></data>
+  <data name="IdentityRestoreButton.AutomationProperties.Name" xml:space="preserve"><value>Restore an identity from a recovery phrase</value></data>
+  <data name="IdentityRegenerate.AutomationProperties.Name" xml:space="preserve"><value>Generate a new ConnectOnion identity</value></data>
+  <data name="SettingsNavGeneral.AutomationProperties.Name" xml:space="preserve"><value>General settings</value></data>
+  <data name="SettingsNavAgents.AutomationProperties.Name" xml:space="preserve"><value>Agent settings</value></data>
+  <data name="SettingsNavNotifications.AutomationProperties.Name" xml:space="preserve"><value>Notification settings</value></data>
+  <data name="SettingsNavAudio.AutomationProperties.Name" xml:space="preserve"><value>Audio settings</value></data>
+  <data name="SettingsNavKeyboard.AutomationProperties.Name" xml:space="preserve"><value>Keyboard shortcuts settings</value></data>
+  <data name="SettingsNavIdentity.AutomationProperties.Name" xml:space="preserve"><value>Identity settings</value></data>
+  <data name="SettingsNavUsage.AutomationProperties.Name" xml:space="preserve"><value>Token usage</value></data>
+  <data name="SettingsCategoryPicker.AutomationProperties.Name" xml:space="preserve"><value>Settings category</value></data>
+  <data name="AboutLogo.AutomationProperties.Name" xml:space="preserve"><value>ConnectOnion logo</value></data>
+  <data name="SidebarLogo.AutomationProperties.Name" xml:space="preserve"><value>ConnectOnion logo</value></data>
+  <data name="SidebarDismissLayer.AutomationProperties.Name" xml:space="preserve"><value>Close navigation drawer</value></data>
+  <data name="AgentDetailIcon.AutomationProperties.Name" xml:space="preserve"><value>Agent icon</value></data>
+  <data name="AgentDetailBalance.AutomationProperties.Name" xml:space="preserve"><value>View balance and top up for this agent</value></data>
+  <data name="AgentDetailCapabilitiesProgress.AutomationProperties.Name" xml:space="preserve"><value>Loading agent capabilities</value></data>
+  <data name="ChatEditMessageInput.AutomationProperties.Name" xml:space="preserve"><value>Edit message text</value></data>
+  <data name="HomeAddAgentButton.AutomationProperties.Name" xml:space="preserve"><value>Add another agent</value></data>
+  <data name="HomeOpeningAgent.AutomationProperties.Name" xml:space="preserve"><value>Opening agent</value></data>
+  <data name="SettingsThemeChoice.AutomationProperties.Name" xml:space="preserve"><value>Theme</value></data>
+  <data name="SettingsLanguageChoice.AutomationProperties.Name" xml:space="preserve"><value>Application language</value></data>
+  <data name="SettingsCloseBehaviorChoice.AutomationProperties.Name" xml:space="preserve"><value>Window close behavior</value></data>
+  <data name="SettingsFontChoice.AutomationProperties.Name" xml:space="preserve"><value>Message text size</value></data>
+  <data name="SettingsNotificationsSwitch.AutomationProperties.Name" xml:space="preserve"><value>Enable notifications</value></data>
+  <data name="SettingsNotifyReplies.AutomationProperties.Name" xml:space="preserve"><value>Notify for agent replies</value></data>
+  <data name="SettingsNotifyTasks.AutomationProperties.Name" xml:space="preserve"><value>Notify for task completion</value></data>
+  <data name="SettingsNotifyApprovals.AutomationProperties.Name" xml:space="preserve"><value>Notify for approval requests</value></data>
+  <data name="SettingsNotifyConnection.AutomationProperties.Name" xml:space="preserve"><value>Notify for connection problems</value></data>
+  <data name="SettingsNotifySound.AutomationProperties.Name" xml:space="preserve"><value>Play notification sound</value></data>
+  <data name="SettingsNotifyPreview.AutomationProperties.Name" xml:space="preserve"><value>Show message preview</value></data>
+  <data name="SettingsMicChoice.AutomationProperties.Name" xml:space="preserve"><value>Microphone</value></data>
+  <data name="SettingsAgentsAddButton.AutomationProperties.Name" xml:space="preserve"><value>Add agent</value></data>
+  <data name="SidebarAddAgentButton.AutomationProperties.Name" xml:space="preserve"><value>Add agent</value></data>
+  <data name="NoAgentsTitle" xml:space="preserve"><value>No agents available</value></data>
+  <data name="NoAgentsBody" xml:space="preserve"><value>Add an agent before starting a chat.</value></data>
+  <data name="SettingsLanguageRestartNow.Content" xml:space="preserve"><value>Restart now</value></data>
+  <data name="HomeEmptyAddAgent.Content" xml:space="preserve"><value>Add your first agent</value></data>
+  <data name="HomeEmptyDocs.Content" xml:space="preserve"><value>How do I get one?</value></data>
+  <data name="HomeDocsOpenFailedTitle" xml:space="preserve"><value>Couldn't open the docs</value></data>
+  <data name="HomeDocsOpenFailedBody" xml:space="preserve"><value>Visit {0} in your browser.</value></data>
+  <data name="AddAgentWhereToGetOne.Content" xml:space="preserve"><value>Where do I get an agent address?</value></data>
+  <data name="AddAgentDocsOpenFailed" xml:space="preserve"><value>Couldn't open the docs. Visit {0} in your browser.</value></data>
 </root>

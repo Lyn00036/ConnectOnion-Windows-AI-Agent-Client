@@ -598,7 +598,7 @@
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <ic:FluentIcon Icon="Warning" IconVariant="Regular" IconSize="Size16"
+                                <ic:FluentIcon x:Uid="ToolRiskWarning" Icon="Warning" IconVariant="Regular" IconSize="Size16"
                                                VerticalAlignment="Top"
                                                Foreground="{ThemeResource AttentionBrush}"
                                                AutomationProperties.Name="Risk warning" />

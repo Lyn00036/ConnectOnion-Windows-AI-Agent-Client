@@ -595,12 +595,28 @@ public sealed partial class ChatComposer : UserControl, IDisposable
         catch (Exception ex)
         {
             LogAttachmentPickFailed(Log, kind.ToString(), ex);
+            // The user clicked "+", chose a file, and the picker threw. There is no attachment
+            // chip to hang this on, so without the bar the click would look like a no-op.
+            ShowComposerError(Common.LocalizedStrings.Get(
+                "ComposerAttachmentPickFailure",
+                "Could not add that attachment. Please try again."));
             return;
         }
 
         // Empty result means the user dismissed the picker — a normal outcome, not an error.
+        ClearComposerError();
         AddAttachments(picked);
     }
+
+    /// <summary>Shows a composer-level failure. Used only where no <see cref="PendingAttachment"/>
+    /// exists to carry the message on its own chip.</summary>
+    private void ShowComposerError(string message)
+    {
+        ComposerErrorBar.Message = message;
+        ComposerErrorBar.IsOpen = true;
+    }
+
+    private void ClearComposerError() => ComposerErrorBar.IsOpen = false;
 
     /// <summary>
     /// Validates each candidate and kicks off encoding for the ones that pass. Shared by the
@@ -693,6 +709,7 @@ public sealed partial class ChatComposer : UserControl, IDisposable
         try
         {
             var dropped = await AttachmentDropService.ExtractAsync(e.DataView, _lifetimeCts.Token);
+            ClearComposerError();
             AddAttachments(dropped);
         }
         catch (OperationCanceledException)
@@ -702,6 +719,11 @@ public sealed partial class ChatComposer : UserControl, IDisposable
         catch (Exception ex)
         {
             LogAttachmentDropFailed(Log, ex);
+            // Nothing was extracted, so there is no chip to mark Failed. A drop that vanishes
+            // silently reads as the composer refusing the file for an unstated reason.
+            ShowComposerError(Common.LocalizedStrings.Get(
+                "ComposerAttachmentDropFailure",
+                "Could not read the dropped files."));
         }
         finally
         {

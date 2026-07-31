@@ -30,6 +30,17 @@ public sealed partial class AgentDetailPage : Page, IReloadablePage, IShutdownDi
     private async void OnLoaded(object sender, RoutedEventArgs e)
         => await LoadPageAsync();
 
+    /// <summary>Width at which the page uses its roomier padding and larger agent name. Measured
+    /// against the page, not the window: the sidebar takes up to 288px that an
+    /// <c>AdaptiveTrigger MinWindowWidth</c> would have counted as available here.</summary>
+    private const double WidePageMinWidth = 720;
+
+    private void AgentRoot_SizeChanged(object sender, SizeChangedEventArgs e)
+        => VisualStateManager.GoToState(
+            this,
+            e.NewSize.Width >= WidePageMinWidth ? "Wide" : "Narrow",
+            useTransitions: false);
+
     /// <summary>Re-points this page at whichever agent is now selected, without rebuilding it —
     /// this page carries a <see cref="ChatComposer"/> (Win2D canvas and all), so clicking through
     /// the sidebar's agents was constructing and discarding one per click.</summary>

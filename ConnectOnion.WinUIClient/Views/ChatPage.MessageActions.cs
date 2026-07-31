@@ -196,7 +196,7 @@ public sealed partial class ChatPage
     private async void RetryUserMessage_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.Tag is ChatMessage message &&
-            await Vm.BranchFromMessageAsync(message, message.Content))
+            await Vm.RetryUserMessageAsync(message))
         {
             QueueScrollToEnd(force: true);
         }

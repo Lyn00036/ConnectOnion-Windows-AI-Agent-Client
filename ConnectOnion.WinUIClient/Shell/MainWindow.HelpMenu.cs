@@ -14,7 +14,10 @@ namespace ConnectOnion.WinUIClient;
 /// </summary>
 public sealed partial class MainWindow
 {
-    private const string DocsUrl = "https://docs.connectonion.com/";
+    /// <summary>The public docs. Internal rather than private because the first-run empty state on
+    /// <see cref="Views.HomePage"/> links to the same place — a new user with no agent needs the
+    /// docs more than anyone reaching them from the Help menu.</summary>
+    internal const string DocsUrl = "https://docs.connectonion.com/";
 
     private void RegisterHelpMenuAccelerators()
         => RootGrid.KeyDown += HelpMenuShortcut_KeyDown;

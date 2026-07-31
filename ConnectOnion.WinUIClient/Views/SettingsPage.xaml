@@ -26,7 +26,7 @@
 
                 <ctk:SettingsCard x:Uid="SettingsTheme" Header="Theme"
                                   Description="Use the system theme or choose light or dark mode.">
-                    <RadioButtons x:Name="ThemeChoice" MaxColumns="3"
+                    <RadioButtons x:Uid="SettingsThemeChoice" x:Name="ThemeChoice" MaxColumns="3"
                                   AutomationProperties.Name="Theme"
                                   SelectionChanged="ThemeChoice_SelectionChanged">
                         <x:String>System</x:String>
@@ -37,7 +37,7 @@
 
                 <ctk:SettingsCard x:Uid="SettingsLanguage" Header="Language"
                                   Description="Choose the language used by ConnectOnion.">
-                    <ComboBox x:Name="LanguageChoice"
+                    <ComboBox x:Uid="SettingsLanguageChoice" x:Name="LanguageChoice"
                               MinWidth="180"
                               HorizontalAlignment="Right"
                               AutomationProperties.AutomationId="LanguageChoice"
@@ -48,13 +48,47 @@
                     </ComboBox>
                 </ctk:SettingsCard>
 
+                <!-- WinUI resolves x:Uid once, when a page is constructed, so switching language
+                     cannot re-translate the live visual tree the way a theme flip re-resolves
+                     ThemeResource. The restart is therefore real — but it used to be a notice with
+                     nothing to act on, leaving the user to find the tray, exit and relaunch. The
+                     button does it for them. -->
                 <InfoBar x:Name="LanguageRestartInfo"
                          x:Uid="SettingsLanguageRestart"
                          IsOpen="False"
                          IsClosable="True"
                          Severity="Informational"
                          Title="Restart required"
-                         Message="Restart ConnectOnion to apply the selected language." />
+                         Message="Restart ConnectOnion to apply the selected language.">
+                    <InfoBar.ActionButton>
+                        <Button x:Uid="SettingsLanguageRestartNow"
+                                Content="Restart now"
+                                AutomationProperties.AutomationId="LanguageRestartNowButton"
+                                Click="LanguageRestartNow_Click" />
+                    </InfoBar.ActionButton>
+                </InfoBar>
+            </StackPanel>
+
+            <!-- The close-button choice used to be settable exactly once, from the prompt shown
+                 the first time the window was closed ("We'll remember your choice"). It was
+                 remembered — with no way to change it afterwards, so a user who picked Exit had
+                 turned the title-bar X into an unconfirmed quit, permanently. -->
+            <StackPanel x:Name="WindowSection" Spacing="4">
+                <TextBlock x:Uid="SettingsWindow" Text="Window" Style="{StaticResource SubtitleTextBlockStyle}" Margin="2,0,0,4" />
+
+                <ctk:SettingsCard x:Uid="SettingsCloseBehavior" Header="When you close the window"
+                                  Description="Closing can keep agent turns running in the tray, or exit the app.">
+                    <ComboBox x:Uid="SettingsCloseBehaviorChoice" x:Name="CloseBehaviorChoice"
+                              MinWidth="180"
+                              HorizontalAlignment="Right"
+                              AutomationProperties.AutomationId="CloseBehaviorChoice"
+                              AutomationProperties.Name="Window close behavior"
+                              SelectionChanged="CloseBehaviorChoice_SelectionChanged">
+                        <ComboBoxItem x:Uid="SettingsCloseBehaviorAsk" Content="Ask every time" />
+                        <ComboBoxItem x:Uid="SettingsCloseBehaviorTray" Content="Keep running in the tray" />
+                        <ComboBoxItem x:Uid="SettingsCloseBehaviorExit" Content="Exit ConnectOnion" />
+                    </ComboBox>
+                </ctk:SettingsCard>
             </StackPanel>
 
             <StackPanel x:Name="ChatSection" Spacing="4">
@@ -62,7 +96,7 @@
 
                 <ctk:SettingsCard x:Uid="SettingsMessageSize" Header="Message text size"
                                   Description="Adjust how large chat messages appear.">
-                    <RadioButtons x:Name="FontChoice" MaxColumns="3"
+                    <RadioButtons x:Uid="SettingsFontChoice" x:Name="FontChoice" MaxColumns="3"
                                   AutomationProperties.Name="Message text size"
                                   SelectionChanged="FontChoice_SelectionChanged">
                         <x:String>Small</x:String>
@@ -87,7 +121,7 @@
 
                 <ctk:SettingsCard x:Uid="SettingsNotificationsEnable" Header="Enable notifications"
                                   Description="Master switch for all in-app and Windows notifications.">
-                    <ToggleSwitch x:Name="EnableNotificationsSwitch"
+                    <ToggleSwitch x:Uid="SettingsNotificationsSwitch" x:Name="EnableNotificationsSwitch"
                                   AutomationProperties.Name="Enable notifications"
                                   Toggled="EnableNotificationsSwitch_Toggled" />
                 </ctk:SettingsCard>
@@ -98,42 +132,42 @@
                     <StackPanel Spacing="4">
                         <ctk:SettingsCard x:Uid="SettingsAgentReplies" Header="Agent replies"
                                           Description="Notify when an agent finishes replying in a conversation you're not viewing.">
-                            <ToggleSwitch x:Name="NotifyAgentRepliesSwitch"
+                            <ToggleSwitch x:Uid="SettingsNotifyReplies" x:Name="NotifyAgentRepliesSwitch"
                                           AutomationProperties.Name="Notify for agent replies"
                                           Toggled="NotificationDetail_Toggled" />
                         </ctk:SettingsCard>
 
                         <ctk:SettingsCard x:Uid="SettingsTaskCompletion" Header="Task completion"
                                           Description="Notify when a longer, multi-step task finishes.">
-                            <ToggleSwitch x:Name="NotifyTaskCompletionSwitch"
+                            <ToggleSwitch x:Uid="SettingsNotifyTasks" x:Name="NotifyTaskCompletionSwitch"
                                           AutomationProperties.Name="Notify for task completion"
                                           Toggled="NotificationDetail_Toggled" />
                         </ctk:SettingsCard>
 
                         <ctk:SettingsCard x:Uid="SettingsApprovalRequests" Header="Approval requests"
                                           Description="Notify when an agent needs your approval to continue.">
-                            <ToggleSwitch x:Name="NotifyApprovalRequestsSwitch"
+                            <ToggleSwitch x:Uid="SettingsNotifyApprovals" x:Name="NotifyApprovalRequestsSwitch"
                                           AutomationProperties.Name="Notify for approval requests"
                                           Toggled="NotificationDetail_Toggled" />
                         </ctk:SettingsCard>
 
                         <ctk:SettingsCard x:Uid="SettingsConnectionProblems" Header="Connection problems"
                                           Description="Notify when an agent stays disconnected for a while.">
-                            <ToggleSwitch x:Name="NotifyConnectionProblemsSwitch"
+                            <ToggleSwitch x:Uid="SettingsNotifyConnection" x:Name="NotifyConnectionProblemsSwitch"
                                           AutomationProperties.Name="Notify for connection problems"
                                           Toggled="NotificationDetail_Toggled" />
                         </ctk:SettingsCard>
 
                         <ctk:SettingsCard x:Uid="SettingsPlaySound" Header="Play sound"
                                           Description="Play a sound with Windows notifications.">
-                            <ToggleSwitch x:Name="PlayNotificationSoundSwitch"
+                            <ToggleSwitch x:Uid="SettingsNotifySound" x:Name="PlayNotificationSoundSwitch"
                                           AutomationProperties.Name="Play notification sound"
                                           Toggled="NotificationDetail_Toggled" />
                         </ctk:SettingsCard>
 
                         <ctk:SettingsCard x:Uid="SettingsMessagePreview" Header="Show message preview"
                                           Description="Include a snippet of the reply. When off, notifications only say you have a new response.">
-                            <ToggleSwitch x:Name="ShowMessagePreviewSwitch"
+                            <ToggleSwitch x:Uid="SettingsNotifyPreview" x:Name="ShowMessagePreviewSwitch"
                                           AutomationProperties.Name="Show message preview"
                                           Toggled="NotificationDetail_Toggled" />
                         </ctk:SettingsCard>
@@ -146,7 +180,7 @@
 
                 <ctk:SettingsCard x:Uid="SettingsMicrophone" Header="Microphone"
                                   Description="Choose the microphone for voice input.">
-                    <ComboBox x:Name="MicChoice"
+                    <ComboBox x:Uid="SettingsMicChoice" x:Name="MicChoice"
                               MinWidth="0" MaxWidth="260"
                               HorizontalAlignment="Stretch"
                               AutomationProperties.Name="Microphone"
