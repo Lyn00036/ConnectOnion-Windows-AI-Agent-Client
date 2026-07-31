@@ -44,6 +44,7 @@ public sealed partial class ChatMessage : Common.ObservableObject
         MessageFontSize = 14;
         AskUserFreeText = "";
         ThinkingElapsedLabel = "";
+        TransientStatusText = "";
         PlanFeedback = "";
         ApprovalFeedback = "";
         EditDraft = "";
@@ -64,6 +65,18 @@ public sealed partial class ChatMessage : Common.ObservableObject
     [ObservableProperty]
     [JsonPropertyName("content")]
     public partial string Content { get; set; }
+
+    /// <summary>
+    /// Live-only label for an optimistic progress row (for example, "Connecting…"). The row
+    /// deliberately remains a normal thinking activity so it reuses the transcript animation,
+    /// spacing and accessibility behavior, while this text lets the client describe the phase
+    /// before the agent has emitted a real event. Never persisted.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ActivityHeaderTitle))]
+    [NotifyPropertyChangedFor(nameof(ActivityAccessibilityName))]
+    [JsonIgnore]
+    public partial string TransientStatusText { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(TimeLabel))]
@@ -130,7 +143,9 @@ public sealed partial class ChatMessage : Common.ObservableObject
     [NotifyPropertyChangedFor(nameof(IsActivityFailed))]
     [NotifyPropertyChangedFor(nameof(ActivityHeaderTitle))]
     [NotifyPropertyChangedFor(nameof(IsThinkingRunning))]
+    [NotifyPropertyChangedFor(nameof(IsRunningProgressActivity))]
     [NotifyPropertyChangedFor(nameof(ActivityAccessibilityName))]
+    [NotifyPropertyChangedFor(nameof(IsPlainSingleActivity))]
     [JsonPropertyName("eventStatus")]
     public partial EventStatus Status { get; set; }
 
@@ -358,9 +373,21 @@ public sealed partial class ChatMessage : Common.ObservableObject
     public bool IsThinkingRunning => IsThinkingEvent && Status == EventStatus.Running;
 
     [JsonIgnore]
-    public string ActivityHeaderTitle => IsThinkingEvent
-        ? IsThinkingRunning ? "Thinking..." : "Thought process"
-        : IsTurnUsageEvent ? "Turn usage" : "Activity";
+    public bool IsConnectionActivity => IsActivityEvent && EventKey == "reconnect";
+
+    /// <summary>Activities that use the same animated inline affordance as Thinking. Besides the
+    /// model's own thinking row, this covers the transient pre-stream status and reconnect row.</summary>
+    [JsonIgnore]
+    public bool IsRunningProgressActivity => Status == EventStatus.Running
+        && (IsThinkingEvent || IsConnectionActivity);
+
+    [JsonIgnore]
+    public string ActivityHeaderTitle => !string.IsNullOrWhiteSpace(TransientStatusText)
+        ? TransientStatusText
+        : IsConnectionActivity ? EventTitle
+        : IsThinkingEvent
+            ? IsThinkingRunning ? "Thinking..." : "Thought process"
+            : IsTurnUsageEvent ? "Turn usage" : "Activity";
 
     /// <remarks>
     /// A thinking card falls back to <c>""</c>, never to <see cref="EventTitle"/>. The card an
@@ -430,7 +457,10 @@ public sealed partial class ChatMessage : Common.ObservableObject
     /// <summary>A single non-thinking activity (intent/eval/compact): plain text, no rule — it
     /// states a fact about the run rather than quoting the agent.</summary>
     [JsonIgnore]
-    public bool IsPlainSingleActivity => !IsThinkingEvent && IsSingleActivityEntry && HasThoughtText;
+    public bool IsPlainSingleActivity => !IsThinkingEvent
+        && !IsRunningProgressActivity
+        && IsSingleActivityEntry
+        && HasThoughtText;
 
     /// <summary>Trailing summary on a grouped card's header, sitting beside the title exactly as
     /// <c>ToolActivityViewModel.Summary</c> does. The step count is the whole reason the card is
@@ -446,7 +476,9 @@ public sealed partial class ChatMessage : Common.ObservableObject
     public bool IsActivityFailed => Status == EventStatus.Error;
 
     [JsonIgnore]
-    public string ActivityAccessibilityName => HasMultipleThoughts
+    public string ActivityAccessibilityName => IsRunningProgressActivity
+        ? ActivityHeaderTitle
+        : HasMultipleThoughts
         ? $"{ActivityHeaderTitle}. {ThoughtStepsSummary}. {(IsActivityExpanded ? "Collapse" : "Expand")}"
         : $"{ActivityHeaderTitle}. {ActivityTimelineText}";
 

@@ -146,9 +146,16 @@ public sealed partial class ChatTurnProjection
     }
 
     /// <summary>
-    /// Completes a successful turn in reading order: tool activity, final output, then the quiet
-    /// consumption summary. If the stream already emitted the final assistant bubble, it is moved
+    /// Completes a successful turn in reading order: tool activity, the quiet consumption summary,
+    /// then the final output. If the stream already emitted the final assistant bubble, it is moved
     /// to the end of the process records instead of being duplicated.
+    ///
+    /// <para><b>The summary goes above the answer, and the ordering is load-bearing twice over.</b>
+    /// It is process metadata about the turn, so it belongs with the other process records rather
+    /// than after the thing the user actually came to read — a turn should end on the answer, not
+    /// on a token count. And because persisted history is replayed with <c>ORDER BY id</c>, the
+    /// emission order here has to equal the id order, or a reopened conversation would show these
+    /// two rows the other way round from the live view that produced them.</para>
     /// </summary>
     public void AppendCompletedTurn(string reply)
     {
@@ -163,13 +170,21 @@ public sealed partial class ChatTurnProjection
             && (string.IsNullOrEmpty(reply) || _streamedFinalReply.Content == reply)
                 ? _streamedFinalReply
                 : null;
-        // Remove-and-reinsert rather than inserting the summary above it: the bubble keeps its
-        // identity (and its id), so nothing downstream sees it as a new message.
+        // Lift the streamed bubble out so the summary can be emitted ahead of it.
         if (streamedFinal is not null) Messages.Remove(streamedFinal);
+
+        AppendTurnSummary();
 
         if (streamedFinal is not null)
         {
             if (_wasInterrupted) streamedFinal.EventMeta = "Stopped";
+            // Renumbered, not merely re-added. The bubble was created mid-turn so it carries an id
+            // below the summary's, and leaving it there would make the persisted `ORDER BY id`
+            // replay disagree with what the user just watched. Safe because `_streamedFinalReply`
+            // is only ever a message this projection created (see the `assistant` arm in
+            // ChatTurnProjection.Events) — never a row loaded from the database, so no already
+            // persisted row is being re-keyed.
+            streamedFinal.Id = NextId();
             Add(streamedFinal);
         }
         else
@@ -177,10 +192,10 @@ public sealed partial class ChatTurnProjection
             AppendFinalReply(reply);
         }
 
-        // Images belong to the final assistant output. Flush while that output is still the last
-        // message, before the supporting usage row is appended below it.
+        // Images belong to the final assistant output, and FlushPendingImages hangs them on the
+        // last agent bubble — so it runs after that output is back in place, which is now also the
+        // end of the turn.
         FlushPendingImages();
-        AppendTurnSummary();
     }
 
     /// <summary>
@@ -198,7 +213,9 @@ public sealed partial class ChatTurnProjection
         _turnContextPercent,
         _turnToolCallsCount);
 
-    /// <summary>One quiet summary row after the final output: model + duration/tokens/context/tools.</summary>
+    /// <summary>One quiet summary row immediately before the final output: model +
+    /// duration/tokens/context/tools. See <see cref="AppendCompletedTurn"/> for why it sits
+    /// above the answer rather than below it.</summary>
     public void AppendTurnSummary()
     {
         var parts = new List<string>();

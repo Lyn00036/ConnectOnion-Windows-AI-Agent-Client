@@ -7,6 +7,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ConnectOnion.Protocol;
 using ConnectOnion.Protocol.Runtime;
+using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
 using ConnectOnion.WinUIClient.Services.Attachments;
@@ -22,6 +23,76 @@ namespace ConnectOnion.WinUIClient.ViewModels;
 /// </summary>
 public sealed partial class ChatViewModel
 {
+    // Optimistic, UI-only narration for the otherwise silent interval between the user's bubble
+    // and the first visible agent event. It deliberately looks like Thinking, but never enters
+    // ChatTurnProjection or persistence; the first real transcript row replaces it.
+    private ChatMessage? _turnProgressMessage;
+    private bool _runHasVisibleFeedback;
+
+    private void EnsureTurnProgress()
+    {
+        if (!IsProcessing || IsStopping || _runHasVisibleFeedback || _turnProgressMessage is not null)
+            return;
+
+        _turnProgressMessage = new ChatMessage
+        {
+            Id = NextId(),
+            Role = ChatRole.Event,
+            EventKind = "activity",
+            EventTitle = "Thinking",
+            TransientStatusText = CurrentTurnProgressText(),
+            Status = EventStatus.Running,
+        };
+        Messages.Add(_turnProgressMessage);
+        EnsureThinkingTicker();
+    }
+
+    private void RefreshTurnProgressText()
+    {
+        if (_turnProgressMessage is not null)
+            _turnProgressMessage.TransientStatusText = CurrentTurnProgressText();
+    }
+
+    private string CurrentTurnProgressText() => ConnectionPhase switch
+    {
+        Models.ConnectionPhase.Connecting or Models.ConnectionPhase.Running
+            or Models.ConnectionPhase.Reconnecting => $"{ConnectionPhaseText}…",
+        Models.ConnectionPhase.Waiting => ConnectionPhaseText,
+        Models.ConnectionPhase.Offline => $"{ConnectionPhaseText}…",
+        _ => LocalizedStrings.Get("ConnectionStarting", "Starting…"),
+    };
+
+    private void RemoveTurnProgress()
+    {
+        if (_turnProgressMessage is null) return;
+
+        var progress = _turnProgressMessage;
+        _turnProgressMessage = null;
+        Messages.Remove(progress);
+        if (!Messages.Any(message => message.IsThinkingRunning)) _thinkingTicker.Stop();
+    }
+
+    private void ObserveProjectedFeedback(int previousMessageCount)
+    {
+        for (var i = previousMessageCount; i < Messages.Count; i++)
+        {
+            var message = Messages[i];
+            if (ReferenceEquals(message, _turnProgressMessage) || !IsVisibleRunFeedback(message))
+                continue;
+
+            _runHasVisibleFeedback = true;
+            RemoveTurnProgress();
+            return;
+        }
+    }
+
+    private static bool IsVisibleRunFeedback(ChatMessage message) => message.IsAgent
+        || message.IsActivityEvent
+        || message.IsToolActivityEvent
+        || message.IsAskUserEvent
+        || message.IsPlanReviewEvent
+        || message.IsDiffPreviewEvent;
+
     public async Task SendAsync(string text, IReadOnlyList<PendingAttachment>? attachments = null)
     {
         var hasAttachments = attachments is { Count: > 0 };
@@ -64,6 +135,7 @@ public sealed partial class ChatViewModel
         if (!isRuntimeInput)
         {
             _optimisticStopRunId = null;
+            _runHasVisibleFeedback = false;
             IsProcessing = true;
         }
         try
@@ -216,6 +288,8 @@ public sealed partial class ChatViewModel
         {
             // The DB restore already contains this run's events, final reply, and summary.
             // We still mirror its busy/status state until the terminal notification arrives.
+            _runHasVisibleFeedback = true;
+            RemoveTurnProgress();
             IsProcessing = !snapshot.IsTerminal;
             RefreshStopAvailability(snapshot);
             if (IsStopping) ChatTurnProjection.ApplyOptimisticStopVisuals(Messages);
@@ -251,12 +325,15 @@ public sealed partial class ChatViewModel
             _liveRunId = snapshot.RunId;
             _liveProjection = new ChatTurnProjection(this);
             _appliedEventCount = 0;
+            _runHasVisibleFeedback = false;
         }
 
         var events = snapshot.Events;
         for (var i = _appliedEventCount; i < events.Count; i++)
         {
+            var previousMessageCount = Messages.Count;
             _liveProjection!.Apply(events[i]);
+            ObserveProjectedFeedback(previousMessageCount);
             FollowAgentModeChange(events[i]);
             FollowConnectionPhase(events[i]);
         }
@@ -350,6 +427,7 @@ public sealed partial class ChatViewModel
         _liveRunId = null;
         _appliedEventCount = 0;
         _historyLoadedRunId = null;
+        _runHasVisibleFeedback = false;
         IsStopping = false;
         _optimisticStopRunId = null;
         ReconnectAttempt = 0;
@@ -512,16 +590,9 @@ public sealed partial class ChatViewModel
     }
 
     /// <summary>
-    /// The status line reports only what the transcript cannot show for itself. Once events start
-    /// arriving, the transcript *is* the narration — a thought lands as a thought-process card, a
-    /// tool as an activity card, an approval as its own card — so echoing the last event's
-    /// description here said the same thing twice, in a weaker form (a bare tool name, and only
-    /// ever the most recent one). Same reasoning retires the Failed text: that path already adds
-    /// an error bubble and raises the Retry bar, which is why the caller below blanks this too.
-    ///
-    /// What is left is the connection lifecycle, which has no bubble anywhere: queued, connecting,
-    /// and the gap between a started run and its first event, where nothing else says the app
-    /// heard the user.
+    /// The transient progress row reports what the transcript cannot show before events start.
+    /// Once a thought, tool, interaction, or reply arrives, that richer transcript row replaces
+    /// the optimistic connection lifecycle narration instead of duplicating it.
     /// </summary>
     /// <summary>Forces the app-owned socket for this conversation to reconnect to its session.</summary>
     public async Task ReconnectAsync()
@@ -564,6 +635,7 @@ public sealed partial class ChatViewModel
 
         CanRetry = false;
         RemoveLastFailureBubble();
+        _runHasVisibleFeedback = false;
         IsProcessing = true;
         CanStop = false;
         IsStopping = false;
@@ -612,6 +684,7 @@ public sealed partial class ChatViewModel
         _session.RemoteSessionId = connection.SessionId;
         _session.LastProcessedEventId = connection.LastProcessedEventId;
         _session.UpdatedAt = DateTime.UtcNow.ToString("o");
+        OnPropertyChanged(nameof(SessionUpdatedTimeText));
         await _sessions.UpdateSessionAsync(_session);
     }
 }

@@ -28,7 +28,7 @@
                 </StackPanel>
                 <ScrollViewer MaxHeight="420" VerticalScrollBarVisibility="Auto"
                     HorizontalScrollBarVisibility="Disabled">
-                    <local:MarkdownTextBlock Markdown="{x:Bind Message.EventDetail, Mode=OneWay}"
+                    <local:MarkdownTextBlock x:Uid="PlanReviewBody" Markdown="{x:Bind Message.EventDetail, Mode=OneWay}"
                         FontSize="13" AutomationProperties.Name="Execution plan" />
                 </ScrollViewer>
 

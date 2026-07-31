@@ -62,7 +62,27 @@ public sealed partial class InteractiveCard : UserControl
 
     public InteractiveVisualTone ChromeTone { get => (InteractiveVisualTone)GetValue(ChromeToneProperty); set => SetValue(ChromeToneProperty, value); }
     public static readonly DependencyProperty ChromeToneProperty = DependencyProperty.Register(
-        nameof(ChromeTone), typeof(InteractiveVisualTone), typeof(InteractiveCard), new PropertyMetadata(InteractiveVisualTone.Neutral));
+        nameof(ChromeTone), typeof(InteractiveVisualTone), typeof(InteractiveCard),
+        new PropertyMetadata(InteractiveVisualTone.Neutral, OnChromeToneChanged));
+
+    /// <summary>
+    /// Whether the left tone rail is drawn at all.
+    ///
+    /// <para>The rail exists to signal a tone — amber while an approval is pending, red on a
+    /// rejection. <see cref="InteractiveVisualTone.Neutral"/> means there is nothing to signal,
+    /// but the tone brush for Neutral is <c>BorderDefaultBrush</c>, so the rail used to paint
+    /// itself in exactly the card's own border colour. On a settled card that read as a stray
+    /// thick grey edge that matched none of the other three sides and got sliced by the corner
+    /// radius — an artifact, not a signal. A settled card already says what it is through its
+    /// icon and outcome text.</para>
+    /// </summary>
+    public bool ShowChromeRail { get => (bool)GetValue(ShowChromeRailProperty); private set => SetValue(ShowChromeRailProperty, value); }
+    public static readonly DependencyProperty ShowChromeRailProperty = DependencyProperty.Register(
+        nameof(ShowChromeRail), typeof(bool), typeof(InteractiveCard), new PropertyMetadata(false));
+
+    private static void OnChromeToneChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        => ((InteractiveCard)d).ShowChromeRail =
+            (InteractiveVisualTone)e.NewValue != InteractiveVisualTone.Neutral;
 
     public InteractiveVisualTone IconTone { get => (InteractiveVisualTone)GetValue(IconToneProperty); set => SetValue(IconToneProperty, value); }
     public static readonly DependencyProperty IconToneProperty = DependencyProperty.Register(

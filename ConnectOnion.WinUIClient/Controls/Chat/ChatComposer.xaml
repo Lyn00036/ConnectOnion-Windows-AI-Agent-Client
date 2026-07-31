@@ -16,104 +16,6 @@
                 HorizontalAlignment="Center"
                 Spacing="6"
                 Width="{StaticResource ChatComposerWidth}">
-        <ScrollViewer x:Name="AttachmentsScrollViewer"
-                      HorizontalScrollBarVisibility="Auto"
-                      VerticalScrollBarVisibility="Disabled"
-                      HorizontalAlignment="Center"
-                      MaxWidth="{StaticResource ChatComposerWidth}"
-                      Visibility="Collapsed">
-            <ItemsControl x:Name="AttachmentsList" ItemsSource="{x:Bind PendingAttachments}">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <StackPanel Orientation="Horizontal" Spacing="8" />
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="models:PendingAttachment">
-                        <Border Width="180"
-                                Height="56"
-                                CornerRadius="10"
-                                Padding="8,6"
-                                Background="{ThemeResource SurfaceElevatedBrush}"
-                                BorderThickness="1"
-                                BorderBrush="{ThemeResource BorderDefaultBrush}">
-                            <Grid ColumnSpacing="8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-
-                                <Grid Width="36" Height="36" VerticalAlignment="Center">
-                                    <Border CornerRadius="6"
-                                            Background="{ThemeResource SurfaceSecondaryBrush}"
-                                            Visibility="{x:Bind IsImage, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}">
-                                        <ic:FluentIcon Icon="DocumentText"
-                                                       IconVariant="Regular"
-                                                       IconSize="Size20"
-                                                       Foreground="{ThemeResource TextSecondaryBrush}" />
-                                    </Border>
-                                    <Border CornerRadius="6"
-                                            Visibility="{x:Bind IsImage, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                                        <Image Source="{x:Bind LocalPath, Mode=OneWay, Converter={StaticResource PathToImage}}"
-                                               Stretch="UniformToFill" />
-                                    </Border>
-                                    <ProgressRing Width="18" Height="18"
-                                                  IsActive="{x:Bind IsBusy, Mode=OneWay}"
-                                                  Visibility="{x:Bind IsBusy, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-                                    <ic:FluentIcon Icon="ErrorCircle"
-                                                   IconVariant="Filled"
-                                                   IconSize="Size16"
-                                                   Foreground="{ThemeResource DangerBrush}"
-                                                   HorizontalAlignment="Right"
-                                                   VerticalAlignment="Bottom"
-                                                   Visibility="{x:Bind IsFailed, Mode=OneWay, Converter={StaticResource BoolToVis}}"
-                                                   ToolTipService.ToolTip="{x:Bind Error, Mode=OneWay}" />
-                                </Grid>
-
-                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
-                                    <TextBlock Text="{x:Bind FileName}"
-                                               FontSize="12"
-                                               FontWeight="SemiBold"
-                                               TextTrimming="CharacterEllipsis"
-                                               MaxLines="1" />
-                                    <TextBlock Text="{x:Bind SizeLabel}"
-                                               FontSize="10"
-                                               Foreground="{ThemeResource TextSecondaryBrush}"
-                                               Visibility="{x:Bind IsFailed, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
-                                    <TextBlock Text="{x:Bind Error, Mode=OneWay}"
-                                               FontSize="10"
-                                               Foreground="{ThemeResource DangerBrush}"
-                                               TextTrimming="CharacterEllipsis"
-                                               MaxLines="1"
-                                               Visibility="{x:Bind IsFailed, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-                                </StackPanel>
-
-                                <Button x:Uid="ComposerRemoveAttachment" Grid.Column="2"
-                                        Width="22"
-                                        Height="22"
-                                        Padding="0"
-                                        MinWidth="0"
-                                        MinHeight="0"
-                                        CornerRadius="11"
-                                        Background="Transparent"
-                                        BorderThickness="0"
-                                        VerticalAlignment="Top"
-                                        Tag="{x:Bind}"
-                                        Click="RemoveAttachment_Click"
-                                        ToolTipService.ToolTip="Remove">
-                                    <ic:FluentIcon Icon="Dismiss"
-                                                   IconVariant="Regular"
-                                                   IconSize="Size12"
-                                                   Foreground="{ThemeResource TextSecondaryBrush}" />
-                                </Button>
-                            </Grid>
-                        </Border>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </ScrollViewer>
-
         <!-- The agent's own best skills, phrased as offers. Shown instead of the generic starters
              below whenever there are any, because "Publish a post to your feed" tells a user what
              this agent is for and "What can you do?" tells them nothing. -->
@@ -186,7 +88,7 @@
                 BorderBrush="{ThemeResource BorderDefaultBrush}"
                 BorderThickness="1">
             <StackPanel>
-                <ListView x:Name="SkillList"
+                <ListView x:Uid="ComposerSkillList" x:Name="SkillList"
                           MaxHeight="240"
                           SelectionMode="Single"
                           IsItemClickEnabled="True"
@@ -240,6 +142,17 @@
             </StackPanel>
         </Border>
 
+        <!-- Composer-level failures that have no attachment chip to land on: the file picker
+             threw before returning anything, or a drop could not be read at all. The per-file
+             failures (validation, encode) still show on their own chip in the rail, because
+             those know which file they are about. Assertive, because the user just performed a
+             deliberate action and nothing else on screen would change. -->
+        <InfoBar x:Name="ComposerErrorBar"
+                 IsOpen="False"
+                 Severity="Error"
+                 IsClosable="True"
+                 AutomationProperties.LiveSetting="Assertive" />
+
         <!-- AllowDrop lives on this Border rather than on InputBox or the outer panel:
              the drag events are routed, so every child (input box, buttons) bubbles up
              to one handler, and the drop region visually matches the rounded surface
@@ -256,9 +169,151 @@
                 Drop="Composer_Drop">
             <Grid MinHeight="76" Padding="12,8">
                 <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
+
+                <!-- Draft attachments are part of the composer surface, matching the place where
+                     they will be submitted. Images stay visual; files carry identity and type. -->
+                <ScrollViewer x:Uid="ComposerPendingAttachments" x:Name="AttachmentsScrollViewer"
+                              Grid.Row="0"
+                              Margin="0,0,0,6"
+                              HorizontalScrollBarVisibility="Auto"
+                              VerticalScrollBarVisibility="Disabled"
+                              HorizontalAlignment="Stretch"
+                              Visibility="Collapsed"
+                              AutomationProperties.Name="Pending attachments">
+                    <ItemsControl x:Name="AttachmentsList"
+                                  ItemsSource="{x:Bind PendingAttachments}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="8" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="models:PendingAttachment">
+                                <Grid Margin="2,2,2,0">
+                                    <!-- Images use the content itself as the card, like modern chat
+                                         composers, rather than repeating filename metadata. -->
+                                    <Border Width="68"
+                                            Height="68"
+                                            CornerRadius="9"
+                                            Background="{ThemeResource SurfaceSecondaryBrush}"
+                                            BorderThickness="1"
+                                            BorderBrush="{ThemeResource BorderDefaultBrush}"
+                                            Visibility="{x:Bind IsImage, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                                        <Grid>
+                                            <Image Source="{x:Bind LocalPath, Mode=OneWay, Converter={StaticResource PathToImage}}"
+                                                   Stretch="UniformToFill" />
+                                            <ProgressRing Width="20"
+                                                          Height="20"
+                                                          IsActive="{x:Bind IsBusy, Mode=OneWay}"
+                                                          Visibility="{x:Bind IsBusy, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                                            <ic:FluentIcon Icon="ErrorCircle"
+                                                           IconVariant="Filled"
+                                                           IconSize="Size16"
+                                                           Margin="5"
+                                                           Foreground="{ThemeResource DangerBrush}"
+                                                           HorizontalAlignment="Left"
+                                                           VerticalAlignment="Bottom"
+                                                           Visibility="{x:Bind IsFailed, Mode=OneWay, Converter={StaticResource BoolToVis}}"
+                                                           ToolTipService.ToolTip="{x:Bind Error, Mode=OneWay}" />
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Generic files get a wider document card. The extension and
+                                         size form a stable second line without exposing full paths. -->
+                                    <Border Width="286"
+                                            Height="68"
+                                            CornerRadius="9"
+                                            Padding="8"
+                                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                            BorderThickness="1"
+                                            BorderBrush="{ThemeResource BorderDefaultBrush}"
+                                            Visibility="{x:Bind IsImage, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}">
+                                        <Grid ColumnSpacing="10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="44" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="24" />
+                                            </Grid.ColumnDefinitions>
+                                            <Border Width="44"
+                                                    Height="44"
+                                                    CornerRadius="9"
+                                                    Background="{ThemeResource AccentFillColorDefaultBrush}">
+                                                <Grid>
+                                                    <ic:FluentIcon Icon="DocumentText"
+                                                                   IconVariant="Regular"
+                                                                   IconSize="Size20"
+                                                                   Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                                                    <ProgressRing Width="18"
+                                                                  Height="18"
+                                                                  IsActive="{x:Bind IsBusy, Mode=OneWay}"
+                                                                  Visibility="{x:Bind IsBusy, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                                                </Grid>
+                                            </Border>
+                                            <StackPanel Grid.Column="1"
+                                                        VerticalAlignment="Center"
+                                                        Spacing="2">
+                                                <TextBlock Text="{x:Bind FileName}"
+                                                           FontSize="12"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{ThemeResource TextPrimaryBrush}"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           TextWrapping="NoWrap" />
+                                                <TextBlock Text="{x:Bind MetadataLabel}"
+                                                           FontSize="10"
+                                                           Foreground="{ThemeResource TextSecondaryBrush}"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           TextWrapping="NoWrap"
+                                                           Visibility="{x:Bind IsFailed, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
+                                                <TextBlock Text="{x:Bind Error, Mode=OneWay}"
+                                                           FontSize="10"
+                                                           Foreground="{ThemeResource DangerBrush}"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           TextWrapping="NoWrap"
+                                                           Visibility="{x:Bind IsFailed, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                                            </StackPanel>
+                                            <ic:FluentIcon Grid.Column="2"
+                                                           Icon="ErrorCircle"
+                                                           IconVariant="Filled"
+                                                           IconSize="Size16"
+                                                           Foreground="{ThemeResource DangerBrush}"
+                                                           HorizontalAlignment="Center"
+                                                           VerticalAlignment="Bottom"
+                                                           Visibility="{x:Bind IsFailed, Mode=OneWay, Converter={StaticResource BoolToVis}}"
+                                                           ToolTipService.ToolTip="{x:Bind Error, Mode=OneWay}" />
+                                        </Grid>
+                                    </Border>
+
+                                    <Button x:Uid="ComposerRemoveAttachment"
+                                            Width="28"
+                                            Height="28"
+                                            Padding="0"
+                                            MinWidth="0"
+                                            MinHeight="0"
+                                            Margin="0,3,3,0"
+                                            CornerRadius="14"
+                                            Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+                                            BorderBrush="{ThemeResource BorderDefaultBrush}"
+                                            BorderThickness="1"
+                                            HorizontalAlignment="Right"
+                                            VerticalAlignment="Top"
+                                            Tag="{x:Bind}"
+                                            Click="RemoveAttachment_Click"
+                                            AutomationProperties.Name="Remove attachment"
+                                            ToolTipService.ToolTip="Remove">
+                                        <ic:FluentIcon Icon="Dismiss"
+                                                       IconVariant="Regular"
+                                                       IconSize="Size12"
+                                                       Foreground="{ThemeResource TextPrimaryBrush}" />
+                                    </Button>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
 
                 <!-- Top, against the app-wide implicit style's centring (ControlStyles.xaml):
                      that centring is for single-line fields, and this one wraps and grows, so
@@ -266,7 +321,7 @@
                 <TextBox x:Name="InputBox"
                          VerticalContentAlignment="Top"
                          AutomationProperties.AutomationId="MessageInput"
-                         Grid.Row="0"
+                         Grid.Row="1"
                          MinHeight="32"
                          MaxHeight="144"
                          Padding="0,3,0,3"
@@ -300,7 +355,7 @@
                     </TextBox.Resources>
                 </TextBox>
 
-                <Grid Grid.Row="1"
+                <Grid Grid.Row="2"
                       Margin="0,4,0,0"
                       ColumnSpacing="6">
                     <Grid.ColumnDefinitions>
@@ -314,10 +369,10 @@
                     <Button x:Uid="ComposerAddAttachment" x:Name="AddAttachmentButton"
                             AutomationProperties.Name="Add attachment"
                             Grid.Column="0"
-                            Width="34"
-                            Height="34"
+                            Width="40"
+                            Height="40"
                             Padding="0"
-                            CornerRadius="17"
+                            CornerRadius="20"
                             Background="Transparent"
                             BorderThickness="0"
                             Click="AddAttachment_Click"
@@ -332,23 +387,24 @@
                                 Orientation="Horizontal"
                                 Spacing="6"
                                 Margin="4,0,0,0"
-                                VerticalAlignment="Center"
-                                Visibility="{x:Bind ShowConnectionStatus, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                        <Ellipse Width="7"
-                                 Height="7"
-                                 VerticalAlignment="Center"
-                                 Fill="{x:Bind ConnectionPhase, Mode=OneWay, Converter={StaticResource ConnectionPhaseToBrush}}" />
-                        <TextBlock Text="{x:Bind ConnectionStatusText, Mode=OneWay}"
-                                   AutomationProperties.AutomationId="ConnectionStatus"
-                                   FontSize="12"
-                                   VerticalAlignment="Center"
-                                   Foreground="{x:Bind ConnectionPhase, Mode=OneWay, Converter={StaticResource ConnectionPhaseToBrush}}" />
+                                VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal"
+                                    Spacing="6"
+                                    VerticalAlignment="Center"
+                                    Visibility="{x:Bind ShowConnectionStatus, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                            <Ellipse Width="7"
+                                     Height="7"
+                                     VerticalAlignment="Center"
+                                     Fill="{x:Bind ConnectionPhase, Mode=OneWay, Converter={StaticResource ConnectionPhaseToBrush}}" />
+                            <TextBlock Text="{x:Bind ConnectionStatusText, Mode=OneWay}"
+                                       AutomationProperties.AutomationId="ConnectionStatus"
+                                       FontSize="12"
+                                       VerticalAlignment="Center"
+                                       Foreground="{x:Bind ConnectionPhase, Mode=OneWay, Converter={StaticResource ConnectionPhaseToBrush}}" />
+                        </StackPanel>
 
-                        <!-- The turn's running spend, beside the connection state rather than in
-                             its own row: both answer "what is happening right now", and a second
-                             row would push the input down every time a turn starts. Tertiary and
-                             unpunctuated by a separator when absent — it collapses entirely for an
-                             agent that reports no usage. -->
+                        <!-- Running spend remains compact composer metadata even when the host
+                             presents connection progress in the transcript. -->
                         <TextBlock Text="{x:Bind UsageText, Mode=OneWay}"
                                    AutomationProperties.AutomationId="LiveUsage"
                                    FontSize="12"
@@ -364,9 +420,9 @@
                     <DropDownButton x:Name="ModeButton"
                                      AutomationProperties.AutomationId="ApprovalModeButton"
                                     Grid.Column="2"
-                                    Height="34"
+                                     Height="40"
                                     Padding="9,0"
-                                    CornerRadius="17"
+                                     CornerRadius="20"
                                     Background="Transparent"
                                     BorderThickness="0"
                                     Visibility="Collapsed">
@@ -442,10 +498,10 @@
                     <Button x:Uid="ComposerVoiceInput" x:Name="SpeechButton"
                             AutomationProperties.Name="Voice input"
                             Grid.Column="3"
-                            Width="34"
-                            Height="34"
+                            Width="40"
+                            Height="40"
                             Padding="0"
-                            CornerRadius="17"
+                            CornerRadius="20"
                             Background="Transparent"
                             BorderThickness="0"
                             HorizontalContentAlignment="Center"
@@ -470,10 +526,10 @@
                             AutomationProperties.AutomationId="StopVoiceInputButton"
                             AutomationProperties.Name="Stop voice input"
                             Grid.Column="3"
-                            Width="34"
-                            Height="34"
+                            Width="40"
+                            Height="40"
                             Padding="0"
-                            CornerRadius="17"
+                            CornerRadius="20"
                             Background="{ThemeResource ComposerStopButtonBackgroundBrush}"
                             BorderThickness="0"
                             HorizontalContentAlignment="Center"
@@ -492,10 +548,10 @@
                             AutomationProperties.AutomationId="SendMessageButton"
                             AutomationProperties.Name="Send message"
                             Grid.Column="4"
-                            Width="36"
-                            Height="36"
+                            Width="40"
+                            Height="40"
                             Padding="0"
-                            CornerRadius="18"
+                            CornerRadius="20"
                             BorderThickness="0"
                             Background="{ThemeResource ComposerPrimaryButtonBackgroundBrush}"
                             IsEnabled="False"
@@ -516,14 +572,14 @@
                          square is the busy indicator the send button used to show inline: a turn
                          in flight is exactly when stopping is possible, so the same slot can carry
                          both without either being hidden behind a mode switch. -->
-                    <Button x:Name="StopButton"
+                    <Button x:Uid="ComposerStopResponse" x:Name="StopButton"
                             AutomationProperties.AutomationId="StopResponseButton"
                             AutomationProperties.Name="Stop response"
                             Grid.Column="4"
-                            Width="36"
-                            Height="36"
+                            Width="40"
+                            Height="40"
                             Padding="0"
-                            CornerRadius="18"
+                            CornerRadius="20"
                             BorderThickness="0"
                             Background="{ThemeResource ComposerPrimaryButtonBackgroundBrush}"
                             HorizontalContentAlignment="Center"

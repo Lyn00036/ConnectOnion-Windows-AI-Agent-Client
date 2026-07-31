@@ -55,4 +55,15 @@ public sealed class PendingAttachmentTests
         Assert.False(attachment.HasError);
         Assert.Equal([nameof(PendingAttachment.Error), nameof(PendingAttachment.HasError)], changed);
     }
+
+    [Theory]
+    [InlineData("briefing.pptx", 2048, "PPTX · 2 KB")]
+    [InlineData("README", 512, "512 B")]
+    [InlineData("archive.tar.gz", 0, "GZ")]
+    public void MetadataLabel_CombinesExtensionAndSize(string fileName, long sizeBytes, string expected)
+    {
+        var attachment = new PendingAttachment { FileName = fileName, SizeBytes = sizeBytes };
+
+        Assert.Equal(expected, attachment.MetadataLabel);
+    }
 }

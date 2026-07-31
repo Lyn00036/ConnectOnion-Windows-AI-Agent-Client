@@ -11,7 +11,7 @@
     CloseButtonText="Cancel"
     DefaultButton="Primary">
     <Grid Width="620" MaxWidth="760" Height="620" MaxHeight="720">
-        <ListView ItemsSource="{x:Bind Sections}"
+        <ListView x:Uid="PlanSectionList" ItemsSource="{x:Bind Sections}"
                   SelectionMode="None"
                   IsItemClickEnabled="False"
                   HorizontalContentAlignment="Stretch"
