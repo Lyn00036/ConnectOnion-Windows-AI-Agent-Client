@@ -59,7 +59,7 @@ public sealed class PopupThemeContractTests
     }
 
     [Fact]
-    public void AccountMenu_StaysInTheSidebarVisualTreeWithoutCreatingAPopup()
+    public void SidebarFooter_IsASingleSettingsRowWithoutAnAccountMenu()
     {
         var appRoot = FindAppRoot();
         var xaml = File.ReadAllText(Path.Combine(
@@ -73,71 +73,23 @@ public sealed class PopupThemeContractTests
             "Shell",
             "ShellSidebar.Events.cs"));
 
+        Assert.Contains("x:Name=\"SidebarSettingsButton\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.AutomationId=\"SettingsButton\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Click=\"BottomSettings_Click\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Icon=\"Settings\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.Name=\"{Binding OnlineAgentCountText}\"", xaml, StringComparison.Ordinal);
+        var settingsStart = xaml.IndexOf("x:Name=\"SidebarSettingsButton\"", StringComparison.Ordinal);
+        Assert.True(settingsStart >= 0);
+        var settingsEnd = xaml.IndexOf("</Button>", settingsStart, StringComparison.Ordinal);
+        Assert.True(settingsEnd > settingsStart);
         Assert.DoesNotContain(
-            "x:Name=\"AccountFlyout\"",
-            xaml,
+            "OnlineAgentCount",
+            xaml[settingsStart..settingsEnd],
             StringComparison.Ordinal);
-        Assert.DoesNotContain(
-            "AccountFlyout_Opening",
-            source,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "x:Name=\"AccountMenuPanel\"",
-            xaml,
-            StringComparison.Ordinal);
-        var accountPanelStart = xaml.IndexOf(
-            "x:Name=\"AccountMenuPanel\"",
-            StringComparison.Ordinal);
-        Assert.True(accountPanelStart >= 0);
-        var accountPanelXaml = xaml[accountPanelStart..];
-        Assert.DoesNotContain(
-            "MinWidth=\"272\"",
-            accountPanelXaml,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "HorizontalAlignment=\"Stretch\"",
-            accountPanelXaml,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "x:Name=\"AccountMenuDismissLayer\"",
-            xaml,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "Click=\"BottomAccount_Click\"",
-            xaml,
-            StringComparison.Ordinal);
-        var accountButtonStart = xaml.IndexOf(
-            "x:Name=\"BottomAccountButton\"",
-            StringComparison.Ordinal);
-        Assert.True(accountButtonStart >= 0);
-        Assert.DoesNotContain(
-            "<Button.Flyout>",
-            xaml[accountButtonStart..],
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "AccountMenuPanel.Visibility = Visibility.Visible;",
-            source,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "AccountMenuPanel.Visibility = Visibility.Collapsed;",
-            source,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "KeyDown=\"AccountMenuPanel_KeyDown\"",
-            xaml,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "CloseAccountMenu();",
-            source,
-            StringComparison.Ordinal);
-        Assert.DoesNotContain(
-            "x:Uid=\"SidebarTheme\"",
-            xaml,
-            StringComparison.Ordinal);
-        Assert.DoesNotContain(
-            "BottomTheme_Click",
-            source,
-            StringComparison.Ordinal);
+        Assert.DoesNotContain("BottomAccountButton", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("AccountMenuPanel", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("BottomAccount_Click", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("CloseAccountMenu", source, StringComparison.Ordinal);
     }
 
     private static string FindAppRoot()

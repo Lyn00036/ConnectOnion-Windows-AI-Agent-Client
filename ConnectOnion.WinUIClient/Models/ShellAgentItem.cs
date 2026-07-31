@@ -28,7 +28,6 @@ public sealed partial class ShellAgentItem : RowStateItem
     /// Never persisted — the internal id is unchanged.</summary>
     public string DisplayName => FriendlyAgentName.From(Name);
     public string Initial => NameInitial.FromPair(DisplayName);
-    public int AvatarPaletteIndex => AvatarPalette.From(Name);
     public string ConnectionTarget
         => !string.IsNullOrWhiteSpace(Address) ? Address : DirectUrl ?? "";
     public string CopyAccessibilityName => $"Copy address for {DisplayName}";

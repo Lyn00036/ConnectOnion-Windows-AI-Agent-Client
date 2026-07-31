@@ -58,7 +58,7 @@
                               HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled"
                               VerticalScrollMode="Enabled" VerticalScrollBarVisibility="Auto">
                     <StackPanel HorizontalAlignment="Center" Spacing="6">
-                        <Image Source="ms-appx:///Assets/icon.png" Width="72" Height="72"
+                        <Image x:Uid="AboutLogo" Source="ms-appx:///Assets/icon.png" Width="72" Height="72"
                                Margin="0,16,0,10" HorizontalAlignment="Center"
                                AutomationProperties.Name="ConnectOnion logo" />
 

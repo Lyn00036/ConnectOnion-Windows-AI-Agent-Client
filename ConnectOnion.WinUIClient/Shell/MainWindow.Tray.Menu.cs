@@ -21,12 +21,6 @@ public sealed partial class MainWindow
         catch { /* Keep the existing cached shortcuts if storage is temporarily unavailable. */ }
     }
 
-    private async void OpenNewChatFromTray()
-    {
-        BringToForeground();
-        await StartNewChatAsync();
-    }
-
     private async Task OpenRecentChatFromTrayAsync(SessionSummary session)
     {
         BringToForeground();

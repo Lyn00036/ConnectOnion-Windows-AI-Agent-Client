@@ -23,15 +23,14 @@ public sealed class ShellSmokeTests
         var window = launched.Window;
         Assert.Contains("ConnectOnion", window.Title, StringComparison.OrdinalIgnoreCase);
         Assert.True(window.IsEnabled);
-        Assert.NotNull(WaitForDescendant(window, "AccountMenuButton"));
+        Assert.NotNull(WaitForDescendant(window, "SettingsButton"));
     }
 
     /// <summary>
-    /// Opening the sidebar's account menu and clicking Settings shows the settings overlay. This
-    /// covers a real flyout interaction as well as the shell-to-overlay wiring.
+    /// Clicking the sidebar's fixed Settings row shows the settings overlay.
     /// </summary>
     [Fact]
-    public void AccountMenu_SettingsClick_ShowsSettingsOverlay()
+    public void SidebarSettingsClick_ShowsSettingsOverlay()
     {
         using var launched = LaunchApp();
         if (launched is null) return;
@@ -49,24 +48,16 @@ public sealed class ShellSmokeTests
     }
 
     [Fact]
-    public void AccountMenu_KeyboardShortcutsRow_HasRoomForBothLabels()
+    public void SidebarSettingsRow_IsAReachableFooterCommand()
     {
         using var launched = LaunchApp();
         if (launched is null) return;
 
         var window = launched.Window;
-        OpenAccountMenu(window);
-
-        var shortcuts = WaitForDescendant(window, "AccountKeyboardShortcutsMenuItem");
-        Assert.NotNull(shortcuts);
-        Assert.Equal("Keyboard Shortcuts", shortcuts.Properties.Name.ValueOrDefault);
-
-        // The previous 236 px flyout left only about 222 px for each row after its border and
-        // padding, clipping the end of the left label beside Ctrl+Shift+/. Keep the row's real
-        // rendered width under test so the visual regression is caught without screenshot OCR.
-        Assert.True(
-            shortcuts.BoundingRectangle.Width >= 250,
-            $"Keyboard Shortcuts row was only {shortcuts.BoundingRectangle.Width}px wide.");
+        var settings = WaitForDescendant(window, "SettingsButton");
+        Assert.NotNull(settings);
+        Assert.Equal("Settings", settings.Properties.Name.ValueOrDefault);
+        Assert.True(settings.IsEnabled);
     }
 
     [Fact]
@@ -112,7 +103,7 @@ public sealed class ShellSmokeTests
                 }),
                 "redirected launch did not restore the tray window");
 
-            Assert.NotNull(WaitForDescendant(launched.Window, "AccountMenuButton"));
+            Assert.NotNull(WaitForDescendant(launched.Window, "SettingsButton"));
 
             // Give the queued low-priority non-client tracking request time to deliver its real
             // WM_NCMOUSELEAVE, then inspect the actual pixels of the caption Close button.
@@ -337,24 +328,14 @@ public sealed class ShellSmokeTests
         Assert.NotNull(square);
     }
 
-    /// <summary>Opens the account flyout, then follows its Settings command into the modal.</summary>
+    /// <summary>Invokes the sidebar's fixed Settings command and waits for the modal.</summary>
     internal static void OpenSettings(Window window)
     {
-        OpenAccountMenu(window);
-
-        // Flyout content does not exist in the UIA tree until its owner opens it.
         var settingsButton = WaitForDescendant(window, "SettingsButton");
         Assert.NotNull(settingsButton);
         settingsButton.AsButton().Invoke();
 
         Assert.NotNull(WaitForDescendant(window, "GeneralNav"));
-    }
-
-    private static void OpenAccountMenu(Window window)
-    {
-        var accountMenuButton = WaitForDescendant(window, "AccountMenuButton");
-        Assert.NotNull(accountMenuButton);
-        accountMenuButton.AsButton().Invoke();
     }
 
     /// <summary>Polls for a descendant, tolerating the transient UIA failures a mutating visual

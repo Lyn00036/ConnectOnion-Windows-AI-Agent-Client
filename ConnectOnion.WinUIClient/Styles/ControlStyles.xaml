@@ -174,16 +174,16 @@
          OWN hover/pressed background through a template that reads explicit brushes, so it
          still lights up inside a row whose inline Resources force the theme's ButtonBackground*
          keys to Transparent (that override is what keeps the name button from painting a
-         second, competing hover). 28×28, 6px radius, no border — a subtle neutral chip that
+         second, competing hover). 36×36, 8px radius, no border — a subtle neutral chip that
          sits on top of the row's own hover wash. -->
     <Style x:Key="SidebarActionButtonStyle" TargetType="Button">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="CornerRadius" Value="8" />
         <Setter Property="MinHeight" Value="0" />
         <Setter Property="MinWidth" Value="0" />
-        <Setter Property="Width" Value="28" />
-        <Setter Property="Height" Value="28" />
+        <Setter Property="Width" Value="36" />
+        <Setter Property="Height" Value="36" />
         <Setter Property="Padding" Value="0" />
         <Setter Property="UseSystemFocusVisuals" Value="True" />
         <Setter Property="Template">
@@ -277,10 +277,9 @@
         </Setter>
     </Style>
 
-    <!-- Compact New Chat command: neutral at rest, gently lifted on hover, and only spends the
-         Windows accent while pressed. This keeps it in the hierarchy of a desktop tool command
-         rather than presenting it as a persistent CTA. -->
-    <Style x:Key="SidebarNewChatButtonStyle"
+    <!-- Compact sidebar command: neutral at rest, gently lifted on hover, and only spends the
+         Windows accent while pressed. -->
+    <Style x:Key="SidebarCommandButtonStyle"
            TargetType="Button"
            BasedOn="{StaticResource SidebarNavButtonStyle}">
         <Setter Property="CornerRadius" Value="9" />

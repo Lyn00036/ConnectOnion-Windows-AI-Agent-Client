@@ -16,6 +16,13 @@ public enum MessageFontSize
     Lg,
 }
 
+public enum WindowCloseBehavior
+{
+    Ask,
+    HideToTray,
+    Exit,
+}
+
 /// <summary>
 /// Desktop preferences (theme, sidebar, message font size, shortcut overrides).
 /// Mirrors the TypeScript <c>PreferencesSnapshot</c> type.
@@ -24,6 +31,10 @@ public sealed class PreferencesSnapshot
 {
     private const string ComposerEnterKey = "composer.enterKey";
     private const string EnterNewLineValue = "newline";
+    private const string WindowCloseBehaviorKey = "window.closeBehavior";
+    private const string HideToTrayValue = "tray";
+    private const string ExitValue = "exit";
+    private const string WindowZoomKey = "window.zoomFactor";
 
     [JsonPropertyName("theme")]
     public ThemeMode Theme { get; set; } = ThemeMode.System;
@@ -55,6 +66,71 @@ public sealed class PreferencesSnapshot
             }
 
             ShortcutOverrides[ComposerEnterKey] = EnterNewLineValue;
+        }
+    }
+
+    /// <summary>
+    /// The window's Ctrl+/- zoom, 1.0 for actual size. Shares the <see cref="ShortcutOverrides"/>
+    /// bag with the other non-shortcut window preferences — <see cref="Data.SchemaMigrator"/>
+    /// needs no new column and <c>KeyboardShortcutService.Rebuild</c> skips ids it does not know.
+    ///
+    /// Round-tripped through <see cref="CultureInfo.InvariantCulture"/> deliberately: the current
+    /// culture would write "1,4" on a German or French install and then fail to parse it back,
+    /// silently resetting the user's zoom on every launch.
+    /// </summary>
+    [JsonIgnore]
+    public double ZoomFactor
+    {
+        get => ShortcutOverrides.TryGetValue(WindowZoomKey, out var value)
+               && double.TryParse(
+                   value,
+                   System.Globalization.NumberStyles.Float,
+                   System.Globalization.CultureInfo.InvariantCulture,
+                   out var parsed)
+            ? parsed
+            : 1.0;
+        set
+        {
+            // Actual size is the default, so it is stored as the absence of a row rather than as
+            // "1" — the same shape EnterToSend and CloseBehavior use for their defaults.
+            if (System.Math.Abs(value - 1.0) < 0.001)
+            {
+                ShortcutOverrides.Remove(WindowZoomKey);
+                return;
+            }
+
+            ShortcutOverrides[WindowZoomKey] =
+                value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+        }
+    }
+
+    [JsonIgnore]
+    public WindowCloseBehavior CloseBehavior
+    {
+        get
+        {
+            if (!ShortcutOverrides.TryGetValue(WindowCloseBehaviorKey, out var value))
+                return WindowCloseBehavior.Ask;
+            if (string.Equals(value, HideToTrayValue, System.StringComparison.OrdinalIgnoreCase))
+                return WindowCloseBehavior.HideToTray;
+            if (string.Equals(value, ExitValue, System.StringComparison.OrdinalIgnoreCase))
+                return WindowCloseBehavior.Exit;
+            return WindowCloseBehavior.Ask;
+        }
+        set
+        {
+            switch (value)
+            {
+                case WindowCloseBehavior.HideToTray:
+                    ShortcutOverrides[WindowCloseBehaviorKey] = HideToTrayValue;
+                    break;
+                case WindowCloseBehavior.Exit:
+                    ShortcutOverrides[WindowCloseBehaviorKey] = ExitValue;
+                    break;
+                default:
+                    ShortcutOverrides.Remove(WindowCloseBehaviorKey);
+                    break;
+            }
         }
     }
 }

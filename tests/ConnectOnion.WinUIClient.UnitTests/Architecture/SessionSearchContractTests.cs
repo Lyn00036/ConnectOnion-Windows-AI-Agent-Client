@@ -3,7 +3,7 @@ namespace ConnectOnion.WinUIClient.UnitTests.Architecture;
 public sealed class SessionSearchContractTests
 {
     [Fact]
-    public void SidebarHeader_ExposesAnAccessibleSearchButton()
+    public void SidebarNavigationModule_SeparatesAgentsAndConversationSearchFromBrand()
     {
         var xaml = ReadAppSource("Controls", "Shell", "ShellSidebar.xaml");
 
@@ -11,6 +11,12 @@ public sealed class SessionSearchContractTests
         Assert.Contains("AutomationProperties.AutomationId=\"SessionSearchButton\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Click=\"SearchSessions_Click\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Icon=\"Search\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Uid=\"SidebarConversations\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"AgentsNavigationButton\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Click=\"ChatHome_Click\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Icon=\"Bot\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("x:Name=\"NewChatButton\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("AutomationProperties.Name=\"ConnectOnion home\"", xaml, StringComparison.Ordinal);
     }
 
     [Fact]
