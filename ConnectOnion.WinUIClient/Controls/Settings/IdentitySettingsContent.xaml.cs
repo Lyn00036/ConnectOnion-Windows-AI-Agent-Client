@@ -87,7 +87,7 @@ public sealed partial class IdentitySettingsContent : UserControl, System.IDispo
         {
             XamlRoot = XamlRoot,
         };
-        await dialog.ShowAsync();
+        await dialog.ShowThemedAsync();
     }
 
     private async void Restore_Click(object sender, RoutedEventArgs e)
@@ -99,7 +99,7 @@ public sealed partial class IdentitySettingsContent : UserControl, System.IDispo
         dialog.BackupRequested += OnBackupRequested;
         try
         {
-            await dialog.ShowAsync();
+            await dialog.ShowThemedAsync();
         }
         finally
         {
@@ -162,7 +162,7 @@ public sealed partial class IdentitySettingsContent : UserControl, System.IDispo
             CloseButtonText = LocalizedStrings.Get("CommonCancel", "Cancel"),
             DefaultButton = ContentDialogButton.Close,
         };
-        if (await confirmation.ShowAsync() != ContentDialogResult.Primary) return;
+        if (await confirmation.ShowThemedAsync() != ContentDialogResult.Primary) return;
 
         // Check again after the confirmation: a run may have started while the dialog was open.
         if (AppServices.RunManager.GetActiveRuns().Count > 0)

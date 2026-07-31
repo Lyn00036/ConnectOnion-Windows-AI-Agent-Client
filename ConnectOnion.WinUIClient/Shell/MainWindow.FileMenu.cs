@@ -129,6 +129,6 @@ public sealed partial class MainWindow
             CloseButtonText = LocalizedStrings.Get("CommonOk", "OK"),
             XamlRoot = RootGrid.XamlRoot,
         };
-        await dialog.ShowAsync();
+        await dialog.ShowThemedAsync();
     }
 }

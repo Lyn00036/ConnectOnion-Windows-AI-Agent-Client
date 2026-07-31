@@ -550,7 +550,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = XamlRoot,
         };
-        return await dialog.ShowAsync() == ContentDialogResult.Primary;
+        return await dialog.ShowThemedAsync() == ContentDialogResult.Primary;
     }
 
     private async void ChatHome_Click(object sender, RoutedEventArgs e)

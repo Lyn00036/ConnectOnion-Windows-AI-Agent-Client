@@ -57,7 +57,7 @@ public sealed partial class UsageSettingsContent : UserControl
             DefaultButton = ContentDialogButton.Close,
         };
 
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        if (await dialog.ShowThemedAsync() != ContentDialogResult.Primary) return;
 
         await Vm.ClearAllAsync();
     }

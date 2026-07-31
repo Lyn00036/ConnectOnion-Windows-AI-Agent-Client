@@ -13,8 +13,16 @@ public static class ThemeService
 {
     private static FrameworkElement? _root;
     private static ThemeMode _theme = ThemeMode.System;
+    private static ElementTheme _currentTheme = ElementTheme.Light;
 
     public static event System.Action<ElementTheme>? ThemeApplied;
+
+    /// <summary>
+    /// The concrete Light/Dark theme currently rendered by the window root. Popup-backed
+    /// controls live in a separate element tree, so callers use this value when opening them
+    /// instead of allowing those controls to fall back to the system theme.
+    /// </summary>
+    public static ElementTheme CurrentTheme => _currentTheme;
 
     public static void RegisterRoot(FrameworkElement root)
     {
@@ -25,6 +33,7 @@ public static class ThemeService
 
         _root = root;
         _root.ActualThemeChanged += Root_ActualThemeChanged;
+        _currentTheme = ResolveActualTheme();
     }
 
     public static void UnregisterRoot(FrameworkElement root)
@@ -38,17 +47,32 @@ public static class ThemeService
     {
         _theme = theme;
         if (_root is null) return;
-        _root.RequestedTheme = theme switch
+        var requestedTheme = theme switch
         {
             ThemeMode.Dark => ElementTheme.Dark,
             ThemeMode.Light => ElementTheme.Light,
             _ => ElementTheme.Default,
         };
-        ThemeApplied?.Invoke(EffectiveTheme);
+        _root.RequestedTheme = requestedTheme;
+
+        // ActualTheme is updated asynchronously after RequestedTheme changes. Publishing it here
+        // used to broadcast the previous theme, leaving popup trees and the title bar one change
+        // behind the window. Explicit Light/Dark choices are already concrete; System publishes
+        // the root's current value now and ActualThemeChanged corrects it if Windows resolves to
+        // the other theme on the next layout pass.
+        PublishTheme(requestedTheme == ElementTheme.Default
+            ? ResolveActualTheme()
+            : requestedTheme);
     }
 
-    private static ElementTheme EffectiveTheme
+    private static ElementTheme ResolveActualTheme()
         => _root?.ActualTheme == ElementTheme.Dark ? ElementTheme.Dark : ElementTheme.Light;
+
+    private static void PublishTheme(ElementTheme theme)
+    {
+        _currentTheme = theme;
+        ThemeApplied?.Invoke(theme);
+    }
 
     /// <summary>
     /// Resolves a <see cref="Color"/> token straight from the app's Light/Dark
@@ -81,9 +105,8 @@ public static class ThemeService
 
     private static void Root_ActualThemeChanged(FrameworkElement sender, object args)
     {
-        if (_theme == ThemeMode.System)
-        {
-            ThemeApplied?.Invoke(EffectiveTheme);
-        }
+        var actualTheme = ResolveActualTheme();
+        if (_currentTheme != actualTheme || _theme == ThemeMode.System)
+            PublishTheme(actualTheme);
     }
 }

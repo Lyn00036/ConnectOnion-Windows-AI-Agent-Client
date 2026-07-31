@@ -83,7 +83,7 @@ public sealed partial class AgentDetailPage : Page, IReloadablePage, IShutdownDi
     {
         if (!Vm.CanShareAgent || string.IsNullOrWhiteSpace(Vm.AgentAddress)) return;
         var dialog = new AgentShareDialog(Vm.AgentAddress) { XamlRoot = XamlRoot };
-        await dialog.ShowAsync();
+        await dialog.ShowThemedAsync();
     }
 
     private async System.Threading.Tasks.Task RefreshBalanceAsync()

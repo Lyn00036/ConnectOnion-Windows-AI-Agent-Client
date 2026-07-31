@@ -1,4 +1,5 @@
 using System;
+using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Models;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -19,7 +20,7 @@ public sealed partial class PlanReviewCard : UserControl
     private async void ReviewSections_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new PlanSectionReviewDialog(Message.EventDetail ?? "") { XamlRoot = XamlRoot };
-        var result = await dialog.ShowAsync();
+        var result = await dialog.ShowThemedAsync();
         if (result == ContentDialogResult.None) return;
 
         Message.PlanFeedback = dialog.BuildFeedback();

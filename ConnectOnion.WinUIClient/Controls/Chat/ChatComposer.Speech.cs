@@ -643,7 +643,7 @@ public sealed partial class ChatComposer
             CloseButtonText = LocalizedStrings.Get("CommonOk", "OK"),
             XamlRoot = XamlRoot,
         };
-        _ = await dialog.ShowAsync();
+        _ = await dialog.ShowThemedAsync();
     }
 
     [ComImport]

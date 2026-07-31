@@ -87,7 +87,7 @@ public sealed partial class MainWindow : IChatWindow
             {
                 XamlRoot = xamlRoot,
             };
-            await dialog.ShowAsync();
+            await dialog.ShowThemedAsync();
         }
         catch (System.Exception ex)
         {
