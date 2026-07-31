@@ -98,6 +98,26 @@ public sealed partial class ChatTurnProjection
         }
     }
 
+    /// <summary>
+    /// Mirrors oo-chat's optimistic stop projection: running activity rows and tool steps stop
+    /// animating immediately, while the underlying turn remains open for its closing events and
+    /// final OUTPUT. Interactive cards are deliberately left actionable.
+    /// </summary>
+    public static void ApplyOptimisticStopVisuals(IEnumerable<ChatMessage> messages)
+    {
+        foreach (var message in messages)
+        {
+            if (message.IsActivityEvent && message.Status == EventStatus.Running)
+            {
+                message.Status = EventStatus.Done;
+                message.ThinkingElapsedLabel = "";
+            }
+
+            if (message.ToolActivity is { IsTerminal: false } activity)
+                new ToolActivityProjector(activity).CompleteOptimistically();
+        }
+    }
+
 
     /// <summary>
     /// Adds the final agent reply exactly once — only if it differs from the last agent

@@ -26,7 +26,11 @@ public sealed partial class ChatViewModel
     {
         var hasAttachments = attachments is { Count: > 0 };
         text = AttachmentPromptService.Resolve(text, attachments);
-        if ((text.Length == 0 && !hasAttachments) || _agent is null || _session is null || IsProcessing) return;
+        var isRuntimeInput = IsProcessing;
+        var agent = _agent;
+        var session = _session;
+        if ((text.Length == 0 && !hasAttachments) || agent is null || session is null
+            || !CanSend) return;
 
         // A new send supersedes any prior failure — the old attempt is no longer retryable.
         CanRetry = false;
@@ -53,29 +57,47 @@ public sealed partial class ChatViewModel
         Messages.Add(userMessage);
         TouchSession(text);
 
-        IsProcessing = true;
-        CanStop = false;
+        // oo-chat returns the composer to send mode as soon as Stop is pressed. A send in that
+        // optimistic window is an interjection into the still-running turn, not a second run.
         IsStopping = false;
+        CanStop = false;
+        if (!isRuntimeInput)
+        {
+            _optimisticStopRunId = null;
+            IsProcessing = true;
+        }
         try
         {
-            // Hand off to the app-level manager. It persists the user message, opens/reuses
-            // the connection, and starts the run; the reply arrives back through our
-            // subscription (ApplyRunSnapshot), not by awaiting here. The mode goes with every
-            // send because the host does not keep ours between turns.
-            var result = await _runManager.SendMessageAsync(_agent, _session.Id, text, attachments, CurrentMode);
-            // Held so the send can be taken back while it is still queued — see CancelSendAsync.
-            // Dropped the moment the run starts sending, because from then on it cannot be undone.
-            _pendingSend = new PendingSend(result, text, attachments ?? Array.Empty<PendingAttachment>(), userMessage);
+            if (isRuntimeInput)
+            {
+                await _runManager.SendRuntimeInputAsync(
+                    agent, session.Id, text, attachments);
+            }
+            else
+            {
+                // Hand off to the app-level manager. It persists the user message, opens/reuses
+                // the connection, and starts the run; the reply arrives back through our
+                // subscription (ApplyRunSnapshot), not by awaiting here. The mode goes with every
+                // send because the host does not keep ours between turns.
+                var result = await _runManager.SendMessageAsync(
+                    agent, session.Id, text, attachments, CurrentMode);
+                // Held so the send can be taken back while it is still queued — see
+                // CancelSendAsync. Dropped the moment the INPUT frame leaves.
+                _pendingSend = new PendingSend(
+                    result, text, attachments ?? Array.Empty<PendingAttachment>(), userMessage);
+            }
+
+            RefreshStopAvailability(_runManager.GetActiveRun(session.Id));
         }
-        catch (InvalidOperationException)
+        catch (InvalidOperationException) when (!isRuntimeInput)
         {
             // A run for this conversation is already active — ignore the duplicate send.
         }
         catch (Exception ex)
         {
-            LogSendFailure(_logger, _session?.Id, ex);
-            IsProcessing = false;
-            CanStop = false;
+            LogSendFailure(_logger, session.Id, ex);
+            if (!isRuntimeInput) IsProcessing = false;
+            else RefreshStopAvailability(_runManager.GetActiveRun(session.Id));
             AddErrorActivity($"Send failed: {UserFacingError(ex)}");
         }
         finally
@@ -99,6 +121,7 @@ public sealed partial class ChatViewModel
         ChatMessage Bubble);
 
     private PendingSend? _pendingSend;
+    private string? _optimisticStopRunId;
 
     /// <summary>
     /// Raised when a send is cancelled before it left, carrying what was on the composer so the
@@ -138,29 +161,28 @@ public sealed partial class ChatViewModel
         IsProcessing = false;
         CanStop = false;
         IsStopping = false;
+        _optimisticStopRunId = null;
         SendCancelled?.Invoke(pending.Text, pending.Attachments);
     }
 
-    /// <summary>Sends one graceful-stop request and keeps rendering until OUTPUT/ERROR. The UI
-    /// disables the button while stopping; the manager still permits repeated idempotent calls
-    /// from another surface and sends one INTERRUPT for each.</summary>
+    /// <summary>Sends one graceful-stop request, freezes in-flight visuals and immediately returns
+    /// the composer to send mode. The run itself remains open until OUTPUT/ERROR.</summary>
     public async Task StopAsync()
     {
         if (_session is null || !CanStop || IsStopping) return;
 
+        _optimisticStopRunId = _runManager.GetActiveRun(_session.Id)?.RunId;
         IsStopping = true;
+        CanStop = false;
+        ChatTurnProjection.ApplyOptimisticStopVisuals(Messages);
         try
         {
-            var outcome = await _runManager.RequestStopAsync(_session.Id);
-            if (outcome == StopOutcome.NotRunning)
-            {
-                IsStopping = false;
-                CanStop = false;
-            }
+            await _runManager.RequestStopAsync(_session.Id);
         }
         catch (Exception ex)
         {
-            IsStopping = false;
+            // Match oo-chat's local dismissal: the composer remains available even when the
+            // transport raced the click. Surface the failure without reviving stale spinners.
             AddErrorActivity($"Stop failed: {UserFacingError(ex)}");
         }
     }
@@ -182,17 +204,26 @@ public sealed partial class ChatViewModel
     /// and finalizes on terminal states — all idempotent per <see cref="ConversationRunSnapshot.Sequence"/>.</summary>
     private void ApplyRunSnapshot(ConversationRunSnapshot snapshot)
     {
+        if (_optimisticStopRunId != snapshot.RunId && HasPendingStop(snapshot))
+        {
+            // Re-opening a page while its stop is still draining reconstructs the optimistic
+            // presentation from the app-level lifecycle marker.
+            _optimisticStopRunId = snapshot.RunId;
+            IsStopping = true;
+        }
+
         if (snapshot.RunId == _historyLoadedRunId)
         {
             // The DB restore already contains this run's events, final reply, and summary.
             // We still mirror its busy/status state until the terminal notification arrives.
             IsProcessing = !snapshot.IsTerminal;
-            CanStop = !snapshot.IsTerminal && snapshot.Status == ConversationRunStatus.Running;
-            IsStopping = HasPendingStop(snapshot);
+            RefreshStopAvailability(snapshot);
+            if (IsStopping) ChatTurnProjection.ApplyOptimisticStopVisuals(Messages);
             if (snapshot.IsTerminal)
             {
                 CanStop = false;
                 IsStopping = false;
+                _optimisticStopRunId = null;
                 CanRetry = snapshot.Status == ConversationRunStatus.Failed;
                 _historyLoadedRunId = null;
                 StoreSessionCache();
@@ -210,6 +241,7 @@ public sealed partial class ChatViewModel
                 IsProcessing = false;
                 CanStop = false;
                 IsStopping = false;
+                _optimisticStopRunId = null;
                 CanRetry = snapshot.Status == ConversationRunStatus.Failed;
                 return;
             }
@@ -231,14 +263,8 @@ public sealed partial class ChatViewModel
         _appliedEventCount = events.Count;
 
         IsProcessing = !snapshot.IsTerminal;
-        CanStop = !snapshot.IsTerminal && snapshot.Status == ConversationRunStatus.Running;
-        IsStopping = HasPendingStop(snapshot);
-        // Queued/Connecting is exactly "submitted but the INPUT frame has not gone out", which is
-        // the only state an un-send is honest in. Clearing _pendingSend as soon as that passes
-        // means a later Stop can never mistake a running turn for a cancellable one.
-        CanCancelSend = _pendingSend is not null && !snapshot.IsTerminal
-            && snapshot.Status is ConversationRunStatus.Queued or ConversationRunStatus.Connecting;
-        if (!CanCancelSend) _pendingSend = null;
+        RefreshStopAvailability(snapshot);
+        if (IsStopping) ChatTurnProjection.ApplyOptimisticStopVisuals(Messages);
 
         // The snapshot owns the phase for a live turn, except while reconnecting: the run stays
         // Running with a dead socket underneath it, and reporting that as Running would tell the
@@ -324,10 +350,22 @@ public sealed partial class ChatViewModel
         _liveRunId = null;
         _appliedEventCount = 0;
         _historyLoadedRunId = null;
+        IsStopping = false;
+        _optimisticStopRunId = null;
         ReconnectAttempt = 0;
         // The turn is over, so the phase goes back to whatever the resting socket is doing.
         RefreshConnectionPhase();
         StoreSessionCache();
+    }
+
+    private void RefreshStopAvailability(ConversationRunSnapshot? snapshot)
+    {
+        CanCancelSend = snapshot is not null && _pendingSend is not null && !snapshot.IsTerminal
+            && snapshot.Status is ConversationRunStatus.Queued or ConversationRunStatus.Connecting;
+        if (!CanCancelSend) _pendingSend = null;
+
+        CanStop = snapshot is not null && !snapshot.IsTerminal && !IsStopping
+            && (snapshot.Status == ConversationRunStatus.Running || CanCancelSend);
     }
 
     /// <summary>Drops every approval bubble from the live list. Backwards, because removing from
@@ -529,6 +567,7 @@ public sealed partial class ChatViewModel
         IsProcessing = true;
         CanStop = false;
         IsStopping = false;
+        _optimisticStopRunId = null;
     }
 
     /// <summary>Appends a transient, non-persisted error row to the conversation for a

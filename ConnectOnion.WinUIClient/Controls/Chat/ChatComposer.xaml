@@ -530,23 +530,14 @@
                             VerticalContentAlignment="Center"
                             Visibility="Collapsed"
                             Click="Stop_Click">
-                        <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
-                            <ProgressRing x:Name="StopRing"
-                                          Width="16"
-                                          Height="16"
-                                          Visibility="Collapsed"
-                                          IsActive="False" />
-                            <Rectangle x:Name="StopGlyph"
-                                       Width="9"
-                                       Height="9"
-                                       RadiusX="1"
-                                       RadiusY="1"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center"
-                                       Fill="{ThemeResource ComposerPrimaryButtonForegroundBrush}" />
-                            <TextBlock x:Uid="ComposerStopping" x:Name="StopLabel" Text="Stopping..." FontSize="12"
-                                       VerticalAlignment="Center" Visibility="Collapsed" />
-                        </StackPanel>
+                        <Rectangle x:Name="StopGlyph"
+                                   Width="9"
+                                   Height="9"
+                                   RadiusX="1"
+                                   RadiusY="1"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   Fill="{ThemeResource ComposerPrimaryButtonForegroundBrush}" />
                     </Button>
                 </Grid>
 

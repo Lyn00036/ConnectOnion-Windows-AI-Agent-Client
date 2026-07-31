@@ -233,6 +233,32 @@ public sealed class ToolActivityProjector
         ApplyAutoExpansion();
     }
 
+    /// <summary>
+    /// Freezes only the presentation of in-flight work after a user asks the agent to stop.
+    /// The run and correlation state stay alive: a later real tool_result can still overwrite
+    /// these optimistic values while the host finishes the current iteration.
+    /// </summary>
+    public void CompleteOptimistically()
+    {
+        if (Activity.IsTerminal) return;
+
+        var completedAt = DateTimeOffset.UtcNow;
+        foreach (var running in Activity.Steps.Where(
+                     step => step.Status is ToolStepStatus.Running or ToolStepStatus.Pending))
+        {
+            running.Status = ToolStepStatus.Success;
+            running.CompletedAt = completedAt;
+            running.DurationMs ??= Math.Max(
+                0, (completedAt - running.StartedAt).TotalMilliseconds);
+        }
+
+        Activity.Status = ToolActivityStatus.Success;
+        Activity.CompletedAt = completedAt;
+        var count = Activity.Steps.Count;
+        Activity.Summary = $"Completed · {count} steps · {Activity.DurationLabel}";
+        Activity.RefreshPresentation();
+    }
+
     /// <summary>Seals the activity when the turn ends. Steps left running never get a result
     /// frame (the turn is over), so they are closed out here rather than spinning forever.</summary>
     public void Complete(ToolActivityStatus? terminalStatus = null, string? error = null)

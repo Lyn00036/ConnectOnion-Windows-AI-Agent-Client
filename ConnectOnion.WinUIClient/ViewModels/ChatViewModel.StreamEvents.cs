@@ -300,6 +300,7 @@ public sealed partial class ChatViewModel
             IsProcessing = false;
             CanStop = false;
             IsStopping = false;
+            _optimisticStopRunId = null;
             return;
         }
 

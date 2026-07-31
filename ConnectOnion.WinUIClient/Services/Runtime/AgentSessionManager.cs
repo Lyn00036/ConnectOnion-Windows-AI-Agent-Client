@@ -58,8 +58,8 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
     // stream) has no way to record the chosen result — a reloaded card would show dead controls.
     private readonly InteractiveAnswerBuffer _interactiveAnswers = new();
 
-    // The interactive turn (if any) the agent is currently blocked on, per conversation. Stop
-    // reads this to pick its tier: only an "approval" can be turned into a real halt.
+    // The interactive turn (if any) the agent is currently blocked on, per conversation. This is
+    // lifecycle bookkeeping for interactive cards; the global Stop action always sends INTERRUPT.
     private readonly ConcurrentDictionary<string, string> _pendingInteractive = new();
 
     // Conversations whose connection already has its reconnect/divergence handlers attached.
@@ -143,6 +143,65 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         _interruptRequestedRuns.TryRemove(conversationId, out _);
         _wiredConnections.TryRemove(conversationId, out _);
 
+        var prepared = await PrepareAndPersistUserInputAsync(
+            conversationId, prompt, attachments).ConfigureAwait(false);
+
+        var runId = Guid.NewGuid().ToString();
+        var request = new TurnRequest(
+            RunId: runId,
+            ConversationId: conversationId,
+            AgentId: agent.Id,
+            UserMessageId: Guid.NewGuid().ToString(),
+            AssistantMessageId: Guid.NewGuid().ToString(),
+            Prompt: prompt,
+            Images: prepared.Images,
+            Files: prepared.Files,
+            SessionId: conversationId,
+            Mode: mode);
+
+        await _conversations.InsertExecutionAsync(runId, conversationId, null, prompt, "running").ConfigureAwait(false);
+
+        var connection = _connections.GetOrCreate(conversationId, agent);
+        AttachConnectionHandlers(conversationId, agent, connection);
+        _runs.StartRun(request, NewExecutor(agent, conversationId, connection));
+
+        return new SendMessageResult(
+            runId, request.UserMessageId, request.AssistantMessageId, prepared.Message.Id);
+    }
+
+    public async Task SendRuntimeInputAsync(
+        AgentConfig agent,
+        string conversationId,
+        string prompt,
+        IReadOnlyList<PendingAttachment>? attachments = null)
+    {
+        var run = _runs.GetActiveRun(conversationId);
+        if (run is null || run.IsTerminal)
+            throw new InvalidOperationException("Cannot send runtime input: no agent turn is active.");
+
+        var connection = _connections.Get(conversationId);
+        if (connection is not { IsConnected: true })
+            throw new InvalidOperationException("Cannot send runtime input: the agent connection is not open.");
+
+        _agentsById[agent.Id] = agent;
+        var prepared = await PrepareAndPersistUserInputAsync(
+            conversationId, prompt, attachments).ConfigureAwait(false);
+        await connection.SendRuntimeInputAsync(
+            prompt, prepared.Images, prepared.Files).ConfigureAwait(false);
+    }
+
+    private sealed record PreparedUserInput(
+        ChatMessage Message,
+        IReadOnlyList<string>? Images,
+        IReadOnlyList<OutgoingFileAttachment>? Files);
+
+    /// <summary>Builds the wire attachments and appends the matching user bubble. Fresh turns and
+    /// runtime interjections share this path so their transcript/cache behavior cannot drift.</summary>
+    private async Task<PreparedUserInput> PrepareAndPersistUserInputAsync(
+        string conversationId,
+        string prompt,
+        IReadOnlyList<PendingAttachment>? attachments)
+    {
         List<string>? images = null;
         List<OutgoingFileAttachment>? files = null;
         var userAttachments = new List<ChatAttachment>();
@@ -208,29 +267,10 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
             Content = prompt,
         };
         foreach (var attachment in userAttachments) userMessage.Attachments.Add(attachment);
-        await _conversations.UpsertMessagesAsync(conversationId, new[] { userMessage }).ConfigureAwait(false);
+        await _conversations.UpsertMessagesAsync(
+            conversationId, new[] { userMessage }).ConfigureAwait(false);
 
-        var runId = Guid.NewGuid().ToString();
-        var request = new TurnRequest(
-            RunId: runId,
-            ConversationId: conversationId,
-            AgentId: agent.Id,
-            UserMessageId: Guid.NewGuid().ToString(),
-            AssistantMessageId: Guid.NewGuid().ToString(),
-            Prompt: prompt,
-            Images: images,
-            Files: files,
-            SessionId: conversationId,
-            Mode: mode);
-
-        await _conversations.InsertExecutionAsync(runId, conversationId, null, prompt, "running").ConfigureAwait(false);
-
-        var connection = _connections.GetOrCreate(conversationId, agent);
-        AttachConnectionHandlers(conversationId, agent, connection);
-        _runs.StartRun(request, NewExecutor(agent, conversationId, connection));
-
-        return new SendMessageResult(
-            runId, request.UserMessageId, request.AssistantMessageId, userMessage.Id);
+        return new PreparedUserInput(userMessage, images, files);
     }
 
     /// <summary>

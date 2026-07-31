@@ -87,6 +87,28 @@ public sealed class ChatTurnProjectionTests
     }
 
     [Fact]
+    public void ApplyOptimisticStopVisuals_EndsRunningThinkingAndToolAnimations()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+        projection.Apply(Event("thinking", "{\"content\":\"Checking the request.\"}"));
+        projection.Apply(Event(
+            "tool_call",
+            "{\"tool_id\":\"1\",\"name\":\"search_web\",\"args\":{\"query\":\"test\"}}"));
+
+        ChatTurnProjection.ApplyOptimisticStopVisuals(target.Messages);
+
+        var thinking = Assert.Single(target.Messages, message => message.IsThinkingEvent);
+        Assert.Equal(EventStatus.Done, thinking.Status);
+        Assert.False(thinking.IsThinkingRunning);
+
+        var toolCard = Assert.Single(target.Messages, message => message.IsToolActivityEvent);
+        Assert.True(toolCard.ToolActivity!.IsTerminal);
+        Assert.Equal(ToolActivityStatus.Success, toolCard.ToolActivity.Status);
+        Assert.All(toolCard.ToolActivity.Steps, step => Assert.Equal(ToolStepStatus.Success, step.Status));
+    }
+
+    [Fact]
     public void Apply_ConsecutiveThinking_GroupsIntoOneFoldableCard()
     {
         var target = new FakeTarget();

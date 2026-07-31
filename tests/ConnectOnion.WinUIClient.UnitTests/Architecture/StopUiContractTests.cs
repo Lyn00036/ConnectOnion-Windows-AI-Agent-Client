@@ -17,26 +17,52 @@ public sealed class StopUiContractTests
     }
 
     [Fact]
-    public void Composer_DisablesStopWhileStopping_AndShowsProgress()
+    public void Composer_StopIsImmediate_AndRunningTurnKeepsInputAvailable()
     {
         var source = ReadRepositoryFile("ConnectOnion.WinUIClient", "Controls", "Chat", "ChatComposer.xaml.cs");
+        var xaml = ReadRepositoryFile("ConnectOnion.WinUIClient", "Controls", "Chat", "ChatComposer.xaml");
+        var page = ReadRepositoryFile("ConnectOnion.WinUIClient", "Views", "ChatPage.xaml");
 
-        Assert.Contains("StopButton.IsEnabled = CanStop && !IsStopping", source, StringComparison.Ordinal);
-        Assert.Contains("StopRing.IsActive = IsStopping", source, StringComparison.Ordinal);
-        Assert.Contains("Stopping...", source, StringComparison.Ordinal);
+        Assert.Contains("StopButton.IsEnabled = CanStop", source, StringComparison.Ordinal);
+        Assert.Contains("InputBox.IsEnabled = CanSubmit", source, StringComparison.Ordinal);
+        Assert.Contains("var canSend = CanSubmit && !isAttachmentsBusy", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("Stopping...", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("StopRing", xaml, StringComparison.Ordinal);
+        Assert.Contains("IsBusy=\"{x:Bind Vm.IsComposerBusy", page, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void GlobalStop_AlwaysUsesInterrupt_AndInputRemainsGatedByTheActiveRun()
+    public void GlobalStop_AlwaysUsesInterrupt_AndRuntimeInputReusesTheActiveSocket()
     {
         var manager = ReadRepositoryFile(
             "ConnectOnion.WinUIClient", "Services", "Runtime", "AgentSessionManager.cs");
         var viewModel = ReadRepositoryFile(
             "ConnectOnion.WinUIClient", "ViewModels", "ChatViewModel.cs");
+        var runViewModel = ReadRepositoryFile(
+            "ConnectOnion.WinUIClient", "ViewModels", "ChatViewModel.Run.cs");
 
         Assert.Contains("await connection.SendInterruptAsync()", manager, StringComparison.Ordinal);
         Assert.DoesNotContain("RejectApprovalForStopAsync", manager, StringComparison.Ordinal);
-        Assert.Contains("!IsProcessing", viewModel, StringComparison.Ordinal);
+        Assert.Contains("await connection.SendRuntimeInputAsync(", manager, StringComparison.Ordinal);
+        Assert.Contains("var isRuntimeInput = IsProcessing;", runViewModel, StringComparison.Ordinal);
+        Assert.Contains("public bool CanSend => HasAgent && _session is not null && IsOnline && !IsConnecting",
+            viewModel, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void StopButton_IsReachableWhileAQueuedSendCanStillBeCancelled()
+    {
+        var source = ReadRepositoryFile(
+            "ConnectOnion.WinUIClient", "ViewModels", "ChatViewModel.Run.cs");
+
+        Assert.Contains(
+            "snapshot.Status is ConversationRunStatus.Queued or ConversationRunStatus.Connecting",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "snapshot.Status == ConversationRunStatus.Running || CanCancelSend",
+            source,
+            StringComparison.Ordinal);
     }
 
     private static string ReadRepositoryFile(params string[] relativeParts)

@@ -136,13 +136,6 @@ public sealed partial class ChatComposer : UserControl, IDisposable
             typeof(ChatComposer),
             new PropertyMetadata(AgentModes.Safe, OnModeChanged));
 
-    public static readonly DependencyProperty IsStoppingProperty =
-        DependencyProperty.Register(
-            nameof(IsStopping),
-            typeof(bool),
-            typeof(ChatComposer),
-            new PropertyMetadata(false, OnIsBusyChanged));
-
     public static readonly DependencyProperty CanStopProperty =
         DependencyProperty.Register(
             nameof(CanStop),
@@ -180,8 +173,8 @@ public sealed partial class ChatComposer : UserControl, IDisposable
 
     public event EventHandler<ComposerSubmission>? SubmitRequested;
 
-    /// <summary>The stop button was pressed. The host decides what that can achieve — the composer
-    /// only reports the press, and re-renders from <see cref="IsStopping"/> when told to.</summary>
+    /// <summary>The stop button was pressed. The host decides what that can achieve; the composer
+    /// only reports the press and immediately re-renders from its bound busy state.</summary>
     public event EventHandler? StopRequested;
 
     /// <summary>The user picked an approval mode from the pill. Carries the wire value
@@ -316,13 +309,6 @@ public sealed partial class ChatComposer : UserControl, IDisposable
     {
         get => (string)GetValue(ModeProperty);
         set => SetValue(ModeProperty, value);
-    }
-
-    /// <summary>A graceful stop was sent and the current iteration is still finishing.</summary>
-    public bool IsStopping
-    {
-        get => (bool)GetValue(IsStoppingProperty);
-        set => SetValue(IsStoppingProperty, value);
     }
 
     /// <summary>INPUT has reached the socket and the turn has not reached OUTPUT/ERROR.</summary>
@@ -462,7 +448,7 @@ public sealed partial class ChatComposer : UserControl, IDisposable
 
     private void Stop_Click(object sender, RoutedEventArgs e)
     {
-        if (!CanStop || IsStopping) return;
+        if (!CanStop) return;
         StopRequested?.Invoke(this, EventArgs.Empty);
     }
 
@@ -694,7 +680,7 @@ public sealed partial class ChatComposer : UserControl, IDisposable
     /// user can't interrogate.
     /// </summary>
     private bool CanAcceptDrop(DataPackageView data)
-        => CanSubmit && !IsBusy && !IsRecordingActive && AttachmentDropService.ContainsFiles(data);
+        => CanSubmit && !IsRecordingActive && AttachmentDropService.ContainsFiles(data);
 
     private async void Composer_Drop(object sender, DragEventArgs e)
     {
@@ -925,11 +911,13 @@ public sealed partial class ChatComposer : UserControl, IDisposable
 
         var isAttachmentsBusy = PendingAttachments.Any(a => a.IsBusy);
         var hasReadyAttachment = PendingAttachments.Any(a => a.Status == AttachmentStatus.Ready);
-        var canSend = CanSubmit && !IsBusy && !isAttachmentsBusy
+        var canSend = CanSubmit && !isAttachmentsBusy
             && (!string.IsNullOrWhiteSpace(InputBox.Text) || hasReadyAttachment);
-        InputBox.IsEnabled = CanSubmit && !IsBusy;
-        AddAttachmentButton.IsEnabled = CanSubmit && !IsBusy;
-        SpeechButton.IsEnabled = CanSubmit && !IsBusy && !isActive;
+        // Match the web composer: typing and Enter remain available during a turn.
+        // ChatViewModel routes that submission onto the existing socket as runtime INPUT.
+        InputBox.IsEnabled = CanSubmit;
+        AddAttachmentButton.IsEnabled = CanSubmit;
+        SpeechButton.IsEnabled = CanSubmit && !isActive;
 
         // Send and Stop share the slot: a turn is running or it isn't.
         SendButton.Visibility = IsBusy ? Visibility.Collapsed : Visibility.Visible;
@@ -942,16 +930,10 @@ public sealed partial class ChatComposer : UserControl, IDisposable
             : Brush("ComposerDisabledButtonForegroundBrush");
 
         StopButton.Visibility = CanStop ? Visibility.Visible : Visibility.Collapsed;
-        StopButton.IsEnabled = CanStop && !IsStopping;
-        StopButton.Width = IsStopping ? 112 : 36;
-        StopRing.IsActive = IsStopping;
-        StopRing.Visibility = IsStopping ? Visibility.Visible : Visibility.Collapsed;
-        StopGlyph.Visibility = IsStopping ? Visibility.Collapsed : Visibility.Visible;
-        StopLabel.Visibility = IsStopping ? Visibility.Visible : Visibility.Collapsed;
-        StopRing.Foreground = Brush("AppBackgroundBrush");
-        var stopLabel = IsStopping
-            ? LocalizedStrings.Get("RuntimeComposerStopping", "Stopping...")
-            : LocalizedStrings.Get("RuntimeComposerStop", "Stop");
+        StopButton.IsEnabled = CanStop;
+        StopButton.Width = 36;
+        StopGlyph.Visibility = Visibility.Visible;
+        var stopLabel = LocalizedStrings.Get("RuntimeComposerStop", "Stop");
         ToolTipService.SetToolTip(StopButton, stopLabel);
         AutomationProperties.SetName(StopButton, stopLabel);
 

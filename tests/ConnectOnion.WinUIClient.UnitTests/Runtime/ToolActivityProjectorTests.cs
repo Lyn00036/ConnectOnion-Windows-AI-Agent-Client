@@ -50,6 +50,22 @@ public sealed class ToolActivityProjectorTests
     }
 
     [Fact]
+    public void CompleteOptimistically_FreezesRunningStepsAsSuccessful()
+    {
+        var activity = new ToolActivityViewModel();
+        var projector = new ToolActivityProjector(activity);
+        var step = projector.ApplyCall(
+            Event("tool_call", "{\"tool_id\":\"1\",\"name\":\"search_web\",\"args\":{}}"));
+
+        projector.CompleteOptimistically();
+
+        Assert.Equal(ToolStepStatus.Success, step.Status);
+        Assert.Equal(ToolActivityStatus.Success, activity.Status);
+        Assert.True(activity.IsTerminal);
+        Assert.Contains("Completed", activity.Summary, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ApplyCall_DuplicateCorrelationId_ReturnsExistingStep()
     {
         var activity = new ToolActivityViewModel();

@@ -115,6 +115,35 @@ public sealed class AgentConnectionServiceTests
     }
 
     [Fact]
+    public async Task SendRuntimeInputAsync_ActiveTurn_SendsAnotherInputWithoutReplacingPendingOutput()
+    {
+        string? runtimeInputJson = null;
+        var inputSent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var server = new FakeAgentServer(async (socket, ct) =>
+        {
+            await FakeAgentServer.ReceiveTextAsync(socket, ct); // CONNECT
+            await FakeAgentServer.SendTextAsync(socket, "{\"type\":\"CONNECTED\"}", ct);
+            await FakeAgentServer.ReceiveTextAsync(socket, ct); // initial INPUT
+            runtimeInputJson = await FakeAgentServer.ReceiveTextAsync(socket, ct);
+            await FakeAgentServer.SendTextAsync(
+                socket, "{\"type\":\"OUTPUT\",\"result\":\"updated result\"}", ct);
+        });
+        await using var service = Service(server);
+        service.InputSent += inputSent.SetResult;
+
+        var originalTurn = service.SendInputAsync("start", null);
+        await inputSent.Task;
+        await service.SendRuntimeInputAsync("change direction");
+
+        Assert.Equal("updated result", await originalTurn);
+        var runtimeInput = WireMessage.Parse(runtimeInputJson!);
+        Assert.Equal("INPUT", runtimeInput.Type);
+        Assert.Equal("change direction", runtimeInput.GetString("prompt"));
+        Assert.False(string.IsNullOrWhiteSpace(runtimeInput.GetString("input_id")));
+        await server.Completion;
+    }
+
+    [Fact]
     public async Task SendInputAsync_AskUser_RaisesRequestAndSendsAnswer()
     {
         string? responseJson = null;

@@ -49,6 +49,7 @@ public sealed partial class ChatViewModel
 
         CanStop = false;
         IsStopping = false;
+        _optimisticStopRunId = null;
 
         _session = SessionSummary.NewConversation(_agent.Id, _sessionsState.Sessions);
         // A new conversation starts at the default mode rather than inheriting the last one: the
@@ -103,6 +104,7 @@ public sealed partial class ChatViewModel
         CanRetry = false;
         CanStop = false;
         IsStopping = false;
+        _optimisticStopRunId = null;
 
         _session = SessionSummary.NewConversation(_agent.Id, _sessionsState.Sessions);
         _session.Mode = inheritedMode;

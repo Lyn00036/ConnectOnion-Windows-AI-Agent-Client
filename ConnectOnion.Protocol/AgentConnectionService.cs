@@ -362,6 +362,30 @@ public sealed class AgentConnectionService : IAsyncDisposable
     }
 
     /// <summary>
+    /// Sends an additional INPUT while the current turn is still awaiting OUTPUT. The host routes
+    /// this frame to the running agent as RUNTIME_INPUT; unlike <see cref="SendInputAsync"/>, this
+    /// method deliberately does not replace the pending OUTPUT completion source or start another
+    /// client-side turn.
+    /// </summary>
+    public Task SendRuntimeInputAsync(
+        string prompt,
+        IReadOnlyList<string>? images = null,
+        IReadOnlyList<OutgoingFileAttachment>? files = null,
+        CancellationToken ct = default)
+    {
+        if (!IsConnected || _inputTcs is null)
+            throw new InvalidOperationException("Cannot send runtime input: no agent turn is active.");
+
+        var inputMsg = InputMessageBuilder.BuildInput(
+            prompt,
+            Guid.NewGuid().ToString(),
+            toAddress: _isDirect ? null : _address,
+            images: images,
+            files: files);
+        return SendJsonAsync(inputMsg, ct);
+    }
+
+    /// <summary>
     /// Asks the host what it thinks of a session: <see cref="SessionStatuses.Running"/>,
     /// <see cref="SessionStatuses.Connected"/>, or <see cref="SessionStatuses.NotFound"/>.
     /// Answers <see cref="SessionStatuses.NotFound"/> if there is no socket or no reply in time.

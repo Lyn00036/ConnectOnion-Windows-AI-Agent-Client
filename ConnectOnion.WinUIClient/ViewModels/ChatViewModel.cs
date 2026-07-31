@@ -228,6 +228,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanSend))]
     [NotifyPropertyChangedFor(nameof(CanReconnect))]
+    [NotifyPropertyChangedFor(nameof(IsComposerBusy))]
     public partial bool IsProcessing { get; private set; }
 
     // Hooked here rather than at the two places that start a turn: this is the one property that
@@ -248,8 +249,9 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
 
     // Sending is gated on the agent being confirmed online — matching the "green dot means
     // you can chat" model — not on holding a live socket (the transport connects lazily).
-    public bool CanSend => HasAgent && _session is not null && IsOnline && !IsProcessing && !IsConnecting;
+    public bool CanSend => HasAgent && _session is not null && IsOnline && !IsConnecting;
     public bool CanReconnect => HasAgent && !IsProcessing && !IsConnecting && Presence != AgentPresence.Checking;
+    public bool IsComposerBusy => IsProcessing && !IsStopping;
 
     /// <summary>True when the conversation's last run failed and is still retryable (only within
     /// the same app session — a restart clears the registry's retryable state). Drives the
@@ -371,12 +373,15 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
 
     // ---- Stop ----
 
-    /// <summary>A graceful stop was sent and the current iteration is still finishing.</summary>
+    /// <summary>
+    /// A graceful stop was requested and the composer has optimistically returned to send mode.
+    /// The underlying run remains active until OUTPUT/ERROR; sending again during this window is
+    /// a runtime interjection into that run, matching oo-chat.
+    /// </summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(StopButtonTooltip))]
+    [NotifyPropertyChangedFor(nameof(CanSend))]
+    [NotifyPropertyChangedFor(nameof(IsComposerBusy))]
     public partial bool IsStopping { get; private set; }
-
-    public string StopButtonTooltip => IsStopping ? "Stopping..." : "Stop";
 
     /// <summary>
     /// Loads (or re-loads) whichever conversation is currently active. Re-entrant: switching
@@ -403,6 +408,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         IsProcessing = false;
         CanStop = false;
         IsStopping = false;
+        _optimisticStopRunId = null;
         // Cleared here rather than only in RestoreConversationAsync, so the early returns below
         // (no agent, no session) can't leave the previous conversation's bubbles on screen.
         Messages.Clear();
