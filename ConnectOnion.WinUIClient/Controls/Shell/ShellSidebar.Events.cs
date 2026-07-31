@@ -9,8 +9,6 @@ using ConnectOnion.WinUIClient.Views;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Media;
-using Windows.System;
 
 namespace ConnectOnion.WinUIClient.Controls;
 
@@ -40,6 +38,12 @@ public sealed partial class ShellSidebar
             new EventId(2, nameof(LogIconOperationFailed)),
             "Agent icon operation failed for {AgentId}.");
 
+    private static readonly Action<ILogger, string, Exception?> LogRenameFailed =
+        LoggerMessage.Define<string>(
+            LogLevel.Warning,
+            new EventId(3, nameof(LogRenameFailed)),
+            "Renaming conversation {SessionId} failed.");
+
     // Agent and session rows share one interaction model (see RowStateItem):
     // pointer hover and keyboard focus both reveal the row's action buttons and
     // paint its hover background. Both row kinds bind to these same handlers.
@@ -55,9 +59,6 @@ public sealed partial class ShellSidebar
             row.SetInteractive(active);
         }
     }
-
-    private void NewChatButton_Click(object sender, RoutedEventArgs e)
-        => NewChatRequested?.Invoke();
 
     private void SearchSessions_Click(object sender, RoutedEventArgs e)
     {
@@ -358,6 +359,79 @@ public sealed partial class ShellSidebar
         await RefreshAsync();
     }
 
+    /// <summary>
+    /// Renames a conversation from the sidebar's context menu. The title is otherwise derived
+    /// once from the conversation's opening message and then frozen, so before this there was no
+    /// way at all to tell two conversations apart beyond whatever their first message happened to
+    /// say.
+    ///
+    /// <see cref="SessionSummary.TryRename"/> is what sets <c>HasCustomTitle</c>, which is what
+    /// stops the *next* message from overwriting the name the user just chose.
+    /// </summary>
+    private async void RenameSession_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not string sessionId) return;
+
+        try
+        {
+            var sessionsState = await AppServices.Sessions.LoadAsync();
+            var session = sessionsState.Sessions.FirstOrDefault(entry => entry.Id == sessionId);
+            if (session is null) return;
+
+            var input = new Microsoft.UI.Xaml.Controls.TextBox
+            {
+                Text = session.Title,
+                SelectionStart = 0,
+                SelectionLength = session.Title.Length,
+                MaxLength = SessionSummary.MaxTitleLength,
+                AcceptsReturn = false,
+                TextWrapping = TextWrapping.NoWrap,
+            };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
+                input,
+                LocalizedStrings.Get("RenameConversationFieldName", "Conversation name"));
+
+            var dialog = new Microsoft.UI.Xaml.Controls.ContentDialog
+            {
+                Title = LocalizedStrings.Get("RenameConversationTitle", "Rename conversation"),
+                Content = input,
+                PrimaryButtonText = LocalizedStrings.Get("CommonSave", "Save"),
+                CloseButtonText = LocalizedStrings.Get("CommonCancel", "Cancel"),
+                DefaultButton = Microsoft.UI.Xaml.Controls.ContentDialogButton.Primary,
+                XamlRoot = XamlRoot,
+            };
+
+            // Enter commits, matching every other single-field rename dialog on Windows. Without
+            // this the TextBox swallows it and the only way to confirm is the mouse.
+            input.KeyDown += (_, args) =>
+            {
+                if (args.Key != Windows.System.VirtualKey.Enter) return;
+                args.Handled = true;
+                dialog.Hide();
+                _renameCommitted = true;
+            };
+
+            _renameCommitted = false;
+            var result = await dialog.ShowThemedAsync();
+            if (result != Microsoft.UI.Xaml.Controls.ContentDialogResult.Primary && !_renameCommitted) return;
+
+            if (!session.TryRename(input.Text)) return;
+
+            // UpdateSessionAsync touches this one row rather than reconciling the whole index —
+            // the same call the per-message title stamp uses.
+            await AppServices.Sessions.UpdateSessionAsync(session);
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            LogRenameFailed(AppServices.Logging.CreateLogger<ShellSidebar>(), sessionId, ex);
+        }
+    }
+
+    /// <summary>Set when Enter committed the rename dialog, because <see cref="ContentDialog.Hide"/>
+    /// reports <see cref="ContentDialogResult.None"/> rather than the primary result.</summary>
+    private bool _renameCommitted;
+
     private async void DeleteSession_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.Tag is not string sessionId) return;
@@ -423,102 +497,10 @@ public sealed partial class ShellSidebar
             AddAgentRequested?.Invoke(opener);
     }
 
-    private async void Settings_Click(object sender, RoutedEventArgs e)
+    private async void BottomSettings_Click(object sender, RoutedEventArgs e)
     {
         await RefreshAsync();
         if (sender is FrameworkElement opener)
             SettingsRequested?.Invoke(opener);
-    }
-
-    private async void BottomAddAgent_Click(object sender, RoutedEventArgs e)
-    {
-        await RefreshAsync();
-        AddAgentRequested?.Invoke(BottomAccountButton);
-    }
-
-    private async void BottomSettings_Click(object sender, RoutedEventArgs e)
-    {
-        CloseAccountMenu();
-        await RefreshAsync();
-        SettingsRequested?.Invoke(BottomAccountButton);
-    }
-
-    private void BottomKeyboardShortcuts_Click(object sender, RoutedEventArgs e)
-    {
-        CloseAccountMenu();
-        KeyboardShortcutsRequested?.Invoke(BottomAccountButton);
-    }
-
-    private void BottomAbout_Click(object sender, RoutedEventArgs e)
-    {
-        CloseAccountMenu();
-        AboutRequested?.Invoke(BottomAccountButton);
-    }
-
-    private void BottomExit_Click(object sender, RoutedEventArgs e)
-    {
-        CloseAccountMenu();
-        ExitRequested?.Invoke();
-    }
-
-    private void BottomAccount_Click(object sender, RoutedEventArgs e)
-    {
-        if (AccountMenuPanel.Visibility == Visibility.Visible)
-        {
-            CloseAccountMenu();
-            return;
-        }
-
-        AccountMenuDismissLayer.Visibility = Visibility.Visible;
-        AccountMenuPanel.Visibility = Visibility.Visible;
-        AccountSettingsButton.Focus(FocusState.Programmatic);
-    }
-
-    private void AccountMenuDismissLayer_Tapped(object sender, TappedRoutedEventArgs e)
-        => CloseAccountMenu();
-
-    private void AccountMenuPanel_KeyDown(object sender, KeyRoutedEventArgs e)
-    {
-        if (e.Key != VirtualKey.Escape) return;
-
-        e.Handled = true;
-        CloseAccountMenu();
-        BottomAccountButton.Focus(FocusState.Programmatic);
-    }
-
-    private void AccountMenuPanel_LostFocus(object sender, RoutedEventArgs e)
-    {
-        // LostFocus bubbles while focus moves between menu rows. Check after WinUI commits the
-        // new focus target, then dismiss only when focus actually left both the menu and opener.
-        DispatcherQueue.TryEnqueue(() =>
-        {
-            if (AccountMenuPanel.Visibility != Visibility.Visible) return;
-
-            var focused = FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
-            if (ReferenceEquals(focused, BottomAccountButton)
-                || IsDescendantOf(focused, AccountMenuPanel))
-            {
-                return;
-            }
-
-            CloseAccountMenu();
-        });
-    }
-
-    private static bool IsDescendantOf(DependencyObject? element, DependencyObject ancestor)
-    {
-        while (element is not null)
-        {
-            if (ReferenceEquals(element, ancestor)) return true;
-            element = VisualTreeHelper.GetParent(element);
-        }
-
-        return false;
-    }
-
-    private void CloseAccountMenu()
-    {
-        AccountMenuPanel.Visibility = Visibility.Collapsed;
-        AccountMenuDismissLayer.Visibility = Visibility.Collapsed;
     }
 }

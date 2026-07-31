@@ -11,43 +11,23 @@
 
     <Grid AutomationProperties.AutomationId="ShellSidebar"
           Background="{ThemeResource SidebarBackgroundBrush}"
-          Padding="12,8,10,10"
+          Padding="8,8,6,10"
           RowSpacing="4">
         <Grid.Resources>
             <ResourceDictionary>
-                <ResourceDictionary.ThemeDictionaries>
-                    <!-- Near-opaque, not glass: this is a plain brush with no blur behind it, so any
-                     alpha low enough to read as glass also reads the sidebar's own text straight
-                     through the menu (Exit landed on top of Add Agent). Acrylic would be the way
-                     to get real translucency here. -->
-                    <ResourceDictionary x:Key="Light">
-                        <SolidColorBrush x:Key="AccountMenuGlassBrush" Color="#F5F2F2F2" />
-                    </ResourceDictionary>
-                    <ResourceDictionary x:Key="Dark">
-                        <SolidColorBrush x:Key="AccountMenuGlassBrush" Color="#F51C1B20" />
-                    </ResourceDictionary>
-                    <ResourceDictionary x:Key="HighContrast">
-                        <SolidColorBrush x:Key="AccountMenuGlassBrush"
-                                     Color="{ThemeResource SystemColorWindowColor}" />
-                    </ResourceDictionary>
-                </ResourceDictionary.ThemeDictionaries>
                 <Style x:Key="ShellNavButtonStyle"
                    TargetType="Button"
                    BasedOn="{StaticResource TransparentButtonStyle}">
                     <Setter Property="MinHeight" Value="0" />
+                    <Setter Property="MinWidth" Value="0" />
                     <Setter Property="Padding" Value="0" />
                 </Style>
                 <Style x:Key="SidebarCaptionStyle" TargetType="TextBlock">
                     <Setter Property="FontSize" Value="11" />
                     <Setter Property="Foreground" Value="{ThemeResource TextTertiaryBrush}" />
                     <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-                </Style>
-                <Style x:Key="AccountMenuRowStyle"
-                   TargetType="Button"
-                   BasedOn="{StaticResource SidebarNavButtonStyle}">
-                    <Setter Property="MinHeight" Value="42" />
-                    <Setter Property="Padding" Value="14,0" />
-                    <Setter Property="CornerRadius" Value="6" />
+                    <Setter Property="TextWrapping" Value="NoWrap" />
+                    <Setter Property="MaxLines" Value="1" />
                 </Style>
             </ResourceDictionary>
         </Grid.Resources>
@@ -59,100 +39,138 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Lightweight workspace header. It remains part of the window surface rather than
-             becoming a separate branded card. -->
-        <Grid Grid.Row="0" ColumnSpacing="4">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
+        <!-- Brand and live presence follow the same two-line hierarchy as the compact
+             ConnectOnion clients: identity first, runtime status second. -->
+        <Grid Grid.Row="0"
+              MinHeight="60"
+              Padding="4,2">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
 
-            <Button Style="{StaticResource SidebarNavButtonStyle}"
-                    MinHeight="52"
-                    Padding="4,0"
+            <StackPanel Orientation="Horizontal"
+                        Spacing="8"
+                        VerticalAlignment="Center">
+                <Image x:Uid="SidebarLogo" Width="28"
+                       Height="28"
+                       Source="/Assets/icon.png"
+                       AutomationProperties.Name="ConnectOnion logo" />
+                <TextBlock Text="ConnectOnion"
+                           FontSize="15"
+                           FontWeight="SemiBold"
+                           Foreground="{ThemeResource TextPrimaryBrush}"
+                           VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis" />
+                <Border Padding="6,2"
+                        CornerRadius="4"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        VerticalAlignment="Center">
+                    <TextBlock Text="{Binding AppVersionBadgeText}"
+                               FontFamily="{StaticResource JetBrainsMonoFontFamily}"
+                               FontSize="9"
+                               Foreground="{ThemeResource TextTertiaryBrush}" />
+                </Border>
+            </StackPanel>
+
+            <StackPanel Grid.Row="1"
+                        Orientation="Horizontal"
+                        Spacing="7"
+                        Margin="2,6,0,0"
+                        VerticalAlignment="Center"
+                        AutomationProperties.Name="{Binding OnlineAgentCountText}">
+                <Ellipse Width="6"
+                         Height="6"
+                         Fill="{ThemeResource SuccessBrush}"
+                         Visibility="{Binding HasOnlineAgents, Converter={StaticResource BoolToVis}}" />
+                <Ellipse Width="6"
+                         Height="6"
+                         Stroke="{ThemeResource TextTertiaryBrush}"
+                         StrokeThickness="1"
+                         Visibility="{Binding HasOnlineAgents, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
+                <TextBlock Text="{Binding OnlineAgentStatusText}"
+                           FontFamily="{StaticResource JetBrainsMonoFontFamily}"
+                           FontSize="10"
+                           CharacterSpacing="70"
+                           Foreground="{ThemeResource TextSecondaryBrush}"
+                           VerticalAlignment="Center" />
+            </StackPanel>
+        </Grid>
+
+        <!-- Navigation and sidebar-only utilities are explicit rows, separate from the brand. -->
+        <StackPanel Grid.Row="1"
+                    Margin="0,0,0,2"
+                    Spacing="2">
+            <Button x:Uid="SidebarAgentsNavigation"
+                    x:Name="AgentsNavigationButton"
+                    MinHeight="40"
+                    Style="{StaticResource SidebarNavButtonStyle}"
+                    Padding="12,0"
                     Click="ChatHome_Click"
-                    AutomationProperties.Name="ConnectOnion home">
+                    AutomationProperties.Name="Agents"
+                    ToolTipService.ToolTip="Agents">
                 <Grid ColumnSpacing="10">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <Image Width="28"
-                           Height="28"
-                           Source="/Assets/icon.png"
-                           VerticalAlignment="Center" />
-                    <StackPanel Grid.Column="1"
-                                VerticalAlignment="Center"
-                                Spacing="1">
-                        <TextBlock Text="ConnectOnion"
-                                   FontSize="15"
-                                   FontWeight="SemiBold"
-                                   Foreground="{ThemeResource TextPrimaryBrush}"
-                                   TextTrimming="CharacterEllipsis" />
-                        <TextBlock x:Uid="SidebarWorkspace" Text="Agent workspace"
-                                   Style="{StaticResource SidebarCaptionStyle}" />
-                    </StackPanel>
+                    <ic:FluentIcon Icon="Bot"
+                                   IconVariant="Regular"
+                                   IconSize="Size16"
+                                   VerticalAlignment="Center" />
+                    <TextBlock x:Uid="SidebarAgentsNavigationLabel"
+                               Grid.Column="1"
+                               Text="Agents"
+                               FontSize="13"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center" />
                 </Grid>
             </Button>
 
-            <Button x:Uid="SidebarSearchChats"
-                    x:Name="SessionSearchButton"
-                    Grid.Column="1"
-                    Width="36"
-                    Height="36"
-                    Padding="0"
-                    Margin="0,8,0,0"
-                    VerticalAlignment="Top"
-                    Style="{StaticResource SmallIconButtonStyle}"
-                    Click="SearchSessions_Click"
-                    AutomationProperties.AutomationId="SessionSearchButton"
-                    AutomationProperties.Name="Search chats"
-                    ToolTipService.ToolTip="Search chats">
-                <ic:FluentIcon Icon="Search"
-                               IconVariant="Regular"
-                               IconSize="Size20"
-                               Foreground="{ThemeResource TextSecondaryBrush}" />
-            </Button>
-        </Grid>
+        </StackPanel>
 
-        <!-- A compact desktop command, deliberately quieter than a primary CTA. -->
-        <Button x:Name="NewChatButton"
-                Grid.Row="1"
-                MinHeight="40"
-                Margin="0,4,0,8"
-                Style="{StaticResource SidebarNewChatButtonStyle}"
-                Click="NewChatButton_Click"
-                AutomationProperties.AutomationId="NewChatButton"
-                AutomationProperties.Name="{Binding NewChatTargetText}"
-                ToolTipService.ToolTip="{Binding NewChatTargetText}">
-            <Grid ColumnSpacing="10">
+        <Grid Grid.Row="2">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- Keep the section command visible while only the conversation tree scrolls. -->
+            <Grid MinHeight="28"
+                  Margin="10,0,2,4">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <ic:FluentIcon Icon="Add"
-                               IconVariant="Regular"
-                               IconSize="Size16"
-                               VerticalAlignment="Center" />
-                <TextBlock x:Uid="SidebarNewChat" Grid.Column="1"
-                           Text="New Chat"
-                           FontSize="13"
-                           FontWeight="SemiBold"
+                <TextBlock x:Uid="SidebarConversations"
+                           Text="Conversations"
+                           Style="{StaticResource SidebarSectionHeaderStyle}"
                            VerticalAlignment="Center" />
-                <TextBlock Grid.Column="2"
-                           Text="Ctrl+N"
-                           FontSize="11"
-                           Opacity="0.62"
-                           VerticalAlignment="Center" />
+                <Button x:Uid="SidebarSearchChats"
+                        x:Name="SessionSearchButton"
+                        Grid.Column="1"
+                        Style="{StaticResource SmallIconButtonStyle}"
+                        Click="SearchSessions_Click"
+                        AutomationProperties.AutomationId="SessionSearchButton"
+                        AutomationProperties.Name="Search chats"
+                        ToolTipService.ToolTip="Search chats">
+                    <ic:FluentIcon Icon="Search"
+                                   IconVariant="Regular"
+                                   IconSize="Size16" />
+                </Button>
             </Grid>
-        </Button>
 
-        <ScrollViewer Grid.Row="2"
-                      VerticalScrollBarVisibility="Auto"
-                      HorizontalScrollBarVisibility="Disabled">
-            <StackPanel Spacing="2"
-                        Margin="0,0,14,0">
+            <ScrollViewer Grid.Row="1"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+                <!-- The tree is ItemsRepeater all the way down, and ItemsRepeater — unlike
+                     ListView — provides no arrow-key navigation of its own. Without this the
+                     only way through the sidebar is Tab, one control at a time, which for a
+                     handful of agents with their conversations expanded is dozens of presses.
+                     XYFocus gives Up/Down row traversal on top of the Tab order. -->
+                <StackPanel Spacing="2"
+                            Margin="0,0,14,0"
+                            XYFocusKeyboardNavigation="Enabled">
 
                 <!-- Pinned conversations remain a fast cross-agent jump list. -->
                 <StackPanel Spacing="2"
@@ -207,17 +225,25 @@
                                             <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="Transparent" />
                                         </ResourceDictionary>
                                     </Grid.Resources>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-
-                                    <Border Grid.ColumnSpan="2"
-                                            CornerRadius="8"
+                                    <Grid.ContextFlyout>
+                                        <MenuFlyout>
+                                            <MenuFlyoutItem x:Uid="SidebarRenameChat" Text="Rename"
+                                                            Click="RenameSession_Click"
+                                                            Tag="{Binding Id}" />
+                                            <MenuFlyoutItem Text="{Binding PinToolTip}"
+                                                            Click="TogglePinSession_Click"
+                                                            Tag="{Binding Id}" />
+                                            <MenuFlyoutSeparator />
+                                            <MenuFlyoutItem x:Uid="SidebarDeleteChat" Text="Delete chat"
+                                                            Click="DeleteSession_Click"
+                                                            Tag="{Binding Id}"
+                                                            Foreground="{ThemeResource DangerBrush}" />
+                                        </MenuFlyout>
+                                    </Grid.ContextFlyout>
+                                    <Border CornerRadius="8"
                                             Background="{Binding IsSelected, Converter={StaticResource RowStateToBackground}}"
                                             Visibility="{Binding ShowRowBackground, Converter={StaticResource BoolToVis}}" />
-                                    <Border Grid.ColumnSpan="2"
-                                            Width="3"
+                                    <Border Width="3"
                                             Height="24"
                                             HorizontalAlignment="Left"
                                             VerticalAlignment="Center"
@@ -225,8 +251,7 @@
                                             Background="{ThemeResource AccentFillColorDefaultBrush}"
                                             Visibility="{Binding IsSelected, Converter={StaticResource BoolToVis}}" />
 
-                                    <Button Grid.Column="0"
-                                            Style="{StaticResource ShellNavButtonStyle}"
+                                    <Button Style="{StaticResource ShellNavButtonStyle}"
                                             Click="PinnedSession_Click"
                                             Tag="{Binding Id}"
                                             AutomationProperties.AutomationId="PinnedSessionButton"
@@ -245,50 +270,11 @@
                                         </StackPanel>
                                     </Button>
 
-                                    <Grid Grid.Column="1"
-                                          Width="64"
-                                          VerticalAlignment="Stretch">
-                                        <TextBlock Text="{Binding RelativeTime}"
-                                                   FontSize="10"
-                                                   Foreground="{ThemeResource TextTertiaryBrush}"
-                                                   HorizontalAlignment="Right"
-                                                   VerticalAlignment="Center"
-                                                   Margin="0,0,4,0"
-                                                   TextWrapping="NoWrap"
-                                                   Visibility="{Binding AreActionsVisible, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
-                                        <Button x:Uid="SidebarMoreActions" Style="{StaticResource SidebarActionButtonStyle}"
-                                                HorizontalAlignment="Right"
-                                                VerticalAlignment="Center"
-                                                Visibility="{Binding AreActionsVisible, Converter={StaticResource BoolToVis}}"
-                                                AutomationProperties.Name="More chat actions"
-                                                ToolTipService.ToolTip="More actions">
-                                            <ic:FluentIcon Icon="MoreHorizontal"
-                                                           IconVariant="Regular"
-                                                           IconSize="Size16"
-                                                           Foreground="{ThemeResource TextSecondaryBrush}" />
-                                            <Button.Flyout>
-                                                <MenuFlyout Placement="Bottom">
-                                                    <MenuFlyoutItem Text="{Binding PinToolTip}"
-                                                                    Click="TogglePinSession_Click"
-                                                                    Tag="{Binding Id}" />
-                                                    <MenuFlyoutSeparator />
-                                                    <MenuFlyoutItem x:Uid="SidebarDeleteChat" Text="Delete chat"
-                                                                    Click="DeleteSession_Click"
-                                                                    Tag="{Binding Id}"
-                                                                    Foreground="{ThemeResource DangerBrush}" />
-                                                </MenuFlyout>
-                                            </Button.Flyout>
-                                        </Button>
-                                    </Grid>
                                 </Grid>
                             </DataTemplate>
                         </ItemsRepeater.ItemTemplate>
                     </ItemsRepeater>
                 </StackPanel>
-
-                <TextBlock x:Uid="SidebarAgents" Text="Agents"
-                           Style="{StaticResource SidebarSectionHeaderStyle}"
-                           Margin="10,16,0,6" />
 
                 <ItemsRepeater ItemsSource="{Binding ShellAgents}"
                                AutomationProperties.AutomationId="AgentList">
@@ -313,13 +299,39 @@
                                             <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="Transparent" />
                                         </ResourceDictionary>
                                     </Border.Resources>
+                                    <Border.ContextFlyout>
+                                        <MenuFlyout>
+                                            <MenuFlyoutItem x:Uid="SidebarAgentNewChat" Text="New chat"
+                                                            Click="AddChat_Click"
+                                                            Tag="{Binding Id}" />
+                                            <MenuFlyoutItem x:Uid="SidebarAgentDetails" Text="Agent details"
+                                                            Click="Agent_Click"
+                                                            Tag="{Binding Id}" />
+                                            <MenuFlyoutItem x:Uid="MenuChangeAgentIcon"
+                                                            Text="Change icon"
+                                                            Click="ChangeAgentIcon_Click"
+                                                            Tag="{Binding Id}" />
+                                            <!-- Hidden rather than disabled when there is no custom icon:
+                                                 an unavailable action is noise in a compact context menu. -->
+                                            <MenuFlyoutItem x:Uid="MenuRemoveAgentIcon"
+                                                            Text="Remove custom icon"
+                                                            Click="RemoveAgentIcon_Click"
+                                                            Tag="{Binding Id}"
+                                                            Visibility="{Binding HasCustomIcon, Converter={StaticResource BoolToVis}}" />
+                                            <MenuFlyoutSeparator />
+                                            <MenuFlyoutItem x:Uid="SidebarDeleteAgent" Text="Delete agent"
+                                                            Click="DeleteAgent_Click"
+                                                            Tag="{Binding Id}"
+                                                            Foreground="{ThemeResource DangerBrush}" />
+                                        </MenuFlyout>
+                                    </Border.ContextFlyout>
                                     <Grid MinHeight="46" Padding="2,0">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="36" />
                                         </Grid.ColumnDefinitions>
 
                                         <Border Grid.ColumnSpan="5"
@@ -347,19 +359,27 @@
                                             </ic:FluentIcon>
                                         </Button>
 
+                                        <!-- Same Agent_Click, same Tag, right next to the name
+                                             button below: for a pointer that is a bigger target,
+                                             but for the keyboard it was a second stop that did
+                                             exactly what the next one does. Out of the tab order
+                                             and out of the accessibility tree — the name button
+                                             is the one canonical way in. It keeps its
+                                             AutomationId because AutomationContractTests scans
+                                             the XAML for it. -->
                                         <Button Grid.Column="1"
                                                 Style="{StaticResource ShellNavButtonStyle}"
                                                 Click="Agent_Click"
                                                 Tag="{Binding Id}"
+                                                IsTabStop="False"
                                                 AutomationProperties.AutomationId="AgentAvatarButton"
-                                                AutomationProperties.Name="{Binding OpenAccessibilityName}"
+                                                AutomationProperties.AccessibilityView="Raw"
                                                 ToolTipService.ToolTip="{Binding DisplayName}">
                                             <local:AgentAvatar Size="28"
                                                                CornerRadius="14"
                                                                FontSize="10"
                                                                Margin="4,0,10,0"
                                                                Initial="{Binding Initial}"
-                                                               PaletteIndex="{Binding AvatarPaletteIndex}"
                                                                ImagePath="{Binding IconPath}"
                                                                IsHitTestVisible="False" />
                                         </Button>
@@ -369,12 +389,16 @@
                                                 Click="Agent_Click"
                                                 Tag="{Binding Id}"
                                                 AutomationProperties.AutomationId="AgentButton"
-                                                HorizontalContentAlignment="Left"
+                                                AutomationProperties.Name="{Binding OpenAccessibilityName}"
+                                                HorizontalContentAlignment="Stretch"
                                                 ToolTipService.ToolTip="{Binding Name}">
                                             <TextBlock Text="{Binding DisplayName}"
+                                                       Margin="0,0,8,0"
                                                        FontSize="13"
                                                        FontWeight="{Binding IsSelected, Converter={StaticResource BoolToFontWeight}}"
                                                        TextTrimming="CharacterEllipsis"
+                                                       TextWrapping="NoWrap"
+                                                       MaxLines="1"
                                                        Foreground="{ThemeResource TextPrimaryBrush}" />
                                         </Button>
 
@@ -395,57 +419,21 @@
                                                      Visibility="{Binding IsOfflineIconVisible, Converter={StaticResource BoolToVis}}" />
                                         </Grid>
 
-                                        <StackPanel Grid.Column="4"
-                                                    Orientation="Horizontal"
-                                                    Spacing="2"
-                                                    VerticalAlignment="Center"
-                                                    Visibility="{Binding AreActionsVisible, Converter={StaticResource BoolToVis}}">
-                                            <Button x:Uid="SidebarMoreActions" Style="{StaticResource SidebarActionButtonStyle}"
-                                                    Click="AddChat_Click"
-                                                    Tag="{Binding Id}"
-                                                    AutomationProperties.Name="New chat"
-                                                    ToolTipService.ToolTip="New chat">
-                                                <ic:FluentIcon Icon="Add"
-                                                               IconVariant="Regular"
-                                                               IconSize="Size16"
-                                                               Foreground="{ThemeResource TextSecondaryBrush}" />
-                                            </Button>
-                                            <Button x:Uid="SidebarMoreActions" Style="{StaticResource SidebarActionButtonStyle}"
-                                                    AutomationProperties.Name="More agent actions"
-                                                    ToolTipService.ToolTip="More actions">
-                                                <ic:FluentIcon Icon="MoreHorizontal"
-                                                               IconVariant="Regular"
-                                                               IconSize="Size16"
-                                                               Foreground="{ThemeResource TextSecondaryBrush}" />
-                                                <Button.Flyout>
-                                                    <MenuFlyout Placement="Bottom">
-                                                        <MenuFlyoutItem x:Uid="SidebarAgentNewChat" Text="New chat"
-                                                                        Click="AddChat_Click"
-                                                                        Tag="{Binding Id}" />
-                                                        <MenuFlyoutItem x:Uid="SidebarAgentDetails" Text="Agent details"
-                                                                        Click="Agent_Click"
-                                                                        Tag="{Binding Id}" />
-                                                        <MenuFlyoutItem x:Uid="MenuChangeAgentIcon"
-                                                                        Text="Change icon"
-                                                                        Click="ChangeAgentIcon_Click"
-                                                                        Tag="{Binding Id}" />
-                                                        <!-- Hidden rather than disabled when there is
-                                                             no custom icon: an action that can never
-                                                             apply is noise in a six-item menu. -->
-                                                        <MenuFlyoutItem x:Uid="MenuRemoveAgentIcon"
-                                                                        Text="Remove custom icon"
-                                                                        Click="RemoveAgentIcon_Click"
-                                                                        Tag="{Binding Id}"
-                                                                        Visibility="{Binding HasCustomIcon, Converter={StaticResource BoolToVis}}" />
-                                                        <MenuFlyoutSeparator />
-                                                        <MenuFlyoutItem x:Uid="SidebarDeleteAgent" Text="Delete agent"
-                                                                        Click="DeleteAgent_Click"
-                                                                        Tag="{Binding Id}"
-                                                                        Foreground="{ThemeResource DangerBrush}" />
-                                                    </MenuFlyout>
-                                                </Button.Flyout>
-                                            </Button>
-                                        </StackPanel>
+                                        <Button x:Uid="SidebarAgentNewChatButton"
+                                                Grid.Column="4"
+                                                Style="{StaticResource SidebarActionButtonStyle}"
+                                                HorizontalAlignment="Right"
+                                                VerticalAlignment="Center"
+                                                Visibility="{Binding AreActionsVisible, Converter={StaticResource BoolToVis}}"
+                                                Click="AddChat_Click"
+                                                Tag="{Binding Id}"
+                                                AutomationProperties.Name="New chat"
+                                                ToolTipService.ToolTip="New chat">
+                                            <ic:FluentIcon Icon="Add"
+                                                           IconVariant="Regular"
+                                                           IconSize="Size16"
+                                                           Foreground="{ThemeResource TextSecondaryBrush}" />
+                                        </Button>
                                     </Grid>
                                 </Border>
 
@@ -481,17 +469,25 @@
                                                                         <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="Transparent" />
                                                                     </ResourceDictionary>
                                                                 </Grid.Resources>
-                                                                <Grid.ColumnDefinitions>
-                                                                    <ColumnDefinition Width="*" />
-                                                                    <ColumnDefinition Width="Auto" />
-                                                                </Grid.ColumnDefinitions>
-
-                                                                <Border Grid.ColumnSpan="2"
-                                                                        CornerRadius="8"
+                                                                <Grid.ContextFlyout>
+                                                                    <MenuFlyout>
+                                                                        <MenuFlyoutItem x:Uid="SidebarRenameChat" Text="Rename"
+                                                                                        Click="RenameSession_Click"
+                                                                                        Tag="{Binding Id}" />
+                                                                        <MenuFlyoutItem Text="{Binding PinToolTip}"
+                                                                                        Click="TogglePinSession_Click"
+                                                                                        Tag="{Binding Id}" />
+                                                                        <MenuFlyoutSeparator />
+                                                                        <MenuFlyoutItem x:Uid="SidebarDeleteChat" Text="Delete chat"
+                                                                                        Click="DeleteSession_Click"
+                                                                                        Tag="{Binding Id}"
+                                                                                        Foreground="{ThemeResource DangerBrush}" />
+                                                                    </MenuFlyout>
+                                                                </Grid.ContextFlyout>
+                                                                <Border CornerRadius="8"
                                                                         Background="{Binding IsSelected, Converter={StaticResource RowStateToBackground}}"
                                                                         Visibility="{Binding ShowRowBackground, Converter={StaticResource BoolToVis}}" />
-                                                                <Border Grid.ColumnSpan="2"
-                                                                        Width="3"
+                                                                <Border Width="3"
                                                                         Height="24"
                                                                         HorizontalAlignment="Left"
                                                                         VerticalAlignment="Center"
@@ -499,8 +495,7 @@
                                                                         Background="{ThemeResource AccentFillColorDefaultBrush}"
                                                                         Visibility="{Binding IsSelected, Converter={StaticResource BoolToVis}}" />
 
-                                                                <Button Grid.Column="0"
-                                                                        Style="{StaticResource ShellNavButtonStyle}"
+                                                                <Button Style="{StaticResource ShellNavButtonStyle}"
                                                                         Click="Session_Click"
                                                                         Tag="{Binding Id}"
                                                                         AutomationProperties.AutomationId="SessionButton"
@@ -519,41 +514,6 @@
                                                                     </StackPanel>
                                                                 </Button>
 
-                                                                <Grid Grid.Column="1"
-                                                                      Width="64"
-                                                                      VerticalAlignment="Stretch">
-                                                                    <TextBlock Text="{Binding RelativeTime}"
-                                                                               FontSize="10"
-                                                                               Foreground="{ThemeResource TextTertiaryBrush}"
-                                                                               HorizontalAlignment="Right"
-                                                                               VerticalAlignment="Center"
-                                                                               Margin="0,0,4,0"
-                                                                               TextWrapping="NoWrap"
-                                                                               Visibility="{Binding AreActionsVisible, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
-                                                                    <Button x:Uid="SidebarMoreActions" Style="{StaticResource SidebarActionButtonStyle}"
-                                                                            HorizontalAlignment="Right"
-                                                                            VerticalAlignment="Center"
-                                                                            Visibility="{Binding AreActionsVisible, Converter={StaticResource BoolToVis}}"
-                                                                            AutomationProperties.Name="More chat actions"
-                                                                            ToolTipService.ToolTip="More actions">
-                                                                        <ic:FluentIcon Icon="MoreHorizontal"
-                                                                                       IconVariant="Regular"
-                                                                                       IconSize="Size16"
-                                                                                       Foreground="{ThemeResource TextSecondaryBrush}" />
-                                                                        <Button.Flyout>
-                                                                            <MenuFlyout Placement="Bottom">
-                                                                                <MenuFlyoutItem Text="{Binding PinToolTip}"
-                                                                                                Click="TogglePinSession_Click"
-                                                                                                Tag="{Binding Id}" />
-                                                                                <MenuFlyoutSeparator />
-                                                                                <MenuFlyoutItem x:Uid="SidebarDeleteChat" Text="Delete chat"
-                                                                                                Click="DeleteSession_Click"
-                                                                                                Tag="{Binding Id}"
-                                                                                                Foreground="{ThemeResource DangerBrush}" />
-                                                                            </MenuFlyout>
-                                                                        </Button.Flyout>
-                                                                    </Button>
-                                                                </Grid>
                                                             </Grid>
                                                         </DataTemplate>
                                                     </ItemsRepeater.ItemTemplate>
@@ -566,16 +526,17 @@
                         </DataTemplate>
                     </ItemsRepeater.ItemTemplate>
                 </ItemsRepeater>
-            </StackPanel>
-        </ScrollViewer>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
 
-        <!-- Fixed utility and local-client area; it never participates in conversation scrolling. -->
+        <!-- Fixed utility area; it never participates in conversation scrolling. -->
         <StackPanel Grid.Row="3" Spacing="2">
             <Border Height="1"
                     Margin="4,8,4,8"
                     Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
 
-            <Button Style="{StaticResource SidebarNavButtonStyle}"
+            <Button x:Uid="SidebarAddAgentButton" Style="{StaticResource SidebarNavButtonStyle}"
                     MinHeight="40"
                     Click="AddAgent_Click"
                     AutomationProperties.AutomationId="AddAgentButton"
@@ -588,141 +549,33 @@
                                 Foreground="{ThemeResource TextSecondaryBrush}" />
             </Button>
 
-            <Grid MinHeight="56"
-                  Margin="0,2,0,0">
-                <Button x:Name="BottomAccountButton"
-                        Style="{StaticResource SidebarNavButtonStyle}"
-                        Padding="8,0"
-                        Click="BottomAccount_Click"
-                        AutomationProperties.AutomationId="AccountMenuButton"
-                        AutomationProperties.Name="Open local client menu">
-                    <Grid ColumnSpacing="10">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <local:AgentAvatar Size="32"
-                                           CornerRadius="16"
-                                           FontSize="10"
-                                           Initial="CO"
-                                           PaletteIndex="0"
-                                           IsHitTestVisible="False" />
-                        <StackPanel Grid.Column="1"
-                                    VerticalAlignment="Center"
-                                    Spacing="2">
-                            <TextBlock x:Uid="SidebarLocalClient" Text="Local Client"
-                                       FontSize="13"
-                                       FontWeight="SemiBold"
-                                       Foreground="{ThemeResource TextPrimaryBrush}"
-                                       TextTrimming="CharacterEllipsis" />
-                            <StackPanel Orientation="Horizontal" Spacing="5">
-                                <Ellipse Width="6"
-                                         Height="6"
-                                         Fill="{ThemeResource SuccessBrush}"
-                                         VerticalAlignment="Center"
-                                         Visibility="{Binding HasOnlineAgents, Converter={StaticResource BoolToVis}}" />
-                                <Ellipse Width="6"
-                                         Height="6"
-                                         Stroke="{ThemeResource TextTertiaryBrush}"
-                                         StrokeThickness="1"
-                                         VerticalAlignment="Center"
-                                         Visibility="{Binding HasOnlineAgents, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
-                                <TextBlock Text="{Binding OnlineAgentCountText}"
-                                           Style="{StaticResource SidebarCaptionStyle}" />
-                            </StackPanel>
-                        </StackPanel>
-                    </Grid>
-                </Button>
-            </Grid>
+            <Button x:Uid="SidebarSettingsButton"
+                    x:Name="SidebarSettingsButton"
+                    MinHeight="44"
+                    Style="{StaticResource SidebarNavButtonStyle}"
+                    Padding="12,0"
+                    Click="BottomSettings_Click"
+                    AutomationProperties.AutomationId="SettingsButton"
+                    AutomationProperties.Name="Settings"
+                    ToolTipService.ToolTip="Settings">
+                <Grid ColumnSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <ic:FluentIcon Icon="Settings"
+                                   IconVariant="Regular"
+                                   IconSize="Size16"
+                                   VerticalAlignment="Center" />
+                    <TextBlock x:Uid="SidebarSettings"
+                               Grid.Column="1"
+                               Text="Settings"
+                               FontSize="13"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" />
+                </Grid>
+            </Button>
         </StackPanel>
-
-        <Grid x:Name="AccountMenuDismissLayer"
-              Grid.Row="0"
-              Grid.RowSpan="4"
-              Background="Transparent"
-              Visibility="Collapsed"
-              Tapped="AccountMenuDismissLayer_Tapped"
-              Canvas.ZIndex="99" />
-
-        <!-- This menu deliberately stays in the sidebar's visual tree. A Flyout/Popup creates a
-             second theme scope; after a runtime theme switch that scope caused application-level
-             ThemeResource brushes to be re-evaluated against two different themes. -->
-        <Border x:Name="AccountMenuPanel"
-                Grid.Row="0"
-                Grid.RowSpan="4"
-                Margin="0,0,0,60"
-                Padding="6"
-                HorizontalAlignment="Stretch"
-                VerticalAlignment="Bottom"
-                CornerRadius="12"
-                Background="{ThemeResource AccountMenuGlassBrush}"
-                BorderBrush="{ThemeResource BorderSubtleBrush}"
-                BorderThickness="1"
-                Visibility="Collapsed"
-                KeyDown="AccountMenuPanel_KeyDown"
-                LostFocus="AccountMenuPanel_LostFocus"
-                Canvas.ZIndex="100">
-            <StackPanel Spacing="0">
-                <Button x:Name="AccountSettingsButton"
-                        Style="{StaticResource AccountMenuRowStyle}"
-                        Click="BottomSettings_Click"
-                        AutomationProperties.AutomationId="SettingsButton"
-                        AutomationProperties.Name="Settings">
-                    <Grid ColumnSpacing="12">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock x:Uid="SidebarSettings" Text="Settings" FontSize="14" />
-                        <TextBlock Grid.Column="1"
-                                   Text="Ctrl+,"
-                                   FontSize="12"
-                                   Foreground="{ThemeResource TextSecondaryBrush}" />
-                    </Grid>
-                </Button>
-                <Button Style="{StaticResource AccountMenuRowStyle}"
-                        Click="BottomKeyboardShortcuts_Click"
-                        AutomationProperties.AutomationId="AccountKeyboardShortcutsMenuItem"
-                        AutomationProperties.Name="Keyboard Shortcuts">
-                    <Grid ColumnSpacing="12">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock x:Uid="SidebarKeyboardShortcuts" Text="Keyboard Shortcuts" FontSize="14" />
-                        <TextBlock Grid.Column="1"
-                                   Text="Ctrl+Shift+/"
-                                   FontSize="12"
-                                   Foreground="{ThemeResource TextSecondaryBrush}" />
-                    </Grid>
-                </Button>
-                <Border Height="1"
-                        Margin="4,4"
-                        Background="{ThemeResource DividerBrush}" />
-                <Button Style="{StaticResource AccountMenuRowStyle}"
-                        Click="BottomAbout_Click"
-                        AutomationProperties.Name="About ConnectOnion">
-                    <TextBlock x:Uid="SidebarAbout" Text="About ConnectOnion" FontSize="14" />
-                </Button>
-                <Border Height="1"
-                        Margin="4,4"
-                        Background="{ThemeResource DividerBrush}" />
-                <Button Style="{StaticResource AccountMenuRowStyle}"
-                        Click="BottomExit_Click"
-                        AutomationProperties.Name="Exit">
-                    <Grid ColumnSpacing="12">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock x:Uid="SidebarExit" Text="Exit" FontSize="14" />
-                        <TextBlock Grid.Column="1"
-                                   Text="Ctrl+Q"
-                                   FontSize="12"
-                                   Foreground="{ThemeResource TextSecondaryBrush}" />
-                    </Grid>
-                </Button>
-            </StackPanel>
-        </Border>
     </Grid>
 </UserControl>

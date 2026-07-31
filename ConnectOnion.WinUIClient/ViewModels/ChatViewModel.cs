@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Linq;
 using System.Net.Http;
 using System.Text.RegularExpressions;
@@ -34,8 +35,8 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     private static readonly Action<ILogger, string?, Exception?> LogSendFailure =
         LoggerMessage.Define<string?>(LogLevel.Error, new EventId(1, "ChatSendFailure"),
             "Send failed for session {SessionId}");
-    private static readonly Regex GenericTitle = new(@"^Conversation \d+$", RegexOptions.Compiled);
-    private static readonly Regex Whitespace = new(@"\s+", RegexOptions.Compiled);
+    // Title derivation moved to SessionSummary.TryApplyTitleFromPrompt, which keys off the
+    // stored HasCustomTitle flag instead of pattern-matching the placeholder's English text.
 
     private readonly DispatcherQueue _dispatcher = DispatcherQueue.GetForCurrentThread();
 
@@ -184,6 +185,8 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         _liveRunId = null;
         _appliedEventCount = 0;
         _historyLoadedRunId = null;
+        _runHasVisibleFeedback = false;
+        RemoveTurnProgress();
     }
 
     /// <summary>Full teardown: the run subscription plus the shared presence hook. For genuine
@@ -235,7 +238,15 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     // *means* "a turn is running", so a third start path added later gets the reset for free.
     partial void OnIsProcessingChanged(bool value)
     {
-        if (value) ResetLiveUsage();
+        if (value)
+        {
+            ResetLiveUsage();
+            EnsureTurnProgress();
+        }
+        else
+        {
+            RemoveTurnProgress();
+        }
     }
 
     /// <summary>True only after INPUT reached the socket and before OUTPUT/ERROR.</summary>
@@ -276,8 +287,24 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
 
     public string SelectedAgentInitial => NameInitial.From(_agent?.Name);
     public string? SelectedAgentIconPath => _agent?.IconPath;
-    public int SelectedAgentAvatarPaletteIndex => AvatarPalette.From(_agent?.Name);
     public string SessionShortId => _session is null ? "" : _session.Id[..Math.Min(8, _session.Id.Length)];
+    public string SessionUpdatedTimeText
+    {
+        get
+        {
+            if (_session is null ||
+                !DateTimeOffset.TryParse(
+                    _session.UpdatedAt,
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal,
+                    out var updatedAt))
+            {
+                return "";
+            }
+
+            return updatedAt.ToLocalTime().ToString("g", CultureInfo.CurrentCulture);
+        }
+    }
     public string? SessionId => _session?.Id;
     public string? AgentId => _agent?.Id;
 
@@ -294,8 +321,8 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     public partial string HeaderText { get; private set; }
 
     /// <summary>
-    /// The conversation socket's current phase, shown under the composer. Derived rather than
-    /// stored on the connection: the three facts that decide it arrive from three places — run
+    /// The conversation socket's current phase, narrated by the transient progress row while a
+    /// turn is live. It is derived from three sources rather than stored on the connection: run
     /// snapshots (Connecting/Running), the reconnect markers the session manager publishes into
     /// the run's event stream (Reconnecting), and presence plus the connection registry for the
     /// idle baseline. <see cref="RefreshConnectionPhase"/> is the single place they are combined.
@@ -304,11 +331,15 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     [NotifyPropertyChangedFor(nameof(ConnectionPhaseText))]
     public partial ConnectionPhase ConnectionPhase { get; private set; }
 
+    partial void OnConnectionPhaseChanged(ConnectionPhase value) => RefreshTurnProgressText();
+
     /// <summary>Attempt number behind a <see cref="Models.ConnectionPhase.Reconnecting"/> phase,
     /// so the label can count down the tries left before the turn is given up on.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ConnectionPhaseText))]
     public partial int ReconnectAttempt { get; private set; }
+
+    partial void OnReconnectAttemptChanged(int value) => RefreshTurnProgressText();
 
     public string ConnectionPhaseText => ConnectionPhase switch
     {
@@ -382,6 +413,11 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     [NotifyPropertyChangedFor(nameof(CanSend))]
     [NotifyPropertyChangedFor(nameof(IsComposerBusy))]
     public partial bool IsStopping { get; private set; }
+
+    partial void OnIsStoppingChanged(bool value)
+    {
+        if (value) RemoveTurnProgress();
+    }
 
     /// <summary>
     /// Loads (or re-loads) whichever conversation is currently active. Re-entrant: switching
@@ -662,11 +698,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     {
         if (_session is null) return;
 
-        if (GenericTitle.IsMatch(_session.Title) && !string.IsNullOrWhiteSpace(prompt))
-        {
-            var title = Whitespace.Replace(prompt.Trim(), " ");
-            _session.Title = title.Length > 48 ? title[..48] : title;
-        }
+        _session.TryApplyTitleFromPrompt(prompt);
         _session.UpdatedAt = DateTime.UtcNow.ToString("o");
         HeaderText = $"{_agent!.DisplayName} - {_session.Title}";
         RaiseHeaderProperties();
@@ -680,8 +712,8 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         OnPropertyChanged(nameof(SelectedAgentDisplayName));
         OnPropertyChanged(nameof(SelectedAgentInitial));
         OnPropertyChanged(nameof(SelectedAgentIconPath));
-        OnPropertyChanged(nameof(SelectedAgentAvatarPaletteIndex));
         OnPropertyChanged(nameof(SessionShortId));
+        OnPropertyChanged(nameof(SessionUpdatedTimeText));
     }
 
     protected override void OnPresenceRaised()

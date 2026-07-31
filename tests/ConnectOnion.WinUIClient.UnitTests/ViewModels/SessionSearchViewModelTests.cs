@@ -67,6 +67,92 @@ public sealed class SessionSearchViewModelTests
         Assert.Equal("fresh", Assert.Single(viewModel.Results).SessionId);
     }
 
+    [Fact]
+    public void ApplyContentMatches_BringsBackConversationsWhoseTranscriptMatches()
+    {
+        var viewModel = ViewModelWithCatalog();
+        viewModel.SearchText = "migration";
+
+        // Neither title mentions "migration", so the title filter alone finds nothing.
+        Assert.True(viewModel.IsEmpty);
+
+        viewModel.ApplyContentMatches(
+            "migration",
+            new Dictionary<string, string> { ["two"] = "we should ship the migration on Friday" });
+
+        var result = Assert.Single(viewModel.Results);
+        Assert.Equal("two", result.SessionId);
+        // The excerpt explains why a conversation with an unrelated title came back.
+        Assert.Contains("migration", result.Snippet, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ApplyContentMatches_TitleMatch_ShowsNoSnippet()
+    {
+        var viewModel = ViewModelWithCatalog();
+        viewModel.SearchText = "claude";
+
+        viewModel.ApplyContentMatches(
+            "claude",
+            new Dictionary<string, string> { ["one"] = "asking Claude about the schema" });
+
+        // The title already contains the query, so an excerpt would imply the hit was elsewhere.
+        Assert.Equal("", Assert.Single(viewModel.Results).Snippet);
+    }
+
+    [Fact]
+    public void ApplyContentMatches_ForASupersededQuery_IsIgnored()
+    {
+        var viewModel = ViewModelWithCatalog();
+        viewModel.SearchText = "homepage";
+
+        // A slow query for what the user typed two keystrokes ago must not repopulate the list.
+        viewModel.ApplyContentMatches(
+            "migration",
+            new Dictionary<string, string> { ["one"] = "the migration is done" });
+
+        Assert.Equal("two", Assert.Single(viewModel.Results).SessionId);
+    }
+
+    [Fact]
+    public void SearchText_Changing_DropsThePreviousQuerysContentMatches()
+    {
+        var viewModel = ViewModelWithCatalog();
+        viewModel.SearchText = "migration";
+        viewModel.ApplyContentMatches(
+            "migration",
+            new Dictionary<string, string> { ["two"] = "ship the migration" });
+        Assert.False(viewModel.IsEmpty);
+
+        viewModel.SearchText = "migrations";
+
+        // Stale content matches must not keep a row alive under a query it never matched.
+        Assert.True(viewModel.IsEmpty);
+    }
+
+    [Theory]
+    // Short content is shown whole.
+    [InlineData("ship the migration", "migration", "ship the migration")]
+    // Newlines and tabs collapse so the excerpt stays one line in a fixed-height row.
+    [InlineData("ship the\n\tmigration", "migration", "ship the migration")]
+    public void BuildSnippet_ShortContent_IsFlattenedButNotTruncated(
+        string content,
+        string query,
+        string expected)
+        => Assert.Equal(expected, SessionSearchItem.BuildSnippet(content, query));
+
+    [Fact]
+    public void BuildSnippet_LongContent_CentresOnTheHitRatherThanTakingThePrefix()
+    {
+        var content = new string('a', 300) + " needle " + new string('b', 300);
+
+        var snippet = SessionSearchItem.BuildSnippet(content, "needle");
+
+        Assert.Contains("needle", snippet, StringComparison.Ordinal);
+        Assert.StartsWith("…", snippet, StringComparison.Ordinal);
+        Assert.EndsWith("…", snippet, StringComparison.Ordinal);
+    }
+
     private static SessionSearchViewModel ViewModelWithCatalog()
     {
         var viewModel = new SessionSearchViewModel();

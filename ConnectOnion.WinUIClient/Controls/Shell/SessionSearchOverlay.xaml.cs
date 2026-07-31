@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
@@ -21,6 +22,15 @@ public sealed partial class SessionSearchOverlay : UserControl
 {
     private FrameworkElement? _focusReturnTarget;
 
+    /// <summary>Debounce for the transcript search. Stopped in <see cref="Hide"/> — the dispatcher
+    /// keeps pumping after the window closes, so an armed timer can tick into a torn-down tree.</summary>
+    private readonly DispatcherTimer _contentSearchDebounce = new()
+    {
+        Interval = TimeSpan.FromMilliseconds(180),
+    };
+
+    private CancellationTokenSource? _contentSearchCts;
+
     public event EventHandler? CloseRequested;
     public event EventHandler<SessionSearchSelectionEventArgs>? SessionSelected;
 
@@ -30,6 +40,7 @@ public sealed partial class SessionSearchOverlay : UserControl
     {
         InitializeComponent();
         SizeChanged += (_, e) => UpdateModalSize(e.NewSize.Width, e.NewSize.Height);
+        _contentSearchDebounce.Tick += ContentSearchDebounce_Tick;
     }
 
     public bool IsOpen => Visibility == Visibility.Visible;
@@ -60,6 +71,12 @@ public sealed partial class SessionSearchOverlay : UserControl
     public void Hide()
     {
         if (!IsOpen) return;
+
+        // Disarm before the overlay goes away: a tick or a resuming continuation that lands after
+        // teardown is exactly the access-violation-in-Microsoft.UI.Xaml.dll shape described in
+        // CLAUDE.md, and the dispatcher keeps pumping after Window.Closed.
+        _contentSearchDebounce.Stop();
+        _contentSearchCts?.Cancel();
 
         Visibility = Visibility.Collapsed;
         IsHitTestVisible = false;
@@ -112,6 +129,51 @@ public sealed partial class SessionSearchOverlay : UserControl
     {
         Vm.SearchText = SearchBox.Text;
         SelectFirstResult();
+        // Titles filter synchronously from the in-memory catalog so the list responds on the
+        // keystroke; searching what was actually *said* needs the database, so it trails behind
+        // on a debounce and folds its results in when they arrive.
+        RestartContentSearchDebounce();
+    }
+
+    /// <summary>
+    /// Waits out a burst of typing before querying the transcript. 180ms is long enough that a
+    /// normal typing run issues one query instead of one per character, and short enough that the
+    /// excerpts feel like part of the same interaction.
+    /// </summary>
+    private void RestartContentSearchDebounce()
+    {
+        _contentSearchDebounce.Stop();
+        if (string.IsNullOrWhiteSpace(SearchBox.Text)) return;
+        _contentSearchDebounce.Start();
+    }
+
+    private async void ContentSearchDebounce_Tick(object? sender, object e)
+    {
+        _contentSearchDebounce.Stop();
+
+        var query = SearchBox.Text;
+        // Every keystroke supersedes the query in flight; the token is what stops a slow earlier
+        // result from overwriting a newer one.
+        _contentSearchCts?.Cancel();
+        _contentSearchCts?.Dispose();
+        _contentSearchCts = new CancellationTokenSource();
+        var token = _contentSearchCts.Token;
+
+        try
+        {
+            var matches = await AppServices.Conversations
+                .SearchMessageContentAsync(query, ct: token)
+                .ConfigureAwait(true);
+
+            if (token.IsCancellationRequested || !IsOpen) return;
+            // The view model re-checks the query against its own SearchText and drops a stale one.
+            Vm.ApplyContentMatches(query, matches);
+            SelectFirstResult();
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer keystroke.
+        }
     }
 
     private void SelectFirstResult()

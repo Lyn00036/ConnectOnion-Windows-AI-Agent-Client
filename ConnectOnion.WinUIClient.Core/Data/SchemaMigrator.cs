@@ -29,7 +29,7 @@ internal static class SchemaMigrator
     private const int BaselineVersion = 1;
 
     /// <summary>The schema version this build expects. Bump when you append to <see cref="Migrations"/>.</summary>
-    internal const int LatestVersion = 6;
+    internal const int LatestVersion = 7;
 
     /// <summary>
     /// Ordered forward migrations. Each runs exactly once, in its own transaction, on databases
@@ -183,6 +183,29 @@ internal static class SchemaMigrator
         // "no custom icon" is the normal state, and those agents keep the name-initial avatar.
         new(6, """
             ALTER TABLE agents ADD COLUMN icon_path TEXT NULL;
+            """),
+
+        // v7 — "has this conversation's title been settled yet?" as a column instead of a regex.
+        //
+        // A new conversation is created as "Conversation N" and the first thing the user sends
+        // replaces that with the message's opening words. Deciding *whether* a title is still the
+        // placeholder used to be a `^Conversation \d+$` match against the title text, which meant
+        // the placeholder could never be translated: the moment a Chinese install wrote "对话 1",
+        // the pattern stopped matching and that conversation kept its placeholder name forever.
+        // The same trap blocked letting the user rename a chat — a rename that happened to look
+        // like "Conversation 4" would have been silently overwritten by the next message.
+        //
+        // The backfill reproduces the old predicate exactly so existing rows keep their current
+        // behaviour: generic ⇔ "Conversation " followed by digits and nothing else. The first GLOB
+        // requires a digit after the space; the second rejects anything with a non-digit anywhere
+        // after it (so "Conversation 12" stays generic and "Conversation 1 draft" does not).
+        new(7, """
+            ALTER TABLE sessions ADD COLUMN has_custom_title INTEGER NOT NULL DEFAULT 0;
+
+            UPDATE sessions
+            SET has_custom_title = 1
+            WHERE NOT (title GLOB 'Conversation [0-9]*'
+                       AND title NOT GLOB 'Conversation *[^0-9]*');
             """),
     };
 
