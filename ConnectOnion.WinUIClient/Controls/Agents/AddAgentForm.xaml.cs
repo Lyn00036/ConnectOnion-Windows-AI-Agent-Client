@@ -56,7 +56,7 @@ public sealed partial class AddAgentForm : UserControl, IDisposable
         => showValidationError
             ? LocalizedStrings.Get(
                 "AddAgentValidationError",
-                "Enter a valid agent address or WebSocket URL.")
+                "Enter a valid agent address or HTTP URL.")
             : "";
 
     public string LocalizedStatusText(string status)
@@ -412,6 +412,22 @@ public sealed partial class AddAgentForm : UserControl, IDisposable
         _ =>
             LocalizedStrings.Get("AgentIconSaveFailed", "The agent icon could not be saved."),
     };
+
+    /// <summary>
+    /// "Where do I get an agent address?" — the way out of this dialog for someone who does not
+    /// already have one. Reuses the icon error line to report a launch failure rather than doing
+    /// nothing, on the same reasoning as everywhere else: silence here strands the user.
+    /// </summary>
+    private async void AddAgentDocs_Click(object sender, RoutedEventArgs e)
+    {
+        var launched = await AppServices.UriLauncher.LaunchAsync(new Uri(MainWindow.DocsUrl));
+        if (launched) return;
+
+        ShowIconError(LocalizedStrings.Format(
+            "AddAgentDocsOpenFailed",
+            "Couldn't open the docs. Visit {0} in your browser.",
+            MainWindow.DocsUrl));
+    }
 
     private void Cancel_Click(object sender, RoutedEventArgs e) => Hide();
 

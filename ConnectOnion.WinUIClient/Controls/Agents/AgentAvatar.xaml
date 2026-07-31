@@ -9,7 +9,7 @@
     Height="{x:Bind Size, Mode=OneWay}"
     mc:Ignorable="d">
 
-    <!-- Identity colors are deliberately separate from Online/Warning/Error semantic colors. -->
+    <!-- The fallback initial stays neutral so colour is reserved for semantic status. -->
     <Border x:Name="AvatarBorder"
             HorizontalAlignment="Stretch"
             VerticalAlignment="Stretch"
@@ -17,98 +17,9 @@
             Background="{ThemeResource AvatarBackgroundBrush}"
             BorderBrush="{ThemeResource AvatarBorderBrush}"
             BorderThickness="1">
-        <VisualStateManager.VisualStateGroups>
-            <VisualStateGroup x:Name="PaletteStates">
-                <VisualState x:Name="Neutral" />
-                <VisualState x:Name="Blue">
-                    <VisualState.Setters>
-                        <Setter Target="AvatarBorder.Background" Value="{ThemeResource AvatarPaletteBlueBackgroundBrush}" />
-                        <Setter Target="AvatarBorder.BorderBrush" Value="{ThemeResource AvatarPaletteBlueForegroundBrush}" />
-                        <Setter Target="InitialText.Foreground" Value="{ThemeResource AvatarPaletteBlueForegroundBrush}" />
-                    </VisualState.Setters>
-                </VisualState>
-                <VisualState x:Name="Violet">
-                    <VisualState.Setters>
-                        <Setter Target="AvatarBorder.Background" Value="{ThemeResource AvatarPaletteVioletBackgroundBrush}" />
-                        <Setter Target="AvatarBorder.BorderBrush" Value="{ThemeResource AvatarPaletteVioletForegroundBrush}" />
-                        <Setter Target="InitialText.Foreground" Value="{ThemeResource AvatarPaletteVioletForegroundBrush}" />
-                    </VisualState.Setters>
-                </VisualState>
-                <VisualState x:Name="Teal">
-                    <VisualState.Setters>
-                        <Setter Target="AvatarBorder.Background" Value="{ThemeResource AvatarPaletteTealBackgroundBrush}" />
-                        <Setter Target="AvatarBorder.BorderBrush" Value="{ThemeResource AvatarPaletteTealForegroundBrush}" />
-                        <Setter Target="InitialText.Foreground" Value="{ThemeResource AvatarPaletteTealForegroundBrush}" />
-                    </VisualState.Setters>
-                </VisualState>
-                <VisualState x:Name="Coral">
-                    <VisualState.Setters>
-                        <Setter Target="AvatarBorder.Background" Value="{ThemeResource AvatarPaletteCoralBackgroundBrush}" />
-                        <Setter Target="AvatarBorder.BorderBrush" Value="{ThemeResource AvatarPaletteCoralForegroundBrush}" />
-                        <Setter Target="InitialText.Foreground" Value="{ThemeResource AvatarPaletteCoralForegroundBrush}" />
-                    </VisualState.Setters>
-                </VisualState>
-                <VisualState x:Name="Indigo">
-                    <VisualState.Setters>
-                        <Setter Target="AvatarBorder.Background" Value="{ThemeResource AvatarPaletteIndigoBackgroundBrush}" />
-                        <Setter Target="AvatarBorder.BorderBrush" Value="{ThemeResource AvatarPaletteIndigoForegroundBrush}" />
-                        <Setter Target="InitialText.Foreground" Value="{ThemeResource AvatarPaletteIndigoForegroundBrush}" />
-                    </VisualState.Setters>
-                </VisualState>
-                <VisualState x:Name="Cyan">
-                    <VisualState.Setters>
-                        <Setter Target="AvatarBorder.Background" Value="{ThemeResource AvatarPaletteCyanBackgroundBrush}" />
-                        <Setter Target="AvatarBorder.BorderBrush" Value="{ThemeResource AvatarPaletteCyanForegroundBrush}" />
-                        <Setter Target="InitialText.Foreground" Value="{ThemeResource AvatarPaletteCyanForegroundBrush}" />
-                    </VisualState.Setters>
-                </VisualState>
-                <VisualState x:Name="Emerald">
-                    <VisualState.Setters>
-                        <Setter Target="AvatarBorder.Background" Value="{ThemeResource AvatarPaletteEmeraldBackgroundBrush}" />
-                        <Setter Target="AvatarBorder.BorderBrush" Value="{ThemeResource AvatarPaletteEmeraldForegroundBrush}" />
-                        <Setter Target="InitialText.Foreground" Value="{ThemeResource AvatarPaletteEmeraldForegroundBrush}" />
-                    </VisualState.Setters>
-                </VisualState>
-                <VisualState x:Name="Amber">
-                    <VisualState.Setters>
-                        <Setter Target="AvatarBorder.Background" Value="{ThemeResource AvatarPaletteAmberBackgroundBrush}" />
-                        <Setter Target="AvatarBorder.BorderBrush" Value="{ThemeResource AvatarPaletteAmberForegroundBrush}" />
-                        <Setter Target="InitialText.Foreground" Value="{ThemeResource AvatarPaletteAmberForegroundBrush}" />
-                    </VisualState.Setters>
-                </VisualState>
-                <VisualState x:Name="Rose">
-                    <VisualState.Setters>
-                        <Setter Target="AvatarBorder.Background" Value="{ThemeResource AvatarPaletteRoseBackgroundBrush}" />
-                        <Setter Target="AvatarBorder.BorderBrush" Value="{ThemeResource AvatarPaletteRoseForegroundBrush}" />
-                        <Setter Target="InitialText.Foreground" Value="{ThemeResource AvatarPaletteRoseForegroundBrush}" />
-                    </VisualState.Setters>
-                </VisualState>
-                <VisualState x:Name="Plum">
-                    <VisualState.Setters>
-                        <Setter Target="AvatarBorder.Background" Value="{ThemeResource AvatarPalettePlumBackgroundBrush}" />
-                        <Setter Target="AvatarBorder.BorderBrush" Value="{ThemeResource AvatarPalettePlumForegroundBrush}" />
-                        <Setter Target="InitialText.Foreground" Value="{ThemeResource AvatarPalettePlumForegroundBrush}" />
-                    </VisualState.Setters>
-                </VisualState>
-                <VisualState x:Name="Slate">
-                    <VisualState.Setters>
-                        <Setter Target="AvatarBorder.Background" Value="{ThemeResource AvatarPaletteSlateBackgroundBrush}" />
-                        <Setter Target="AvatarBorder.BorderBrush" Value="{ThemeResource AvatarPaletteSlateForegroundBrush}" />
-                        <Setter Target="InitialText.Foreground" Value="{ThemeResource AvatarPaletteSlateForegroundBrush}" />
-                    </VisualState.Setters>
-                </VisualState>
-                <VisualState x:Name="Olive">
-                    <VisualState.Setters>
-                        <Setter Target="AvatarBorder.Background" Value="{ThemeResource AvatarPaletteOliveBackgroundBrush}" />
-                        <Setter Target="AvatarBorder.BorderBrush" Value="{ThemeResource AvatarPaletteOliveForegroundBrush}" />
-                        <Setter Target="InitialText.Foreground" Value="{ThemeResource AvatarPaletteOliveForegroundBrush}" />
-                    </VisualState.Setters>
-                </VisualState>
-            </VisualStateGroup>
-        </VisualStateManager.VisualStateGroups>
         <Grid>
             <!-- Shown whenever there is no usable custom image: none set, the file is missing, or
-                 it failed to decode. Its colours come from the palette states above. -->
+                 it failed to decode. Theme resources keep the fallback legible in every theme. -->
             <TextBlock x:Name="InitialText"
                        Text="{x:Bind Initial, Mode=OneWay}"
                        Foreground="{ThemeResource AvatarForegroundBrush}"

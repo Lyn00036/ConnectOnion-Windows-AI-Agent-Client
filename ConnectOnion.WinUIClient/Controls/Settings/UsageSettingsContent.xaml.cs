@@ -16,11 +16,22 @@ public sealed partial class UsageSettingsContent : UserControl
 {
     public UsageViewModel Vm { get; } = App.GetService<UsageViewModel>();
 
+    /// <summary>Width at which the four totals fit on one row. Measured against this control,
+    /// which is the settings modal's body — never the window, whose width says nothing about how
+    /// much room the modal actually gives this panel.</summary>
+    private const double WideTotalsMinWidth = 640;
+
     public UsageSettingsContent()
     {
         InitializeComponent();
         Loaded += async (_, _) => await Vm.LoadAsync();
     }
+
+    private void UsageContent_SizeChanged(object sender, SizeChangedEventArgs e)
+        => VisualStateManager.GoToState(
+            this,
+            e.NewSize.Width >= WideTotalsMinWidth ? "WideUsage" : "CompactUsage",
+            useTransitions: false);
 
     /// <summary>Re-reads the ledger. Called by <see cref="SettingsOverlay"/> when the user navigates
     /// to this section, so the panel reflects turns that finished while Settings sat open.</summary>

@@ -22,7 +22,7 @@ public enum AddAgentConnectionState
 /// </summary>
 public sealed partial class AddAgentViewModel : Common.ObservableObject
 {
-    public const string ValidationError = "Enter a valid agent address or WebSocket URL.";
+    public const string ValidationError = "Enter a valid agent address or HTTP URL.";
 
     private readonly AgentRepository _agents;
     private readonly ConnectionTester _connectionTester;
@@ -288,7 +288,7 @@ public sealed partial class AddAgentViewModel : Common.ObservableObject
         address = "";
         directUrl = input;
         if (!Uri.TryCreate(input, UriKind.Absolute, out var uri)) return false;
-        return uri.Scheme is "ws" or "wss" && !string.IsNullOrWhiteSpace(uri.Host);
+        return uri.Scheme is "http" or "https" && !string.IsNullOrWhiteSpace(uri.Host);
     }
 
     private static string DuplicateMessage(AgentEndpointDuplicate duplicate) => duplicate switch
