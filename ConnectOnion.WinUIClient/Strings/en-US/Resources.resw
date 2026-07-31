@@ -105,6 +105,8 @@
   <data name="SettingsMicrophone.Description" xml:space="preserve"><value>Choose the microphone for voice input.</value></data>
   <data name="SidebarWorkspace.Text" xml:space="preserve"><value>Agent workspace</value></data>
   <data name="SidebarNewChat.Text" xml:space="preserve"><value>New Chat</value></data>
+  <data name="SidebarSearchChats.ToolTipService.ToolTip" xml:space="preserve"><value>Search chats</value></data>
+  <data name="SidebarSearchChats.AutomationProperties.Name" xml:space="preserve"><value>Search chats</value></data>
   <data name="SidebarPinned.Text" xml:space="preserve"><value>Pinned</value></data>
   <data name="SidebarAgents.Text" xml:space="preserve"><value>Agents</value></data>
   <data name="SidebarDeleteChat.Text" xml:space="preserve"><value>Delete chat</value></data>
@@ -115,10 +117,6 @@
   <data name="SidebarLocalClient.Text" xml:space="preserve"><value>Local Client</value></data>
   <data name="SidebarSettings.Text" xml:space="preserve"><value>Settings</value></data>
   <data name="SidebarKeyboardShortcuts.Text" xml:space="preserve"><value>Keyboard Shortcuts</value></data>
-  <data name="SidebarTheme.Text" xml:space="preserve"><value>Theme</value></data>
-  <data name="SidebarThemeSystem.Text" xml:space="preserve"><value>Use system setting</value></data>
-  <data name="SidebarThemeLight.Text" xml:space="preserve"><value>Light</value></data>
-  <data name="SidebarThemeDark.Text" xml:space="preserve"><value>Dark</value></data>
   <data name="SidebarAbout.Text" xml:space="preserve"><value>About ConnectOnion</value></data>
   <data name="SidebarExit.Text" xml:space="preserve"><value>Exit</value></data>
   <data name="AboutTitle.Text" xml:space="preserve"><value>About ConnectOnion</value></data>
@@ -242,6 +240,11 @@
   <data name="ShortcutsDialogSearch.PlaceholderText" xml:space="preserve"><value>Search shortcuts</value></data>
   <data name="ShortcutsDialogEmpty.Text" xml:space="preserve"><value>No shortcuts found</value></data>
   <data name="ShortcutsDialogEmptyHint.Text" xml:space="preserve"><value>Try a different search term.</value></data>
+  <data name="SessionSearchInput.PlaceholderText" xml:space="preserve"><value>Search chats</value></data>
+  <data name="SessionSearchInput.AutomationProperties.Name" xml:space="preserve"><value>Search chats</value></data>
+  <data name="SessionSearchChats.Text" xml:space="preserve"><value>Chats</value></data>
+  <data name="SessionSearchEmpty.Text" xml:space="preserve"><value>No chats found</value></data>
+  <data name="SessionSearchEmptyHint.Text" xml:space="preserve"><value>Try a different search term.</value></data>
   <data name="RecoveryCopy.Text" xml:space="preserve"><value>Copy</value></data>
   <data name="RecoveryBelongsTo.Text" xml:space="preserve"><value>Belongs to address</value></data>
   <data name="RestoreIdentityWarning.Text" xml:space="preserve"><value>This replaces the identity on this device. The current one is erased and cannot be recovered without its own backup, and agents that authorized the current address will have to authorize the restored one.</value></data>

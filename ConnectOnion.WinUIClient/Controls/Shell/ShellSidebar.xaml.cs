@@ -43,6 +43,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     public event Action<FrameworkElement>? SettingsRequested;
     public event Action<FrameworkElement>? KeyboardShortcutsRequested;
     public event Action<FrameworkElement>? AboutRequested;
+    public event Action<FrameworkElement>? SessionSearchRequested;
     public event Action? ExitRequested;
     /// <summary>The sidebar click means "I want the
     /// add-agent form open", not merely "show me the landing page" — the shell answers it by

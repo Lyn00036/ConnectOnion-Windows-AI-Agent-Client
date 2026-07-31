@@ -50,12 +50,15 @@ public sealed partial class MainWindow : Window
         ShellSidebar.SettingsRequested += ShowSettingsOverlay;
         ShellSidebar.KeyboardShortcutsRequested += ShowKeyboardShortcutsOverlay;
         ShellSidebar.AboutRequested += ShowAboutOverlay;
+        ShellSidebar.SessionSearchRequested += ShowSessionSearchOverlay;
         ShellSidebar.ExitRequested += ExitApplication;
         ShellSidebar.AddAgentRequested += ShowAddAgentOverlay;
         AddAgentOverlay.AgentAdded += AddAgentOverlay_AgentAdded;
         SettingsOverlay.CloseRequested += (_, _) => CloseSettingsOverlay();
         KeyboardShortcutsDialog.CloseRequested += (_, _) => CloseKeyboardShortcutsOverlay();
         AboutOverlay.CloseRequested += (_, _) => CloseAboutOverlay();
+        SessionSearchOverlay.CloseRequested += (_, _) => CloseSessionSearchOverlay();
+        SessionSearchOverlay.SessionSelected += SessionSearchOverlay_SessionSelected;
         ContentFrame.Navigated += async (_, _) =>
         {
             try
@@ -262,7 +265,7 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    /// <summary>True while any full-window modal (settings, keyboard shortcuts, or About) is
+    /// <summary>True while any full-window modal is
     /// showing. The dimmed backdrop already blocks the mouse; the global menu accelerators bubble
     /// up through RootGrid regardless of hit-testing, so they must additionally bail on this to
     /// keep a modal from acting on the content behind it.</summary>
@@ -270,7 +273,8 @@ public sealed partial class MainWindow : Window
         => AddAgentOverlay.IsOpen
             || SettingsOverlay.IsOpen
             || KeyboardShortcutsDialog.IsOpen
-            || AboutOverlay.IsOpen;
+            || AboutOverlay.IsOpen
+            || SessionSearchOverlay.IsOpen;
 
     private void UpdateNavigationButtons()
     {

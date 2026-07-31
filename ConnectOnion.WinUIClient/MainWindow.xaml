@@ -276,6 +276,7 @@
             <controls:SettingsOverlay x:Name="SettingsOverlay" Canvas.ZIndex="1001" AutomationProperties.AutomationId="SettingsOverlay" />
             <controls:KeyboardShortcutsDialog x:Name="KeyboardShortcutsDialog" Canvas.ZIndex="1002" AutomationProperties.AutomationId="KeyboardShortcutsOverlay" />
             <controls:AboutOverlay x:Name="AboutOverlay" Canvas.ZIndex="1003" AutomationProperties.AutomationId="AboutOverlay" />
+            <controls:SessionSearchOverlay x:Name="SessionSearchOverlay" Canvas.ZIndex="1005" />
             <Border x:Name="FindOverlayPanel"
                     Width="380"
                     MinHeight="36"

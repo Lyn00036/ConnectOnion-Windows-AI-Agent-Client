@@ -108,6 +108,7 @@ public static class ServiceRegistration
         services.AddTransient<SettingsViewModel>();
         services.AddTransient<UsageViewModel>();
         services.AddTransient<KeyboardShortcutsViewModel>();
+        services.AddTransient<SessionSearchViewModel>();
 
         return services;
     }

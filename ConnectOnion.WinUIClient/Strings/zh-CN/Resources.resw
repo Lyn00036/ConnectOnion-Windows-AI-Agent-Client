@@ -105,6 +105,8 @@
   <data name="SettingsMicrophone.Description" xml:space="preserve"><value>选择用于语音输入的麦克风。</value></data>
   <data name="SidebarWorkspace.Text" xml:space="preserve"><value>Agent 工作区</value></data>
   <data name="SidebarNewChat.Text" xml:space="preserve"><value>新建聊天</value></data>
+  <data name="SidebarSearchChats.ToolTipService.ToolTip" xml:space="preserve"><value>搜索聊天</value></data>
+  <data name="SidebarSearchChats.AutomationProperties.Name" xml:space="preserve"><value>搜索聊天</value></data>
   <data name="SidebarPinned.Text" xml:space="preserve"><value>已固定</value></data>
   <data name="SidebarAgents.Text" xml:space="preserve"><value>Agent</value></data>
   <data name="SidebarDeleteChat.Text" xml:space="preserve"><value>删除聊天</value></data>
@@ -115,10 +117,6 @@
   <data name="SidebarLocalClient.Text" xml:space="preserve"><value>本地客户端</value></data>
   <data name="SidebarSettings.Text" xml:space="preserve"><value>设置</value></data>
   <data name="SidebarKeyboardShortcuts.Text" xml:space="preserve"><value>键盘快捷键</value></data>
-  <data name="SidebarTheme.Text" xml:space="preserve"><value>主题</value></data>
-  <data name="SidebarThemeSystem.Text" xml:space="preserve"><value>跟随系统设置</value></data>
-  <data name="SidebarThemeLight.Text" xml:space="preserve"><value>浅色</value></data>
-  <data name="SidebarThemeDark.Text" xml:space="preserve"><value>深色</value></data>
   <data name="SidebarAbout.Text" xml:space="preserve"><value>关于 ConnectOnion</value></data>
   <data name="SidebarExit.Text" xml:space="preserve"><value>退出</value></data>
   <data name="AboutTitle.Text" xml:space="preserve"><value>关于 ConnectOnion</value></data>
@@ -242,6 +240,11 @@
   <data name="ShortcutsDialogSearch.PlaceholderText" xml:space="preserve"><value>搜索快捷键</value></data>
   <data name="ShortcutsDialogEmpty.Text" xml:space="preserve"><value>未找到快捷键</value></data>
   <data name="ShortcutsDialogEmptyHint.Text" xml:space="preserve"><value>请尝试其他搜索词。</value></data>
+  <data name="SessionSearchInput.PlaceholderText" xml:space="preserve"><value>搜索聊天</value></data>
+  <data name="SessionSearchInput.AutomationProperties.Name" xml:space="preserve"><value>搜索聊天</value></data>
+  <data name="SessionSearchChats.Text" xml:space="preserve"><value>聊天</value></data>
+  <data name="SessionSearchEmpty.Text" xml:space="preserve"><value>未找到聊天</value></data>
+  <data name="SessionSearchEmptyHint.Text" xml:space="preserve"><value>请尝试其他搜索词。</value></data>
   <data name="RecoveryCopy.Text" xml:space="preserve"><value>复制</value></data>
   <data name="RecoveryBelongsTo.Text" xml:space="preserve"><value>所属地址</value></data>
   <data name="RestoreIdentityWarning.Text" xml:space="preserve"><value>此操作会替换本设备上的身份。当前身份将被删除，若没有单独备份则无法恢复；已授权当前地址的 Agent 也需要重新授权恢复后的身份。</value></data>

@@ -57,6 +57,12 @@ public sealed partial class ShellSidebar
     private void NewChatButton_Click(object sender, RoutedEventArgs e)
         => NewChatRequested?.Invoke();
 
+    private void SearchSessions_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement opener)
+            SessionSearchRequested?.Invoke(opener);
+    }
+
     /// <summary>
     /// Opens the agent's start-a-chat surface instead of creating a conversation outright.
     ///

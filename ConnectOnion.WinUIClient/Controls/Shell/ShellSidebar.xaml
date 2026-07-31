@@ -61,34 +61,59 @@
 
         <!-- Lightweight workspace header. It remains part of the window surface rather than
              becoming a separate branded card. -->
-        <Button Grid.Row="0"
-                Style="{StaticResource SidebarNavButtonStyle}"
-                MinHeight="52"
-                Padding="4,0"
-                Click="ChatHome_Click"
-                AutomationProperties.Name="ConnectOnion home">
-            <Grid ColumnSpacing="10">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <Image Width="28"
-                       Height="28"
-                       Source="/Assets/icon.png"
-                       VerticalAlignment="Center" />
-                <StackPanel Grid.Column="1"
-                            VerticalAlignment="Center"
-                            Spacing="1">
-                    <TextBlock Text="ConnectOnion"
-                               FontSize="15"
-                               FontWeight="SemiBold"
-                               Foreground="{ThemeResource TextPrimaryBrush}"
-                               TextTrimming="CharacterEllipsis" />
-                    <TextBlock x:Uid="SidebarWorkspace" Text="Agent workspace"
-                               Style="{StaticResource SidebarCaptionStyle}" />
-                </StackPanel>
-            </Grid>
-        </Button>
+        <Grid Grid.Row="0" ColumnSpacing="4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <Button Style="{StaticResource SidebarNavButtonStyle}"
+                    MinHeight="52"
+                    Padding="4,0"
+                    Click="ChatHome_Click"
+                    AutomationProperties.Name="ConnectOnion home">
+                <Grid ColumnSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Image Width="28"
+                           Height="28"
+                           Source="/Assets/icon.png"
+                           VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="1"
+                                VerticalAlignment="Center"
+                                Spacing="1">
+                        <TextBlock Text="ConnectOnion"
+                                   FontSize="15"
+                                   FontWeight="SemiBold"
+                                   Foreground="{ThemeResource TextPrimaryBrush}"
+                                   TextTrimming="CharacterEllipsis" />
+                        <TextBlock x:Uid="SidebarWorkspace" Text="Agent workspace"
+                                   Style="{StaticResource SidebarCaptionStyle}" />
+                    </StackPanel>
+                </Grid>
+            </Button>
+
+            <Button x:Uid="SidebarSearchChats"
+                    x:Name="SessionSearchButton"
+                    Grid.Column="1"
+                    Width="36"
+                    Height="36"
+                    Padding="0"
+                    Margin="0,8,0,0"
+                    VerticalAlignment="Top"
+                    Style="{StaticResource SmallIconButtonStyle}"
+                    Click="SearchSessions_Click"
+                    AutomationProperties.AutomationId="SessionSearchButton"
+                    AutomationProperties.Name="Search chats"
+                    ToolTipService.ToolTip="Search chats">
+                <ic:FluentIcon Icon="Search"
+                               IconVariant="Regular"
+                               IconSize="Size20"
+                               Foreground="{ThemeResource TextSecondaryBrush}" />
+            </Button>
+        </Grid>
 
         <!-- A compact desktop command, deliberately quieter than a primary CTA. -->
         <Button x:Name="NewChatButton"
