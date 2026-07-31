@@ -18,6 +18,11 @@ public sealed partial class AgentsSettingsContent : UserControl
 {
     public ObservableCollection<ShellAgentItem> Agents { get; } = new();
 
+    // Capture the singleton while the Host is alive. WinUI raises Unloaded while tearing down the
+    // visual tree, which can happen after App.ShutdownAsync has disposed the IServiceProvider;
+    // teardown handlers must never resolve a fresh service through AppServices.
+    private readonly AgentPresenceService _presence = AppServices.Presence;
+
     public AgentsSettingsContent()
     {
         InitializeComponent();
@@ -41,10 +46,10 @@ public sealed partial class AgentsSettingsContent : UserControl
                     Name = agent.Name,
                     Address = agent.Address,
                     DirectUrl = agent.DirectUrl,
-                    Presence = AppServices.Presence.GetPresence(agent.Id),
+                    Presence = _presence.GetPresence(agent.Id),
                 };
                 Agents.Add(item);
-                _ = AppServices.Presence.EnsureCheckedAsync(agent);
+                _ = _presence.EnsureCheckedAsync(agent);
             }
 
             var hasAgents = Agents.Count > 0;
@@ -74,21 +79,25 @@ public sealed partial class AgentsSettingsContent : UserControl
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        AppServices.Presence.PresenceChanged -= OnPresenceChanged;
-        AppServices.Presence.PresenceChanged += OnPresenceChanged;
+        _presence.PresenceChanged -= OnPresenceChanged;
+        _presence.PresenceChanged += OnPresenceChanged;
         Refresh();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
-        => AppServices.Presence.PresenceChanged -= OnPresenceChanged;
+        => _presence.PresenceChanged -= OnPresenceChanged;
 
     private void OnPresenceChanged(string agentId)
     {
         DispatcherQueue.TryEnqueue(() =>
         {
+            // A notification can already be queued when Unloaded detaches the handler. Do not
+            // mutate a settings tree that has since left the window.
+            if (!IsLoaded) return;
+
             var item = Agents.FirstOrDefault(agent => agent.Id == agentId);
             if (item is not null)
-                item.Presence = AppServices.Presence.GetPresence(agentId);
+                item.Presence = _presence.GetPresence(agentId);
         });
     }
 }
