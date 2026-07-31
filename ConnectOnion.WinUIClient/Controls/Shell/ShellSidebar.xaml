@@ -42,7 +42,7 @@
                     <Setter Property="Foreground" Value="{ThemeResource TextTertiaryBrush}" />
                     <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                 </Style>
-                <Style x:Key="AccountFlyoutRowStyle"
+                <Style x:Key="AccountMenuRowStyle"
                    TargetType="Button"
                    BasedOn="{StaticResource SidebarNavButtonStyle}">
                     <Setter Property="MinHeight" Value="42" />
@@ -593,6 +593,7 @@
                 <Button x:Name="BottomAccountButton"
                         Style="{StaticResource SidebarNavButtonStyle}"
                         Padding="8,0"
+                        Click="BottomAccount_Click"
                         AutomationProperties.AutomationId="AccountMenuButton"
                         AutomationProperties.Name="Open local client menu">
                     <Grid ColumnSpacing="10">
@@ -631,118 +632,97 @@
                             </StackPanel>
                         </StackPanel>
                     </Grid>
-                    <Button.Flyout>
-                        <!-- A plain Flyout keeps its Popup host transparent so the inner Border
-                             owns the whole surface (fill, radius, border) instead of fighting
-                             MenuFlyout's acrylic presenter. -->
-                        <Flyout Placement="TopEdgeAlignedLeft">
-                            <Flyout.FlyoutPresenterStyle>
-                                <Style TargetType="FlyoutPresenter">
-                                    <Setter Property="Background" Value="Transparent" />
-                                    <Setter Property="BorderThickness" Value="0" />
-                                    <Setter Property="Padding" Value="0" />
-                                    <Setter Property="CornerRadius" Value="12" />
-                                </Style>
-                            </Flyout.FlyoutPresenterStyle>
-                            <Border MinWidth="272"
-                                    Padding="6"
-                                    CornerRadius="12"
-                                    Background="{ThemeResource AccountMenuGlassBrush}"
-                                    BorderBrush="{ThemeResource BorderSubtleBrush}"
-                                    BorderThickness="1">
-                                <StackPanel Spacing="0">
-                                    <Button Style="{StaticResource AccountFlyoutRowStyle}"
-                                            Click="BottomSettings_Click"
-                                            AutomationProperties.AutomationId="SettingsButton"
-                                            AutomationProperties.Name="Settings">
-                                        <Grid ColumnSpacing="12">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock x:Uid="SidebarSettings" Text="Settings" FontSize="14" />
-                                            <TextBlock Grid.Column="1"
-                                                       Text="Ctrl+,"
-                                                       FontSize="12"
-                                                       Foreground="{ThemeResource TextSecondaryBrush}" />
-                                        </Grid>
-                                    </Button>
-                                    <Button Style="{StaticResource AccountFlyoutRowStyle}"
-                                            Click="BottomKeyboardShortcuts_Click"
-                                            AutomationProperties.AutomationId="AccountKeyboardShortcutsMenuItem"
-                                            AutomationProperties.Name="Keyboard Shortcuts">
-                                        <Grid ColumnSpacing="12">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock x:Uid="SidebarKeyboardShortcuts" Text="Keyboard Shortcuts" FontSize="14" />
-                                            <TextBlock Grid.Column="1"
-                                                       Text="Ctrl+Shift+/"
-                                                       FontSize="12"
-                                                       Foreground="{ThemeResource TextSecondaryBrush}" />
-                                        </Grid>
-                                    </Button>
-                                    <Button Style="{StaticResource AccountFlyoutRowStyle}"
-                                            AutomationProperties.Name="Theme">
-                                        <Grid ColumnSpacing="12">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock x:Uid="SidebarTheme" Text="Theme" FontSize="14" />
-                                            <!-- The menu intentionally uses text only; no trailing icon. -->
-                                            <!-- <TextBlock Grid.Column="1"
-                                                       Text="›"
-                                                       FontSize="18"
-                                                       Foreground="{ThemeResource TextSecondaryBrush}" /> -->
-                                        </Grid>
-                                        <Button.Flyout>
-                                            <MenuFlyout Placement="RightEdgeAlignedTop">
-                                                <MenuFlyoutItem x:Uid="SidebarThemeSystem" Text="Use system setting"
-                                                                Tag="System"
-                                                                Click="BottomTheme_Click" />
-                                                <MenuFlyoutItem x:Uid="SidebarThemeLight" Text="Light"
-                                                                Tag="Light"
-                                                                Click="BottomTheme_Click" />
-                                                <MenuFlyoutItem x:Uid="SidebarThemeDark" Text="Dark"
-                                                                Tag="Dark"
-                                                                Click="BottomTheme_Click" />
-                                            </MenuFlyout>
-                                        </Button.Flyout>
-                                    </Button>
-                                    <Border Height="1"
-                                            Margin="4,4"
-                                            Background="{ThemeResource DividerBrush}" />
-                                    <Button Style="{StaticResource AccountFlyoutRowStyle}"
-                                            Click="BottomAbout_Click"
-                                            AutomationProperties.Name="About ConnectOnion">
-                                        <TextBlock x:Uid="SidebarAbout" Text="About ConnectOnion" FontSize="14" />
-                                    </Button>
-                                    <Border Height="1"
-                                            Margin="4,4"
-                                            Background="{ThemeResource DividerBrush}" />
-                                    <Button Style="{StaticResource AccountFlyoutRowStyle}"
-                                            Click="BottomExit_Click"
-                                            AutomationProperties.Name="Exit">
-                                        <Grid ColumnSpacing="12">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
-                                        <TextBlock x:Uid="SidebarExit" Text="Exit" FontSize="14" />
-                                            <TextBlock Grid.Column="1"
-                                                       Text="Ctrl+Q"
-                                                       FontSize="12"
-                                                       Foreground="{ThemeResource TextSecondaryBrush}" />
-                                        </Grid>
-                                    </Button>
-                                </StackPanel>
-                            </Border>
-                        </Flyout>
-                    </Button.Flyout>
                 </Button>
             </Grid>
         </StackPanel>
+
+        <Grid x:Name="AccountMenuDismissLayer"
+              Grid.Row="0"
+              Grid.RowSpan="4"
+              Background="Transparent"
+              Visibility="Collapsed"
+              Tapped="AccountMenuDismissLayer_Tapped"
+              Canvas.ZIndex="99" />
+
+        <!-- This menu deliberately stays in the sidebar's visual tree. A Flyout/Popup creates a
+             second theme scope; after a runtime theme switch that scope caused application-level
+             ThemeResource brushes to be re-evaluated against two different themes. -->
+        <Border x:Name="AccountMenuPanel"
+                Grid.Row="0"
+                Grid.RowSpan="4"
+                Margin="0,0,0,60"
+                Padding="6"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Bottom"
+                CornerRadius="12"
+                Background="{ThemeResource AccountMenuGlassBrush}"
+                BorderBrush="{ThemeResource BorderSubtleBrush}"
+                BorderThickness="1"
+                Visibility="Collapsed"
+                KeyDown="AccountMenuPanel_KeyDown"
+                LostFocus="AccountMenuPanel_LostFocus"
+                Canvas.ZIndex="100">
+            <StackPanel Spacing="0">
+                <Button x:Name="AccountSettingsButton"
+                        Style="{StaticResource AccountMenuRowStyle}"
+                        Click="BottomSettings_Click"
+                        AutomationProperties.AutomationId="SettingsButton"
+                        AutomationProperties.Name="Settings">
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Uid="SidebarSettings" Text="Settings" FontSize="14" />
+                        <TextBlock Grid.Column="1"
+                                   Text="Ctrl+,"
+                                   FontSize="12"
+                                   Foreground="{ThemeResource TextSecondaryBrush}" />
+                    </Grid>
+                </Button>
+                <Button Style="{StaticResource AccountMenuRowStyle}"
+                        Click="BottomKeyboardShortcuts_Click"
+                        AutomationProperties.AutomationId="AccountKeyboardShortcutsMenuItem"
+                        AutomationProperties.Name="Keyboard Shortcuts">
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Uid="SidebarKeyboardShortcuts" Text="Keyboard Shortcuts" FontSize="14" />
+                        <TextBlock Grid.Column="1"
+                                   Text="Ctrl+Shift+/"
+                                   FontSize="12"
+                                   Foreground="{ThemeResource TextSecondaryBrush}" />
+                    </Grid>
+                </Button>
+                <Border Height="1"
+                        Margin="4,4"
+                        Background="{ThemeResource DividerBrush}" />
+                <Button Style="{StaticResource AccountMenuRowStyle}"
+                        Click="BottomAbout_Click"
+                        AutomationProperties.Name="About ConnectOnion">
+                    <TextBlock x:Uid="SidebarAbout" Text="About ConnectOnion" FontSize="14" />
+                </Button>
+                <Border Height="1"
+                        Margin="4,4"
+                        Background="{ThemeResource DividerBrush}" />
+                <Button Style="{StaticResource AccountMenuRowStyle}"
+                        Click="BottomExit_Click"
+                        AutomationProperties.Name="Exit">
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Uid="SidebarExit" Text="Exit" FontSize="14" />
+                        <TextBlock Grid.Column="1"
+                                   Text="Ctrl+Q"
+                                   FontSize="12"
+                                   Foreground="{ThemeResource TextSecondaryBrush}" />
+                    </Grid>
+                </Button>
+            </StackPanel>
+        </Border>
     </Grid>
 </UserControl>

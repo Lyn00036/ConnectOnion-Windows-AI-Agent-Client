@@ -9,6 +9,8 @@ using ConnectOnion.WinUIClient.Views;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
+using Windows.System;
 
 namespace ConnectOnion.WinUIClient.Controls;
 
@@ -436,44 +438,87 @@ public sealed partial class ShellSidebar
 
     private async void BottomSettings_Click(object sender, RoutedEventArgs e)
     {
-        CloseAccountFlyout();
+        CloseAccountMenu();
         await RefreshAsync();
         SettingsRequested?.Invoke(BottomAccountButton);
     }
 
     private void BottomKeyboardShortcuts_Click(object sender, RoutedEventArgs e)
     {
-        CloseAccountFlyout();
+        CloseAccountMenu();
         KeyboardShortcutsRequested?.Invoke(BottomAccountButton);
     }
 
     private void BottomAbout_Click(object sender, RoutedEventArgs e)
     {
-        CloseAccountFlyout();
+        CloseAccountMenu();
         AboutRequested?.Invoke(BottomAccountButton);
     }
 
     private void BottomExit_Click(object sender, RoutedEventArgs e)
     {
-        CloseAccountFlyout();
+        CloseAccountMenu();
         ExitRequested?.Invoke();
     }
 
-    private async void BottomTheme_Click(object sender, RoutedEventArgs e)
+    private void BottomAccount_Click(object sender, RoutedEventArgs e)
     {
-        if ((sender as FrameworkElement)?.Tag is not string value
-            || !Enum.TryParse<ThemeMode>(value, ignoreCase: true, out var theme))
+        if (AccountMenuPanel.Visibility == Visibility.Visible)
         {
+            CloseAccountMenu();
             return;
         }
 
-        CloseAccountFlyout();
-        var preferences = await AppServices.Preferences.LoadAsync();
-        preferences.Theme = theme;
-        await AppServices.Preferences.SaveAsync(preferences);
-        ThemeService.Apply(theme);
+        AccountMenuDismissLayer.Visibility = Visibility.Visible;
+        AccountMenuPanel.Visibility = Visibility.Visible;
+        AccountSettingsButton.Focus(FocusState.Programmatic);
     }
 
-    private void CloseAccountFlyout()
-        => BottomAccountButton.Flyout?.Hide();
+    private void AccountMenuDismissLayer_Tapped(object sender, TappedRoutedEventArgs e)
+        => CloseAccountMenu();
+
+    private void AccountMenuPanel_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != VirtualKey.Escape) return;
+
+        e.Handled = true;
+        CloseAccountMenu();
+        BottomAccountButton.Focus(FocusState.Programmatic);
+    }
+
+    private void AccountMenuPanel_LostFocus(object sender, RoutedEventArgs e)
+    {
+        // LostFocus bubbles while focus moves between menu rows. Check after WinUI commits the
+        // new focus target, then dismiss only when focus actually left both the menu and opener.
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (AccountMenuPanel.Visibility != Visibility.Visible) return;
+
+            var focused = FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
+            if (ReferenceEquals(focused, BottomAccountButton)
+                || IsDescendantOf(focused, AccountMenuPanel))
+            {
+                return;
+            }
+
+            CloseAccountMenu();
+        });
+    }
+
+    private static bool IsDescendantOf(DependencyObject? element, DependencyObject ancestor)
+    {
+        while (element is not null)
+        {
+            if (ReferenceEquals(element, ancestor)) return true;
+            element = VisualTreeHelper.GetParent(element);
+        }
+
+        return false;
+    }
+
+    private void CloseAccountMenu()
+    {
+        AccountMenuPanel.Visibility = Visibility.Collapsed;
+        AccountMenuDismissLayer.Visibility = Visibility.Collapsed;
+    }
 }
