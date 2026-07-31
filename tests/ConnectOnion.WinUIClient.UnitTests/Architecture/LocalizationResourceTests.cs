@@ -102,28 +102,177 @@ public sealed class LocalizationResourceTests
             Environment.NewLine + string.Join(Environment.NewLine, violations));
     }
 
+    /// <summary>
+    /// An <c>x:Uid</c> with no matching <c>&lt;Uid&gt;.&lt;Property&gt;</c> row is the silent half of
+    /// this problem: the element looks localized, the sibling test above is satisfied, and at
+    /// runtime WinUI simply leaves the English literal on screen in every language. Nothing caught
+    /// it because it cannot be seen from either side alone — the XAML has the uid, the resw has
+    /// plenty of keys, and only the pairing is missing.
+    /// </summary>
     [Fact]
-    public void Sidebar_MoreActionsTooltipsAllUseLocalizedResource()
+    public void Xaml_EveryUidBackedAttribute_HasAResourceRowInBothLocales()
+    {
+        var appDirectory = FindRepositoryDirectory("ConnectOnion.WinUIClient");
+        var english = ReadResources("en-US");
+        var chinese = ReadResources("zh-CN");
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+
+        // AutomationProperties.Name and .HelpText are included here and deliberately absent from
+        // the x:Uid-presence test above: they are what a screen reader speaks, so they are
+        // user-visible text, but requiring a uid for every one of them would also demand it for
+        // the many that are bound to a view model rather than written as a literal.
+        string[] localizedAttributes =
+        [
+            "Text", "Content", "Header", "Title", "Description", "Message",
+            "PlaceholderText", "PrimaryButtonText", "SecondaryButtonText",
+            "CloseButtonText", "OnContent", "OffContent",
+            "ToolTipService.ToolTip",
+            "AutomationProperties.Name", "AutomationProperties.HelpText",
+        ];
+        var violations = new List<string>();
+
+        foreach (var path in Directory.EnumerateFiles(appDirectory, "*.xaml", SearchOption.AllDirectories))
+        {
+            if (path.Split(Path.DirectorySeparatorChar).Contains("obj", StringComparer.OrdinalIgnoreCase))
+                continue;
+            if (path.Split(Path.DirectorySeparatorChar).Contains("bin", StringComparer.OrdinalIgnoreCase))
+                continue;
+
+            var document = XDocument.Load(path, LoadOptions.SetLineInfo);
+            foreach (var element in document.Descendants())
+            {
+                var uid = element.Attribute(xaml + "Uid")?.Value;
+                if (string.IsNullOrEmpty(uid)) continue;
+
+                foreach (var attributeName in localizedAttributes)
+                {
+                    var attribute = element.Attribute(attributeName);
+                    // A bound value is the view model's to localize, not the resource map's.
+                    if (attribute is null || attribute.Value.StartsWith('{')) continue;
+                    if (!ContainsEnglishWord(attribute.Value)) continue;
+
+                    var key = $"{uid}.{attributeName}";
+                    var missingIn = new List<string>();
+                    if (!english.ContainsKey(key)) missingIn.Add("en-US");
+                    if (!chinese.ContainsKey(key)) missingIn.Add("zh-CN");
+                    if (missingIn.Count == 0) continue;
+
+                    var line = ((IXmlLineInfo)element).HasLineInfo()
+                        ? ((IXmlLineInfo)element).LineNumber
+                        : 0;
+                    violations.Add(
+                        $"{Path.GetRelativePath(appDirectory, path)}:{line} " +
+                        $"{key} missing in {string.Join(", ", missingIn)} " +
+                        $"(fallback would render \"{attribute.Value}\")");
+                }
+            }
+        }
+
+        Assert.True(
+            violations.Count == 0,
+            "Every x:Uid-backed user-visible attribute needs its .resw row in both locales:" +
+            Environment.NewLine + string.Join(Environment.NewLine, violations));
+    }
+
+    /// <summary>
+    /// An <c>x:Uid</c> is a key into one global resource map, so WinUI applies <b>every</b>
+    /// <c>&lt;uid&gt;.&lt;Property&gt;</c> row to <b>every</b> element carrying that uid. Two
+    /// elements of different types may therefore only share one if all of its rows are attached
+    /// properties, which any <c>FrameworkElement</c> accepts.
+    ///
+    /// <para>Sharing a uid between, say, a <c>Button</c> and the <c>TextBlock</c> inside it means
+    /// the <c>.Text</c> row written for the label is also pushed onto the button, and the page
+    /// throws <c>XamlParseException</c> the moment it loads. That is what
+    /// <c>IdentityShowPhrase</c> did. The XAML compiler does not check this and the build is
+    /// clean, so without this test the only signal is the app crashing on the affected page —
+    /// which for a settings sub-page nothing else exercises.</para>
+    /// </summary>
+    [Fact]
+    public void Xaml_UidSharedAcrossElementTypes_OnlyCarriesAttachedProperties()
+    {
+        var appDirectory = FindRepositoryDirectory("ConnectOnion.WinUIClient");
+        var english = ReadResources("en-US");
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+
+        // uid -> the distinct element type names using it, with where.
+        var usage = new Dictionary<string, List<(string Tag, string Where)>>(StringComparer.Ordinal);
+
+        foreach (var path in Directory.EnumerateFiles(appDirectory, "*.xaml", SearchOption.AllDirectories))
+        {
+            var segments = path.Split(Path.DirectorySeparatorChar);
+            if (segments.Contains("obj", StringComparer.OrdinalIgnoreCase)) continue;
+            if (segments.Contains("bin", StringComparer.OrdinalIgnoreCase)) continue;
+
+            var document = XDocument.Load(path, LoadOptions.SetLineInfo);
+            foreach (var element in document.Descendants())
+            {
+                var uid = element.Attribute(xaml + "Uid")?.Value;
+                if (string.IsNullOrEmpty(uid)) continue;
+
+                var line = ((IXmlLineInfo)element).HasLineInfo() ? ((IXmlLineInfo)element).LineNumber : 0;
+                if (!usage.TryGetValue(uid, out var sites))
+                    usage[uid] = sites = [];
+                sites.Add((
+                    element.Name.LocalName,
+                    $"{Path.GetRelativePath(appDirectory, path)}:{line}"));
+            }
+        }
+
+        var violations = new List<string>();
+        foreach (var (uid, sites) in usage)
+        {
+            var tags = sites.Select(site => site.Tag).Distinct(StringComparer.Ordinal).ToList();
+            if (tags.Count <= 1) continue;   // same type twice is fine and sometimes deliberate
+
+            // A dotted property name is an attached property (AutomationProperties.Name,
+            // ToolTipService.ToolTip); anything else is declared by one specific control.
+            var elementSpecific = english.Keys
+                .Where(key => key.StartsWith(uid + ".", StringComparison.Ordinal))
+                .Select(key => key[(uid.Length + 1)..])
+                .Where(property => !property.Contains('.', StringComparison.Ordinal))
+                .ToList();
+
+            if (elementSpecific.Count == 0) continue;
+
+            violations.Add(
+                $"x:Uid '{uid}' is shared by {string.Join(", ", tags)} but declares " +
+                $"element-specific row(s) {string.Join(", ", elementSpecific)} — " +
+                $"used at {string.Join("; ", sites.Select(site => site.Where))}");
+        }
+
+        Assert.True(
+            violations.Count == 0,
+            "A shared x:Uid pushes every resource row onto every element using it:" +
+            Environment.NewLine + string.Join(Environment.NewLine, violations));
+    }
+
+    [Fact]
+    public void Sidebar_SecondaryActionsUseContextFlyoutsWithoutMoreButtons()
     {
         var path = FindRepositoryFile(
             "ConnectOnion.WinUIClient", "Controls", "Shell", "ShellSidebar.xaml");
         var document = XDocument.Load(path);
         XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
 
-        var buttons = document.Descendants()
-            .Where(element =>
-                string.Equals(
-                    element.Attribute("ToolTipService.ToolTip")?.Value,
-                    "More actions",
-                    StringComparison.Ordinal))
+        var contextFlyouts = document.Descendants()
+            .Where(element => element.Name.LocalName is "Grid.ContextFlyout" or "Border.ContextFlyout")
+            .ToList();
+        var moreActionButtons = document.Descendants()
+            .Where(element => string.Equals(
+                element.Attribute(xaml + "Uid")?.Value,
+                "SidebarMoreActions",
+                StringComparison.Ordinal))
+            .ToList();
+        var moreIcons = document.Descendants()
+            .Where(element => string.Equals(
+                element.Attribute("Icon")?.Value,
+                "MoreHorizontal",
+                StringComparison.Ordinal))
             .ToList();
 
-        Assert.Equal(3, buttons.Count);
-        Assert.All(
-            buttons,
-            button => Assert.Equal(
-                "SidebarMoreActions",
-                button.Attribute(xaml + "Uid")?.Value));
+        Assert.Equal(3, contextFlyouts.Count);
+        Assert.Empty(moreActionButtons);
+        Assert.Empty(moreIcons);
     }
 
     [Fact]
