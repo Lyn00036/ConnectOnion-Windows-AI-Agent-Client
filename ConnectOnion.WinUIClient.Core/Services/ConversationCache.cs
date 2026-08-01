@@ -60,10 +60,14 @@ public static class ConversationCache
     /// message list, so a partial update is never what is wanted here.</summary>
     public static void Store(string sessionId, Entry entry)
     {
+        // Measured outside the lock. It walks every message and every attachment, and the entry
+        // is not reachable by anyone else yet, so there is nothing to guard — holding Gate for
+        // the walk only blocks concurrent Get/Invalidate callers for the duration.
+        var size = EstimateBytes(entry);
+
         lock (Gate)
         {
             if (Sizes.TryGetValue(sessionId, out var previousSize)) _estimatedBytes -= previousSize;
-            var size = EstimateBytes(entry);
             Entries[sessionId] = entry;
             Sizes[sessionId] = size;
             _estimatedBytes += size;
