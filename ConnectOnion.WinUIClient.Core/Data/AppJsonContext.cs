@@ -8,7 +8,7 @@ namespace ConnectOnion.WinUIClient.Data;
 /// settings, the shortcut-override map, string lists in <c>preferences</c>).
 ///
 /// Deliberately scoped to *local persistence*. Outgoing protocol frames go the other way —
-/// plain <c>Dictionary&lt;string, object?&gt;</c> through the default serializer, no
+/// plain <c>Dictionary&lt;string, object?&gt;</c> through <c>WireJson</c>, no
 /// source-gen context and no DTO types (see <c>InputMessageBuilder</c>) — because the wire
 /// shape is defined by the host, not by our type system. Adding a wire message here would
 /// split that convention across two mechanisms; add the <c>[JsonSerializable]</c> entry only

@@ -29,7 +29,7 @@ internal static class SchemaMigrator
     private const int BaselineVersion = 1;
 
     /// <summary>The schema version this build expects. Bump when you append to <see cref="Migrations"/>.</summary>
-    internal const int LatestVersion = 7;
+    internal const int LatestVersion = 8;
 
     /// <summary>
     /// Ordered forward migrations. Each runs exactly once, in its own transaction, on databases
@@ -206,6 +206,48 @@ internal static class SchemaMigrator
             SET has_custom_title = 1
             WHERE NOT (title GLOB 'Conversation [0-9]*'
                        AND title NOT GLOB 'Conversation *[^0-9]*');
+            """),
+
+        // v8 - trigram full-text index for global transcript search. The Windows winsqlite3
+        // provider includes FTS5; trigram tokenization preserves the product's substring-search
+        // behaviour while avoiding a leading-wildcard scan over the messages table.
+        new(8, """
+            CREATE VIRTUAL TABLE IF NOT EXISTS message_search
+            USING fts5(conversation_id UNINDEXED, message_id UNINDEXED, content, tokenize='trigram');
+
+            INSERT INTO message_search(conversation_id, message_id, content)
+            SELECT conversation_id, id, content
+            FROM messages
+            WHERE role IN ('user', 'agent')
+              AND content IS NOT NULL
+              AND content <> '';
+
+            CREATE TRIGGER IF NOT EXISTS message_search_insert
+            AFTER INSERT ON messages
+            WHEN NEW.role IN ('user', 'agent') AND NEW.content IS NOT NULL AND NEW.content <> ''
+            BEGIN
+                INSERT INTO message_search(conversation_id, message_id, content)
+                VALUES (NEW.conversation_id, NEW.id, NEW.content);
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS message_search_delete
+            AFTER DELETE ON messages
+            BEGIN
+                DELETE FROM message_search
+                WHERE conversation_id = OLD.conversation_id AND message_id = OLD.id;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS message_search_update
+            AFTER UPDATE OF id, conversation_id, role, content ON messages
+            BEGIN
+                DELETE FROM message_search
+                WHERE conversation_id = OLD.conversation_id AND message_id = OLD.id;
+                INSERT INTO message_search(conversation_id, message_id, content)
+                SELECT NEW.conversation_id, NEW.id, NEW.content
+                WHERE NEW.role IN ('user', 'agent')
+                  AND NEW.content IS NOT NULL
+                  AND NEW.content <> '';
+            END;
             """),
     };
 

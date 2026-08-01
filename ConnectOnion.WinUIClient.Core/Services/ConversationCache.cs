@@ -15,16 +15,20 @@ namespace ConnectOnion.WinUIClient.Services;
 public static class ConversationCache
 {
     private const int MaxEntries = 4;
+    private const long MaxEstimatedBytes = 16L * 1024 * 1024;
 
-    /// <param name="Messages">The conversation's full message list.</param>
+    /// <param name="Messages">The currently loaded bounded message list.</param>
     public sealed record Entry(
         AgentConfig Agent,
         SessionSummary Session,
         List<ChatMessage> Messages,
-        long CreatedAt);
+        long CreatedAt,
+        bool HasMoreBefore = false);
 
     private static readonly Dictionary<string, LinkedListNode<string>> Nodes = new();
     private static readonly Dictionary<string, Entry> Entries = new();
+    private static readonly Dictionary<string, long> Sizes = new();
+    private static long _estimatedBytes;
 
     // Most-recently-used at the front, so the tail is always the eviction victim.
     private static readonly LinkedList<string> Recency = new();
@@ -58,16 +62,19 @@ public static class ConversationCache
     {
         lock (Gate)
         {
+            if (Sizes.TryGetValue(sessionId, out var previousSize)) _estimatedBytes -= previousSize;
+            var size = EstimateBytes(entry);
             Entries[sessionId] = entry;
+            Sizes[sessionId] = size;
+            _estimatedBytes += size;
             Touch(sessionId);
 
-            // A loop, not a single removal: MaxEntries could be lowered, and evicting to the
-            // limit is the invariant worth stating rather than "remove one per insert".
-            while (Entries.Count > MaxEntries && Recency.Last is { } victim)
+            // Bound both entry count and retained payload. Four tiny chats are useful; one huge
+            // transcript is not worth pinning merely because it counts as a single entry.
+            while ((Entries.Count > MaxEntries || _estimatedBytes > MaxEstimatedBytes)
+                   && Recency.Last is { } victim)
             {
-                Entries.Remove(victim.Value);
-                Nodes.Remove(victim.Value);
-                Recency.RemoveLast();
+                RemoveLocked(victim.Value);
             }
         }
     }
@@ -78,10 +85,42 @@ public static class ConversationCache
     {
         lock (Gate)
         {
-            if (!Entries.Remove(sessionId)) return;
-            if (Nodes.Remove(sessionId, out var node)) Recency.Remove(node);
+            RemoveLocked(sessionId);
         }
     }
+
+    private static void RemoveLocked(string sessionId)
+    {
+        if (!Entries.Remove(sessionId)) return;
+        if (Sizes.Remove(sessionId, out var size)) _estimatedBytes -= size;
+        if (Nodes.Remove(sessionId, out var node)) Recency.Remove(node);
+    }
+
+    private static long EstimateBytes(Entry entry)
+    {
+        long bytes = 512;
+        bytes += StringBytes(entry.Agent.Name) + StringBytes(entry.Agent.Address)
+            + StringBytes(entry.Agent.DirectUrl) + StringBytes(entry.Session.Title);
+
+        foreach (var message in entry.Messages)
+        {
+            bytes += 512;
+            bytes += StringBytes(message.Content) + StringBytes(message.AgentName)
+                + StringBytes(message.EventKind) + StringBytes(message.EventKey)
+                + StringBytes(message.EventEyebrow) + StringBytes(message.EventTitle)
+                + StringBytes(message.EventDetail) + StringBytes(message.EventMeta)
+                + StringBytes(message.EventArgs) + StringBytes(message.EventResult);
+            foreach (var attachment in message.Attachments)
+            {
+                bytes += 256 + StringBytes(attachment.FileName) + StringBytes(attachment.MimeType)
+                    + StringBytes(attachment.LocalCachePath) + StringBytes(attachment.RemoteUri);
+            }
+        }
+
+        return bytes;
+    }
+
+    private static long StringBytes(string? value) => value is null ? 0 : value.Length * sizeof(char);
 
     /// <summary>Moves a session to the front of the recency list. <c>Nodes</c> exists purely to
     /// make this O(1) — without the node handle, promoting an entry would mean an O(n) scan of
