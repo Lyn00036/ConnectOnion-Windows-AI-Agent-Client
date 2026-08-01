@@ -154,10 +154,9 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
             UserMessageId: Guid.NewGuid().ToString(),
             AssistantMessageId: Guid.NewGuid().ToString(),
             Prompt: prompt,
-            Images: prepared.Images,
-            Files: prepared.Files,
             SessionId: conversationId,
-            Mode: mode);
+            Mode: mode,
+            AttachmentSources: prepared.Sources);
 
         await _conversations.InsertExecutionAsync(runId, conversationId, null, prompt, "running").ConfigureAwait(false);
 
@@ -186,14 +185,13 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         _agentsById[agent.Id] = agent;
         var prepared = await PrepareAndPersistUserInputAsync(
             conversationId, prompt, attachments).ConfigureAwait(false);
-        await connection.SendRuntimeInputAsync(
-            prompt, prepared.Images, prepared.Files).ConfigureAwait(false);
+        var encoded = await EncodeAttachmentSourcesAsync(prepared.Sources).ConfigureAwait(false);
+        await connection.SendRuntimeInputAsync(prompt, encoded.Images, encoded.Files).ConfigureAwait(false);
     }
 
     private sealed record PreparedUserInput(
         ChatMessage Message,
-        IReadOnlyList<string>? Images,
-        IReadOnlyList<OutgoingFileAttachment>? Files);
+        IReadOnlyList<TurnAttachmentSource>? Sources);
 
     /// <summary>Builds the wire attachments and appends the matching user bubble. Fresh turns and
     /// runtime interjections share this path so their transcript/cache behavior cannot drift.</summary>
@@ -202,14 +200,12 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         string prompt,
         IReadOnlyList<PendingAttachment>? attachments)
     {
-        List<string>? images = null;
-        List<OutgoingFileAttachment>? files = null;
+        List<TurnAttachmentSource>? sources = null;
         var userAttachments = new List<ChatAttachment>();
 
         if (attachments is { Count: > 0 })
         {
-            images = new List<string>();
-            files = new List<OutgoingFileAttachment>();
+            sources = new List<TurnAttachmentSource>();
             foreach (var attachment in attachments)
             {
                 var localCachePath = attachment.LocalPath;
@@ -244,16 +240,16 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
                     Status = AttachmentStatus.Sent,
                 });
 
-                if (attachment.DataUrl is null) continue;
-                if (attachment.Kind == AttachmentKind.Image) images.Add(attachment.DataUrl);
-                else files.Add(new OutgoingFileAttachment(attachment.FileName, attachment.DataUrl));
+                sources.Add(new TurnAttachmentSource(
+                    attachment.FileName,
+                    localCachePath,
+                    attachment.MimeType,
+                    attachment.Kind == AttachmentKind.Image));
 
                 // Release the base64 payload immediately — the wire lists now hold it,
                 // and it must not linger on the composer's draft.
-                attachment.DataUrl = null;
             }
-            if (images.Count == 0) images = null;
-            if (files.Count == 0) files = null;
+            if (sources.Count == 0) sources = null;
         }
 
         // Persist the user message up front so a page opening this conversation mid-turn
@@ -270,7 +266,27 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         await _conversations.UpsertMessagesAsync(
             conversationId, new[] { userMessage }).ConfigureAwait(false);
 
-        return new PreparedUserInput(userMessage, images, files);
+        return new PreparedUserInput(userMessage, sources);
+    }
+
+    internal static async Task<(IReadOnlyList<string>? Images, IReadOnlyList<OutgoingFileAttachment>? Files)>
+        EncodeAttachmentSourcesAsync(IReadOnlyList<TurnAttachmentSource>? sources)
+    {
+        if (sources is not { Count: > 0 }) return (null, null);
+        List<string>? images = null;
+        List<OutgoingFileAttachment>? files = null;
+        foreach (var source in sources)
+        {
+            var dataUrl = await AttachmentEncoder
+                .EncodeToDataUrlAsync(source.LocalPath, source.MimeType)
+                .ConfigureAwait(false);
+            if (source.IsImage)
+                (images ??= new List<string>()).Add(dataUrl);
+            else
+                (files ??= new List<OutgoingFileAttachment>()).Add(
+                    new OutgoingFileAttachment(source.Name, dataUrl));
+        }
+        return (images, files);
     }
 
     /// <summary>

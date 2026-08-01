@@ -16,63 +16,76 @@
                 HorizontalAlignment="Center"
                 Spacing="6"
                 Width="{StaticResource ChatComposerWidth}">
-        <!-- The agent's own best skills, phrased as offers. Shown instead of the generic starters
-             below whenever there are any, because "Publish a post to your feed" tells a user what
-             this agent is for and "What can you do?" tells them nothing. -->
-        <ItemsControl x:Name="SkillSuggestionList"
+        <!-- Suggestions stay reachable at every supported width. A horizontal rail preserves a
+             single compact row instead of removing onboarding entirely on a narrow window. -->
+        <ScrollViewer x:Name="SuggestionScroller"
                       Visibility="Collapsed"
-                      HorizontalAlignment="Center">
-            <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate>
-                    <StackPanel Orientation="Horizontal" Spacing="8" />
-                </ItemsPanelTemplate>
-            </ItemsControl.ItemsPanel>
-            <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                    <Button Content="{Binding}"
-                            Tag="{Binding}"
+                      HorizontalScrollMode="Enabled"
+                      HorizontalScrollBarVisibility="Hidden"
+                      VerticalScrollMode="Disabled"
+                      VerticalScrollBarVisibility="Disabled"
+                      HorizontalContentAlignment="Center">
+            <Grid Padding="2,0">
+                <!-- The agent's own best skills replace the generic starters when available. -->
+                <ItemsControl x:Name="SkillSuggestionList"
+                              Visibility="Collapsed"
+                              HorizontalAlignment="Center">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" Spacing="8" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Button Content="{Binding}"
+                                    Tag="{Binding}"
+                                    MinHeight="36"
+                                    Padding="14,6"
+                                    CornerRadius="18"
+                                    Background="{ThemeResource SurfaceElevatedBrush}"
+                                    BorderBrush="{ThemeResource BorderDefaultBrush}"
+                                    BorderThickness="1"
+                                    Click="Suggestion_Click" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- Generic starters stay useful across agents that expose no skill metadata. -->
+                <StackPanel x:Name="SuggestionPanel"
+                            Visibility="Collapsed"
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Center"
+                            Spacing="8">
+                    <Button x:Uid="ComposerSuggestionCapabilities" Content="Summarize your capabilities"
+                            Tag="Summarize your capabilities"
+                            MinHeight="36"
                             Padding="14,6"
-                            CornerRadius="16"
+                            CornerRadius="18"
                             Background="{ThemeResource SurfaceElevatedBrush}"
                             BorderBrush="{ThemeResource BorderDefaultBrush}"
                             BorderThickness="1"
                             Click="Suggestion_Click" />
-                </DataTemplate>
-            </ItemsControl.ItemTemplate>
-        </ItemsControl>
-
-        <!-- Generic fallback for an agent that declares no usable skills. Kept as literal buttons
-             rather than folded into the list above because each carries an x:Uid, and a templated
-             item cannot. -->
-        <StackPanel x:Name="SuggestionPanel"
-                    Orientation="Horizontal"
-                    HorizontalAlignment="Center"
-                    Spacing="8">
-            <Button x:Uid="ComposerSuggestionCapabilities" Content="What can you do?"
-                    Tag="What can you do?"
-                    Padding="14,6"
-                    CornerRadius="16"
-                    Background="{ThemeResource SurfaceElevatedBrush}"
-                    BorderBrush="{ThemeResource BorderDefaultBrush}"
-                    BorderThickness="1"
-                    Click="Suggestion_Click" />
-            <Button x:Uid="ComposerSuggestionSystem" Content="Show system info"
-                    Tag="Show system info"
-                    Padding="14,6"
-                    CornerRadius="16"
-                    Background="{ThemeResource SurfaceElevatedBrush}"
-                    BorderBrush="{ThemeResource BorderDefaultBrush}"
-                    BorderThickness="1"
-                    Click="Suggestion_Click" />
-            <Button x:Uid="ComposerSuggestionFiles" Content="List files"
-                    Tag="List files in current directory"
-                    Padding="14,6"
-                    CornerRadius="16"
-                    Background="{ThemeResource SurfaceElevatedBrush}"
-                    BorderBrush="{ThemeResource BorderDefaultBrush}"
-                    BorderThickness="1"
-                    Click="Suggestion_Click" />
-        </StackPanel>
+                    <Button x:Uid="ComposerSuggestionSystem" Content="Help me get started"
+                            Tag="Help me get started"
+                            MinHeight="36"
+                            Padding="14,6"
+                            CornerRadius="18"
+                            Background="{ThemeResource SurfaceElevatedBrush}"
+                            BorderBrush="{ThemeResource BorderDefaultBrush}"
+                            BorderThickness="1"
+                            Click="Suggestion_Click" />
+                    <Button x:Uid="ComposerSuggestionFiles" Content="Suggest three useful tasks"
+                            Tag="Suggest three useful tasks"
+                            MinHeight="36"
+                            Padding="14,6"
+                            CornerRadius="18"
+                            Background="{ThemeResource SurfaceElevatedBrush}"
+                            BorderBrush="{ThemeResource BorderDefaultBrush}"
+                            BorderThickness="1"
+                            Click="Suggestion_Click" />
+                </StackPanel>
+            </Grid>
+        </ScrollViewer>
 
         <!-- Slash-command palette: the agent's own skills, filtered as the user types after "/".
              Sits directly above the input because it completes what is being typed there, and it
@@ -288,13 +301,13 @@
                                     </Border>
 
                                     <Button x:Uid="ComposerRemoveAttachment"
-                                            Width="28"
-                                            Height="28"
+                                            Width="36"
+                                            Height="36"
                                             Padding="0"
                                             MinWidth="0"
                                             MinHeight="0"
                                             Margin="0,3,3,0"
-                                            CornerRadius="14"
+                                            CornerRadius="18"
                                             Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
                                             BorderBrush="{ThemeResource BorderDefaultBrush}"
                                             BorderThickness="1"
@@ -355,7 +368,8 @@
                     </TextBox.Resources>
                 </TextBox>
 
-                <Grid Grid.Row="2"
+                <Grid x:Name="ComposerFooter"
+                      Grid.Row="2"
                       Margin="0,4,0,0"
                       ColumnSpacing="6">
                     <Grid.ColumnDefinitions>
@@ -462,7 +476,7 @@
                     <Grid x:Name="RecordingWaveformHost"
                           Grid.Column="1"
                           Height="34"
-                          MinWidth="120"
+                          MinWidth="72"
                           Visibility="Collapsed">
                         <Border Background="{ThemeResource SurfaceElevatedBrush}"
                                 CornerRadius="4" />
