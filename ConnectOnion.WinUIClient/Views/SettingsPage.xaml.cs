@@ -42,6 +42,12 @@ public sealed partial class SettingsPage : Page
             LocalizedStrings.Get("SettingsThemeLight", "Light"),
             LocalizedStrings.Get("SettingsThemeDark", "Dark"),
         };
+        InterfaceTextSizeChoice.ItemsSource = new string[]
+        {
+            LocalizedStrings.Get("SettingsFontSmall", "Small"),
+            LocalizedStrings.Get("SettingsFontMedium", "Medium"),
+            LocalizedStrings.Get("SettingsFontLarge", "Large"),
+        };
         FontChoice.ItemsSource = new string[]
         {
             LocalizedStrings.Get("SettingsFontSmall", "Small"),
@@ -65,6 +71,12 @@ public sealed partial class SettingsPage : Page
             ThemeMode.Light => 1,
             ThemeMode.Dark => 2,
             _ => 0,
+        };
+        InterfaceTextSizeChoice.SelectedIndex = _vm.InterfaceTextSize switch
+        {
+            InterfaceTextSize.Small => 0,
+            InterfaceTextSize.Large => 2,
+            _ => 1,
         };
         LanguageChoice.SelectedIndex =
             AppServices.LanguagePreference.Current == LanguagePreferenceStore.SimplifiedChinese
@@ -207,6 +219,20 @@ public sealed partial class SettingsPage : Page
         await SaveSettingAsync(() => _vm.SetMessageFontSizeAsync(size), "Message font setting could not be saved");
     }
 
+    private async void InterfaceTextSizeChoice_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_initializing) return;
+        var size = InterfaceTextSizeChoice.SelectedIndex switch
+        {
+            0 => InterfaceTextSize.Small,
+            2 => InterfaceTextSize.Large,
+            _ => InterfaceTextSize.Medium,
+        };
+        await SaveSettingAsync(
+            () => _vm.SetInterfaceTextSizeAsync(size),
+            "Interface text-size setting could not be saved");
+    }
+
     private async void EnterToSendSwitch_Toggled(object sender, RoutedEventArgs e)
     {
         if (_initializing) return;
@@ -327,7 +353,7 @@ public sealed partial class SettingsPage : Page
         }
 
         var value = query.Trim();
-        var showGeneral = Contains(value, "general appearance theme light dark system language english chinese 中文 语言");
+        var showGeneral = Contains(value, "general appearance theme light dark system language english chinese interface text size small medium large 中文 语言 界面 文字 字号 大小");
         var showWindow = Contains(value, "general window close closing exit quit tray minimize background 关闭 退出 托盘");
         var showChat = Contains(value, "general chat message text size font enter send newline 聊天 消息 字体 发送 换行");
         var showNotifications = Contains(value, "notifications agent replies task completion approval connection sound preview 通知 回复 完成 审批 连接 声音 预览");

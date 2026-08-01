@@ -30,7 +30,41 @@ public sealed class WindowPlacementLifecycleContractTests
 
         Assert.Contains("presenter.Maximize()", source, StringComparison.Ordinal);
         Assert.Contains("OverlappedPresenterState.Maximized", source, StringComparison.Ordinal);
-        Assert.Contains("new WindowPlacement(position, isMaximized)", source, StringComparison.Ordinal);
+        Assert.Contains("new WindowPlacement(position, isMaximized,", source, StringComparison.Ordinal);
+    }
+
+    /// <summary>The window's size is restored as well as its position. It used to be neither
+    /// saved nor applied — <c>WindowPlacement</c> carried only a position and the restore path
+    /// called <c>Move</c> and never <c>Resize</c> — so a resized window reopened at the default
+    /// size on every launch.</summary>
+    [Fact]
+    public void Placement_RestoresAndPersistsWindowSize()
+    {
+        var source = ReadAppSource("Shell", "MainWindow.Placement.cs");
+
+        Assert.Contains("_appWindow.Resize(", source, StringComparison.Ordinal);
+        Assert.Contains("args.DidSizeChange", source, StringComparison.Ordinal);
+        Assert.Contains("_lastNormalSize", source, StringComparison.Ordinal);
+
+        // Resize has to precede Move: the work-area clamp measures against the window's size.
+        var resize = source.IndexOf("_appWindow.Resize(", StringComparison.Ordinal);
+        var move = source.IndexOf("_appWindow.Move(", StringComparison.Ordinal);
+        Assert.True(resize < move, "Restore must resize before clamping and moving.");
+    }
+
+    /// <summary>Without a presenter minimum the window can be dragged to a few pixels wide, well
+    /// past the point where the composer and the overlay sidebar still fit.</summary>
+    [Fact]
+    public void Placement_AppliesAMinimumWindowSize()
+    {
+        var source = ReadAppSource("Shell", "MainWindow.Placement.cs");
+
+        Assert.Contains("PreferredMinimumWidth", source, StringComparison.Ordinal);
+        Assert.Contains("PreferredMinimumHeight", source, StringComparison.Ordinal);
+        Assert.Contains("WindowPlacementPolicy.MinimumWidth", source, StringComparison.Ordinal);
+
+        // The presenter takes device pixels; an unscaled floor is only 400 epx at 160%.
+        Assert.Contains("GetDisplayScale()", source, StringComparison.Ordinal);
     }
 
     private static string ReadAppSource(params string[] relativeParts)

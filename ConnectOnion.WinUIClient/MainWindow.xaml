@@ -50,7 +50,9 @@
         </Grid.Resources>
 
         <Grid.RowDefinitions>
-            <RowDefinition Height="32" />
+            <!-- Height is re-set from UpdateTitleBarScale when the OS text-size setting is above
+                 100%; 32 is the standard caption and the value it returns to. -->
+            <RowDefinition x:Name="TitleBarRow" Height="32" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -83,12 +85,16 @@
               x:Name="TitleBarArea"
               Background="{ThemeResource SidebarBackgroundBrush}">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
+                <!-- Widened by UpdateTitleBarScale to match the render transform, which does not
+                     resize the layout slot on its own. -->
+                <ColumnDefinition x:Name="TitleBarContentColumn" Width="Auto" />
                 <ColumnDefinition Width="*" />
+                <!-- 144 is only the pre-measurement fallback (three buttons at 100%). The real
+                     width comes from AppWindowTitleBar's inset — see UpdateCaptionButtonsColumn. -->
                 <ColumnDefinition x:Name="CaptionButtonsColumn" Width="144" />
             </Grid.ColumnDefinitions>
 
-            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="2" Padding="10,0,0,0">
+            <StackPanel x:Name="TitleBarContent" Grid.Column="0" Orientation="Horizontal" Spacing="2" Padding="10,0,0,0">
                 <Button x:Uid="MainToggleSidebar" x:Name="SidebarToggleButton"
                         Style="{StaticResource TitleIconButtonStyle}"
                         Click="SidebarToggle_Click"
@@ -132,7 +138,8 @@
                                    IconSize="Size20"
                                    Foreground="{ThemeResource TextSecondaryBrush}" />
                 </Button>
-            <MenuBar Background="Transparent"
+            <MenuBar x:Name="TitleBarMenu"
+                     Background="Transparent"
                      BorderThickness="0"
                      VerticalAlignment="Center">
             <MenuBarItem x:Uid="MenuFile" Title="File">
@@ -281,7 +288,12 @@
                  background, matched to the sidebar and title bar so the curve reads as the content
                  panel's corner rather than a gap. Only the top-left is rounded; the other three
                  corners are the window frame. -->
-            <Border Grid.Column="1"
+            <!-- CornerRadius and BorderThickness are the two properties FlowDirection does NOT
+                 mirror (unlike Margin, Padding and HorizontalAlignment), so under a right-to-left
+                 language this rounded corner would stay on the left while everything around it
+                 moved. ApplyFlowDirection swaps both. -->
+            <Border x:Name="ContentPanelBorder"
+                    Grid.Column="1"
                     CornerRadius="12,0,0,0"
                     BorderThickness="1,1,0,0"
                     BorderBrush="{ThemeResource BorderDefaultBrush}">

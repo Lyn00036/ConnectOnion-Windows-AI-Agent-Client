@@ -38,7 +38,7 @@
             <!-- Appearance is strictly how the app looks. Anything about how chat behaves or reads
                  lives in the Chat group below — both are shown for the "General" category. -->
             <StackPanel x:Name="GeneralSection" Spacing="4">
-                <TextBlock x:Uid="SettingsAppearance" Text="Appearance" Style="{StaticResource SubtitleTextBlockStyle}" Margin="2,0,0,4" />
+                <TextBlock x:Uid="SettingsAppearance" AutomationProperties.HeadingLevel="Level2" Text="Appearance" Style="{StaticResource SubtitleTextBlockStyle}" Margin="2,0,0,4" />
 
                 <ctk:SettingsCard x:Uid="SettingsTheme" Header="Theme"
                                   Description="Use the system theme or choose light or dark mode.">
@@ -49,6 +49,16 @@
                         <x:String>Light</x:String>
                         <x:String>Dark</x:String>
                     </RadioButtons>
+                </ctk:SettingsCard>
+
+                <ctk:SettingsCard x:Uid="SettingsInterfaceTextSize" Header="Interface text size"
+                                  Description="Adjust text across navigation, settings, buttons, cards, and dialogs.">
+                    <RadioButtons x:Uid="SettingsInterfaceTextSizeChoice"
+                                  x:Name="InterfaceTextSizeChoice"
+                                  MaxColumns="3"
+                                  AutomationProperties.AutomationId="InterfaceTextSizeChoice"
+                                  AutomationProperties.Name="Interface text size"
+                                  SelectionChanged="InterfaceTextSizeChoice_SelectionChanged" />
                 </ctk:SettingsCard>
 
                 <ctk:SettingsCard x:Uid="SettingsLanguage" Header="Language"
@@ -90,7 +100,7 @@
                  remembered — with no way to change it afterwards, so a user who picked Exit had
                  turned the title-bar X into an unconfirmed quit, permanently. -->
             <StackPanel x:Name="WindowSection" Spacing="4">
-                <TextBlock x:Uid="SettingsWindow" Text="Window" Style="{StaticResource SubtitleTextBlockStyle}" Margin="2,0,0,4" />
+                <TextBlock x:Uid="SettingsWindow" AutomationProperties.HeadingLevel="Level2" Text="Window" Style="{StaticResource SubtitleTextBlockStyle}" Margin="2,0,0,4" />
 
                 <ctk:SettingsCard x:Uid="SettingsCloseBehavior" Header="When you close the window"
                                   Description="Closing can keep agent turns running in the tray, or exit the app.">
@@ -108,7 +118,7 @@
             </StackPanel>
 
             <StackPanel x:Name="ChatSection" Spacing="4">
-                <TextBlock x:Uid="SettingsChat" Text="Chat" Style="{StaticResource SubtitleTextBlockStyle}" Margin="2,0,0,4" />
+                <TextBlock x:Uid="SettingsChat" AutomationProperties.HeadingLevel="Level2" Text="Chat" Style="{StaticResource SubtitleTextBlockStyle}" Margin="2,0,0,4" />
 
                 <ctk:SettingsCard x:Uid="SettingsMessageSize" Header="Message text size"
                                   Description="Adjust how large chat messages appear.">
@@ -133,7 +143,7 @@
             </StackPanel>
 
             <StackPanel x:Name="NotificationsSection" Spacing="4" Visibility="Collapsed">
-                <TextBlock x:Uid="SettingsNotifications" Text="Notifications" Style="{StaticResource SubtitleTextBlockStyle}" Margin="2,0,0,4" />
+                <TextBlock x:Uid="SettingsNotifications" AutomationProperties.HeadingLevel="Level2" Text="Notifications" Style="{StaticResource SubtitleTextBlockStyle}" Margin="2,0,0,4" />
 
                 <ctk:SettingsCard x:Uid="SettingsNotificationsEnable" Header="Enable notifications"
                                   Description="Master switch for all in-app and Windows notifications.">
@@ -192,7 +202,7 @@
             </StackPanel>
 
             <StackPanel x:Name="AudioSection" Spacing="4" Visibility="Collapsed">
-                <TextBlock x:Uid="SettingsAudio" Text="Audio" Style="{StaticResource SubtitleTextBlockStyle}" Margin="2,0,0,4" />
+                <TextBlock x:Uid="SettingsAudio" AutomationProperties.HeadingLevel="Level2" Text="Audio" Style="{StaticResource SubtitleTextBlockStyle}" Margin="2,0,0,4" />
 
                 <ctk:SettingsCard x:Uid="SettingsMicrophone" Header="Microphone"
                                   Description="Choose the microphone for voice input.">

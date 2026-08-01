@@ -40,6 +40,13 @@ public sealed partial class AddAgentForm : UserControl, IDisposable
 
     public bool IsOpen => Visibility == Visibility.Visible;
 
+    /// <summary>Exposes this overlay to UI Automation as a dialog. Without a peer the control is
+    /// invisible to UIA entirely — no dialog boundary for a screen reader, and its
+    /// AutomationId unreachable from a UI test. See <see cref="ModalOverlayAutomationPeer"/>.</summary>
+    protected override Microsoft.UI.Xaml.Automation.Peers.AutomationPeer OnCreateAutomationPeer()
+        => new ModalOverlayAutomationPeer(this);
+
+
     public AddAgentForm() => InitializeComponent();
 
     public string LocalizedTestButtonText(bool isTesting)

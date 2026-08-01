@@ -60,6 +60,13 @@ public sealed partial class SessionSearchOverlay : UserControl, IDisposable
 
     public bool IsOpen => Visibility == Visibility.Visible;
 
+    /// <summary>Exposes this overlay to UI Automation as a dialog. Without a peer the control is
+    /// invisible to UIA entirely — no dialog boundary for a screen reader, and its
+    /// AutomationId unreachable from a UI test. See <see cref="ModalOverlayAutomationPeer"/>.</summary>
+    protected override Microsoft.UI.Xaml.Automation.Peers.AutomationPeer OnCreateAutomationPeer()
+        => new ModalOverlayAutomationPeer(this);
+
+
     public async Task ShowAsync(FrameworkElement? focusReturnTarget)
     {
         if (IsOpen)

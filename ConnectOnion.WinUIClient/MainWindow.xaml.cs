@@ -22,6 +22,7 @@ public sealed partial class MainWindow : Window
     private readonly SessionRepository _sessionRepository;
     private readonly PreferencesRepository _preferencesRepository;
     private readonly WindowPlacementStore _windowPlacementStore;
+    private readonly TextScaleService _textScale;
     private int _windowServicesDetached;
     private int _windowPlacementSaved;
     private int _exitStarted;
@@ -47,6 +48,8 @@ public sealed partial class MainWindow : Window
         // Capture DI-owned services while the host is alive. Closed can run after App.Exit has
         // already disposed the provider, so teardown code must never resolve a fresh service.
         _windowPlacementStore = AppServices.WindowPlacement;
+        _textScale = AppServices.TextScale;
+        _textScale.Changed += OnTextScaleChanged;
         TrackWindowLifetime();
         InitializeNotificationPresence();
         _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
@@ -56,6 +59,7 @@ public sealed partial class MainWindow : Window
         InitializeTrayBehavior();
         Diagnostics.StartupTelemetry.ArmPerformanceExit(DispatcherQueue, ExitApplication);
         ShellSidebar.NavigationRequested += NavigateTo;
+        ShellSidebar.NavigationResetRequested += ResetNavigationTo;
         ShellSidebar.SettingsRequested += ShowSettingsOverlay;
         ShellSidebar.SessionSearchRequested += ShowSessionSearchOverlay;
         ShellSidebar.AddAgentRequested += ShowAddAgentOverlay;
@@ -74,10 +78,12 @@ public sealed partial class MainWindow : Window
                 {
                     await ShellSidebar.RefreshAsync();
                 }
-                if (SidebarLayoutPolicy.IsCompactWindow(EffectiveContentWidth) && _isSidebarVisible)
-                {
-                    SetSidebarVisible(false);
-                }
+                // Navigating does NOT close the sidebar, by request. Picking a conversation used
+                // to auto-collapse it at the compact width; the sidebar now stays exactly as the
+                // user left it, and the ways to close it are all explicit — the title-bar toggle,
+                // Ctrl+B, or tapping the dimmed backdrop (SidebarDismissLayer_Tapped). Note that
+                // at the compact width the sidebar is an overlay, so leaving it open does cover
+                // the conversation that was just opened.
             }
             catch
             {
@@ -101,6 +107,10 @@ public sealed partial class MainWindow : Window
         // expects back, so it must not wait on the sidebar load. It measures RootGrid, so it runs
         // once the layout exists rather than from the constructor.
         RootGrid.Loaded += async (_, _) => await RestoreZoomAsync();
+        // XamlRoot only exists once the tree is loaded. This is what makes moving the window to a
+        // monitor with a different scale re-measure the caption inset — the metrics are otherwise
+        // computed once and cached, deliberately, to keep them off the resize path.
+        RootGrid.Loaded += (_, _) => TrackDisplayScaleChanges();
         RootGrid.GotFocus += (_, _) =>
             Diagnostics.StartupTelemetry.Mark(Diagnostics.StartupPhases.FirstInteractive);
         RootGrid.Loaded += async (_, _) =>
@@ -150,6 +160,7 @@ public sealed partial class MainWindow : Window
         ThemeService.UnregisterRoot(RootGrid);
         _sessionRepository.SessionsChanged -= OnSessionsChanged;
         ShellSidebar.NavigationRequested -= NavigateTo;
+        ShellSidebar.NavigationResetRequested -= ResetNavigationTo;
         ShellSidebar.SettingsRequested -= ShowSettingsOverlay;
         ShellSidebar.SessionSearchRequested -= ShowSessionSearchOverlay;
         ShellSidebar.AddAgentRequested -= ShowAddAgentOverlay;
@@ -157,6 +168,8 @@ public sealed partial class MainWindow : Window
         DetachNotificationPresence();
         DetachShortcutHints();
         DetachViewMenu();
+        // XamlRoot outlives this handler's usefulness, and XamlRoot_Changed re-lays out the tree.
+        DetachDisplayScaleTracking();
         Diagnostics.StartupTelemetry.DisarmPerformanceExit();
         ShutdownOverlays();
         InAppNotifications.Shutdown();
@@ -211,7 +224,11 @@ public sealed partial class MainWindow : Window
 
     private void RootGrid_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        var windowWidth = e.NewSize.Width / _zoomFactor;
+        // EffectiveContentScale, not _zoomFactor. These two must agree with EffectiveContentWidth
+        // below, because both feed SidebarLayoutPolicy.IsCompactWindow: with the OS text scale
+        // above 100% the two definitions disagreed, so a resize and a navigation could reach
+        // opposite conclusions about whether the sidebar should be an overlay.
+        var windowWidth = e.NewSize.Width / EffectiveContentScale;
         var isCompact = SidebarLayoutPolicy.IsCompactWindow(windowWidth);
         if (isCompact && !_wasCompactLayout && _isSidebarVisible)
             SetSidebarVisible(false);
@@ -224,7 +241,10 @@ public sealed partial class MainWindow : Window
         UpdateFindOverlayPosition();
     }
 
-    private double EffectiveContentWidth => RootGrid.ActualWidth / _zoomFactor;
+    // Divided by the *effective* scale (zoom × OS text size), not the zoom alone: this is what
+    // the compact-layout breakpoint is measured against, and at 150% system text the content
+    // area really does have a third less room even though the zoom is still 100%.
+    private double EffectiveContentWidth => RootGrid.ActualWidth / EffectiveContentScale;
 
     private void ApplySidebarWidth(double windowWidth)
     {
@@ -528,6 +548,22 @@ public sealed partial class MainWindow : Window
             if (forceReload && ContentFrame.BackStack.Count > 0)
                 ContentFrame.BackStack.RemoveAt(ContentFrame.BackStack.Count - 1);
         }
+    }
+
+    /// <summary>
+    /// Establishes a fresh navigation root after destructive changes such as deleting the agent
+    /// represented by the current page. Entity-backed entries are deliberately removed from both
+    /// history stacks so Back/Forward cannot resurrect a page whose storage graph no longer exists.
+    /// </summary>
+    private void ResetNavigationTo(Type page)
+    {
+        CloseFindOverlay();
+        if (ContentFrame.CurrentSourcePageType != page)
+            ContentFrame.Navigate(page);
+
+        ContentFrame.BackStack.Clear();
+        ContentFrame.ForwardStack.Clear();
+        UpdateNavigationButtons();
     }
 
     /// <summary>Opens the shell-owned modal without changing the current page.</summary>

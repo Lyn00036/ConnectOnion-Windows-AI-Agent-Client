@@ -27,6 +27,8 @@ public static class AppServices
     public static PreferencesRepository Preferences => Provider.GetRequiredService<PreferencesRepository>();
     public static ConversationRepository Conversations => Provider.GetRequiredService<ConversationRepository>();
     public static WindowPlacementStore WindowPlacement => Provider.GetRequiredService<WindowPlacementStore>();
+    public static TextScaleService TextScale => Provider.GetRequiredService<TextScaleService>();
+    public static LanguagePreferenceStore Language => Provider.GetRequiredService<LanguagePreferenceStore>();
     public static LanguagePreferenceStore LanguagePreference => Provider.GetRequiredService<LanguagePreferenceStore>();
     public static StartupStateService StartupState => Provider.GetRequiredService<StartupStateService>();
 

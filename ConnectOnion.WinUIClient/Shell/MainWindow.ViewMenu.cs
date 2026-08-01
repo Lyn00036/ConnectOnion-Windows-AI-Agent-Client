@@ -38,9 +38,15 @@ public sealed partial class MainWindow
     private const double FindOverlayMinWidth = 280;
     private const double FindOverlayMarginFromCaption = 8;
     private const double FindOverlayTopOffset = 18;
+    /// <summary>The standard Windows caption height, and the height of the title-bar row at
+    /// 100% OS text scale. Mirrors the literal in MainWindow.xaml's RowDefinition.</summary>
+    private const double TitleBarBaseHeight = 32;
     private static readonly TimeSpan ZoomPopupIdleTimeout = TimeSpan.FromSeconds(3);
 
     private double _zoomFactor = 1.0;
+    /// <summary>Whether the title bar's caption inset and scaled column width are current.
+    /// Cleared by a text-scale or DPI change — never by a resize, which cannot affect them.</summary>
+    private bool _titleBarMetricsValid;
     private bool _isFullScreen;
     /// <summary>Guards against the feedback loop when the window writes the query back into the
     /// find box (restoring a remembered search): the resulting TextChanged would otherwise
@@ -67,6 +73,10 @@ public sealed partial class MainWindow
     {
         _zoomPopupIdleTimer.Stop();
         _zoomPopupIdleTimer.Tick -= ZoomPopupIdleTimer_Tick;
+        // TextScaleService is a singleton that outlives this window, and its Changed handler
+        // re-lays out the visual tree. Left attached, an OS text-size change during teardown
+        // would run UpdateZoomLayout against a tree the framework is already disposing.
+        _textScale.Changed -= OnTextScaleChanged;
     }
 
     private void ToggleSidebarMenu_Click(object sender, RoutedEventArgs e)
@@ -279,7 +289,9 @@ public sealed partial class MainWindow
     {
         try
         {
-            var saved = AppServices.StartupState.Preferences.ZoomFactor;
+            var preferences = AppServices.StartupState.Preferences;
+            _textScale.ApplyInterfaceTextSize(preferences.InterfaceTextSize);
+            var saved = preferences.ZoomFactor;
             if (Math.Abs(saved - DefaultZoom) > 0.001)
                 SetZoom(saved, persist: false);
         }
@@ -290,10 +302,30 @@ public sealed partial class MainWindow
         return System.Threading.Tasks.Task.CompletedTask;
     }
 
+    /// <summary>The scale the content area actually renders at: window zoom multiplied by the
+    /// OS accessibility scale and the app-specific interface text-size preset.
+    ///
+    /// <para>Each input remains independent: Ctrl +/- controls window zoom, Settings controls
+    /// the interface text preset, and Windows controls its accessibility scale. Multiplication
+    /// preserves all three choices instead of silently overriding one of them.</para></summary>
+    private double EffectiveContentScale => _zoomFactor * _textScale.Effective;
+
     private void UpdateZoomLayout()
     {
         if (RootGrid.ActualWidth <= 0 || RootGrid.ActualHeight <= 0)
             return;
+
+        // The title bar scales with the OS and app text settings, never with Ctrl+/- window zoom.
+        // That split is deliberate and matches every browser: Ctrl+ enlarges the page, not the
+        // window chrome. It is also forced — the caption buttons beside this strip are drawn by
+        // Windows and follow the system setting, so zooming the app's half alone would leave the
+        // two halves of one title bar at different sizes.
+        //
+        // Guarded because this method runs on every SizeChanged — i.e. every frame of a window
+        // drag — while nothing inside UpdateTitleBarScale depends on the window's *size*. It
+        // reads the caption inset and the display DPI, which change only with the text scale or
+        // a DPI switch, and both of those invalidate the flag explicitly.
+        if (!_titleBarMetricsValid) UpdateTitleBarScale();
 
         var contentHeight = Math.Max(0, RootGrid.ActualHeight - TitleBarArea.ActualHeight);
 
@@ -310,6 +342,125 @@ public sealed partial class MainWindow
         ApplyZoomTo(InAppNotifications, RootGrid.ActualWidth, RootGrid.ActualHeight);
     }
 
+    /// <summary>Grows the app-drawn half of the title bar with the effective text-size setting,
+    /// and asks Windows for a taller caption to match so the menu bar is not clipped.
+    ///
+    /// <para>The scale is a <see cref="ScaleTransform"/>, which does not change the element's
+    /// layout slot — WinUI has no WPF-style <c>LayoutTransform</c>. Left alone, the enlarged
+    /// content would paint over <c>TitleBarDragRegion</c> and quietly take away the window's
+    /// drag area, so the content column is widened by hand to match what the transform actually
+    /// draws.</para></summary>
+    private void UpdateTitleBarScale()
+    {
+        var scale = _textScale.Effective;
+        // Set before the work, not after: DesiredSize may still be 0 on the first pass (see
+        // below), and that case has to be retried on the next layout rather than latched.
+        _titleBarMetricsValid = true;
+
+        // Standard is 32 epx; Tall is the ~48 epx caption Windows offers, which is what keeps
+        // the system's own buttons in step with an enlarged strip instead of leaving a 32 epx
+        // hit target next to 48 epx of app content. Requested before the row height is read
+        // back, since it is what changes that height.
+        try
+        {
+            _appWindow.TitleBar.PreferredHeightOption = scale > 1.2
+                ? TitleBarHeightOption.Tall
+                : TitleBarHeightOption.Standard;
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Warning(ex, "Caption height could not be adjusted for the text scale");
+        }
+
+        if (Math.Abs(scale - 1.0) < 0.001)
+        {
+            TitleBarContent.ClearValue(UIElement.RenderTransformProperty);
+            TitleBarContentColumn.Width = GridLength.Auto;
+            TitleBarRow.Height = new GridLength(TitleBarBaseHeight);
+        }
+        else
+        {
+            TitleBarContent.RenderTransformOrigin = new Windows.Foundation.Point(0, 0);
+            TitleBarContent.RenderTransform = new ScaleTransform { ScaleX = scale, ScaleY = scale };
+
+            // DesiredSize is the *untransformed* measurement, which is exactly what has to be
+            // multiplied. It is zero before the first measure pass; leaving the column on Auto
+            // until then is correct rather than pinning it to nothing — and the metrics stay
+            // invalid so the next layout pass computes the real width.
+            var natural = TitleBarContent.DesiredSize.Width;
+            if (natural > 0)
+            {
+                TitleBarContentColumn.Width = new GridLength(natural * scale);
+            }
+            else
+            {
+                TitleBarContentColumn.Width = GridLength.Auto;
+                _titleBarMetricsValid = false;
+            }
+
+            // The row has to clear both the scaled content and whatever caption height Windows
+            // settled on, or the two halves of one title bar disagree.
+            var captionHeight = SystemCaptionHeight();
+            TitleBarRow.Height = new GridLength(
+                Math.Max(TitleBarBaseHeight * scale, captionHeight));
+        }
+
+        UpdateCaptionButtonsColumn();
+    }
+
+    /// <summary>The caption height Windows is currently drawing, in epx, or 0 if unavailable.</summary>
+    private double SystemCaptionHeight()
+    {
+        try
+        {
+            var height = _appWindow.TitleBar.Height;
+            return height > 0 ? height / GetDisplayScale() : 0;
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Warning(ex, "Caption height could not be measured");
+            return 0;
+        }
+    }
+
+    /// <summary>Sizes the spacer that keeps the app's title-bar content clear of the system
+    /// caption buttons.
+    ///
+    /// <para>This used to be a literal <c>144</c> in the XAML — the width of three buttons at
+    /// 100%. The real width is none of this app's business: it changes with DPI, with the
+    /// caption height chosen above, and with whether the shell is showing the snap-layout
+    /// affordance. <see cref="AppWindowTitleBar"/> reports it exactly, in device pixels, as the
+    /// inset on whichever side the buttons are on — which is <see cref="AppWindowTitleBar.LeftInset"/>
+    /// under a right-to-left layout.</para></summary>
+    private void UpdateCaptionButtonsColumn()
+    {
+        try
+        {
+            var titleBar = _appWindow.TitleBar;
+            var inset = RootGrid.FlowDirection == FlowDirection.RightToLeft
+                ? titleBar.LeftInset
+                : titleBar.RightInset;
+            if (inset <= 0) return;   // Not yet measured; the XAML fallback still applies.
+
+            CaptionButtonsColumn.Width = new GridLength(inset / GetDisplayScale());
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Warning(ex, "Caption button inset could not be measured");
+        }
+    }
+
+    /// <summary>Re-lays out the window after either text-size input changes. OS notifications are
+    /// already marshalled to the UI thread by <see cref="Services.TextScaleService"/>.</summary>
+    private void OnTextScaleChanged(object? sender, EventArgs e)
+    {
+        _titleBarMetricsValid = false;
+        UpdateZoomLayout();
+        ApplySidebarWidth(EffectiveContentWidth);
+        UpdateZoomPopupPosition();
+        UpdateFindOverlayPosition();
+    }
+
     /// <summary>
     /// Scales one top-level layer, sizing its logical box to <paramref name="logicalWidth"/> /
     /// <paramref name="logicalHeight"/> divided by the factor so the scaled result fills exactly
@@ -318,14 +469,13 @@ public sealed partial class MainWindow
     /// </summary>
     private void ApplyZoomTo(FrameworkElement layer, double logicalWidth, double logicalHeight)
     {
-        layer.RenderTransformOrigin = new Windows.Foundation.Point(0, 0);
-        layer.RenderTransform = new ScaleTransform
-        {
-            ScaleX = _zoomFactor,
-            ScaleY = _zoomFactor,
-        };
+        var scale = EffectiveContentScale;
 
-        if (Math.Abs(_zoomFactor - DefaultZoom) < 0.001)
+        // The identity case first, and it is the common one: no zoom, no OS text scaling, every
+        // frame of every window drag. This used to allocate a ScaleTransform and a Point,
+        // assign them, and then immediately ClearValue the transform away again — three layers
+        // × two allocations, per resize frame, to end up exactly where it started.
+        if (Math.Abs(scale - DefaultZoom) < 0.001)
         {
             layer.ClearValue(FrameworkElement.WidthProperty);
             layer.ClearValue(FrameworkElement.HeightProperty);
@@ -335,10 +485,23 @@ public sealed partial class MainWindow
             return;
         }
 
+        // Reuse the existing transform when there is one: a resize at a non-default zoom changes
+        // the layer's size, not its scale, so the transform object itself rarely needs replacing.
+        if (layer.RenderTransform is ScaleTransform existing)
+        {
+            if (Math.Abs(existing.ScaleX - scale) > 0.0001) existing.ScaleX = scale;
+            if (Math.Abs(existing.ScaleY - scale) > 0.0001) existing.ScaleY = scale;
+        }
+        else
+        {
+            layer.RenderTransformOrigin = new Windows.Foundation.Point(0, 0);
+            layer.RenderTransform = new ScaleTransform { ScaleX = scale, ScaleY = scale };
+        }
+
         layer.HorizontalAlignment = HorizontalAlignment.Left;
         layer.VerticalAlignment = VerticalAlignment.Top;
-        layer.Width = logicalWidth / _zoomFactor;
-        layer.Height = logicalHeight / _zoomFactor;
+        layer.Width = logicalWidth / scale;
+        layer.Height = logicalHeight / scale;
     }
 
     private void UpdateZoomPercentText()

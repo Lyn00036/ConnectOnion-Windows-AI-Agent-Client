@@ -15,7 +15,7 @@ public sealed class SidebarPinnedNavigationContractTests
     }
 
     [Fact]
-    public void PinnedNavigation_RevealsItsAgentWithoutCollapsingOtherBranches()
+    public void SessionNavigation_RevealsItsAgentWithoutCollapsingOtherBranches()
     {
         var source = ReadAppSource("Controls", "Shell", "ShellSidebar.xaml.cs");
         var events = ReadAppSource("Controls", "Shell", "ShellSidebar.Events.cs");
@@ -23,7 +23,26 @@ public sealed class SidebarPinnedNavigationContractTests
         Assert.Contains("RevealAgentInSidebar(session.AgentId)", source, StringComparison.Ordinal);
         Assert.Contains("_expandedAgentIds.Add(agentId)", source, StringComparison.Ordinal);
         Assert.Contains("agent.IsExpanded = true", source, StringComparison.Ordinal);
-        Assert.Contains("preserveOtherExpandedAgents: true", events, StringComparison.Ordinal);
+        Assert.DoesNotContain("FocusAgentInSidebar(session.AgentId)", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("preserveOtherExpandedAgents", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("preserveOtherExpandedAgents", events, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AllAgentNavigation_RevealsWithoutDestructiveFocus()
+    {
+        var source = ReadAppSource("Controls", "Shell", "ShellSidebar.xaml.cs");
+        var events = ReadAppSource("Controls", "Shell", "ShellSidebar.Events.cs");
+        var agentClick = source[source.IndexOf(
+            "private async void Agent_Click", StringComparison.Ordinal)..];
+        agentClick = agentClick[..agentClick.IndexOf(
+            "private void ToggleAgent_Click", StringComparison.Ordinal)];
+
+        Assert.Contains("RevealAgentInSidebar(agentId)", agentClick, StringComparison.Ordinal);
+        Assert.Contains("RevealAgentInSidebar(agent.Id)", source, StringComparison.Ordinal);
+        Assert.Contains("RevealAgentInSidebar(agentId)", events, StringComparison.Ordinal);
+        Assert.DoesNotContain("FocusAgentInSidebar", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("FocusAgentInSidebar", events, StringComparison.Ordinal);
     }
 
     private static string ReadAppSource(params string[] relativeParts)

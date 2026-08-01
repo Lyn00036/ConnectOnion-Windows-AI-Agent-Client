@@ -67,9 +67,9 @@ public static class UsageRangeExtensions
 
     public static string Label(this UsageRange range) => range switch
     {
-        UsageRange.Today => "Today",
-        UsageRange.Last7Days => "Last 7 days",
-        UsageRange.Last30Days => "Last 30 days",
-        _ => "All time",
+        UsageRange.Today => Common.CoreStrings.Get("UsageRangeToday", "Today"),
+        UsageRange.Last7Days => Common.CoreStrings.Get("UsageRange7Days", "Last 7 days"),
+        UsageRange.Last30Days => Common.CoreStrings.Get("UsageRange30Days", "Last 30 days"),
+        _ => Common.CoreStrings.Get("UsageRangeAllTime", "All time"),
     };
 }

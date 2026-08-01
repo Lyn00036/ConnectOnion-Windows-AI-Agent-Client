@@ -153,7 +153,7 @@
                           MinWidth="0"
                           Padding="28,20,20,14">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                        <TextBlock x:Name="CategoryTitle" x:Uid="SettingsCategoryGeneralHeading" Text="General" Style="{StaticResource TitleTextBlockStyle}" VerticalAlignment="Center" />
+                        <TextBlock x:Name="CategoryTitle" AutomationProperties.HeadingLevel="Level1" x:Uid="SettingsCategoryGeneralHeading" Text="General" Style="{StaticResource TitleTextBlockStyle}" VerticalAlignment="Center" />
                         <StackPanel x:Name="CompactNavigation"
                                     MaxWidth="420"
                                     Margin="0,0,12,0"

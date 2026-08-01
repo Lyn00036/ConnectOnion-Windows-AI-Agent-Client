@@ -68,10 +68,16 @@ public sealed class UiUxRegressionContractTests
         var usageXaml = Read("ConnectOnion.WinUIClient", "Controls", "Settings", "UsageSettingsContent.xaml");
         var usageCode = Read("ConnectOnion.WinUIClient", "Controls", "Settings", "UsageSettingsContent.xaml.cs");
 
-        Assert.Contains("SearchBox.Visibility = isSettingsPage", overlay, StringComparison.Ordinal);
+        Assert.DoesNotContain("SearchBox.Visibility = isSettingsPage", overlay, StringComparison.Ordinal);
+        Assert.DoesNotContain("CompactSearchBox.Visibility = isSettingsPage", overlay, StringComparison.Ordinal);
+        Assert.Contains("SettingsContent.Visibility = Visibility.Visible", overlay, StringComparison.Ordinal);
+        Assert.Contains("IdentityScrollViewer.Visibility = Visibility.Collapsed", overlay, StringComparison.Ordinal);
         Assert.Contains("SettingsSearchResultsHeading", overlay, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"SearchEmptyState\"", settingsXaml, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"SettingsErrorBar\"", settingsXaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"InterfaceTextSizeChoice\"", settingsXaml, StringComparison.Ordinal);
+        Assert.Contains("SetInterfaceTextSizeAsync", settingsCode, StringComparison.Ordinal);
+        Assert.Contains("interface text size", settingsCode, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("SaveSettingAsync", settingsCode, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"UsageErrorBar\"", usageXaml, StringComparison.Ordinal);
         Assert.Contains("UsageErrorBar.IsOpen = true", usageCode, StringComparison.Ordinal);

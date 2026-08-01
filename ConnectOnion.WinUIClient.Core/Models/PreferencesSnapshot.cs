@@ -16,6 +16,13 @@ public enum MessageFontSize
     Lg,
 }
 
+public enum InterfaceTextSize
+{
+    Small,
+    Medium,
+    Large,
+}
+
 public enum WindowCloseBehavior
 {
     Ask,
@@ -35,6 +42,7 @@ public sealed class PreferencesSnapshot
     private const string HideToTrayValue = "tray";
     private const string ExitValue = "exit";
     private const string WindowZoomKey = "window.zoomFactor";
+    private const string InterfaceTextSizeKey = "ui.textSize";
 
     [JsonPropertyName("theme")]
     public ThemeMode Theme { get; set; } = ThemeMode.System;
@@ -101,6 +109,29 @@ public sealed class PreferencesSnapshot
 
             ShortcutOverrides[WindowZoomKey] =
                 value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+        }
+    }
+
+    /// <summary>
+    /// The app-wide text-size preset. It is kept in the extensible preference map so existing
+    /// databases gain the setting without a schema migration; Medium is represented by no entry.
+    /// </summary>
+    [JsonIgnore]
+    public InterfaceTextSize InterfaceTextSize
+    {
+        get => ShortcutOverrides.TryGetValue(InterfaceTextSizeKey, out var value)
+               && Enum.TryParse<InterfaceTextSize>(value, ignoreCase: true, out var parsed)
+            ? parsed
+            : InterfaceTextSize.Medium;
+        set
+        {
+            if (value == InterfaceTextSize.Medium)
+            {
+                ShortcutOverrides.Remove(InterfaceTextSizeKey);
+                return;
+            }
+
+            ShortcutOverrides[InterfaceTextSizeKey] = value.ToString();
         }
     }
 

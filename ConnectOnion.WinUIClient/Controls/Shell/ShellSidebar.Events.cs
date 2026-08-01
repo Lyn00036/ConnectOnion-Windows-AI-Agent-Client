@@ -88,7 +88,7 @@ public sealed partial class ShellSidebar
         var agentsState = await AppServices.Agents.LoadAsync();
         agentsState.SelectedAgentId = agentId;
         await AppServices.Agents.SaveAsync(agentsState);
-        FocusAgentInSidebar(agentId);
+        RevealAgentInSidebar(agentId);
         await RefreshAsync();
         RequestNavigation(typeof(Views.AgentDetailPage), forceReload: true);
     }
@@ -284,6 +284,13 @@ public sealed partial class ShellSidebar
         var iconPath = agent.IconPath;
 
         var sessionsState = await AppServices.Sessions.LoadAsync();
+        var deletingCurrentSurface =
+            (_currentPageType == typeof(AgentDetailPage)
+                && agentsState.SelectedAgentId == agentId)
+            || (_currentPageType == typeof(ChatPage)
+                && sessionsState.Sessions.Any(session =>
+                    session.Id == sessionsState.ActiveSessionId
+                    && session.AgentId == agentId));
         // Tear each of this agent's conversations down completely before its sessions rows go,
         // and remove the agent only after that transaction succeeds. Deleting the agent first
         // used to leave invisible orphan sessions whenever a later child cleanup failed.
@@ -304,17 +311,27 @@ public sealed partial class ShellSidebar
         sessionsState.Sessions = sessionsState.Sessions
             .Where(session => session.AgentId != agentId)
             .ToList();
-        if (sessionsState.ActiveSessionId is not null &&
-            sessionsState.Sessions.All(session => session.Id != sessionsState.ActiveSessionId))
+        var activeSession = sessionsState.ActiveSessionId is null
+            ? null
+            : sessionsState.Sessions.FirstOrDefault(
+                session => session.Id == sessionsState.ActiveSessionId);
+        if (sessionsState.ActiveSessionId is not null && activeSession is null)
         {
-            sessionsState.ActiveSessionId = sessionsState.Sessions.FirstOrDefault()?.Id;
+            activeSession = sessionsState.Sessions
+                .OrderByDescending(session => session.UpdatedAt, StringComparer.Ordinal)
+                .FirstOrDefault();
+            sessionsState.ActiveSessionId = activeSession?.Id;
         }
         await AppServices.Sessions.SaveAsync(sessionsState);
 
         agentsState.Agents.Remove(agent);
         if (agentsState.SelectedAgentId == agentId)
         {
-            agentsState.SelectedAgentId = agentsState.Agents.FirstOrDefault()?.Id;
+            // Keep the two persisted selections coherent. If another conversation was already
+            // active, that conversation's agent is the natural fallback; otherwise retain a
+            // valid agent selection for New chat without fabricating a session.
+            agentsState.SelectedAgentId = activeSession?.AgentId
+                ?? agentsState.Agents.FirstOrDefault()?.Id;
         }
         await AppServices.Agents.SaveAsync(agentsState);
 
@@ -327,14 +344,21 @@ public sealed partial class ShellSidebar
         AppServices.Notifications.NotifyConnectionRestored(agentId);
 
         await RefreshAsync();
-        RequestNavigation(typeof(ChatPage), forceReload: true);
+        if (deletingCurrentSurface)
+        {
+            // Agent Detail has no valid content once its agent is gone, and ChatPage is likewise
+            // invalid after its active conversation graph is removed. Return to the stable
+            // library root instead of manufacturing an empty chat page, and discard history that
+            // could navigate back to the deleted entity.
+            RequestNavigationReset(typeof(HomePage));
+        }
         return true;
         }
         catch { return false; }
     }
 
-    /// <summary>A conversation row inside an agent's branch. Focuses that agent, since the user
-    /// clicked within its subtree and expects the tree to follow.</summary>
+    /// <summary>A conversation row inside an agent's branch. Its owning branch remains visible
+    /// without collapsing any other agents the user has expanded.</summary>
     private async void Session_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.Tag is string sessionId)
@@ -343,13 +367,13 @@ public sealed partial class ShellSidebar
         }
     }
 
-    /// <summary>A conversation row in the pinned section. Same navigation, but its owning agent
-    /// is revealed without collapsing any other branches the user has open.</summary>
+    /// <summary>A conversation row in the pinned section. Its owning agent is revealed without
+    /// collapsing any other branches the user has open.</summary>
     private async void PinnedSession_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.Tag is string sessionId)
         {
-            await SelectSessionAsync(sessionId, preserveOtherExpandedAgents: true);
+            await SelectSessionAsync(sessionId);
         }
     }
 
