@@ -24,6 +24,7 @@ public sealed partial class MainWindow : Window
     private readonly WindowPlacementStore _windowPlacementStore;
     private int _windowServicesDetached;
     private int _windowPlacementSaved;
+    private int _exitStarted;
     private bool _isSidebarVisible = true;
     private bool _wasCompactLayout;
     private double _sidebarWidth = SidebarLayoutPolicy.DefaultWidth;
@@ -148,6 +149,11 @@ public sealed partial class MainWindow : Window
         ThemeService.ThemeApplied -= ApplyTitleBarTheme;
         ThemeService.UnregisterRoot(RootGrid);
         _sessionRepository.SessionsChanged -= OnSessionsChanged;
+        ShellSidebar.NavigationRequested -= NavigateTo;
+        ShellSidebar.SettingsRequested -= ShowSettingsOverlay;
+        ShellSidebar.SessionSearchRequested -= ShowSessionSearchOverlay;
+        ShellSidebar.AddAgentRequested -= ShowAddAgentOverlay;
+        ShellSidebar.Shutdown();
         DetachNotificationPresence();
         DetachShortcutHints();
         DetachViewMenu();

@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Services;
@@ -72,6 +73,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     /// presence probes running — those are TTL-based and must not stall just because the tree
     /// did not need redrawing.</summary>
     private IReadOnlyList<AgentConfig> _knownAgents = Array.Empty<AgentConfig>();
+    private int _shutdown;
 
     public int OnlineAgentCount
     {
@@ -133,12 +135,26 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
 
     private void OnLoadedAttachPresence(object sender, RoutedEventArgs e)
     {
+        if (Volatile.Read(ref _shutdown) != 0) return;
         _presence.PresenceChanged -= OnPresenceChanged;
         _presence.PresenceChanged += OnPresenceChanged;
     }
 
     private void OnUnloadedDetachPresence(object sender, RoutedEventArgs e)
         => _presence.PresenceChanged -= OnPresenceChanged;
+
+    /// <summary>
+    /// Synchronously detaches every app-level callback before the window's native XAML tree is
+    /// destroyed. Unloaded is not guaranteed on application exit, and removing the event alone
+    /// cannot retract a presence update that is already queued on the dispatcher.
+    /// </summary>
+    public void Shutdown()
+    {
+        if (Interlocked.Exchange(ref _shutdown, 1) != 0) return;
+        _presence.PresenceChanged -= OnPresenceChanged;
+        Loaded -= OnLoadedAttachPresence;
+        Unloaded -= OnUnloadedDetachPresence;
+    }
 
     public void SetCurrentPage(Type? pageType)
     {
@@ -167,6 +183,8 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     /// navigation. Cheap enough to be unconditional at this scale (tens of rows).</summary>
     public async System.Threading.Tasks.Task RefreshAsync()
     {
+        if (Volatile.Read(ref _shutdown) != 0) return;
+
         // Cheapest possible short-circuit, and it has to come first. The render-signature guard
         // further down avoids rebuilding the tree, but it is computed *from* the data — so a
         // navigation that changed nothing still cost a full agent-table read, a full session-table
@@ -186,8 +204,11 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         }
 
         var agentsState = await AppServices.Agents.LoadAsync();
+        if (Volatile.Read(ref _shutdown) != 0) return;
         var sessionsState = await AppServices.Sessions.LoadAsync();
+        if (Volatile.Read(ref _shutdown) != 0) return;
         await RefreshSessionPreviewCacheAsync(sessionsState.Sessions);
+        if (Volatile.Read(ref _shutdown) != 0) return;
         _lastLoadedRevision = revision;
         _lastLoadedPageType = _currentPageType;
 
@@ -278,6 +299,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     /// dictionary lookup per agent when nothing is due.</summary>
     private void ProbeAgentPresence()
     {
+        if (Volatile.Read(ref _shutdown) != 0) return;
         foreach (var agent in _knownAgents) _ = _presence.EnsureCheckedAsync(agent);
     }
 
@@ -344,6 +366,8 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
 
     private void OnPresenceChanged(string agentId)
     {
+        if (Volatile.Read(ref _shutdown) != 0) return;
+
         // Fired from the app-level presence service, possibly on a background thread and
         // possibly after this control left the visual tree. Guard the dispatcher: a null
         // one means there is no live UI to update, so there is nothing to do.
@@ -352,6 +376,8 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
 
         dispatcher.TryEnqueue(() =>
         {
+            // Shutdown may have started after TryEnqueue accepted this callback.
+            if (Volatile.Read(ref _shutdown) != 0) return;
             if (FindShellAgent(agentId) is { } agent)
             {
                 agent.Presence = _presence.GetPresence(agentId);

@@ -48,7 +48,10 @@ public sealed class ChatPageLifetimeGuardTests
         Assert.Contains("_parsedDocument = null", markdown);
 
         var home = ReadSource("Views", "HomePage.xaml.cs");
-        Assert.Contains("HomePage : Page, IReloadablePage, IDisposable", home);
+        Assert.Contains("HomePage : Page, IReloadablePage, IShutdownDisarmable, IDisposable", home);
+        Assert.Contains("public void DisarmForShutdown()", home);
+        Assert.Contains("DisposeCore(clearBoundItems: false)", home);
+        Assert.Contains("Volatile.Read(ref _disposed)", home);
         Assert.Contains("protected override void OnNavigatedFrom", home);
         Assert.Contains("Task ReloadAsync()", home);
         Assert.Contains("Agents.Clear()", home);
@@ -56,6 +59,16 @@ public sealed class ChatPageLifetimeGuardTests
         Assert.DoesNotContain("OpenAddAgentParameter", home);
         Assert.Contains("ShowAddAgentOverlay", home);
         Assert.DoesNotContain("DispatcherTimer", home);
+
+        var sidebar = ReadSource("Controls", "Shell", "ShellSidebar.xaml.cs");
+        Assert.Contains("public void Shutdown()", sidebar);
+        Assert.Contains("Volatile.Read(ref _shutdown)", sidebar);
+
+        var mainWindow = ReadSource("MainWindow.xaml.cs");
+        Assert.Contains("ShellSidebar.Shutdown()", mainWindow);
+
+        var tray = ReadSource("Shell", "MainWindow.Tray.cs");
+        Assert.Contains("Interlocked.Exchange(ref _exitStarted, 1)", tray);
 
         var addAgentDialog = ReadSource("Controls", "Agents", "AddAgentForm.xaml.cs");
         Assert.Contains("CancelPendingOperation()", addAgentDialog);

@@ -325,6 +325,10 @@ public sealed partial class MainWindow
 
     private async void ExitApplication()
     {
+        // Every exit surface funnels here. A double click or a tray command racing WM_CLOSE must
+        // not run two Application.Exit calls while WinUI is dismantling the same native tree.
+        if (System.Threading.Interlocked.Exchange(ref _exitStarted, 1) != 0) return;
+
         // The single funnel for a real exit (tray menu Exit, File > Exit, sidebar user menu Exit).
         // Logged at entry so the teardown lines that follow — window detach, then the phase
         // timings from App.ShutdownAsync — can be read as one sequence, and so a log that simply
