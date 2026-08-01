@@ -40,7 +40,14 @@ public sealed partial class UsageViewModel : Common.ObservableObject
     [ObservableProperty]
     public partial UsageRange Range { get; set; }
 
-    partial void OnRangeChanged(UsageRange value) => _ = LoadAsync();
+    /// <summary>Changes the visible window and completes only after the replacement rows load, so
+    /// the view can surface repository failures instead of losing them from a fire-and-forget hook.</summary>
+    public async Task SetRangeAsync(UsageRange value)
+    {
+        if (Range == value) return;
+        Range = value;
+        await LoadAsync();
+    }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowEmptyState))]

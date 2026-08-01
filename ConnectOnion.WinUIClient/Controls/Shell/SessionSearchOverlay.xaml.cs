@@ -18,7 +18,7 @@ namespace ConnectOnion.WinUIClient.Controls;
 /// shortcuts, and About overlay contract: one MainWindow-owned instance, a dimmed backdrop,
 /// live local filtering, Esc/light-dismiss, and focus restoration.
 /// </summary>
-public sealed partial class SessionSearchOverlay : UserControl
+public sealed partial class SessionSearchOverlay : UserControl, IDisposable
 {
     private FrameworkElement? _focusReturnTarget;
 
@@ -30,6 +30,7 @@ public sealed partial class SessionSearchOverlay : UserControl
     };
 
     private CancellationTokenSource? _contentSearchCts;
+    private int _disposed;
 
     public event EventHandler? CloseRequested;
     public event EventHandler<SessionSearchSelectionEventArgs>? SessionSelected;
@@ -39,8 +40,22 @@ public sealed partial class SessionSearchOverlay : UserControl
     public SessionSearchOverlay()
     {
         InitializeComponent();
-        SizeChanged += (_, e) => UpdateModalSize(e.NewSize.Width, e.NewSize.Height);
+        SizeChanged += SessionSearchOverlay_SizeChanged;
         _contentSearchDebounce.Tick += ContentSearchDebounce_Tick;
+    }
+
+    private void SessionSearchOverlay_SizeChanged(object sender, SizeChangedEventArgs e)
+        => UpdateModalSize(e.NewSize.Width, e.NewSize.Height);
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        _contentSearchDebounce.Stop();
+        _contentSearchDebounce.Tick -= ContentSearchDebounce_Tick;
+        SizeChanged -= SessionSearchOverlay_SizeChanged;
+        _contentSearchCts?.Cancel();
+        _contentSearchCts?.Dispose();
+        _contentSearchCts = null;
     }
 
     public bool IsOpen => Visibility == Visibility.Visible;

@@ -77,7 +77,7 @@ public sealed class PopupThemeContractTests
         Assert.Contains("AutomationProperties.AutomationId=\"SettingsButton\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Click=\"BottomSettings_Click\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Icon=\"Settings\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("AutomationProperties.Name=\"{Binding OnlineAgentCountText}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.Name=\"{x:Bind OnlineAgentCountText, Mode=OneWay}\"", xaml, StringComparison.Ordinal);
         var settingsStart = xaml.IndexOf("x:Name=\"SidebarSettingsButton\"", StringComparison.Ordinal);
         Assert.True(settingsStart >= 0);
         var settingsEnd = xaml.IndexOf("</Button>", settingsStart, StringComparison.Ordinal);

@@ -46,13 +46,13 @@ public sealed partial class SettingsViewModel : Common.ObservableObject
     [ObservableProperty]
     public partial int SelectedMicIndex { get; set; }
 
-    // Only a user-driven change persists a new device; the initial selection in LoadAsync is set
-    // while _loaded is still false, so this hook no-ops for it (the load happens before _loaded is
-    // flipped, precisely so restoring the saved index doesn't re-save it).
-    partial void OnSelectedMicIndexChanged(int value)
+    /// <summary>Updates the selected row and persists it as one observable operation so the page
+    /// can report a failed save instead of losing an exception from a fire-and-forget hook.</summary>
+    public async Task SetSelectedMicrophoneAsync(int value)
     {
+        SelectedMicIndex = value;
         if (_loaded && value >= 0 && value < Microphones.Count)
-            _ = SetMicrophoneAsync(Microphones[value].DeviceId);
+            await SetMicrophoneAsync(Microphones[value].DeviceId);
     }
 
     public async Task LoadAsync()

@@ -19,6 +19,22 @@
             <TextBlock x:Uid="SettingsDescription" Text="Desktop preferences for this app."
                        Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextSecondaryBrush}" />
 
+            <InfoBar x:Name="SettingsErrorBar"
+                     x:Uid="SettingsSaveError"
+                     IsOpen="False"
+                     IsClosable="True"
+                     Severity="Error"
+                     Title="Setting not saved"
+                     Message="ConnectOnion couldn't save this change. Try again."
+                     AutomationProperties.LiveSetting="Assertive" />
+
+            <TextBlock x:Name="SearchEmptyState"
+                       x:Uid="SettingsSearchEmpty"
+                       Text="No settings match your search."
+                       Visibility="Collapsed"
+                       TextWrapping="Wrap"
+                       Foreground="{ThemeResource TextSecondaryBrush}" />
+
             <!-- Appearance is strictly how the app looks. Anything about how chat behaves or reads
                  lives in the Chat group below — both are shown for the "General" category. -->
             <StackPanel x:Name="GeneralSection" Spacing="4">

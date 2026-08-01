@@ -29,6 +29,8 @@
 
             <Style x:Key="TitleIconButtonStyle" TargetType="Button" BasedOn="{StaticResource SmallIconButtonStyle}">
                 <Setter Property="CornerRadius" Value="6" />
+                <Setter Property="Width" Value="32" />
+                <Setter Property="Height" Value="32" />
             </Style>
 
             <Style x:Key="ZoomHudButtonStyle" TargetType="Button" BasedOn="{StaticResource SmallIconButtonStyle}">
@@ -152,7 +154,7 @@
                                         KeyboardAcceleratorTextOverride="Ctrl+Q"
                                         Click="Exit_Click" />
                     </MenuBarItem>
-            <MenuBarItem x:Uid="MenuEdit" Title="Edit">
+            <MenuBarItem x:Uid="MenuEdit" x:Name="EditMenuBarItem" Title="Edit">
                         <MenuFlyoutItem x:Uid="MenuUndo" Text="Undo"
                                         KeyboardAcceleratorTextOverride="Ctrl+Z"
                                         Click="Undo_Click" />
@@ -176,7 +178,7 @@
                                         KeyboardAcceleratorTextOverride="Ctrl+A"
                                         Click="SelectAll_Click" />
                     </MenuBarItem>
-            <MenuBarItem x:Uid="MenuView" Title="View">
+            <MenuBarItem x:Uid="MenuView" x:Name="ViewMenuBarItem" Title="View">
                         <MenuFlyoutItem x:Uid="MenuToggleSidebar" x:Name="ToggleSidebarMenuItem" Text="Toggle Sidebar"
                                         KeyboardAcceleratorTextOverride="Ctrl+B"
                                         Click="ToggleSidebarMenu_Click" />
@@ -292,13 +294,9 @@
               Grid.Row="0"
               Grid.RowSpan="2"
               Canvas.ZIndex="100">
-            <!-- Add Agent can also be opened from Settings → Agents, so it must sit above the
-                 settings modal and return focus to that page when it closes. -->
-            <controls:AddAgentForm x:Name="AddAgentOverlay" Canvas.ZIndex="1004" />
-            <controls:SettingsOverlay x:Name="SettingsOverlay" Canvas.ZIndex="1001" AutomationProperties.AutomationId="SettingsOverlay" />
-            <controls:KeyboardShortcutsDialog x:Name="KeyboardShortcutsDialog" Canvas.ZIndex="1002" AutomationProperties.AutomationId="KeyboardShortcutsOverlay" />
-            <controls:AboutOverlay x:Name="AboutOverlay" Canvas.ZIndex="1003" AutomationProperties.AutomationId="AboutOverlay" />
-            <controls:SessionSearchOverlay x:Name="SessionSearchOverlay" Canvas.ZIndex="1005" />
+            <!-- Full-window modals are created on first use by MainWindow.Overlays.cs. Keeping
+                 this host empty on startup avoids constructing every Settings page and running
+                 their Loaded I/O before the user opens Settings. -->
             <Border x:Name="FindOverlayPanel"
                     Width="380"
                     MinHeight="36"
@@ -449,9 +447,7 @@
                                VerticalAlignment="Center" />
                     <Button x:Name="ResetZoomButton"
                             Grid.Column="5"
-                            Style="{StaticResource DefaultButtonStyle}"
-                            Background="Transparent"
-                            BorderThickness="0"
+                            Style="{StaticResource TextActionButtonStyle}"
                             IsEnabled="False"
                             Padding="10,0"
                             MinWidth="0"

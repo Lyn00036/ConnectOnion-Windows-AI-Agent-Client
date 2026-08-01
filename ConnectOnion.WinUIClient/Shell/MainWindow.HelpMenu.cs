@@ -48,10 +48,10 @@ public sealed partial class MainWindow
         => ShowKeyboardShortcutsOverlay(HelpMenuBarItem);
 
     private void ShowKeyboardShortcutsOverlay(FrameworkElement? opener = null)
-        => KeyboardShortcutsDialog.Show(opener);
+        => EnsureKeyboardShortcutsDialog().Show(opener);
 
     private void CloseKeyboardShortcutsOverlay()
-        => KeyboardShortcutsDialog.Hide();
+        => _keyboardShortcutsDialog?.Hide();
 
     /// <summary>Opens the public docs in the default browser. Goes through
     /// <see cref="AppServices.UriLauncher"/> (rather than the static, unmockable <c>Launcher</c>)
@@ -77,8 +77,8 @@ public sealed partial class MainWindow
         => ShowAboutOverlay(HelpMenuBarItem);
 
     private void ShowAboutOverlay(FrameworkElement? opener = null)
-        => AboutOverlay.Show(opener);
+        => EnsureAboutOverlay().Show(opener);
 
     private void CloseAboutOverlay()
-        => AboutOverlay.Hide();
+        => _aboutOverlay?.Hide();
 }

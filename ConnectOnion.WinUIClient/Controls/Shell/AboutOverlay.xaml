@@ -5,6 +5,7 @@
     xmlns:ic="using:FluentIcons.WinUI"
     HorizontalAlignment="Stretch"
     VerticalAlignment="Stretch"
+    AutomationProperties.AutomationId="AboutOverlay"
     Visibility="Collapsed"
     IsHitTestVisible="False"
     IsTabStop="False">

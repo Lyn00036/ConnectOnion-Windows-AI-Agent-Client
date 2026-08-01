@@ -6,6 +6,7 @@
     xmlns:models="using:ConnectOnion.WinUIClient.Models"
     HorizontalAlignment="Stretch"
     VerticalAlignment="Stretch"
+    AutomationProperties.AutomationId="KeyboardShortcutsOverlay"
     Visibility="Collapsed"
     IsHitTestVisible="False"
     IsTabStop="False">

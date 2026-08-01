@@ -11,6 +11,8 @@ namespace ConnectOnion.WinUIClient.Controls;
 public sealed partial class SettingsOverlay : UserControl
 {
     private FrameworkElement? _focusReturnTarget;
+    private string _selectedCategory = "General";
+    private bool _syncingSearch;
     public event EventHandler? CloseRequested;
 
     public SettingsOverlay()
@@ -92,6 +94,12 @@ public sealed partial class SettingsOverlay : UserControl
     /// </summary>
     private void SelectCategory(string category)
     {
+        if (!string.IsNullOrWhiteSpace(SearchBox.Text)
+            || !string.IsNullOrWhiteSpace(CompactSearchBox.Text))
+        {
+            ClearSearch();
+        }
+        _selectedCategory = category;
         CategoryTitle.Text = LocalizedCategoryName(category);
 
         var isIdentity = category == "Identity";
@@ -99,6 +107,11 @@ public sealed partial class SettingsOverlay : UserControl
         var isUsage = category == "Usage";
         var isKeyboard = category == "Keyboard";
         var isSettingsPage = !isIdentity && !isAgents && !isUsage && !isKeyboard;
+
+        SearchBox.Visibility = isSettingsPage ? Visibility.Visible : Visibility.Collapsed;
+        CompactSearchBox.Visibility = isSettingsPage ? Visibility.Visible : Visibility.Collapsed;
+        if (!isSettingsPage)
+            ClearSearch();
 
         SettingsContent.Visibility = isSettingsPage ? Visibility.Visible : Visibility.Collapsed;
         IdentityScrollViewer.Visibility = isIdentity ? Visibility.Visible : Visibility.Collapsed;
@@ -123,9 +136,33 @@ public sealed partial class SettingsOverlay : UserControl
     }
 
     public Task RefreshAgentsAsync() => AgentsContent.RefreshAsync();
-    private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) => SettingsContent.Filter(SearchBox.Text);
+    private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
+        => ApplySettingsSearch(SearchBox.Text, CompactSearchBox);
     private void CompactSearchBox_TextChanged(object sender, TextChangedEventArgs e)
-        => SettingsContent.Filter(CompactSearchBox.Text);
+        => ApplySettingsSearch(CompactSearchBox.Text, SearchBox);
+
+    private void ApplySettingsSearch(string query, TextBox peer)
+    {
+        if (_syncingSearch) return;
+
+        _syncingSearch = true;
+        peer.Text = query;
+        _syncingSearch = false;
+
+        SettingsContent.Filter(query);
+        CategoryTitle.Text = string.IsNullOrWhiteSpace(query)
+            ? LocalizedCategoryName(_selectedCategory)
+            : LocalizedStrings.Get("SettingsSearchResultsHeading", "Search results");
+    }
+
+    private void ClearSearch()
+    {
+        _syncingSearch = true;
+        SearchBox.Text = string.Empty;
+        CompactSearchBox.Text = string.Empty;
+        _syncingSearch = false;
+        SettingsContent.Filter(string.Empty);
+    }
 
     private void CompactCategoryPicker_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {

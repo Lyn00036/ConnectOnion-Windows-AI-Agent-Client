@@ -264,15 +264,13 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
             // Note what this does *not* do: it creates and selects the session but never sends the
             // prompt. The caller navigates to ChatPage, which picks up the prompt and sends it —
             // sending here would race the page that is about to own the conversation.
-            var agentsState = await _agents.LoadAsync();
-            agentsState.SelectedAgentId = Agent.Id;
-            await _agents.SaveAsync(agentsState);
+            await _agents.SetSelectedAgentAsync(Agent.Id);
 
             var sessionsState = await _sessions.LoadAsync();
             var session = SessionSummary.NewConversation(Agent.Id, sessionsState.Sessions, Common.SessionTitles.PlaceholderFormat);
             sessionsState.Sessions.Add(session);
             sessionsState.ActiveSessionId = session.Id;
-            await _sessions.SaveAsync(sessionsState);
+            await _sessions.AppendSessionAsync(session);
             return true;
         }
         catch (Exception ex)

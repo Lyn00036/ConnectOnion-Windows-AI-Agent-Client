@@ -268,8 +268,7 @@ public sealed partial class HomePage : Page, IReloadablePage, IDisposable
             if (agentsState.Agents.All(agent => agent.Id != agentId))
                 throw new InvalidOperationException("This agent is no longer available.");
 
-            agentsState.SelectedAgentId = agentId;
-            await AppServices.Agents.SaveAsync(agentsState, _lifetimeCts.Token);
+            await AppServices.Agents.SetSelectedAgentAsync(agentId, _lifetimeCts.Token);
 
             var sessionsState = await AppServices.Sessions.LoadAsync(_lifetimeCts.Token);
             var recentSession = SessionSelection.FindExisting(
@@ -283,8 +282,7 @@ public sealed partial class HomePage : Page, IReloadablePage, IDisposable
                 return;
             }
 
-            sessionsState.ActiveSessionId = recentSession.Id;
-            await AppServices.Sessions.SaveAsync(sessionsState);
+            await AppServices.Sessions.SetActiveSessionAsync(recentSession.Id, _lifetimeCts.Token);
             Frame.Navigate(typeof(ChatPage));
         }
         catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested)

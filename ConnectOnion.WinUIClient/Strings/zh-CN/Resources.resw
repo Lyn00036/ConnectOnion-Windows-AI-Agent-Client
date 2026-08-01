@@ -66,9 +66,9 @@
   <data name="FindSearch.PlaceholderText" xml:space="preserve"><value>搜索聊天...</value></data>
   <data name="ZoomReset.Text" xml:space="preserve"><value>重置</value></data>
   <data name="DropHint.Text" xml:space="preserve"><value>将文件拖到消息框以添加附件</value></data>
-  <data name="ComposerSuggestionCapabilities.Content" xml:space="preserve"><value>你能做什么？</value></data>
-  <data name="ComposerSuggestionSystem.Content" xml:space="preserve"><value>显示系统信息</value></data>
-  <data name="ComposerSuggestionFiles.Content" xml:space="preserve"><value>列出文件</value></data>
+  <data name="ComposerSuggestionCapabilities.Content" xml:space="preserve"><value>概括你的能力</value></data>
+  <data name="ComposerSuggestionSystem.Content" xml:space="preserve"><value>帮我开始使用</value></data>
+  <data name="ComposerSuggestionFiles.Content" xml:space="preserve"><value>推荐三个实用任务</value></data>
   <data name="ComposerSafeMode.Text" xml:space="preserve"><value>安全模式</value></data>
   <data name="ComposerSafeModeDescription.Text" xml:space="preserve"><value>安全模式 — 危险工具需要审批</value></data>
   <data name="ComposerAcceptEditsDescription.Text" xml:space="preserve"><value>接受编辑 — 文件写入无需确认</value></data>
@@ -104,13 +104,17 @@
   <data name="SettingsMessagePreview.Description" xml:space="preserve"><value>在通知中包含回复摘要。关闭后，通知只提示有新回复。</value></data>
   <data name="SettingsMicrophone.Description" xml:space="preserve"><value>选择用于语音输入的麦克风。</value></data>
   <data name="SidebarWorkspace.Text" xml:space="preserve"><value>Agent 工作区</value></data>
-  <data name="SidebarAgentsNavigation.ToolTipService.ToolTip" xml:space="preserve"><value>Agents</value></data>
-  <data name="SidebarAgentsNavigation.AutomationProperties.Name" xml:space="preserve"><value>Agents</value></data>
-  <data name="SidebarAgentsNavigationLabel.Text" xml:space="preserve"><value>Agents</value></data>
+  <data name="SidebarAgentsNavigation.ToolTipService.ToolTip" xml:space="preserve"><value>Agent 库</value></data>
+  <data name="SidebarAgentsNavigation.AutomationProperties.Name" xml:space="preserve"><value>Agent 库</value></data>
+  <data name="SidebarAgentsNavigationLabel.Text" xml:space="preserve"><value>Agent 库</value></data>
   <data name="SidebarSearchChats.ToolTipService.ToolTip" xml:space="preserve"><value>搜索聊天</value></data>
   <data name="SidebarSearchChats.AutomationProperties.Name" xml:space="preserve"><value>搜索聊天</value></data>
-  <data name="SidebarPinned.Text" xml:space="preserve"><value>已固定</value></data>
-  <data name="SidebarConversations.Text" xml:space="preserve"><value>对话</value></data>
+  <data name="SidebarPinned.Text" xml:space="preserve"><value>置顶快捷入口</value></data>
+  <data name="SidebarConversations.Text" xml:space="preserve"><value>聊天</value></data>
+  <data name="SidebarExpandAgentChats" xml:space="preserve"><value>展开 {0} 的聊天</value></data>
+  <data name="SidebarCollapseAgentChats" xml:space="preserve"><value>折叠 {0} 的聊天</value></data>
+  <data name="SidebarExpandPinnedChats" xml:space="preserve"><value>展开置顶快捷入口</value></data>
+  <data name="SidebarCollapsePinnedChats" xml:space="preserve"><value>折叠置顶快捷入口</value></data>
   <data name="SidebarDeleteChat.Text" xml:space="preserve"><value>删除聊天</value></data>
   <data name="SidebarAgentNewChat.Text" xml:space="preserve"><value>新建聊天</value></data>
   <data name="SidebarAgentDetails.Text" xml:space="preserve"><value>Agent 详情</value></data>
@@ -154,7 +158,6 @@
   <data name="HomeNoAgents.Text" xml:space="preserve"><value>还没有 Agent</value></data>
   <data name="HomeNoAgentsHint.Text" xml:space="preserve"><value>智能体是你要连接的、兼容 ConnectOnion 的助手。你需要它的 0x 地址或 HTTP 链接 —— 运行该智能体的人可以从其“分享”界面提供给你。</value></data>
   <data name="AgentDetailShare.Content" xml:space="preserve"><value>分享</value></data>
-  <data name="AgentDetailCapabilities.Content" xml:space="preserve"><value>你能做什么？</value></data>
   <data name="AgentDetailTools.Text" xml:space="preserve"><value>可用工具</value></data>
   <data name="SettingsSearch.PlaceholderText" xml:space="preserve"><value>搜索设置</value></data>
   <data name="SettingsCategoryGeneral.Text" xml:space="preserve"><value>常规</value></data>
@@ -379,9 +382,9 @@
   <data name="ComposerAskAgent" xml:space="preserve"><value>向此代理提问</value></data>
   <data name="ComposerAskNamedAgent" xml:space="preserve"><value>向 {0} 提问</value></data>
   <data name="ComposerWriteMessage" xml:space="preserve"><value>输入消息...</value></data>
-  <data name="ComposerSuggestionCapabilities.Tag" xml:space="preserve"><value>你能做什么？</value></data>
-  <data name="ComposerSuggestionSystem.Tag" xml:space="preserve"><value>显示系统信息</value></data>
-  <data name="ComposerSuggestionFiles.Tag" xml:space="preserve"><value>列出当前目录中的文件</value></data>
+  <data name="ComposerSuggestionCapabilities.Tag" xml:space="preserve"><value>请概括你的能力，并给出几个具体示例。</value></data>
+  <data name="ComposerSuggestionSystem.Tag" xml:space="preserve"><value>请帮我开始使用。你需要我提供哪些信息？</value></data>
+  <data name="ComposerSuggestionFiles.Tag" xml:space="preserve"><value>推荐三个你可以帮助我完成的实用任务。</value></data>
   <data name="AddAgentTesting" xml:space="preserve"><value>正在测试…</value></data>
   <data name="AddAgentTestConnection" xml:space="preserve"><value>测试连接</value></data>
   <data name="AddAgentAdding" xml:space="preserve"><value>正在添加…</value></data>
@@ -403,6 +406,7 @@
   <data name="KeyboardOpenFolder" xml:space="preserve"><value>打开文件夹</value></data>
   <data name="KeyboardOpenSettings" xml:space="preserve"><value>打开设置</value></data>
   <data name="KeyboardCloseWindow" xml:space="preserve"><value>关闭窗口</value></data>
+  <data name="KeyboardCycleChatMode" xml:space="preserve"><value>循环切换审批模式</value></data>
   <data name="KeyboardExit" xml:space="preserve"><value>退出应用</value></data>
   <data name="KeyboardUndo" xml:space="preserve"><value>撤销</value></data>
   <data name="KeyboardRedo" xml:space="preserve"><value>重做</value></data>
@@ -428,9 +432,21 @@
   <data name="KeyboardReasonEnterPreference" xml:space="preserve"><value>由 Enter 键偏好设置决定</value></data>
   <data name="KeyboardReasonContextual" xml:space="preserve"><value>此界面获得焦点时固定</value></data>
   <data name="KeyboardReasonDismiss" xml:space="preserve"><value>固定设置，以确保始终可以关闭对话框</value></data>
-  <data name="ComposerSuggestionCapabilitiesPrompt" xml:space="preserve"><value>你能做什么？</value></data>
-  <data name="ComposerSuggestionSystemPrompt" xml:space="preserve"><value>显示系统信息</value></data>
-  <data name="ComposerSuggestionFilesPrompt" xml:space="preserve"><value>列出当前目录中的文件</value></data>
+  <data name="ComposerSuggestionCapabilitiesPrompt" xml:space="preserve"><value>请概括你的能力，并给出几个具体示例。</value></data>
+  <data name="ComposerSuggestionSystemPrompt" xml:space="preserve"><value>请帮我开始使用。你需要我提供哪些信息？</value></data>
+  <data name="ComposerSuggestionFilesPrompt" xml:space="preserve"><value>推荐三个你可以帮助我完成的实用任务。</value></data>
+  <data name="ComposerModeButtonName" xml:space="preserve"><value>审批模式：{0}。快捷键：{1}</value></data>
+  <data name="SettingsSaveError.Title" xml:space="preserve"><value>设置未保存</value></data>
+  <data name="SettingsSaveError.Message" xml:space="preserve"><value>ConnectOnion 无法保存此更改，请重试。</value></data>
+  <data name="SettingsSaveErrorMessage" xml:space="preserve"><value>ConnectOnion 无法保存此更改，请重试。</value></data>
+  <data name="SettingsLoadErrorMessage" xml:space="preserve"><value>部分设置无法加载。请关闭设置后重试。</value></data>
+  <data name="SettingsRestartErrorMessage" xml:space="preserve"><value>ConnectOnion 无法自动重启。请手动重启以应用语言设置。</value></data>
+  <data name="SettingsSearchResultsHeading" xml:space="preserve"><value>搜索结果</value></data>
+  <data name="SettingsSearchEmpty.Text" xml:space="preserve"><value>没有与搜索匹配的设置。</value></data>
+  <data name="UsageLoadError.Title" xml:space="preserve"><value>用量暂不可用</value></data>
+  <data name="UsageLoadError.Message" xml:space="preserve"><value>ConnectOnion 无法加载用量历史。请重新打开此页面。</value></data>
+  <data name="UsageLoadErrorMessage" xml:space="preserve"><value>ConnectOnion 无法加载用量历史。请重新打开此页面。</value></data>
+  <data name="UsageClearErrorMessage" xml:space="preserve"><value>ConnectOnion 无法清除用量历史，请重试。</value></data>
   <data name="IdentityHideLabel" xml:space="preserve"><value>隐藏</value></data>
   <data name="IdentityRevealLabel" xml:space="preserve"><value>显示</value></data>
   <data name="IdentityApiKeyVisible" xml:space="preserve"><value>OpenOnion API 密钥</value></data>
@@ -501,6 +517,7 @@
   <data name="MainZoomIn.ToolTipService.ToolTip" xml:space="preserve"><value>放大</value></data>
   <data name="MainZoomIn.AutomationProperties.Name" xml:space="preserve"><value>放大</value></data>
   <data name="ChatSaveAttachment.ToolTipService.ToolTip" xml:space="preserve"><value>保存副本</value></data>
+  <data name="ChatSaveAttachment.AutomationProperties.Name" xml:space="preserve"><value>保存副本</value></data>
   <data name="ChatRetryFromMessage.ToolTipService.ToolTip" xml:space="preserve"><value>在当前对话中重试</value></data>
   <data name="ChatRetryFromMessage.AutomationProperties.Name" xml:space="preserve"><value>在当前对话中重试</value></data>
   <data name="ChatEditMessage.ToolTipService.ToolTip" xml:space="preserve"><value>在新对话中编辑</value></data>
@@ -644,7 +661,6 @@
   <data name="SettingsSearch.AutomationProperties.Name" xml:space="preserve"><value>搜索设置</value></data>
   <data name="UsageClear.AutomationProperties.Name" xml:space="preserve"><value>清除全部已记录的 token 用量</value></data>
   <data name="AgentDetailShare.AutomationProperties.Name" xml:space="preserve"><value>分享此中继智能体</value></data>
-  <data name="AgentDetailCapabilities.AutomationProperties.Name" xml:space="preserve"><value>起草提问：你能做什么？</value></data>
   <data name="ChatEmptyTitle.Text" xml:space="preserve"><value>还没有消息</value></data>
   <data name="ChatEmptyDescription.Text" xml:space="preserve"><value>在下方输入消息即可开始对话。</value></data>
   <data name="SettingsEnterToSendSwitch.AutomationProperties.Name" xml:space="preserve"><value>回车发送</value></data>

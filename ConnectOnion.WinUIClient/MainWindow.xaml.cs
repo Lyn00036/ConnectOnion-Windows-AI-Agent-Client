@@ -31,6 +31,7 @@ public sealed partial class MainWindow : Window
     private double _sidebarResizeStartPointerX;
     private uint _sidebarResizePointerId;
     private bool _isSidebarResizing;
+    private bool _skipNextNavigationSidebarRefresh;
 
     public IRelayCommand OpenWindowCommand { get; }
     public IRelayCommand ExitFromTrayCommand { get; }
@@ -57,12 +58,6 @@ public sealed partial class MainWindow : Window
         ShellSidebar.SettingsRequested += ShowSettingsOverlay;
         ShellSidebar.SessionSearchRequested += ShowSessionSearchOverlay;
         ShellSidebar.AddAgentRequested += ShowAddAgentOverlay;
-        AddAgentOverlay.AgentAdded += AddAgentOverlay_AgentAdded;
-        SettingsOverlay.CloseRequested += (_, _) => CloseSettingsOverlay();
-        KeyboardShortcutsDialog.CloseRequested += (_, _) => CloseKeyboardShortcutsOverlay();
-        AboutOverlay.CloseRequested += (_, _) => CloseAboutOverlay();
-        SessionSearchOverlay.CloseRequested += (_, _) => CloseSessionSearchOverlay();
-        SessionSearchOverlay.SessionSelected += SessionSearchOverlay_SessionSelected;
         ContentFrame.Navigated += async (_, _) =>
         {
             try
@@ -70,7 +65,14 @@ public sealed partial class MainWindow : Window
                 ShellSidebar.SetCurrentPage(ContentFrame.CurrentSourcePageType);
                 UpdateNavigationButtons();
                 CloseFindOverlay();
-                await ShellSidebar.RefreshAsync();
+                if (_skipNextNavigationSidebarRefresh)
+                {
+                    _skipNextNavigationSidebarRefresh = false;
+                }
+                else
+                {
+                    await ShellSidebar.RefreshAsync();
+                }
                 if (SidebarLayoutPolicy.IsCompactWindow(EffectiveContentWidth) && _isSidebarVisible)
                 {
                     SetSidebarVisible(false);
@@ -110,6 +112,7 @@ public sealed partial class MainWindow : Window
                 var benchmarkConversation =
                     Environment.GetEnvironmentVariable(
                         Diagnostics.StartupProfiler.OpenConversationEnvironmentVariable) == "1";
+                _skipNextNavigationSidebarRefresh = true;
                 NavigateTo(benchmarkConversation ? typeof(ChatPage) : typeof(HomePage));
                 UpdateNavigationButtons();
                 EnsureInitialFocus();
@@ -149,10 +152,8 @@ public sealed partial class MainWindow : Window
         DetachShortcutHints();
         DetachViewMenu();
         Diagnostics.StartupTelemetry.DisarmPerformanceExit();
-        AddAgentOverlay.AgentAdded -= AddAgentOverlay_AgentAdded;
-        AddAgentOverlay.Shutdown();
+        ShutdownOverlays();
         InAppNotifications.Shutdown();
-        SettingsOverlay.Shutdown();
 
         // Pages disarm their own timers in Unloaded, which is not guaranteed to fire on window
         // close — so the page currently on screen is asked directly. Wrapped because a page that
@@ -211,6 +212,7 @@ public sealed partial class MainWindow : Window
         _wasCompactLayout = isCompact;
 
         ApplySidebarWidth(windowWidth);
+        UpdateTitleBarLayout(windowWidth);
         UpdateZoomLayout();
         UpdateZoomPopupPosition();
         UpdateFindOverlayPosition();
@@ -394,11 +396,11 @@ public sealed partial class MainWindow : Window
     /// up through RootGrid regardless of hit-testing, so they must additionally bail on this to
     /// keep a modal from acting on the content behind it.</summary>
     private bool IsModalOverlayOpen
-        => AddAgentOverlay.IsOpen
-            || SettingsOverlay.IsOpen
-            || KeyboardShortcutsDialog.IsOpen
-            || AboutOverlay.IsOpen
-            || SessionSearchOverlay.IsOpen;
+        => _addAgentOverlay?.IsOpen == true
+            || _settingsOverlay?.IsOpen == true
+            || _keyboardShortcutsDialog?.IsOpen == true
+            || _aboutOverlay?.IsOpen == true
+            || _sessionSearchOverlay?.IsOpen == true;
 
     private void UpdateNavigationButtons()
     {
@@ -448,10 +450,21 @@ public sealed partial class MainWindow : Window
         titleBar.ButtonPressedForegroundColor = textPrimary;
     }
 
-    private async System.Threading.Tasks.Task ApplyStartupThemeAsync()
+    private System.Threading.Tasks.Task ApplyStartupThemeAsync()
     {
-        var prefs = await AppServices.Preferences.LoadAsync();
-        ThemeService.Apply(prefs.Theme);
+        ThemeService.Apply(AppServices.StartupState.Preferences.Theme);
+        return System.Threading.Tasks.Task.CompletedTask;
+    }
+
+    /// <summary>Reduces secondary title-bar chrome before it can collide with the caption buttons.
+    /// Edit/View remain available through their live shortcuts and the keyboard-shortcuts panel;
+    /// File and Help stay visible because they contain app lifecycle and discovery actions.</summary>
+    private void UpdateTitleBarLayout(double windowWidth)
+    {
+        var compact = windowWidth < 720;
+        EditMenuBarItem.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        ViewMenuBarItem.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        ForwardButton.Visibility = windowWidth < 560 ? Visibility.Collapsed : Visibility.Visible;
     }
 
     /// <summary>
@@ -513,14 +526,14 @@ public sealed partial class MainWindow : Window
 
     /// <summary>Opens the shell-owned modal without changing the current page.</summary>
     internal void ShowAddAgentOverlay(FrameworkElement? opener = null)
-        => AddAgentOverlay.Show(opener);
+        => EnsureAddAgentOverlay().Show(opener);
 
     private async void AddAgentOverlay_AgentAdded(Models.AgentConfig agent)
     {
         try
         {
             await ShellSidebar.RefreshAsync();
-            await SettingsOverlay.RefreshAgentsAsync();
+            if (_settingsOverlay is not null) await _settingsOverlay.RefreshAgentsAsync();
             if (ContentFrame.Content is HomePage homePage)
                 await homePage.RefreshAfterAgentAddedAsync(agent.Id);
         }
@@ -534,8 +547,8 @@ public sealed partial class MainWindow : Window
         => ShellSidebar.DeleteAgentAsync(agentId);
 
     private void ShowSettingsOverlay(FrameworkElement? opener = null)
-        => SettingsOverlay.Show(opener);
+        => EnsureSettingsOverlay().Show(opener);
 
     private void CloseSettingsOverlay()
-        => SettingsOverlay.Hide();
+        => _settingsOverlay?.Hide();
 }

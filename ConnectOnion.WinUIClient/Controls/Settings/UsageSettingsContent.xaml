@@ -50,6 +50,15 @@
         <TextBlock x:Uid="UsageDescription" Text="Token usage recorded on this device, grouped by model. Usage is kept even after you delete a conversation — the tokens were still spent — and never leaves your machine."
                    TextWrapping="Wrap" Foreground="{ThemeResource TextSecondaryBrush}" />
 
+        <InfoBar x:Name="UsageErrorBar"
+                 x:Uid="UsageLoadError"
+                 IsOpen="False"
+                 IsClosable="True"
+                 Severity="Error"
+                 Title="Usage unavailable"
+                 Message="ConnectOnion couldn't load usage history. Try opening this page again."
+                 AutomationProperties.LiveSetting="Assertive" />
+
         <!-- Activity heatmap.
              Placed ABOVE the time-window buttons on purpose: it always shows the trailing twelve
              months regardless of the selected range, and sitting below the radio buttons would

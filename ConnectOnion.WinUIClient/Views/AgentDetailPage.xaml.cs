@@ -81,15 +81,6 @@ public sealed partial class AgentDetailPage : Page, IReloadablePage, IShutdownDi
     private async void OfflineNotice_RecheckRequested(object? sender, EventArgs e)
         => await Vm.RecheckPresenceAsync();
 
-    private void Suggestion_Click(object sender, RoutedEventArgs e)
-    {
-        if ((sender as FrameworkElement)?.Tag is string prompt)
-            Composer.SetDraft(
-                string.Equals(prompt, "What can you do?", StringComparison.Ordinal)
-                    ? LocalizedStrings.Get("ComposerSuggestionCapabilitiesPrompt", "What can you do?")
-                    : prompt);
-    }
-
     private async void Share_Click(object sender, RoutedEventArgs e)
     {
         if (!Vm.CanShareAgent || string.IsNullOrWhiteSpace(Vm.AgentAddress)) return;

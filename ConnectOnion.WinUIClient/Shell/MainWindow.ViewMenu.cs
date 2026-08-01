@@ -275,11 +275,11 @@ public sealed partial class MainWindow
 
     /// <summary>Restores the saved zoom at startup. Applied with <c>persist: false</c> so
     /// restoring the stored value does not immediately write it back.</summary>
-    internal async System.Threading.Tasks.Task RestoreZoomAsync()
+    internal System.Threading.Tasks.Task RestoreZoomAsync()
     {
         try
         {
-            var saved = (await _preferencesRepository.LoadAsync()).ZoomFactor;
+            var saved = AppServices.StartupState.Preferences.ZoomFactor;
             if (Math.Abs(saved - DefaultZoom) > 0.001)
                 SetZoom(saved, persist: false);
         }
@@ -287,6 +287,7 @@ public sealed partial class MainWindow
         {
             Serilog.Log.Warning(ex, "Could not restore the saved zoom level");
         }
+        return System.Threading.Tasks.Task.CompletedTask;
     }
 
     private void UpdateZoomLayout()

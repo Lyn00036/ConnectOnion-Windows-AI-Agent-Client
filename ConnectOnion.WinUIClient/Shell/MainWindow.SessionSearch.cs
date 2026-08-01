@@ -11,18 +11,18 @@ public sealed partial class MainWindow
 {
     private async void ShowSessionSearchOverlay(FrameworkElement opener)
     {
-        if (IsModalOverlayOpen && !SessionSearchOverlay.IsOpen) return;
-        await SessionSearchOverlay.ShowAsync(opener);
+        if (IsModalOverlayOpen && _sessionSearchOverlay?.IsOpen != true) return;
+        await EnsureSessionSearchOverlay().ShowAsync(opener);
     }
 
     private void CloseSessionSearchOverlay()
-        => SessionSearchOverlay.Hide();
+        => _sessionSearchOverlay?.Hide();
 
     private async void SessionSearchOverlay_SessionSelected(
         object? sender,
         SessionSearchSelectionEventArgs e)
     {
-        SessionSearchOverlay.Hide();
+        _sessionSearchOverlay?.Hide();
         await ShowConversationAsync(e.AgentId, e.SessionId);
     }
 }
