@@ -44,7 +44,9 @@ public sealed partial class AskUserFieldEntry : Common.ObservableObject
     public partial string? ValidationError { get; set; }
 
     public bool HasValidationError => !string.IsNullOrWhiteSpace(ValidationError);
-    public string RequirementLabel => Required ? "Required" : "Optional";
+    public string RequirementLabel => Required
+        ? Common.CoreStrings.Get("AskUserFieldRequired", "Required")
+        : Common.CoreStrings.Get("AskUserFieldOptional", "Optional");
 
     [ObservableProperty]
     public partial string Value { get; set; }
@@ -59,18 +61,28 @@ public sealed partial class AskUserFieldEntry : Common.ObservableObject
 }
 
 /// <summary>
-/// One selectable option in an ask_user turn, in either mode. The card is drawn by hand rather
-/// than by a CheckBox/RadioButton, so exclusivity is this type's job instead of the framework's:
-/// <see cref="Toggle"/> asks <see cref="Owner"/> to apply whichever rule the turn is under.
+/// One selectable option in an ask_user turn. Native CheckBox/RadioButton controls expose the
+/// correct UI Automation patterns; this model still owns cross-item exclusivity because repeater
+/// item templates do not share one radio-button namescope.
 /// </summary>
 public sealed partial class AskUserOptionEntry : Common.ObservableObject
 {
     public string Text { get; set; } = "";
+
+    /// <summary>Rewrites the host's three stock approval options into clearer wording.
+    /// <para>Only the *right* side is localized. The match arms are the literal strings the
+    /// agent sends on the wire, so they stay English no matter what the client's language is;
+    /// <see cref="Text"/> is also what gets sent back as the answer. An option the host words
+    /// differently falls through unchanged and is shown verbatim — the agent's own phrasing is
+    /// better than a wrong guess.</para></summary>
     public string DisplayText => Text switch
     {
-        "Yes, apply this change" => "Apply once",
-        "Yes to all (auto-approve)" => "Apply all similar changes",
-        "No, reject and give feedback" => "Reject and provide feedback",
+        "Yes, apply this change"
+            => Common.CoreStrings.Get("AskUserOptionApplyOnce", "Apply once"),
+        "Yes to all (auto-approve)"
+            => Common.CoreStrings.Get("AskUserOptionApplyAll", "Apply all similar changes"),
+        "No, reject and give feedback"
+            => Common.CoreStrings.Get("AskUserOptionReject", "Reject and provide feedback"),
         _ => Text,
     };
 
@@ -92,9 +104,19 @@ public sealed partial class AskUserOptionEntry : Common.ObservableObject
     /// keep the clicked one on (clicking the selected option again is a no-op, matching a radio
     /// group); multi-select turns just flip it.</summary>
     public void Toggle()
+        => SetSelectedFromControl(Owner is { AskUserMultiSelect: false } || !IsChecked);
+
+    /// <summary>Applies the state reported by the native selection control. A single-select option
+    /// cannot be cleared by clicking it again; a multi-select option follows the checkbox state.</summary>
+    public void SetSelectedFromControl(bool selected)
     {
         if (Owner is { AskUserMultiSelect: false })
         {
+            if (!selected)
+            {
+                IsChecked = true;
+                return;
+            }
             foreach (var sibling in Owner.AskUserOptionEntries)
             {
                 if (!ReferenceEquals(sibling, this)) sibling.IsChecked = false;
@@ -103,7 +125,7 @@ public sealed partial class AskUserOptionEntry : Common.ObservableObject
             Owner.NotifyAskUserInputChanged();
             return;
         }
-        IsChecked = !IsChecked;
+        IsChecked = selected;
         Owner?.NotifyAskUserInputChanged();
     }
 }

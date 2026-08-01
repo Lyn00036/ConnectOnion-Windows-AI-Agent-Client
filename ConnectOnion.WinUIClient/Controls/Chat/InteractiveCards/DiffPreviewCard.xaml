@@ -9,6 +9,11 @@
     <UserControl.Resources>
         <common:InteractiveTextConverter x:Key="InteractiveText" />
     </UserControl.Resources>
+    <!-- No IsExpanded binding on purpose. This card already owns a disclosure — the
+         "View changes"/"Hide changes" toggle over Message.IsDiffExpanded, which is what ShowBody
+         below is bound to. Adding the header toggle as well would give one card two independent
+         ways to fold the same content, and folding it by the header would hide the very button
+         that unfolds it. -->
     <local:InteractiveCard Message="{x:Bind Message, Mode=OneWay}"
         IconGlyph="{x:Bind Message.DiffIconGlyph, Mode=OneWay}"
         Title="{x:Bind Message.DiffCardTitle, Mode=OneWay, Converter={StaticResource InteractiveText}}"
@@ -33,10 +38,14 @@
                                        Foreground="{ThemeResource WarningBrush}"
                                        AutomationProperties.AccessibilityView="Raw" />
                         <TextBlock Grid.Column="1" Text="{x:Bind Message.DiffProblemText, Mode=OneWay}"
-                            Style="{StaticResource InteractiveHelperTextStyle}" TextWrapping="Wrap" />
+                            Style="{StaticResource InteractiveHelperTextStyle}"
+                            FontSize="{x:Bind Message.CardCaptionFontSize, Mode=OneWay}"
+                            TextWrapping="Wrap" />
                     </Grid>
                 </Border>
-                <TextBlock Text="{x:Bind Message.DiffContextPath, Mode=OneWay}" FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="11"
+                <TextBlock Text="{x:Bind Message.DiffContextPath, Mode=OneWay}"
+                    FontFamily="{StaticResource JetBrainsMonoFontFamily}"
+                    FontSize="{x:Bind Message.CardCodeFontSize, Mode=OneWay}"
                     Margin="16,8,16,7" TextTrimming="CharacterEllipsis"
                     ToolTipService.ToolTip="{x:Bind Message.EventTitle, Mode=OneWay}"
                     AutomationProperties.Name="{x:Bind Message.EventTitle, Mode=OneWay}"
@@ -44,7 +53,10 @@
                 <ScrollViewer x:Name="DiffScrollViewer"
                     MaxHeight="{x:Bind Message.DiffViewportHeight, Mode=OneWay}"
                     HorizontalScrollBarVisibility="Auto" HorizontalScrollMode="Enabled"
-                    VerticalScrollBarVisibility="Auto" VerticalScrollMode="Enabled">
+                    VerticalScrollBarVisibility="Auto" VerticalScrollMode="Enabled"
+                    IsVerticalScrollChainingEnabled="True"
+                    IsHorizontalScrollChainingEnabled="True"
+                    IsTabStop="False">
                     <ItemsRepeater ItemsSource="{x:Bind Message.DiffPreview.Files, Mode=OneWay}">
                         <ItemsRepeater.ItemTemplate>
                             <DataTemplate x:DataType="models:DiffFileModel">
@@ -95,6 +107,12 @@
                         </ItemsRepeater.ItemTemplate>
                     </ItemsRepeater>
                 </ScrollViewer>
+                <TextBlock Margin="16,7,16,0"
+                           Text="{x:Bind Message.DiffPreview.TruncationLabel, Mode=OneWay}"
+                           Style="{StaticResource InteractiveHelperTextStyle}"
+                           FontSize="{x:Bind Message.CardCaptionFontSize, Mode=OneWay}"
+                           AutomationProperties.LiveSetting="Polite"
+                           Visibility="{x:Bind Message.DiffPreview.IsPreviewTruncated, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                 <!-- Native command surface: secondary diff actions automatically move into
                      overflow when the window is narrow instead of compressing five columns. -->
                 <CommandBar Padding="8,2"
@@ -103,7 +121,8 @@
                             DefaultLabelPosition="Right">
                     <CommandBar.Content>
                 <TextBlock x:Uid="DiffUnifiedUtf8" Text="Unified diff · UTF-8"
-                                   Style="{StaticResource InteractiveHelperTextStyle}"
+                                    Style="{StaticResource InteractiveHelperTextStyle}"
+                                    FontSize="{x:Bind Message.CardCaptionFontSize, Mode=OneWay}"
                                    VerticalAlignment="Center" />
                     </CommandBar.Content>
                     <AppBarButton Label="{x:Bind Message.DiffWrapLabel, Mode=OneWay, Converter={StaticResource InteractiveText}}"

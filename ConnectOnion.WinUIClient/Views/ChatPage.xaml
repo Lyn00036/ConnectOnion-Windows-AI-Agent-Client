@@ -47,18 +47,24 @@
                 <Grid Margin="0,2">
                     <!-- Image: thumbnail, or a fallback message if it failed to load/decode. -->
                     <StackPanel Spacing="4" Visibility="{Binding IsImage, Converter={StaticResource BoolToVis}}">
-                        <Border CornerRadius="10"
+                        <Button x:Uid="ChatOpenImageAttachment"
+                                CornerRadius="10"
+                                Padding="0"
                                 MaxWidth="280"
                                 MaxHeight="280"
+                                HorizontalAlignment="Left"
                                 Background="{ThemeResource SurfaceSecondaryBrush}"
+                                BorderThickness="0"
                                 Visibility="{Binding IsFailed, Converter={StaticResource BoolToVis}, ConverterParameter=invert}"
-                                Tapped="AttachmentImage_Tapped"
-                                Tag="{Binding}">
+                                Click="AttachmentOpen_Click"
+                                Tag="{Binding}"
+                                AutomationProperties.Name="Open image attachment"
+                                ToolTipService.ToolTip="Open image">
                             <Image Source="{Binding LocalCachePath, Converter={StaticResource PathToImage}}"
                                    Stretch="Uniform"
                                    MaxWidth="280"
                                    MaxHeight="280" />
-                        </Border>
+                        </Button>
                         <TextBlock x:Uid="ChatImageLoadFailure" Text="Image could not be loaded."
                                    FontSize="11"
                                    FontStyle="Italic"
@@ -73,8 +79,6 @@
                             Background="{ThemeResource SurfaceSecondaryBrush}"
                             BorderBrush="{ThemeResource BorderDefaultBrush}"
                             BorderThickness="1"
-                            Tapped="AttachmentFile_Tapped"
-                            Tag="{Binding}"
                             Visibility="{Binding IsImage, Converter={StaticResource BoolToVis}, ConverterParameter=invert}">
                         <Grid ColumnSpacing="8">
                             <Grid.ColumnDefinitions>
@@ -82,24 +86,43 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <ic:FluentIcon Grid.Column="0"
-                                           Icon="DocumentText"
-                                           IconVariant="Regular"
-                                           IconSize="Size24"
-                                           VerticalAlignment="Center"
-                                           Foreground="{ThemeResource TextSecondaryBrush}" />
-                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
-                                <TextBlock Text="{Binding FileName}"
-                                           FontSize="12"
-                                           FontWeight="SemiBold"
-                                           TextTrimming="CharacterEllipsis" />
-                                <TextBlock Text="{Binding SizeLabel}"
-                                           FontSize="10"
-                                           Foreground="{ThemeResource TextSecondaryBrush}" />
-                            </StackPanel>
+                            <Button x:Uid="ChatOpenFileAttachment"
+                                    Grid.Column="0"
+                                    Grid.ColumnSpan="2"
+                                    MinHeight="40"
+                                    Padding="0"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Stretch"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    Tag="{Binding}"
+                                    Click="AttachmentOpen_Click"
+                                    AutomationProperties.Name="Open file attachment"
+                                    ToolTipService.ToolTip="Open file">
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <ic:FluentIcon Icon="DocumentText"
+                                                   IconVariant="Regular"
+                                                   IconSize="Size24"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{ThemeResource TextSecondaryBrush}" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                                        <TextBlock Text="{Binding FileName}"
+                                                   FontSize="12"
+                                                   FontWeight="SemiBold"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding SizeLabel}"
+                                                   FontSize="10"
+                                                   Foreground="{ThemeResource TextSecondaryBrush}" />
+                                    </StackPanel>
+                                </Grid>
+                            </Button>
                             <Button x:Uid="ChatSaveAttachment" Grid.Column="2"
-                                    Width="36"
-                                    Height="36"
+                                    Width="40"
+                                    Height="40"
                                     Padding="0"
                                     MinWidth="0"
                                     MinHeight="0"
@@ -175,10 +198,9 @@
                         <!-- Reserve the action row so interaction never shifts later messages.
                              Commands stay softly visible for touch/discovery, then strengthen
                              when this bubble is hovered or keyboard-focused. -->
-                        <Grid MinHeight="28"
+                        <Grid MinHeight="40"
                               HorizontalAlignment="Right"
-                              ColumnSpacing="4"
-                              Opacity="{x:Bind UserActionsOpacity, Mode=OneWay}">
+                              ColumnSpacing="4">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
@@ -187,15 +209,18 @@
                                        Text="{x:Bind TimeLabel, Mode=OneWay}"
                                        FontSize="11"
                                        Foreground="{ThemeResource TextTertiaryBrush}" />
-                            <StackPanel Grid.Column="1"
-                                        Orientation="Horizontal"
+                            <!-- Only the icon panel is softened at rest. The timestamp stays fully
+                                 opaque because it is small text and therefore needs the 4.5:1 text
+                                 contrast floor rather than the 3:1 UI-component floor. -->
+                             <StackPanel Grid.Column="1"
+                                         Orientation="Horizontal"
                                          HorizontalAlignment="Right"
                                          Spacing="0"
-                                         Opacity="0.78">
+                                         Opacity="{x:Bind UserActionsOpacity, Mode=OneWay}">
                                 <Button x:Uid="ChatRetryFromMessage" Tag="{x:Bind}"
                                         Padding="2"
-                                        MinWidth="28"
-                                        MinHeight="28"
+                                        MinWidth="40"
+                                        MinHeight="40"
                                         Background="Transparent"
                                         BorderThickness="0"
                                         IsTabStop="True"
@@ -208,17 +233,12 @@
                                          reads as inconsistent, because the Size12 designs carry heavier
                                          strokes and measure 12px against the scaled icon's 16px slot. -->
                                     <ic:FluentIcon Icon="ArrowClockwise" IconVariant="Regular" IconSize="Size16"
-                                                   RenderTransformOrigin="0.5,0.5"
-                                                   Foreground="{ThemeResource TextSecondaryBrush}">
-                                        <ic:FluentIcon.RenderTransform>
-                                            <ScaleTransform ScaleX="0.75" ScaleY="0.75" />
-                                        </ic:FluentIcon.RenderTransform>
-                                    </ic:FluentIcon>
+                                                   Foreground="{ThemeResource TextSecondaryBrush}" />
                                 </Button>
                                 <Button x:Uid="ChatEditMessage" Tag="{x:Bind}"
                                         Padding="2"
-                                        MinWidth="28"
-                                        MinHeight="28"
+                                        MinWidth="40"
+                                        MinHeight="40"
                                         Background="Transparent"
                                         BorderThickness="0"
                                         IsTabStop="True"
@@ -227,16 +247,11 @@
                                         ToolTipService.ToolTip="Edit in a new conversation"
                                         Visibility="{x:Bind CanEdit, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                                     <ic:FluentIcon Icon="Edit" IconVariant="Regular" IconSize="Size16"
-                                                   RenderTransformOrigin="0.5,0.5"
-                                                   Foreground="{ThemeResource TextSecondaryBrush}">
-                                        <ic:FluentIcon.RenderTransform>
-                                            <ScaleTransform ScaleX="0.75" ScaleY="0.75" />
-                                        </ic:FluentIcon.RenderTransform>
-                                    </ic:FluentIcon>
+                                                   Foreground="{ThemeResource TextSecondaryBrush}" />
                                 </Button>
                                 <Button x:Uid="ChatCopyMessage" Padding="2"
-                                        MinWidth="28"
-                                        MinHeight="28"
+                                        MinWidth="40"
+                                        MinHeight="40"
                                         Background="Transparent"
                                         BorderThickness="0"
                                         IsTabStop="True"
@@ -244,12 +259,7 @@
                                         AutomationProperties.Name="Copy message"
                                         ToolTipService.ToolTip="Copy message">
                                     <ic:FluentIcon Icon="Copy" IconVariant="Regular" IconSize="Size16"
-                                                   RenderTransformOrigin="0.5,0.5"
-                                                   Foreground="{ThemeResource TextSecondaryBrush}">
-                                        <ic:FluentIcon.RenderTransform>
-                                            <ScaleTransform ScaleX="0.75" ScaleY="0.75" />
-                                        </ic:FluentIcon.RenderTransform>
-                                    </ic:FluentIcon>
+                                                   Foreground="{ThemeResource TextSecondaryBrush}" />
                                 </Button>
                             </StackPanel>
                         </Grid>
@@ -436,10 +446,9 @@
                                 Click="SubmitOnboardPayment_Click"
                                 IsEnabled="{x:Bind IsOnboardingInputEnabled, Mode=OneWay}" />
                     </StackPanel>
-                    <Grid MinHeight="28"
+                    <Grid MinHeight="40"
                           HorizontalAlignment="Left"
-                          ColumnSpacing="4"
-                          Opacity="{x:Bind UserActionsOpacity, Mode=OneWay}">
+                          ColumnSpacing="4">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
@@ -448,14 +457,15 @@
                                    Text="{x:Bind TimeLabel, Mode=OneWay}"
                                    FontSize="11"
                                    Foreground="{ThemeResource TextTertiaryBrush}" />
+                        <!-- See the user-message row above: no second opacity multiplier. -->
                         <StackPanel Grid.Column="1"
                                     Orientation="Horizontal"
                                     Spacing="0"
-                                    Opacity="0.78">
+                                    Opacity="{x:Bind UserActionsOpacity, Mode=OneWay}">
                             <Button x:Uid="ChatRetryResponse" Tag="{x:Bind}"
                                     Padding="2"
-                                    MinWidth="28"
-                                    MinHeight="28"
+                                    MinWidth="40"
+                                    MinHeight="40"
                                     Background="Transparent"
                                     BorderThickness="0"
                                     IsTabStop="True"
@@ -464,16 +474,11 @@
                                     ToolTipService.ToolTip="Retry response in this conversation">
                                 <!-- Matches the user-message action row above: same font, same scale. -->
                                 <ic:FluentIcon Icon="ArrowClockwise" IconVariant="Regular" IconSize="Size16"
-                                               RenderTransformOrigin="0.5,0.5"
-                                               Foreground="{ThemeResource TextSecondaryBrush}">
-                                    <ic:FluentIcon.RenderTransform>
-                                        <ScaleTransform ScaleX="0.75" ScaleY="0.75" />
-                                    </ic:FluentIcon.RenderTransform>
-                                </ic:FluentIcon>
+                                               Foreground="{ThemeResource TextSecondaryBrush}" />
                             </Button>
                             <Button x:Uid="ChatCopyResponse" Padding="2"
-                                    MinWidth="28"
-                                    MinHeight="28"
+                                    MinWidth="40"
+                                    MinHeight="40"
                                     Background="Transparent"
                                     BorderThickness="0"
                                     IsTabStop="True"
@@ -481,12 +486,7 @@
                                     AutomationProperties.Name="Copy response"
                                     ToolTipService.ToolTip="Copy response">
                                 <ic:FluentIcon Icon="Copy" IconVariant="Regular" IconSize="Size16"
-                                               RenderTransformOrigin="0.5,0.5"
-                                               Foreground="{ThemeResource TextSecondaryBrush}">
-                                    <ic:FluentIcon.RenderTransform>
-                                        <ScaleTransform ScaleX="0.75" ScaleY="0.75" />
-                                    </ic:FluentIcon.RenderTransform>
-                                </ic:FluentIcon>
+                                               Foreground="{ThemeResource TextSecondaryBrush}" />
                             </Button>
                         </StackPanel>
                     </Grid>
@@ -624,26 +624,18 @@
                                                    Foreground="{ThemeResource TextTertiaryBrush}"
                                                    TextTrimming="CharacterEllipsis"
                                                    VerticalAlignment="Center" />
-                                        <!-- Unlike the tool card's, this chevron stays visible
-                                             rather than being revealed on hover: a folded thought
-                                             card has no other content on screen to hint that it
-                                             opens. -->
-                                        <Grid Width="16" Height="16" VerticalAlignment="Center">
-                                            <ic:FluentIcon Icon="ChevronUp"
-                                                           IconVariant="Regular"
-                                                           IconSize="Size12"
-                                                           HorizontalAlignment="Center"
-                                                           VerticalAlignment="Center"
-                                                           Foreground="{ThemeResource TextTertiaryBrush}"
-                                                           Visibility="{x:Bind IsActivityExpanded, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-                                            <ic:FluentIcon Icon="ChevronDown"
-                                                           IconVariant="Regular"
-                                                           IconSize="Size12"
-                                                           HorizontalAlignment="Center"
-                                                           VerticalAlignment="Center"
-                                                           Foreground="{ThemeResource TextTertiaryBrush}"
-                                                           Visibility="{x:Bind IsActivityExpanded, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
-                                        </Grid>
+                                        <ic:FluentIcon Icon="ChevronDown"
+                                                       IconVariant="Regular"
+                                                       IconSize="Size12"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="{ThemeResource TextTertiaryBrush}"
+                                                       RenderTransformOrigin="0.5,0.5"
+                                                       AutomationProperties.AccessibilityView="Raw">
+                                            <ic:FluentIcon.RenderTransform>
+                                                <RotateTransform Angle="{x:Bind ActivityChevronAngle, Mode=OneWay}" />
+                                            </ic:FluentIcon.RenderTransform>
+                                        </ic:FluentIcon>
                                     </StackPanel>
                                 </Grid>
                             </Button>
@@ -754,6 +746,7 @@
 
             <DataTemplate x:Key="ChatToolActivityTemplate" x:DataType="models:ChatMessage">
                 <controls:ToolActivityView Activity="{x:Bind ToolActivity, Mode=OneWay}"
+                                           FontSize="{x:Bind MessageFontSize, Mode=OneWay}"
                                            HorizontalAlignment="Stretch" />
             </DataTemplate>
 
@@ -873,9 +866,17 @@
             </Grid>
         </Border>
 
+        <!-- The transcript is a live region. It is the app's primary output and it updates
+             without the user acting: a screen-reader user who sends a message and then hears
+             nothing has no way to tell a long tool run from a finished one. Polite rather than
+             Assertive because a turn appends many rows (thinking, each tool call, the reply) and
+             Assertive would interrupt the user's own reading for every one of them. -->
         <ListView Grid.Row="1"
                   x:Name="MessageList"
                   AutomationProperties.AutomationId="MessageList"
+                  x:Uid="ChatTranscript"
+                  AutomationProperties.Name="Conversation transcript"
+                  AutomationProperties.LiveSetting="Polite"
                   ItemsSource="{x:Bind Vm.Messages, Mode=OneWay}"
                   ItemTemplateSelector="{StaticResource ChatMessageTemplates}"
                   FontSize="{x:Bind Vm.MessageFontSize, Mode=OneWay}"

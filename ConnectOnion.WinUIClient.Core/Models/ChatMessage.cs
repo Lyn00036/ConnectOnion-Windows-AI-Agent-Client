@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text.Json.Serialization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using ConnectOnion.Protocol;
+using ConnectOnion.WinUIClient.Common;
 
 namespace ConnectOnion.WinUIClient.Models;
 
@@ -43,6 +44,9 @@ public sealed partial class ChatMessage : Common.ObservableObject
         ActiveFindMatchIndex = -1;
         MessageFontSize = 14;
         AskUserFreeText = "";
+        // Interactive cards start unfolded: a card that appeared collapsed would hide a question
+        // the agent is currently blocked on.
+        IsInteractiveCardExpanded = true;
         ThinkingElapsedLabel = "";
         TransientStatusText = "";
         PlanFeedback = "";
@@ -117,6 +121,8 @@ public sealed partial class ChatMessage : Common.ObservableObject
     [NotifyPropertyChangedFor(nameof(HasThoughtText))]
     [NotifyPropertyChangedFor(nameof(IsThinkingSingleThought))]
     [NotifyPropertyChangedFor(nameof(IsPlainSingleActivity))]
+    [NotifyPropertyChangedFor(nameof(PlanReviewPreview))]
+    [NotifyPropertyChangedFor(nameof(IsPlanReviewPreviewTruncated))]
     [JsonPropertyName("eventDetail")]
     public partial string? EventDetail { get; set; }
 
@@ -139,6 +145,7 @@ public sealed partial class ChatMessage : Common.ObservableObject
     [NotifyPropertyChangedFor(nameof(ShowAskUserFreeText))]
     [NotifyPropertyChangedFor(nameof(ShowAskUserOptions))]
     [NotifyPropertyChangedFor(nameof(InteractiveOutcome))]
+    [NotifyPropertyChangedFor(nameof(InteractiveOutcomeText))]
     [NotifyPropertyChangedFor(nameof(InteractiveAccessibilityName))]
     [NotifyPropertyChangedFor(nameof(IsActivityFailed))]
     [NotifyPropertyChangedFor(nameof(ActivityHeaderTitle))]
@@ -177,6 +184,7 @@ public sealed partial class ChatMessage : Common.ObservableObject
     [NotifyPropertyChangedFor(nameof(TurnUsageSecondary))]
     [NotifyPropertyChangedFor(nameof(HasTurnUsageSecondary))]
     [NotifyPropertyChangedFor(nameof(InteractiveOutcome))]
+    [NotifyPropertyChangedFor(nameof(InteractiveOutcomeText))]
     [NotifyPropertyChangedFor(nameof(InteractiveAnswerText))]
     [NotifyPropertyChangedFor(nameof(HasInteractiveAnswer))]
     [NotifyPropertyChangedFor(nameof(InteractiveAccessibilityName))]
@@ -261,17 +269,30 @@ public sealed partial class ChatMessage : Common.ObservableObject
     /// </summary>
     [JsonIgnore]
     public string OnboardPaymentLabel => OnboardRequest?.PaymentAmount is { } amount
-        ? $"I've transferred {amount:0.##}"
-        : "I've paid";
+        ? CoreStrings.Format(
+            "OnboardPaidAmount", "I've transferred {0}", FormatAmount(amount))
+        : CoreStrings.Get("OnboardPaid", "I've paid");
 
     [JsonIgnore]
     public string OnboardPaymentPrompt => OnboardRequest?.PaymentAmount is { } amount
         ? (HasOnboardPaymentAddress
-            ? $"Transfer {amount:0.##} to the address below, then confirm."
+            ? CoreStrings.Format(
+                "OnboardTransferPrompt",
+                "Transfer {0} to the address below, then confirm.",
+                FormatAmount(amount))
             // Without an address there is nothing to instruct, so the card states the amount and
             // leaves the arrangement to whatever the agent told the user out of band.
-            : $"This agent asks for {amount:0.##} before it will talk.")
+            : CoreStrings.Format(
+                "OnboardAmountRequired",
+                "This agent asks for {0} before it will talk.",
+                FormatAmount(amount)))
         : "";
+
+    /// <summary>The amount is formatted separately rather than left to the composite format, so
+    /// a translation cannot change or drop the <c>0.##</c> numeric form of a figure the user is
+    /// about to transfer.</summary>
+    private static string FormatAmount(double amount)
+        => amount.ToString("0.##", CultureInfo.CurrentCulture);
 
     [JsonIgnore]
     public bool IsUser => Role == ChatRole.User;
@@ -296,8 +317,17 @@ public sealed partial class ChatMessage : Common.ObservableObject
     [JsonIgnore]
     public bool ShowUserActions => AreUserActionsVisible && !IsEditing;
 
+    /// <summary>Opacity of a message's action row (retry / edit / copy).
+    /// <para>The resting value is a contrast floor, not a taste call. These are icon-only
+    /// controls, so WCAG's 3:1 non-text minimum applies, and the row is dimmed rather than
+    /// hidden — meaning the resting alpha *is* the contrast. <c>TextSecondaryBrush</c>
+    /// (<c>#5C5C5B</c>) composited onto the light background (<c>#FAFAF9</c>) needs alpha
+    /// &gt;= 0.66 to clear 3:1; 0.75 lands at ~3.6:1 light and ~4.9:1 dark. It was 0.62, and
+    /// the XAML multiplied a second 0.78 on the button strip on top of it, for an effective
+    /// 0.48 and ~1.9:1. If you dim this further, drop the row to <c>Visibility</c> instead —
+    /// an invisible control has no contrast requirement, a faint one does.</para></summary>
     [JsonIgnore]
-    public double UserActionsOpacity => IsEditing ? 0d : ShowUserActions ? 1d : 0.62d;
+    public double UserActionsOpacity => IsEditing ? 0d : ShowUserActions ? 1d : 0.75d;
 
     public void BeginEditing()
     {
@@ -344,7 +374,9 @@ public sealed partial class ChatMessage : Common.ObservableObject
     {
         get
         {
-            var model = string.IsNullOrWhiteSpace(EventTitle) ? "Turn usage" : EventTitle;
+            var model = string.IsNullOrWhiteSpace(EventTitle)
+                ? CoreStrings.Get("ActivityTurnUsage", "Turn usage")
+                : EventTitle;
             var segments = TurnUsageSegments();
             return segments.Length > 0 ? $"{model} · {segments[0]}" : model;
         }
@@ -381,13 +413,24 @@ public sealed partial class ChatMessage : Common.ObservableObject
     public bool IsRunningProgressActivity => Status == EventStatus.Running
         && (IsThinkingEvent || IsConnectionActivity);
 
+    /// <summary>The activity card's visible heading.
+    /// <para>Note this is where <c>EventTitle == "Thinking"</c> stops being text and starts
+    /// being a marker: <see cref="IsThinkingEvent"/> matches that exact English value, it is
+    /// persisted in the <c>event_title</c> column, and the projection writes it. So the marker
+    /// stays English on both sides of storage, and only the wording chosen *here* is localized
+    /// — localizing the marker itself would make <see cref="IsThinkingEvent"/> false for every
+    /// row a differently-configured build wrote.</para></summary>
     [JsonIgnore]
     public string ActivityHeaderTitle => !string.IsNullOrWhiteSpace(TransientStatusText)
         ? TransientStatusText
         : IsConnectionActivity ? EventTitle
         : IsThinkingEvent
-            ? IsThinkingRunning ? "Thinking..." : "Thought process"
-            : IsTurnUsageEvent ? "Turn usage" : "Activity";
+            ? IsThinkingRunning
+                ? CoreStrings.Get("ActivityThinking", "Thinking...")
+                : CoreStrings.Get("ActivityThoughtProcess", "Thought process")
+            : IsTurnUsageEvent
+                ? CoreStrings.Get("ActivityTurnUsage", "Turn usage")
+                : CoreStrings.Get("ActivityGeneric", "Activity");
 
     /// <remarks>
     /// A thinking card falls back to <c>""</c>, never to <see cref="EventTitle"/>. The card an
@@ -401,7 +444,9 @@ public sealed partial class ChatMessage : Common.ObservableObject
     public string ActivityTimelineText => IsThinkingEvent
         ? EventDetail ?? ""
         : IsTurnUsageEvent
-            ? string.IsNullOrWhiteSpace(EventTitle) ? "Model" : EventTitle
+            ? string.IsNullOrWhiteSpace(EventTitle)
+                ? CoreStrings.Get("ActivityUnnamedModel", "Model")
+                : EventTitle
             : string.IsNullOrWhiteSpace(EventDetail)
                 ? EventTitle
                 : $"{EventTitle} — {EventDetail}";
@@ -539,13 +584,35 @@ public sealed partial class ChatMessage : Common.ObservableObject
     public bool IsInteractiveEvent => IsAskUserEvent || IsApprovalEvent || IsPlanReviewEvent;
 
 
-    /// <summary>The one-line result shown on a collapsed card: the recorded answer ("Approved
-    /// once", "Rejected", "Changes requested", "Answered: …"), <c>"Skipped"</c> for a card a run
-    /// ended without an answer to, or the pending state while it still awaits the user.</summary>
+    /// <summary>The recorded result of an interactive card, as a <b>stable English marker</b>:
+    /// the recorded answer ("Approved once", "Rejected", "Changes requested", "Answered: …"),
+    /// <c>"Skipped"</c> for a card a run ended without an answer to, or the pending state while
+    /// it still awaits the user.
+    ///
+    /// <para><b>Not display text</b> — five call sites match on it with <c>string.Equals</c> or a
+    /// switch, and its source (<see cref="EventMeta"/>) is a persisted column. Localizing it
+    /// would make a translated build fail to recognise rows it wrote itself. Bind
+    /// <see cref="InteractiveOutcomeText"/> from XAML instead.</para></summary>
     [JsonIgnore]
     public string InteractiveOutcome => IsAwaitingResponse
         ? "Waiting for you"
         : string.IsNullOrWhiteSpace(EventMeta) ? "Skipped" : EventMeta;
+
+    /// <summary>The localized, user-facing form of <see cref="InteractiveOutcome"/>.
+    /// <para>Only the markers this client generates are translated. Anything else is the user's
+    /// own answer echoed back (the <c>"Answered: …"</c> form) or wording the agent chose, and is
+    /// shown verbatim — translating a user's own words back at them would be worse than leaving
+    /// one label in English.</para></summary>
+    [JsonIgnore]
+    public string InteractiveOutcomeText => InteractiveOutcome switch
+    {
+        "Waiting for you" => CoreStrings.Get("InteractiveOutcomeWaiting", "Waiting for you"),
+        "Skipped" => CoreStrings.Get("InteractiveStateSkipped", "Skipped"),
+        "Rejected" => CoreStrings.Get("InteractiveStateRejected", "Rejected"),
+        "Approved once" => CoreStrings.Get("ApprovalResolvedOnce", "Approved once"),
+        "Changes requested" => CoreStrings.Get("InteractiveOutcomeChanges", "Changes requested"),
+        var other => other,
+    };
 
 
     /// <summary>The answer the user actually gave, split off an "Answered: …" outcome for the card's
@@ -568,7 +635,7 @@ public sealed partial class ChatMessage : Common.ObservableObject
 
     [JsonIgnore]
     public string InteractiveAccessibilityName
-        => $"{EventEyebrow}: {EventTitle}. {InteractiveOutcome}.";
+        => $"{EventEyebrow}: {EventTitle}. {InteractiveOutcomeText}.";
 
 
     /// <summary>
@@ -622,8 +689,11 @@ public sealed partial class ChatMessage : Common.ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ActivityAccessibilityName))]
+    [NotifyPropertyChangedFor(nameof(ActivityChevronAngle))]
     [JsonIgnore]
     public partial bool IsActivityExpanded { get; set; }
+
+    [JsonIgnore] public double ActivityChevronAngle => IsActivityExpanded ? 0 : 270;
 
     [ObservableProperty]
     [JsonIgnore]
@@ -640,8 +710,19 @@ public sealed partial class ChatMessage : Common.ObservableObject
     /// so a per-message value is what actually reaches the text. Default matches the "Medium" step.
     /// </summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CardTitleFontSize))]
+    [NotifyPropertyChangedFor(nameof(CardBodyFontSize))]
+    [NotifyPropertyChangedFor(nameof(CardCaptionFontSize))]
+    [NotifyPropertyChangedFor(nameof(CardCodeFontSize))]
     [JsonIgnore]
     public partial double MessageFontSize { get; set; }
+
+    /// <summary>Typography steps shared by message-like interactive cards. They follow the user's
+    /// message-size preference while preserving a readable hierarchy at the small setting.</summary>
+    [JsonIgnore] public double CardTitleFontSize => Math.Max(14, MessageFontSize);
+    [JsonIgnore] public double CardBodyFontSize => Math.Max(12, MessageFontSize);
+    [JsonIgnore] public double CardCaptionFontSize => Math.Max(11, MessageFontSize - 2);
+    [JsonIgnore] public double CardCodeFontSize => Math.Max(12, MessageFontSize - 1);
 
     /// <summary>
     /// Attachments sent by the user on this message, or images the agent produced

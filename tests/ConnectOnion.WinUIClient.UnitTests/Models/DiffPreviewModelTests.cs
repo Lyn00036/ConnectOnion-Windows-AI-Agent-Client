@@ -84,6 +84,22 @@ public sealed class DiffPreviewModelTests
     }
 
     [Fact]
+    public void LargeDiff_BoundsPreviewModelsButKeepsRawCopyAndTotals()
+    {
+        var lines = Enumerable.Range(0, DiffPreviewModel.MaxPreviewLines + 25)
+            .Select(index => $"+line {index}");
+        var raw = string.Join('\n', lines);
+
+        var model = DiffPreviewModel.Parse("large.txt", raw, isNewFile: true);
+
+        Assert.Equal(DiffPreviewModel.MaxPreviewLines, model.Files.Sum(file => file.Lines.Count));
+        Assert.Equal(25, model.OmittedLineCount);
+        Assert.True(model.IsPreviewTruncated);
+        Assert.Equal(DiffPreviewModel.MaxPreviewLines + 25, model.Additions);
+        Assert.Equal(raw, model.RawText);
+    }
+
+    [Fact]
     public void OpenDiff_UsesBoundedViewportRegardlessOfBusinessState()
     {
         var message = new ChatMessage { EventKind = "diff_preview" };

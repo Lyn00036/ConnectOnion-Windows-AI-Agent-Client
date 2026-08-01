@@ -14,7 +14,12 @@ public sealed class ChatMessageTests
         };
 
         Assert.False(message.ShowUserActions);
-        Assert.Equal(0.62d, message.UserActionsOpacity);
+
+        // The resting value is the WCAG 3:1 floor for these icon-only controls, not a taste
+        // call — see the property's own remarks. Anything below 0.66 fails against the light
+        // background, so assert the bound rather than only the current number.
+        Assert.Equal(0.75d, message.UserActionsOpacity);
+        Assert.True(message.UserActionsOpacity >= 0.66d);
 
         message.AreUserActionsVisible = true;
 

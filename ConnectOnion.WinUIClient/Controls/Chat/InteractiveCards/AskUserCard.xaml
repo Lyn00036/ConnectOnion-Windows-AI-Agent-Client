@@ -10,7 +10,29 @@
     <UserControl.Resources>
         <common:InteractiveTextConverter x:Key="InteractiveText" />
     </UserControl.Resources>
-    <local:InteractiveCard Message="{x:Bind Message, Mode=OneWay}"
+    <Grid>
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup x:Name="WidthStates">
+                <VisualState x:Name="Narrow">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="0" />
+                    </VisualState.StateTriggers>
+                    <VisualState.Setters>
+                        <Setter Target="AskFooterActions.Orientation" Value="Vertical" />
+                        <Setter Target="AskFooterActions.HorizontalAlignment" Value="Stretch" />
+                        <Setter Target="AskSkip.HorizontalAlignment" Value="Stretch" />
+                        <Setter Target="AskSubmit.HorizontalAlignment" Value="Stretch" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="Wide">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="1000" />
+                    </VisualState.StateTriggers>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+        <local:InteractiveCard Message="{x:Bind Message, Mode=OneWay}"
+        IsExpanded="{x:Bind Message.IsInteractiveCardExpanded, Mode=TwoWay}"
                            IconGlyph="{x:Bind Message.AskUserIconGlyph, Mode=OneWay}"
                            Title="{x:Bind Message.AskUserCardTitle, Mode=OneWay, Converter={StaticResource InteractiveText}}"
                            Subtitle="{x:Bind Message.AskUserCardSubtitle, Mode=OneWay, Converter={StaticResource InteractiveText}}"
@@ -25,17 +47,21 @@
         <local:InteractiveCard.CardBody>
             <StackPanel Padding="16,12" Spacing="10">
                 <TextBlock Text="{x:Bind Message.AskUserDisplayQuestion, Mode=OneWay}"
-                           FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap"
+                           FontSize="{x:Bind Message.CardTitleFontSize, Mode=OneWay}"
+                           FontWeight="SemiBold" TextWrapping="Wrap"
                            IsTextSelectionEnabled="True"
                            Foreground="{ThemeResource TextPrimaryBrush}" />
                 <TextBlock Text="{x:Bind Message.AskUserContextPath, Mode=OneWay}"
-                           FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="11" TextTrimming="CharacterEllipsis"
+                           FontFamily="{StaticResource JetBrainsMonoFontFamily}"
+                           FontSize="{x:Bind Message.CardCodeFontSize, Mode=OneWay}"
+                           TextTrimming="CharacterEllipsis"
                            Foreground="{ThemeResource TextTertiaryBrush}"
                            ToolTipService.ToolTip="{x:Bind Message.AskUserTargetPath, Mode=OneWay}"
                            AutomationProperties.Name="{x:Bind Message.AskUserTargetPath, Mode=OneWay}"
                            Visibility="{x:Bind Message.IsFileChangeApproval, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                 <TextBlock Text="{x:Bind Message.AskUserRequirementText, Mode=OneWay}"
                            Style="{StaticResource InteractiveHelperTextStyle}"
+                           FontSize="{x:Bind Message.CardCaptionFontSize, Mode=OneWay}"
                            Visibility="{x:Bind Message.IsAwaitingResponse, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
 
                 <ItemsRepeater ItemsSource="{x:Bind Message.Attachments, Mode=OneWay}"
@@ -44,7 +70,8 @@
                         <DataTemplate x:DataType="models:ChatAttachment">
                             <StackPanel Spacing="5" Margin="0,0,0,4"
                                         Visibility="{x:Bind IsImage, Converter={StaticResource BoolToVis}}">
-                                <Border x:Uid="AskUserImage" CornerRadius="10"
+                                <Button x:Uid="AskUserImage" CornerRadius="10"
+                                        Padding="0"
                                         MaxWidth="280"
                                         MaxHeight="280"
                                         HorizontalAlignment="Left"
@@ -52,13 +79,13 @@
                                         BorderBrush="{ThemeResource BorderDefaultBrush}"
                                         BorderThickness="1"
                                         Tag="{x:Bind}"
-                                        Tapped="QuestionImage_Tapped"
+                                        Click="QuestionImage_Click"
                                         AutomationProperties.Name="Question image. Open in the default viewer.">
                                     <Image Source="{x:Bind LocalCachePath, Mode=OneWay, Converter={StaticResource PathToImage}}"
                                            Stretch="Uniform"
                                            MaxWidth="280"
                                            MaxHeight="280" />
-                                </Border>
+                                </Button>
                                 <TextBlock Text="{x:Bind Error, Mode=OneWay}"
                                            Style="{StaticResource InteractiveHelperTextStyle}"
                                            Foreground="{ThemeResource DangerBrush}"
@@ -75,20 +102,24 @@
                             <StackPanel Spacing="5" Margin="0,0,0,8">
                                 <Grid ColumnSpacing="8">
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                    <TextBlock Text="{x:Bind Label}" Style="{StaticResource InteractiveFieldLabelStyle}" />
-                                    <TextBlock Grid.Column="1" Text="{x:Bind RequirementLabel}" Style="{StaticResource InteractiveHelperTextStyle}" />
+                                     <TextBlock Text="{x:Bind Label}" Style="{StaticResource InteractiveFieldLabelStyle}" />
+                                     <TextBlock Grid.Column="1" Text="{x:Bind RequirementLabel}"
+                                                Style="{StaticResource InteractiveHelperTextStyle}"
+                                                FontSize="{x:Bind Owner.CardCaptionFontSize, Mode=OneWay}" />
                                 </Grid>
                                 <TextBox Text="{x:Bind Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                          PlaceholderText="{x:Bind Placeholder}"
                                          AcceptsReturn="True" TextWrapping="Wrap"
                                          MinHeight="44" MaxHeight="120"
+                                         FontSize="{x:Bind Owner.CardBodyFontSize, Mode=OneWay}"
                                          IsEnabled="{x:Bind Owner.IsInteractiveEditable, Mode=OneWay}"
                                          Visibility="{x:Bind IsSecret, Converter={StaticResource BoolToVis}, ConverterParameter=invert}"
                                          AutomationProperties.Name="{x:Bind Label}"
                                          KeyDown="AnswerTextBox_KeyDown" />
                                 <PasswordBox x:Uid="AskUserPassword" Tag="{x:Bind}"
                                              PlaceholderText="{x:Bind Placeholder}"
-                                             MinHeight="44"
+                                              MinHeight="44"
+                                              FontSize="{x:Bind Owner.CardBodyFontSize, Mode=OneWay}"
                                              IsEnabled="{x:Bind Owner.IsInteractiveEditable, Mode=OneWay}"
                                              Visibility="{x:Bind IsSecret, Converter={StaticResource BoolToVis}}"
                                              PasswordChanged="SecretPasswordBox_PasswordChanged"
@@ -97,7 +128,8 @@
                                              AutomationProperties.HelpText="Sensitive value. Characters are hidden." />
                                 <TextBlock Text="{x:Bind ValidationError, Mode=OneWay}"
                                            Foreground="{ThemeResource DangerBrush}"
-                                           FontSize="11" TextWrapping="Wrap"
+                                           FontSize="{x:Bind Owner.CardCaptionFontSize, Mode=OneWay}"
+                                           TextWrapping="Wrap"
                                            AutomationProperties.LiveSetting="Assertive"
                                            Visibility="{x:Bind HasValidationError, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                             </StackPanel>
@@ -109,37 +141,42 @@
                               Visibility="{x:Bind Message.HasAskUserOptions, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                     <ItemsRepeater.ItemTemplate>
                         <DataTemplate x:DataType="models:AskUserOptionEntry">
-                            <Button Tag="{x:Bind}" Click="Option_Click"
-                                    MinHeight="40" Margin="0,0,0,6" Padding="10,7"
-                                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
-                                    IsEnabled="{x:Bind Owner.IsInteractiveEditable, Mode=OneWay}"
-                                    Background="{x:Bind IsChecked, Mode=OneWay, Converter={StaticResource BoolToResourceBrush}, ConverterParameter=AttentionSubtleBrush|SurfaceSecondaryBrush}"
-                                    BorderBrush="{x:Bind IsChecked, Mode=OneWay, Converter={StaticResource BoolToResourceBrush}, ConverterParameter=AttentionBrush|BorderDefaultBrush}"
-                                    AutomationProperties.Name="{x:Bind AccessibilityName, Mode=OneWay}">
-                                <Grid ColumnSpacing="10">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="20" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                    <Grid Width="18" Height="18" VerticalAlignment="Center">
-                                        <Ellipse Stroke="{ThemeResource BorderStrongBrush}" StrokeThickness="1.5"
-                                                 Visibility="{x:Bind Owner.AskUserMultiSelect, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
-                                        <Ellipse Width="10" Height="10" Fill="{ThemeResource AttentionBrush}"
-                                                 Visibility="{x:Bind IsChecked, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-                                        <Border CornerRadius="3" BorderBrush="{ThemeResource BorderStrongBrush}" BorderThickness="1.5"
-                                                Visibility="{x:Bind Owner.AskUserMultiSelect, Converter={StaticResource BoolToVis}}" />
-                                    </Grid>
-                                    <TextBlock Grid.Column="1" Text="{x:Bind DisplayText}" TextWrapping="Wrap" VerticalAlignment="Center" />
-                                    <TextBlock Grid.Column="2" Text="&#xE73E;" FontFamily="Segoe Fluent Icons"
-                                               Foreground="{ThemeResource AttentionBrush}"
-                                               AutomationProperties.AccessibilityView="Raw"
-                                               Visibility="{x:Bind IsChecked, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-                                </Grid>
-                            </Button>
+                            <Grid Margin="0,0,0,6">
+                                <RadioButton Tag="{x:Bind}"
+                                             MinHeight="40"
+                                             Padding="8,4"
+                                             FontSize="{x:Bind Owner.CardBodyFontSize, Mode=OneWay}"
+                                             HorizontalAlignment="Stretch"
+                                             HorizontalContentAlignment="Stretch"
+                                             IsChecked="{x:Bind IsChecked, Mode=OneWay}"
+                                             IsEnabled="{x:Bind Owner.IsInteractiveEditable, Mode=OneWay}"
+                                             Click="OptionSelection_Click"
+                                             AutomationProperties.Name="{x:Bind DisplayText}"
+                                             Visibility="{x:Bind Owner.AskUserMultiSelect, Converter={StaticResource BoolToVis}, ConverterParameter=invert}">
+                                    <TextBlock Text="{x:Bind DisplayText}" TextWrapping="Wrap" />
+                                </RadioButton>
+                                <CheckBox Tag="{x:Bind}"
+                                          MinHeight="40"
+                                          Padding="8,4"
+                                          FontSize="{x:Bind Owner.CardBodyFontSize, Mode=OneWay}"
+                                          HorizontalAlignment="Stretch"
+                                          HorizontalContentAlignment="Stretch"
+                                          IsChecked="{x:Bind IsChecked, Mode=OneWay}"
+                                          IsEnabled="{x:Bind Owner.IsInteractiveEditable, Mode=OneWay}"
+                                          Click="OptionSelection_Click"
+                                          AutomationProperties.Name="{x:Bind DisplayText}"
+                                          Visibility="{x:Bind Owner.AskUserMultiSelect, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="{x:Bind DisplayText}" TextWrapping="Wrap" />
+                                </CheckBox>
+                            </Grid>
                         </DataTemplate>
                     </ItemsRepeater.ItemTemplate>
                 </ItemsRepeater>
 
                 <Grid Visibility="{x:Bind Message.ShowAskUserSelectionSummary, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                     <TextBlock Text="{x:Bind Message.AskUserSelectionSummary, Mode=OneWay}"
-                               Style="{StaticResource InteractiveHelperTextStyle}" />
+                               Style="{StaticResource InteractiveHelperTextStyle}"
+                               FontSize="{x:Bind Message.CardCaptionFontSize, Mode=OneWay}" />
                 </Grid>
 
                 <StackPanel Spacing="5"
@@ -149,40 +186,50 @@
                              x:Uid="AskUserOptionalAnswer" PlaceholderText="Add an optional answer or context…"
                              AcceptsReturn="True" TextWrapping="Wrap"
                              MinHeight="52" MaxHeight="112"
+                             FontSize="{x:Bind Message.CardBodyFontSize, Mode=OneWay}"
                              IsEnabled="{x:Bind Message.IsInteractiveEditable, Mode=OneWay}"
                              KeyDown="AnswerTextBox_KeyDown" />
                 </StackPanel>
 
                 <StackPanel Spacing="3" Visibility="{x:Bind Message.ShowInteractiveError, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                     <TextBlock Text="{x:Bind Message.InteractiveStateDescription, Mode=OneWay}"
-                               Style="{StaticResource InteractiveHelperTextStyle}" />
+                               Style="{StaticResource InteractiveHelperTextStyle}"
+                               FontSize="{x:Bind Message.CardCaptionFontSize, Mode=OneWay}" />
                     <TextBlock Text="{x:Bind Message.InteractiveErrorText, Mode=OneWay}"
-                               FontSize="11" TextWrapping="Wrap"
+                               FontSize="{x:Bind Message.CardCaptionFontSize, Mode=OneWay}"
+                               TextWrapping="Wrap"
                                Foreground="{ThemeResource DangerBrush}"
                                AutomationProperties.LiveSetting="Assertive" />
                 </StackPanel>
             </StackPanel>
         </local:InteractiveCard.CardBody>
         <local:InteractiveCard.CardFooter>
-            <Grid Padding="12,10" ColumnSpacing="8">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+            <StackPanel x:Name="AskFooterLayout" Padding="12,10" Spacing="8">
                 <TextBlock Text="{x:Bind Message.InteractiveStateDescription, Mode=OneWay}"
-                           Style="{StaticResource InteractiveHelperTextStyle}" VerticalAlignment="Center" />
-                <Button Grid.Column="1" x:Uid="AskUserSkip" Content="Skip" Style="{StaticResource InteractiveCardTertiaryButtonStyle}"
-                        Visibility="{x:Bind Message.ShowInteractiveActions, Mode=OneWay, Converter={StaticResource BoolToVis}}"
-                        IsEnabled="{x:Bind Message.IsInteractiveEditable, Mode=OneWay}"
-                        Click="Skip_Click" AutomationProperties.Name="Skip this question" />
-                <Button x:Uid="AskUserSubmit" Grid.Column="2" Style="{StaticResource InteractiveCardPrimaryButtonStyle}"
-                        Visibility="{x:Bind Message.ShowInteractiveActions, Mode=OneWay, Converter={StaticResource BoolToVis}}"
-                        IsEnabled="{x:Bind Message.CanSubmitAskUser, Mode=OneWay}"
-                        Click="Submit_Click" AutomationProperties.Name="Submit answer">
-                    <StackPanel Orientation="Horizontal" Spacing="7">
-                        <ProgressRing Width="14" Height="14" IsActive="{x:Bind Message.IsInteractiveSubmitting, Mode=OneWay}"
-                                      Visibility="{x:Bind Message.IsInteractiveSubmitting, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-                        <TextBlock Text="{x:Bind Message.AskUserSubmitLabel, Mode=OneWay}" />
-                    </StackPanel>
-                </Button>
-            </Grid>
+                           Style="{StaticResource InteractiveHelperTextStyle}"
+                           FontSize="{x:Bind Message.CardCaptionFontSize, Mode=OneWay}"
+                           VerticalAlignment="Center" />
+                <StackPanel x:Name="AskFooterActions"
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Right"
+                            Spacing="8">
+                    <Button x:Name="AskSkip" x:Uid="AskUserSkip" Content="Skip" Style="{StaticResource InteractiveCardTertiaryButtonStyle}"
+                            Visibility="{x:Bind Message.ShowInteractiveActions, Mode=OneWay, Converter={StaticResource BoolToVis}}"
+                            IsEnabled="{x:Bind Message.IsInteractiveEditable, Mode=OneWay}"
+                            Click="Skip_Click" AutomationProperties.Name="Skip this question" />
+                    <Button x:Name="AskSubmit" x:Uid="AskUserSubmit" Style="{StaticResource InteractiveCardPrimaryButtonStyle}"
+                            Visibility="{x:Bind Message.ShowInteractiveActions, Mode=OneWay, Converter={StaticResource BoolToVis}}"
+                            IsEnabled="{x:Bind Message.CanSubmitAskUser, Mode=OneWay}"
+                            Click="Submit_Click" AutomationProperties.Name="Submit answer">
+                        <StackPanel Orientation="Horizontal" Spacing="7">
+                            <ProgressRing Width="14" Height="14" IsActive="{x:Bind Message.IsInteractiveSubmitting, Mode=OneWay}"
+                                          Visibility="{x:Bind Message.IsInteractiveSubmitting, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                            <TextBlock Text="{x:Bind Message.AskUserSubmitLabel, Mode=OneWay}" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </StackPanel>
         </local:InteractiveCard.CardFooter>
-    </local:InteractiveCard>
+        </local:InteractiveCard>
+    </Grid>
 </UserControl>

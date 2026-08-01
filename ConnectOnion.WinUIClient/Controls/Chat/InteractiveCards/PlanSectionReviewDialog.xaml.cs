@@ -16,9 +16,32 @@ public sealed partial class PlanSectionReviewDialog : ContentDialog
             PlanReviewSections.Parse(markdown)
                 .Select(section => new PlanReviewSectionItem(section.Heading, section.Markdown)));
         InitializeComponent();
+        Opened += OnOpened;
+        Closed += OnClosed;
     }
 
     public ObservableCollection<PlanReviewSectionItem> Sections { get; }
+
+    private void OnOpened(ContentDialog sender, ContentDialogOpenedEventArgs args)
+    {
+        ApplyResponsiveSize();
+        if (XamlRoot is not null) XamlRoot.Changed += XamlRoot_Changed;
+    }
+
+    private void OnClosed(ContentDialog sender, ContentDialogClosedEventArgs args)
+    {
+        if (XamlRoot is not null) XamlRoot.Changed -= XamlRoot_Changed;
+    }
+
+    private void XamlRoot_Changed(XamlRoot sender, XamlRootChangedEventArgs args)
+        => ApplyResponsiveSize();
+
+    private void ApplyResponsiveSize()
+    {
+        if (XamlRoot is not { } root) return;
+        ContentGrid.Width = Math.Clamp(root.Size.Width - 96, 320, 620);
+        ContentGrid.Height = Math.Clamp(root.Size.Height - 180, 240, 620);
+    }
 
     public string BuildFeedback()
     {

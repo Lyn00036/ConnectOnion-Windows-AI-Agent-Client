@@ -24,7 +24,7 @@ public static class ToolActivityMigration
             if (!source[i].IsToolEvent)
             {
                 var message = source[i++];
-                NormalizeLoadedActivity(message);
+                NormalizeLoadedMessage(message);
                 upgraded.Add(message);
                 continue;
             }
@@ -82,8 +82,12 @@ public static class ToolActivityMigration
     /// stale state through the same roll-up used by a normally completed turn so history cannot
     /// advertise an approval the user can no longer answer.
     /// </summary>
-    private static void NormalizeLoadedActivity(ChatMessage message)
+    private static void NormalizeLoadedMessage(ChatMessage message)
     {
+        // ConversationCache bypasses SQLite deserialization, so apply the same historical-card
+        // presentation policy here as RowToMessage does for database-backed restores.
+        if (message.IsPlanReviewEvent) message.IsInteractiveCardExpanded = false;
+
         if (!message.IsToolActivityEvent || message.ToolActivity is not { } activity) return;
 
         // Approval is live-only. Clear defensively as well as relying on JsonIgnore, because an

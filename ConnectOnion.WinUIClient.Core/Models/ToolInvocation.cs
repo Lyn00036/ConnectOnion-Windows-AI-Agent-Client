@@ -55,6 +55,59 @@ public sealed record ToolInvocation(
     /// elements. One string rather than two adjacent <c>Run</c>s because XAML collapses the
     /// whitespace between inlines and the command renders as <c>$rm</c>.</summary>
     public string DisplayText => Prefix.Length == 0 ? Text : $"{Prefix} {Text}";
+
+    /// <summary>Longest single-line preview kept for the collapsed row. Past this the row is
+    /// already ellipsized on every realistic width, and the difference is only how much text
+    /// <c>TextBlock</c> has to measure — which matters when an argument is a whole document.</summary>
+    private const int SingleLinePreviewLength = 300;
+
+    /// <summary>
+    /// <see cref="Text"/> flattened to one line, for the collapsed step row.
+    ///
+    /// <para>The row is a fixed one-scan-height slot and its <c>TextBlock</c> declares
+    /// <c>TextWrapping="NoWrap"</c> — but NoWrap only suppresses <i>automatic</i> wrapping. A
+    /// literal newline in the value still breaks the line, so a tool whose argument is a whole
+    /// markdown document (<c>write_plan</c> hands over the entire plan) unfolded across the
+    /// transcript the moment its step was <b>collapsed</b>, which is the only state that shows
+    /// this row. Ellipsizing cannot help either: it applies per line.</para>
+    ///
+    /// <para>Only the collapsed row uses this. <see cref="Text"/> and <see cref="DisplayText"/>
+    /// stay verbatim for the expanded block, where the full value is the point.</para>
+    /// </summary>
+    public string SingleLineText => Flatten(Text);
+
+    private static string Flatten(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return "";
+
+        var builder = new System.Text.StringBuilder(
+            Math.Min(value.Length, SingleLinePreviewLength));
+        var pendingSpace = false;
+        foreach (var ch in value)
+        {
+            if (char.IsWhiteSpace(ch))
+            {
+                // Collapse any run of whitespace — including the newlines that caused this — into
+                // the single space that separates the tokens around it.
+                pendingSpace = builder.Length > 0;
+                continue;
+            }
+
+            if (pendingSpace)
+            {
+                if (builder.Length >= SingleLinePreviewLength) break;
+                builder.Append(' ');
+                pendingSpace = false;
+            }
+
+            if (builder.Length >= SingleLinePreviewLength) break;
+            builder.Append(ch);
+        }
+
+        // The ellipsis is only added when text was actually dropped, so a value that merely had
+        // its newlines collapsed does not claim to be truncated.
+        return builder.Length >= SingleLinePreviewLength ? builder.Append('…').ToString() : builder.ToString();
+    }
 }
 
 /// <summary>
@@ -157,6 +210,11 @@ public static class ToolInvocations
     private static readonly HashSet<string> MarkdownResultTools = new(StringComparer.OrdinalIgnoreCase)
     {
         "load_guide", "read_guide", "get_guide",
+        // Plan mode's writer hands back the plan it just wrote — a markdown document with
+        // headings, tables and rules, which the log block rendered as literal '#', '|' and '---'.
+        // Listed by exact name rather than by a "plan" keyword, because `exit_plan_and_implement`
+        // and friends also carry that word and their results really are status reports.
+        "write_plan", "update_plan",
     };
 
     /// <summary>Whether this tool's result should render as markdown instead of as a monospace log.</summary>

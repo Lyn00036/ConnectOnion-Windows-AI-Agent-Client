@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Models;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
@@ -25,8 +26,21 @@ public sealed partial class ChatPage
     private int _currentFindIndex = -1;
     private string _searchQuery = "";
     public event EventHandler? FindStateChanged;
-    public string FindStatusText { get; private set; } = "0 / 0 results";
+    public string FindStatusText { get; private set; } = NoMatchesText();
     public bool HasFindMatches => _findMatches.Count > 0;
+
+    /// <summary>The find counter's empty and populated forms.
+    /// <para>These are the counterpart of the <c>FindCounter.Text</c> resource the overlay's
+    /// TextBlock carries as its initial value — that <c>x:Uid</c> is resolved once at parse
+    /// time, so every subsequent update comes from here and has to be localized on its own.
+    /// The count is not a bare concatenation either: <see cref="LocalizedStrings.Format"/>
+    /// runs it through <c>CurrentCulture</c>, and a translation is free to reorder the two
+    /// placeholders or drop the separator entirely.</para></summary>
+    private static string NoMatchesText()
+        => LocalizedStrings.Get("ChatFindNoMatches", "0 / 0 results");
+
+    private static string MatchCounterText(int position, int total)
+        => LocalizedStrings.Format("ChatFindMatchCounter", "{0} / {1} results", position, total);
 
     public void OpenFind()
     {
@@ -38,7 +52,7 @@ public sealed partial class ChatPage
         _findDebounceTimer.Stop();
         _searchQuery = "";
         ClearFindHighlights();
-        FindStatusText = "0 / 0 results";
+        FindStatusText = NoMatchesText();
         UpdateFindButtons();
         MessageList.Focus(FocusState.Programmatic);
     }
@@ -92,7 +106,7 @@ public sealed partial class ChatPage
         {
             ClearFindHighlights();
             _currentFindIndex = -1;
-            FindStatusText = "0 / 0 results";
+            FindStatusText = NoMatchesText();
             UpdateFindButtons();
             return;
         }
@@ -180,8 +194,8 @@ public sealed partial class ChatPage
         }
 
         FindStatusText = _findMatches.Count == 0
-            ? "0 / 0 results"
-            : $"{_currentFindIndex + 1} / {_findMatches.Count} results";
+            ? NoMatchesText()
+            : MatchCounterText(_currentFindIndex + 1, _findMatches.Count);
         UpdateFindButtons();
     }
 

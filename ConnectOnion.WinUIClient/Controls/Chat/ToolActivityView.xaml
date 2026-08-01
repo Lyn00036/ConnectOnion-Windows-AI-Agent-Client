@@ -19,7 +19,7 @@
                BasedOn="{StaticResource TextActionButtonStyle}">
             <Setter Property="CornerRadius" Value="6" />
             <Setter Property="Padding" Value="8,3" />
-            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="MinHeight" Value="40" />
             <Setter Property="FontSize" Value="11" />
         </Style>
     </UserControl.Resources>
@@ -27,6 +27,31 @@
     <Grid MaxWidth="{x:Bind Activity.PresentationMaxWidth, Mode=OneWay}"
           HorizontalAlignment="Stretch"
           Visibility="{x:Bind Activity.IsVisible, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup x:Name="WidthStates">
+                <VisualState x:Name="Narrow">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="0" />
+                    </VisualState.StateTriggers>
+                    <VisualState.Setters>
+                        <Setter Target="ApprovalAuxActions.Orientation" Value="Vertical" />
+                        <Setter Target="ApprovalAuxActions.HorizontalAlignment" Value="Stretch" />
+                        <Setter Target="ApprovalDecisionActions.Orientation" Value="Vertical" />
+                        <Setter Target="ApprovalDecisionActions.HorizontalAlignment" Value="Stretch" />
+                        <Setter Target="ExplainWhyButton.HorizontalAlignment" Value="Stretch" />
+                        <Setter Target="StopTaskButton.HorizontalAlignment" Value="Stretch" />
+                        <Setter Target="DeclineButton.HorizontalAlignment" Value="Stretch" />
+                        <Setter Target="AllowSessionButton.HorizontalAlignment" Value="Stretch" />
+                        <Setter Target="AllowOnceButton.HorizontalAlignment" Value="Stretch" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="Wide">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="1000" />
+                    </VisualState.StateTriggers>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
         <Grid.ChildrenTransitions>
             <TransitionCollection>
                 <EntranceThemeTransition />
@@ -53,8 +78,8 @@
              the fainter BorderSubtle precisely because there is no fill behind it now: in dark mode
              a subtle stroke on an identical-coloured background would vanish, and the card with it. -->
         <Border CornerRadius="8"
-                Background="{ThemeResource SurfaceSecondaryBrush}"
-                BorderBrush="{ThemeResource BorderSubtleBrush}"
+                Background="Transparent"
+                BorderBrush="{ThemeResource BorderDefaultBrush}"
                 BorderThickness="1"
                 Padding="{x:Bind Activity.ShowCardChrome, Mode=OneWay, Converter={StaticResource BoolToThickness}, ConverterParameter='10,6,10,6|8,4,8,2'}">
         <!-- No Spacing on this panel: StackPanel reserves it between child *slots*, including
@@ -66,7 +91,7 @@
             <!-- Header row. Gone when the turn ran exactly one tool: the step below says
                  everything this row would have summarised, and the disclosure it carries has
                  nothing left to disclose. -->
-            <Button MinHeight="30"
+            <Button MinHeight="40"
                     Visibility="{x:Bind Activity.ShowCardChrome, Mode=OneWay, Converter={StaticResource BoolToVis}}"
                     Padding="0,2"
                     Background="Transparent"
@@ -98,7 +123,7 @@
                     <TextBlock x:Name="HeaderTitle"
                                Grid.Column="1"
                                Text="{x:Bind Activity.HeaderTitle, Mode=OneWay, Converter={StaticResource ToolActivityText}}"
-                               FontSize="13"
+                               FontSize="{x:Bind FontSize, Mode=OneWay}"
                                FontWeight="SemiBold"
                                Foreground="{ThemeResource TextSecondaryBrush}"
                                VerticalAlignment="Center" />
@@ -109,7 +134,7 @@
                             Background="{ThemeResource AttentionSubtleBrush}"
                             Visibility="{x:Bind Activity.IsAwaitingApproval, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                             <TextBlock x:Uid="ToolApprovalRequired" Text="Approval required"
-                                   FontSize="11"
+                                   FontSize="{x:Bind FontSize, Mode=OneWay}"
                                    FontWeight="SemiBold"
                                    Foreground="{ThemeResource AttentionBrush}"
                                    AutomationProperties.Name="Approval required" />
@@ -118,8 +143,8 @@
                     <TextBlock Grid.Column="4"
                                Text="{x:Bind Activity.Summary, Mode=OneWay, Converter={StaticResource ToolActivityText}}"
                                MaxWidth="500"
-                               FontSize="12"
-                               Foreground="{x:Bind Activity.Status, Mode=OneWay, Converter={StaticResource ToolStatusToBrush}, ConverterParameter='danger-only:TextTertiaryBrush'}"
+                               FontSize="{x:Bind FontSize, Mode=OneWay}"
+                               Foreground="{x:Bind Activity.Status, Mode=OneWay, Converter={StaticResource ToolStatusToBrush}, ConverterParameter='danger-only:TextSecondaryBrush'}"
                                TextTrimming="CharacterEllipsis"
                                VerticalAlignment="Center"
                                Visibility="{x:Bind Activity.HasApproval, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
@@ -147,7 +172,7 @@
             <TextBlock Text="{x:Bind Activity.LastErrorMessage, Mode=OneWay}"
                        Visibility="{x:Bind Activity.ShowCollapsedError, Mode=OneWay, Converter={StaticResource BoolToVis}}"
                        Margin="0,1,0,3"
-                       FontSize="11"
+                       FontSize="{x:Bind FontSize, Mode=OneWay}"
                        Foreground="{ThemeResource DangerBrush}"
                        TextTrimming="CharacterEllipsis"
                        IsTextSelectionEnabled="True" />
@@ -282,11 +307,9 @@
                                             Click="Step_Click"
                                             Tag="{x:Bind}"
                                             AutomationProperties.Name="{x:Bind AccessibilityName, Mode=OneWay}">
-                                        <!-- Two columns: name/target, then duration. A step used to
-                                             carry a hover-revealed chevron in a third column; the
-                                             row is still click-to-expand, and hover still lifts
-                                             the name to the primary foreground, but the icon
-                                             itself is gone. -->
+                                        <!-- Two columns: name/target, then duration. Individual
+                                             tool rows stay icon-free; the enclosing multi-step
+                                             card owns the disclosure affordance. -->
                                         <Grid ColumnSpacing="6">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
@@ -480,7 +503,10 @@
                                                 Visibility="{x:Bind RendersDetailAsLog, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                                             <ScrollViewer MaxHeight="{x:Bind LogMaxHeight, Mode=OneWay}"
                                                           VerticalScrollBarVisibility="Auto"
-                                                          HorizontalScrollBarVisibility="Disabled">
+                                                          HorizontalScrollBarVisibility="Disabled"
+                                                          HorizontalScrollMode="Disabled"
+                                                          IsVerticalScrollChainingEnabled="True"
+                                                          IsTabStop="False">
                                                 <controls:ToolResultTextBlock
                                                     Text="{x:Bind DetailText, Mode=OneWay}"
                                                     Tag="{x:Bind}"
@@ -504,7 +530,10 @@
                                                 Visibility="{x:Bind RendersDetailAsMarkdown, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                                             <ScrollViewer MaxHeight="{x:Bind LogMaxHeight, Mode=OneWay}"
                                                           VerticalScrollBarVisibility="Auto"
-                                                          HorizontalScrollBarVisibility="Disabled">
+                                                          HorizontalScrollBarVisibility="Disabled"
+                                                          HorizontalScrollMode="Disabled"
+                                                          IsVerticalScrollChainingEnabled="True"
+                                                          IsTabStop="False">
                                                 <controls:MarkdownTextBlock
                                                     Markdown="{x:Bind DetailText, Mode=OneWay}"
                                                     Tag="{x:Bind}"
@@ -554,7 +583,7 @@
                              so the one word meaning something broke is the one that stands out. -->
                         <TextBlock Grid.Column="1"
                                    Text="{x:Bind Activity.CompletionLabel, Mode=OneWay, Converter={StaticResource ToolActivityText}}"
-                                   FontSize="13"
+                                   FontSize="{x:Bind FontSize, Mode=OneWay}"
                                    VerticalAlignment="Center"
                                    Foreground="{x:Bind Activity.Status, Mode=OneWay, Converter={StaticResource ToolStatusToBrush}, ConverterParameter=danger-only}" />
                     </Grid>
@@ -589,10 +618,10 @@
                                 Visibility="{x:Bind Activity.Approval.ShowApprovalRequestBody, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                         <StackPanel Spacing="3">
                             <TextBlock Text="{x:Bind Activity.Approval.ApprovalPromptTitle, Mode=OneWay}"
-                                       FontSize="14" FontWeight="SemiBold"
+                                       FontSize="{x:Bind FontSize, Mode=OneWay}" FontWeight="SemiBold"
                                        Foreground="{ThemeResource TextPrimaryBrush}" TextWrapping="Wrap" />
                             <TextBlock Text="{x:Bind Activity.Approval.ApprovalPromptSubtitle, Mode=OneWay}"
-                                       FontSize="12" Foreground="{ThemeResource TextSecondaryBrush}"
+                                       FontSize="{x:Bind FontSize, Mode=OneWay}" Foreground="{ThemeResource TextSecondaryBrush}"
                                        TextWrapping="Wrap" />
                         </StackPanel>
 
@@ -676,7 +705,10 @@
                                     Background="{ThemeResource CodeBackgroundBrush}"
                                     BorderBrush="{ThemeResource BorderSubtleBrush}" BorderThickness="1">
                                 <ScrollViewer MaxHeight="180" VerticalScrollBarVisibility="Auto"
-                                              HorizontalScrollBarVisibility="Disabled">
+                                              HorizontalScrollBarVisibility="Disabled"
+                                              HorizontalScrollMode="Disabled"
+                                              IsVerticalScrollChainingEnabled="True"
+                                              IsTabStop="False">
                                     <controls:ToolResultTextBlock Text="{x:Bind Activity.Approval.EventArgs, Mode=OneWay}" />
                                 </ScrollViewer>
                             </Border>
@@ -719,28 +751,28 @@
                     </Border>
 
                     <StackPanel Margin="0,12,0,0"
-                                Spacing="8"
+                                 Spacing="8"
                            Visibility="{x:Bind Activity.Approval.IsApprovalWaiting, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                        <StackPanel Orientation="Horizontal" Spacing="4"
-                                    VerticalAlignment="Center">
-                            <Button x:Uid="ToolExplainWhy" Content="Explain why" Style="{StaticResource LogToolbarButtonStyle}"
-                                    MinHeight="34"
+                        <StackPanel x:Name="ApprovalAuxActions" Orientation="Horizontal" Spacing="4"
+                                     VerticalAlignment="Center">
+                            <Button x:Name="ExplainWhyButton" x:Uid="ToolExplainWhy" Content="Explain why" Style="{StaticResource LogToolbarButtonStyle}"
+                                    MinHeight="40"
                                     Command="{x:Bind Activity.Approval.ExplainCommand, Mode=OneWay}"
                                     AutomationProperties.Name="Ask the agent to explain why this operation is required" />
-                            <Button x:Uid="ToolStopTask" Content="Stop entire task" Style="{StaticResource LogToolbarButtonStyle}"
-                                    MinHeight="34" Foreground="{ThemeResource DangerBrush}"
+                            <Button x:Name="StopTaskButton" x:Uid="ToolStopTask" Content="Stop entire task" Style="{StaticResource LogToolbarButtonStyle}"
+                                    MinHeight="40" Foreground="{ThemeResource DangerBrush}"
                                     Command="{x:Bind Activity.Approval.StopCommand, Mode=OneWay}"
                                     AutomationProperties.Name="{x:Bind Activity.Approval.ApprovalStopName, Mode=OneWay}"
                                     ToolTipService.ToolTip="This stops the entire agent task, not only this command." />
                         </StackPanel>
 
-                        <StackPanel Orientation="Horizontal" Spacing="8"
-                                    HorizontalAlignment="Right">
-                            <Button x:Uid="ToolDecline" Content="Decline" MinHeight="36" Padding="14,0"
+                        <StackPanel x:Name="ApprovalDecisionActions" Orientation="Horizontal" Spacing="8"
+                                     HorizontalAlignment="Right">
+                            <Button x:Name="DeclineButton" x:Uid="ToolDecline" Content="Decline" MinHeight="40" Padding="14,0"
                                     Command="{x:Bind Activity.Approval.RejectCommand, Mode=OneWay}"
                                     AutomationProperties.Name="Decline this command"
                                     ToolTipService.ToolTip="Decline only this command; the agent may continue." />
-                            <Button x:Uid="ToolActivityAllowSession" MinHeight="36" Padding="12,0"
+                            <Button x:Name="AllowSessionButton" x:Uid="ToolActivityAllowSession" MinHeight="40" Padding="12,0"
                                     Command="{x:Bind Activity.Approval.TrustSessionCommand, Mode=OneWay}"
                                     AutomationProperties.Name="{x:Bind Activity.Approval.ApprovalTrustName, Mode=OneWay}"
                                     ToolTipService.ToolTip="Allow this tool for the current session only.">
@@ -750,7 +782,7 @@
                                     <TextBlock x:Uid="ToolAllowSession" Text="Allow for session" />
                                 </StackPanel>
                             </Button>
-                            <Button MinHeight="36" Padding="14,0"
+                            <Button x:Name="AllowOnceButton" MinHeight="40" Padding="14,0"
                                     Style="{StaticResource AccentButtonStyle}"
                                     Command="{x:Bind Activity.Approval.AllowOnceCommand, Mode=OneWay}"
                                     AutomationProperties.Name="{x:Bind Activity.Approval.ApprovalAllowOnceName, Mode=OneWay}">

@@ -116,6 +116,8 @@ internal static class DiffPathFormatter
 /// body is a diff.</summary>
 public sealed class DiffPreviewModel
 {
+    public const int MaxPreviewLines = 240;
+
     private static readonly Regex Hunk = new(
         "^@@ -(?<old>\\d+)(?:,(?<oldCount>\\d+))? \\+(?<new>\\d+)(?:,(?<newCount>\\d+))? @@",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -123,6 +125,10 @@ public sealed class DiffPreviewModel
     public ObservableCollection<DiffFileModel> Files { get; } = new();
     public string RawText { get; private set; } = "";
     public bool IsUnifiedDiff { get; private set; }
+    public int OmittedLineCount { get; private set; }
+    public bool IsPreviewTruncated => OmittedLineCount > 0;
+    public string TruncationLabel => Common.CoreStrings.Format(
+        "DiffPreviewTruncated", "Preview shortened; {0} additional lines are available when copied.", OmittedLineCount);
     public int Additions => Files.Sum(file => file.Additions);
     public int Deletions => Files.Sum(file => file.Deletions);
     public string FileSummary => Files.Count == 1 ? Files[0].FileName : $"{Files.Count} files changed";
@@ -140,6 +146,7 @@ public sealed class DiffPreviewModel
 
         var current = NewFile(path);
         model.Files.Add(current);
+        var currentHasContent = false;
         var oldLine = 0;
         var newLine = isNewFile ? 1 : 0;
 
@@ -149,7 +156,7 @@ public sealed class DiffPreviewModel
             {
                 var nextPath = raw.Split(' ', StringSplitOptions.RemoveEmptyEntries).LastOrDefault() ?? path;
                 nextPath = TrimDiffPrefix(nextPath);
-                if (current.Lines.Count == 0 && current.Additions == 0 && current.Deletions == 0)
+                if (!currentHasContent && current.Additions == 0 && current.Deletions == 0)
                 {
                     current.Path = nextPath;
                     current.FullPath = nextPath;
@@ -158,8 +165,10 @@ public sealed class DiffPreviewModel
                 {
                     current = NewFile(nextPath);
                     model.Files.Add(current);
+                    currentHasContent = false;
                 }
-                current.Lines.Add(Line(raw, DiffLineKind.FileHeader));
+                currentHasContent = true;
+                model.AddPreviewLine(current, Line(raw, DiffLineKind.FileHeader));
                 continue;
             }
 
@@ -168,14 +177,16 @@ public sealed class DiffPreviewModel
             {
                 oldLine = int.Parse(hunk.Groups["old"].Value, System.Globalization.CultureInfo.InvariantCulture);
                 newLine = int.Parse(hunk.Groups["new"].Value, System.Globalization.CultureInfo.InvariantCulture);
-                current.Lines.Add(Line(raw, DiffLineKind.Hunk));
+                currentHasContent = true;
+                model.AddPreviewLine(current, Line(raw, DiffLineKind.Hunk));
                 continue;
             }
 
             if (!model.IsUnifiedDiff || raw.StartsWith("--- ", StringComparison.Ordinal)
                 || raw.StartsWith("+++ ", StringComparison.Ordinal))
             {
-                current.Lines.Add(Line(raw,
+                currentHasContent = true;
+                model.AddPreviewLine(current, Line(raw,
                     model.IsUnifiedDiff && (raw.StartsWith("--- ", StringComparison.Ordinal)
                         || raw.StartsWith("+++ ", StringComparison.Ordinal))
                         ? DiffLineKind.FileHeader : DiffLineKind.Context));
@@ -184,17 +195,20 @@ public sealed class DiffPreviewModel
 
             if (raw.StartsWith('+'))
             {
-                current.Lines.Add(Line(raw, DiffLineKind.Addition, null, newLine++));
+                currentHasContent = true;
+                model.AddPreviewLine(current, Line(raw, DiffLineKind.Addition, null, newLine++));
                 current.Additions++;
             }
             else if (raw.StartsWith('-'))
             {
-                current.Lines.Add(Line(raw, DiffLineKind.Deletion, oldLine++, null));
+                currentHasContent = true;
+                model.AddPreviewLine(current, Line(raw, DiffLineKind.Deletion, oldLine++, null));
                 current.Deletions++;
             }
             else
             {
-                current.Lines.Add(Line(raw, DiffLineKind.Context, oldLine++, newLine++));
+                currentHasContent = true;
+                model.AddPreviewLine(current, Line(raw, DiffLineKind.Context, oldLine++, newLine++));
             }
         }
 
@@ -204,12 +218,29 @@ public sealed class DiffPreviewModel
         return model;
     }
 
+    private int _previewLineCount;
+
+    private void AddPreviewLine(DiffFileModel file, DiffLineModel line)
+    {
+        if (_previewLineCount < MaxPreviewLines)
+        {
+            file.Lines.Add(line);
+            _previewLineCount++;
+        }
+        else
+        {
+            OmittedLineCount++;
+        }
+    }
+
     private static IEnumerable<string> Normalize(string? text)
         => (text ?? "").Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
 
     private static DiffFileModel NewFile(string path)
     {
-        var clean = TrimDiffPrefix(string.IsNullOrWhiteSpace(path) ? "Proposed changes" : path);
+        var clean = TrimDiffPrefix(string.IsNullOrWhiteSpace(path)
+            ? Common.CoreStrings.Get("DiffUnnamedFile", "Proposed changes")
+            : path);
         return new DiffFileModel { Path = clean, FullPath = clean };
     }
 

@@ -76,4 +76,26 @@ public sealed class InteractiveCardPresentationTests
         Assert.False(message.IsInteractiveEditable);
         Assert.Equal("Submitting…", message.AskUserSubmitLabel);
     }
+
+    [Fact]
+    public void InteractiveTypography_FollowsMessageSizePreference()
+    {
+        var message = new ChatMessage { MessageFontSize = 18 };
+
+        Assert.Equal(18, message.CardTitleFontSize);
+        Assert.Equal(18, message.CardBodyFontSize);
+        Assert.Equal(16, message.CardCaptionFontSize);
+        Assert.Equal(17, message.CardCodeFontSize);
+    }
+
+    [Fact]
+    public void LongPlan_UsesBoundedTranscriptPreviewWithoutChangingFullPlan()
+    {
+        var fullPlan = string.Join('\n', Enumerable.Range(1, 40).Select(index => $"{index}. Step {index}"));
+        var message = new ChatMessage { EventDetail = fullPlan };
+
+        Assert.True(message.IsPlanReviewPreviewTruncated);
+        Assert.Equal(24, message.PlanReviewPreview.Split('\n').Length);
+        Assert.Equal(fullPlan, message.EventDetail);
+    }
 }
