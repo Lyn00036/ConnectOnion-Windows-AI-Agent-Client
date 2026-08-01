@@ -40,6 +40,12 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     public ObservableCollection<ShellSessionItem> PinnedSessions { get; } = new();
 
     public event Action<Type, bool>? NavigationRequested;
+    /// <summary>
+    /// Requests a new top-level navigation root after destructive state changes. Unlike an
+    /// ordinary navigation, the shell clears Back/Forward history so an entity-backed page that
+    /// has just become invalid cannot be reopened with the title-bar arrows.
+    /// </summary>
+    public event Action<Type>? NavigationResetRequested;
     public event Action<FrameworkElement>? SettingsRequested;
     public event Action<FrameworkElement>? SessionSearchRequested;
     /// <summary>The sidebar click means "I want the
@@ -357,7 +363,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         // leaves nothing behind — the sidebar used to collect an empty conversation per stray
         // Same path the agent row's "+" takes (ShellSidebar.Events.AddChat_Click), so the sidebar's
         // two entry points into "new chat" behave identically.
-        FocusAgentInSidebar(agent.Id);
+        RevealAgentInSidebar(agent.Id);
         // forceReload because the target may already be the current page: a plain Navigate to the
         // page you are on is a no-op, and the composer would keep whatever was on it.
         RequestNavigation(typeof(AgentDetailPage), forceReload: true);
@@ -394,6 +400,9 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
 
     private void RequestNavigation(Type page, bool forceReload = false)
         => NavigationRequested?.Invoke(page, forceReload);
+
+    private void RequestNavigationReset(Type page)
+        => NavigationResetRequested?.Invoke(page);
 
     private ShellSessionItem CreateShellSessionItem(
         SessionSummary session,
@@ -478,10 +487,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     /// Settings or Home leaves the tree with nothing highlighted rather than pointing at
     /// whichever agent happened to be selected last.</summary>
     private bool IsAgentSelected(string agentId, string? selectedAgentId)
-        => _currentPageType == typeof(AgentDetailPage)
-            || _currentPageType == typeof(SessionsPage)
-            ? agentId == selectedAgentId
-            : false;
+        => _currentPageType == typeof(AgentDetailPage) && agentId == selectedAgentId;
 
     private bool IsSessionSelected(string sessionId, string? activeSessionId)
         => _currentPageType == typeof(ChatPage) && sessionId == activeSessionId;
@@ -490,7 +496,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     private void RememberExpandedAgentsFromUi()
     {
         // An empty tree carries no information — this is the pre-first-refresh case, and
-        // clearing here would wipe a focus another method just set (see FocusAgentInSidebar).
+        // clearing here would wipe an expansion another method just set (see RevealAgentInSidebar).
         if (ShellAgents.Count == 0) return;
 
         _expandedAgentIds.Clear();
@@ -501,25 +507,9 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         _hasExpansionState = true;
     }
 
-    /// <summary>Collapses everything except one agent. Used when navigating *to* an agent, so
-    /// the tree focuses on where the user just went instead of accumulating open branches.
-    /// Deliberately destructive — this is the one place expansion state is overridden rather
-    /// than preserved.</summary>
-    private void FocusAgentInSidebar(string agentId)
-    {
-        _expandedAgentIds.Clear();
-        _expandedAgentIds.Add(agentId);
-        foreach (var agent in ShellAgents)
-        {
-            agent.IsExpanded = agent.Id == agentId;
-        }
-        _hasExpansionState = true;
-        QueueSidebarStateSave();
-    }
-
     /// <summary>Reveals one agent without disturbing any other branches the user has open.
-    /// Pinned conversations use this additive path so the canonical row becomes visible while
-    /// ordinary tree navigation keeps the existing single-agent focus behaviour.</summary>
+    /// Every navigation path uses this additive behavior so selecting an agent, conversation,
+    /// or new-chat entry never discards expansion choices made elsewhere in the tree.</summary>
     private void RevealAgentInSidebar(string agentId)
     {
         _expandedAgentIds.Add(agentId);
@@ -597,13 +587,8 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     }
 
     /// <summary>Opens a conversation, moving agent selection with it (a pinned row can belong to
-    /// an agent other than the current one).</summary>
-    /// <param name="preserveOtherExpandedAgents">True for clicks in the pinned section: reveal
-    /// the conversation's owning agent without collapsing any other open branches. Ordinary
-    /// session clicks still focus the tree onto one agent.</param>
-    private async System.Threading.Tasks.Task SelectSessionAsync(
-        string sessionId,
-        bool preserveOtherExpandedAgents = false)
+    /// an agent other than the current one) while preserving every branch the user has open.</summary>
+    private async System.Threading.Tasks.Task SelectSessionAsync(string sessionId)
     {
         var sessionsState = await AppServices.Sessions.LoadAsync();
         var session = sessionsState.Sessions.FirstOrDefault(s => s.Id == sessionId);
@@ -612,10 +597,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         await AppServices.Sessions.SetActiveSessionAsync(session.Id);
         await AppServices.Agents.SetSelectedAgentAsync(session.AgentId);
 
-        if (preserveOtherExpandedAgents)
-            RevealAgentInSidebar(session.AgentId);
-        else
-            FocusAgentInSidebar(session.AgentId);
+        RevealAgentInSidebar(session.AgentId);
         RequestNavigation(typeof(ChatPage), forceReload: true);
     }
 
@@ -648,7 +630,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         if ((sender as FrameworkElement)?.Tag is string agentId)
         {
             await AppServices.Agents.SetSelectedAgentAsync(agentId);
-            FocusAgentInSidebar(agentId);
+            RevealAgentInSidebar(agentId);
             RequestNavigation(typeof(AgentDetailPage), forceReload: true);
         }
     }

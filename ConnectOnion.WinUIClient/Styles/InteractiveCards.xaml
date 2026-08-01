@@ -5,7 +5,7 @@
     <CornerRadius x:Key="InteractiveCardCornerRadius">10</CornerRadius>
     <Thickness x:Key="InteractiveCardPadding">16</Thickness>
     <x:Double x:Key="InteractiveCardSpacing">12</x:Double>
-    <x:Double x:Key="InteractiveControlMinHeight">36</x:Double>
+    <x:Double x:Key="InteractiveControlMinHeight">40</x:Double>
     <Style x:Key="InteractiveCardTitleStyle" TargetType="TextBlock">
         <Setter Property="FontSize" Value="14" />
         <Setter Property="FontWeight" Value="SemiBold" />
@@ -41,7 +41,7 @@
     </Style>
     <Style x:Key="InteractiveHelperTextStyle" TargetType="TextBlock">
         <Setter Property="FontSize" Value="11" />
-        <Setter Property="Foreground" Value="{ThemeResource TextTertiaryBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource TextSecondaryBrush}" />
         <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
 </ResourceDictionary>

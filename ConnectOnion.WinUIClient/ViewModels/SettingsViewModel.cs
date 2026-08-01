@@ -22,12 +22,14 @@ namespace ConnectOnion.WinUIClient.ViewModels;
 public sealed partial class SettingsViewModel : Common.ObservableObject
 {
     private readonly PreferencesRepository _repo;
+    private readonly TextScaleService _textScale;
     private PreferencesSnapshot _prefs = new();
     /// <summary>False until <see cref="LoadAsync"/> finishes. Gates every save, so the load's
     /// own assignments cannot write the freshly-read values straight back.</summary>
     private bool _loaded;
 
     public ThemeMode Theme => _prefs.Theme;
+    public InterfaceTextSize InterfaceTextSize => _prefs.InterfaceTextSize;
     public MessageFontSize MessageFontSize => _prefs.MessageFontSize;
     public bool EnterToSend => _prefs.EnterToSend;
     public string MicrophoneDeviceId => _prefs.MicrophoneDeviceId;
@@ -37,9 +39,10 @@ public sealed partial class SettingsViewModel : Common.ObservableObject
 
     // -1 default seeded in the ctor (partial-property declarations can't carry an initializer);
     // it fires the hook while _loaded is still false, so it no-ops.
-    public SettingsViewModel(PreferencesRepository preferences)
+    public SettingsViewModel(PreferencesRepository preferences, TextScaleService textScale)
     {
         _repo = preferences;
+        _textScale = textScale;
         SelectedMicIndex = -1;
     }
 
@@ -76,6 +79,7 @@ public sealed partial class SettingsViewModel : Common.ObservableObject
         // Manual notifications: these are computed from _prefs, which was replaced wholesale
         // above, so nothing raised a change for them.
         OnPropertyChanged(nameof(Theme));
+        OnPropertyChanged(nameof(InterfaceTextSize));
         OnPropertyChanged(nameof(MessageFontSize));
         OnPropertyChanged(nameof(EnterToSend));
         OnPropertyChanged(nameof(Microphones));
@@ -103,6 +107,15 @@ public sealed partial class SettingsViewModel : Common.ObservableObject
         // it reloads, so the setting looks broken.
         MessageFontService.Apply(size);
         OnPropertyChanged(nameof(MessageFontSize));
+        await _repo.SaveAsync(_prefs);
+    }
+
+    public async Task SetInterfaceTextSizeAsync(InterfaceTextSize size)
+    {
+        if (!_loaded || _prefs.InterfaceTextSize == size) return;
+        _prefs.InterfaceTextSize = size;
+        _textScale.ApplyInterfaceTextSize(size);
+        OnPropertyChanged(nameof(InterfaceTextSize));
         await _repo.SaveAsync(_prefs);
     }
 

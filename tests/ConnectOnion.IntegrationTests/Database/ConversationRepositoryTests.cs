@@ -273,6 +273,7 @@ public sealed class ConversationRepositoryTests
             Status = EventStatus.Done,
             IsOnboarding = true,
         };
+        Assert.True(expected.IsInteractiveCardExpanded);
         await _repository.UpsertMessagesAsync("event-roundtrip", new[] { expected });
 
         var actual = Assert.Single(await _repository.LoadMessagesAsync("event-roundtrip"));
@@ -291,6 +292,7 @@ public sealed class ConversationRepositoryTests
         Assert.Equal(expected.EventResult, actual.EventResult);
         Assert.Equal(expected.Status, actual.Status);
         Assert.Equal(expected.IsOnboarding, actual.IsOnboarding);
+        Assert.False(actual.IsInteractiveCardExpanded);
     }
 
     [Fact]

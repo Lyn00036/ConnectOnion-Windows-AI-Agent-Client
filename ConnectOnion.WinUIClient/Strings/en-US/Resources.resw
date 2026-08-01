@@ -6,14 +6,13 @@
   <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
   <data name="HomeChooseAgent.Text" xml:space="preserve"><value>Choose an agent</value></data>
   <data name="HomeChooseAgentDescription.Text" xml:space="preserve"><value>Select an agent to start a new conversation</value></data>
-  <data name="SessionsTitle.Text" xml:space="preserve"><value>Sessions</value></data>
-  <data name="SessionsNew.Content" xml:space="preserve"><value>New session</value></data>
-  <data name="SessionsDelete.Content" xml:space="preserve"><value>Delete</value></data>
   <data name="AgentEmptyTitle.Text" xml:space="preserve"><value>No agent selected</value></data>
   <data name="AgentEmptyDescription.Text" xml:space="preserve"><value>Select an agent from the sidebar or add a new one to get started.</value></data>
   <data name="SettingsDescription.Text" xml:space="preserve"><value>Desktop preferences for this app.</value></data>
   <data name="SettingsAppearance.Text" xml:space="preserve"><value>Appearance</value></data>
   <data name="SettingsTheme.Header" xml:space="preserve"><value>Theme</value></data>
+  <data name="SettingsInterfaceTextSize.Header" xml:space="preserve"><value>Interface text size</value></data>
+  <data name="SettingsInterfaceTextSize.Description" xml:space="preserve"><value>Adjust text across navigation, settings, buttons, cards, and dialogs.</value></data>
   <data name="SettingsLanguage.Header" xml:space="preserve"><value>Language</value></data>
   <data name="SettingsLanguage.Description" xml:space="preserve"><value>Choose the language used by ConnectOnion.</value></data>
   <data name="SettingsLanguageSystem.Content" xml:space="preserve"><value>Use system setting</value></data>
@@ -346,9 +345,9 @@
   <data name="AskUserOptionalAnswer.PlaceholderText" xml:space="preserve"><value>Add an optional answer or context…</value></data>
   <data name="AskUserSkip.Content" xml:space="preserve"><value>Skip</value></data>
   <data name="PlanReviewCard.Title" xml:space="preserve"><value>Review execution plan</value></data>
-  <data name="PlanReviewCard.Subtitle" xml:space="preserve"><value>The agent will not execute until you respond.</value></data>
   <data name="PlanReviewMode.Text" xml:space="preserve"><value>Plan mode</value></data>
   <data name="PlanReviewHint.Text" xml:space="preserve"><value>Review scope, ordering, and risks before approving.</value></data>
+  <data name="PlanReviewPreviewTruncated.Text" xml:space="preserve"><value>Preview shortened. Open Review sections to read the complete plan.</value></data>
   <data name="PlanReviewSections.Content" xml:space="preserve"><value>Review sections…</value></data>
   <data name="PlanReviewCopy.Content" xml:space="preserve"><value>Copy plan</value></data>
   <data name="PlanReviewChangeQuestion.Text" xml:space="preserve"><value>What should the agent change?</value></data>
@@ -367,6 +366,8 @@
   <data name="PlanSectionReviewDialog.CloseButtonText" xml:space="preserve"><value>Cancel</value></data>
   <data name="PlanSectionLooksGood.Content" xml:space="preserve"><value>Looks good</value></data>
   <data name="PlanSectionNeedsChanges.Content" xml:space="preserve"><value>Needs changes</value></data>
+  <data name="PlanSectionLooksGoodText.Text" xml:space="preserve"><value>Looks good</value></data>
+  <data name="PlanSectionNeedsChangesText.Text" xml:space="preserve"><value>Needs changes</value></data>
   <data name="PlanSectionFeedback.PlaceholderText" xml:space="preserve"><value>Optional feedback for this section…</value></data>
   <data name="UsageRecordingSince" xml:space="preserve"><value>Recording since {0:d MMM yyyy}</value></data>
   <data name="PresenceOnline" xml:space="preserve"><value>Online</value></data>
@@ -516,6 +517,10 @@
   <data name="MainZoomOut.AutomationProperties.Name" xml:space="preserve"><value>Zoom out</value></data>
   <data name="MainZoomIn.ToolTipService.ToolTip" xml:space="preserve"><value>Zoom in</value></data>
   <data name="MainZoomIn.AutomationProperties.Name" xml:space="preserve"><value>Zoom in</value></data>
+  <data name="ChatOpenImageAttachment.ToolTipService.ToolTip" xml:space="preserve"><value>Open image</value></data>
+  <data name="ChatOpenImageAttachment.AutomationProperties.Name" xml:space="preserve"><value>Open image attachment</value></data>
+  <data name="ChatOpenFileAttachment.ToolTipService.ToolTip" xml:space="preserve"><value>Open file</value></data>
+  <data name="ChatOpenFileAttachment.AutomationProperties.Name" xml:space="preserve"><value>Open file attachment</value></data>
   <data name="ChatSaveAttachment.ToolTipService.ToolTip" xml:space="preserve"><value>Save a copy</value></data>
   <data name="ChatSaveAttachment.AutomationProperties.Name" xml:space="preserve"><value>Save a copy</value></data>
   <data name="ChatRetryFromMessage.ToolTipService.ToolTip" xml:space="preserve"><value>Retry in this conversation</value></data>
@@ -567,8 +572,6 @@
   <data name="DiffCopyPath.Label" xml:space="preserve"><value>Copy path</value></data>
   <data name="DiffCopyPath.ToolTipService.ToolTip" xml:space="preserve"><value>Copy full file path</value></data>
   <data name="DiffCopyPath.AutomationProperties.Name" xml:space="preserve"><value>Copy full file path</value></data>
-  <data name="SessionsNewConversationAgent" xml:space="preserve"><value>New conversations use: {0}</value></data>
-  <data name="SessionsSelectAgent" xml:space="preserve"><value>Select an agent on the Agents page to start a conversation.</value></data>
   <data name="RuntimeComposerStopping" xml:space="preserve"><value>Stopping...</value></data>
   <data name="RuntimeComposerStop" xml:space="preserve"><value>Stop</value></data>
   <data name="FindNoResults" xml:space="preserve"><value>0 / 0 results</value></data>
@@ -702,6 +705,7 @@
   <data name="HomeAddAgentButton.AutomationProperties.Name" xml:space="preserve"><value>Add another agent</value></data>
   <data name="HomeOpeningAgent.AutomationProperties.Name" xml:space="preserve"><value>Opening agent</value></data>
   <data name="SettingsThemeChoice.AutomationProperties.Name" xml:space="preserve"><value>Theme</value></data>
+  <data name="SettingsInterfaceTextSizeChoice.AutomationProperties.Name" xml:space="preserve"><value>Interface text size</value></data>
   <data name="SettingsLanguageChoice.AutomationProperties.Name" xml:space="preserve"><value>Application language</value></data>
   <data name="SettingsCloseBehaviorChoice.AutomationProperties.Name" xml:space="preserve"><value>Window close behavior</value></data>
   <data name="SettingsFontChoice.AutomationProperties.Name" xml:space="preserve"><value>Message text size</value></data>
@@ -724,4 +728,137 @@
   <data name="HomeDocsOpenFailedBody" xml:space="preserve"><value>Visit {0} in your browser.</value></data>
   <data name="AddAgentWhereToGetOne.Content" xml:space="preserve"><value>Where do I get an agent address?</value></data>
   <data name="AddAgentDocsOpenFailed" xml:space="preserve"><value>Couldn't open the docs. Visit {0} in your browser.</value></data>
+  <data name="ChatFindNoMatches" xml:space="preserve"><value>0 / 0 results</value></data>
+  <data name="ChatFindMatchCounter" xml:space="preserve"><value>{0} / {1} results</value></data>
+  <data name="ActivityThinking" xml:space="preserve"><value>Thinking...</value></data>
+  <data name="ActivityThoughtProcess" xml:space="preserve"><value>Thought process</value></data>
+  <data name="ActivityTurnUsage" xml:space="preserve"><value>Turn usage</value></data>
+  <data name="ActivityGeneric" xml:space="preserve"><value>Activity</value></data>
+  <data name="ActivityUnnamedModel" xml:space="preserve"><value>Model</value></data>
+  <data name="ApprovalCollapseCommand" xml:space="preserve"><value>Collapse command</value></data>
+  <data name="ApprovalShowFullCommand" xml:space="preserve"><value>Show full command</value></data>
+  <data name="ApprovalTitleCommand" xml:space="preserve"><value>Approve command execution?</value></data>
+  <data name="ApprovalTitleFile" xml:space="preserve"><value>Approve file operation?</value></data>
+  <data name="ApprovalTitleGeneric" xml:space="preserve"><value>Approve this operation?</value></data>
+  <data name="ApprovalSubtitleCommand" xml:space="preserve"><value>This command can modify or delete files on the remote server.</value></data>
+  <data name="ApprovalSubtitleGeneric" xml:space="preserve"><value>Review the operation and its risk before allowing it to continue.</value></data>
+  <data name="ApprovalHideDetails" xml:space="preserve"><value>Hide operation details</value></data>
+  <data name="ApprovalShowDetails" xml:space="preserve"><value>Operation details</value></data>
+  <data name="ApprovalRiskCommand" xml:space="preserve"><value>Risk: This command may delete or modify server data.</value></data>
+  <data name="ApprovalRiskGeneric" xml:space="preserve"><value>Risk: This operation may change remote server data.</value></data>
+  <data name="ApprovalResolvedOnce" xml:space="preserve"><value>Approved once</value></data>
+  <data name="ApprovalResolvedSession" xml:space="preserve"><value>Allowed for this session</value></data>
+  <data name="ApprovalResolvedDeclined" xml:space="preserve"><value>Declined</value></data>
+  <data name="ApprovalResolvedStopped" xml:space="preserve"><value>Task stopped</value></data>
+  <data name="ApprovalResolvedExplain" xml:space="preserve"><value>Explanation requested</value></data>
+  <data name="ApprovalSubmittingReject" xml:space="preserve"><value>Rejecting…</value></data>
+  <data name="ApprovalSubmittingStop" xml:space="preserve"><value>Stopping…</value></data>
+  <data name="ApprovalSubmittingExplain" xml:space="preserve"><value>Requesting explanation…</value></data>
+  <data name="ApprovalSubmittingApprove" xml:space="preserve"><value>Approving…</value></data>
+  <data name="ApprovalAllowOnceName" xml:space="preserve"><value>Allow {0} once</value></data>
+  <data name="ApprovalTrustName" xml:space="preserve"><value>Trust {0} for this session</value></data>
+  <data name="ApprovalRejectName" xml:space="preserve"><value>Decline {0}; the agent may continue</value></data>
+  <data name="ApprovalStopName" xml:space="preserve"><value>Stop the entire agent task, not only this command</value></data>
+  <data name="ApprovalExplainName" xml:space="preserve"><value>Explain approval risk</value></data>
+  <data name="ApprovalRequestExplanationName" xml:space="preserve"><value>Reject this operation and ask the agent to explain it</value></data>
+  <data name="ApprovalDetailsName" xml:space="preserve"><value>View operation details</value></data>
+  <data name="AskUserFieldRequired" xml:space="preserve"><value>Required</value></data>
+  <data name="DiffPreviewTruncated" xml:space="preserve"><value>Preview shortened; {0} additional lines are available when copied.</value></data>
+  <data name="AskUserFieldOptional" xml:space="preserve"><value>Optional</value></data>
+  <data name="AskUserOptionApplyOnce" xml:space="preserve"><value>Apply once</value></data>
+  <data name="AskUserOptionApplyAll" xml:space="preserve"><value>Apply all similar changes</value></data>
+  <data name="AskUserOptionReject" xml:space="preserve"><value>Reject and provide feedback</value></data>
+  <data name="AskUserApplyChangeQuestion" xml:space="preserve"><value>Apply this change to {0}?</value></data>
+  <data name="AskUserTitleApprovalRequired" xml:space="preserve"><value>Approval required</value></data>
+  <data name="AskUserTitleNeedsInput" xml:space="preserve"><value>Agent needs your input</value></data>
+  <data name="AskUserSubtitleReview" xml:space="preserve"><value>Review how the agent should continue.</value></data>
+  <data name="AskUserSubtitleChoose" xml:space="preserve"><value>Choose how the agent should continue.</value></data>
+  <data name="InteractiveSubmitting" xml:space="preserve"><value>Submitting…</value></data>
+  <data name="AskUserSubmitApplyOnce" xml:space="preserve"><value>Apply once</value></data>
+  <data name="AskUserSubmitApplyAll" xml:space="preserve"><value>Apply all</value></data>
+  <data name="AskUserSubmitReject" xml:space="preserve"><value>Reject</value></data>
+  <data name="AskUserSubmitDefault" xml:space="preserve"><value>Submit</value></data>
+  <data name="PlanReviewApprove" xml:space="preserve"><value>Approve plan</value></data>
+  <data name="AskUserResultSkipped" xml:space="preserve"><value>Question skipped</value></data>
+  <data name="AskUserResultRejected" xml:space="preserve"><value>Question rejected</value></data>
+  <data name="AskUserResultSubmitted" xml:space="preserve"><value>Response submitted</value></data>
+  <data name="AskUserResultCompleted" xml:space="preserve"><value>Request completed</value></data>
+  <data name="AskUserSelectedCount" xml:space="preserve"><value>{0} selected</value></data>
+  <data name="AskUserSelectOne" xml:space="preserve"><value>Select one option</value></data>
+  <data name="AskUserCompleteFields" xml:space="preserve"><value>Complete the requested fields.</value></data>
+  <data name="AskUserChooseMany" xml:space="preserve"><value>Choose one or more options.</value></data>
+  <data name="AskUserChooseOne" xml:space="preserve"><value>Choose one option.</value></data>
+  <data name="AskUserEnterResponse" xml:space="preserve"><value>Enter your response.</value></data>
+  <data name="AskUserResolvedApproved" xml:space="preserve"><value>Change approved</value></data>
+  <data name="AskUserResolvedApprovedAll" xml:space="preserve"><value>Similar changes approved</value></data>
+  <data name="AskUserResolvedChangeRejected" xml:space="preserve"><value>Change rejected</value></data>
+  <data name="AskUserResolvedRequestRejected" xml:space="preserve"><value>Request rejected</value></data>
+  <data name="AskUserResolvedRequestClosed" xml:space="preserve"><value>Request closed</value></data>
+  <data name="AskUserResolvedAppliedOnce" xml:space="preserve"><value>Applied once to {0}</value></data>
+  <data name="AskUserResolvedAutoApproval" xml:space="preserve"><value>Auto-approval enabled for this session</value></data>
+  <data name="AskUserResolvedFeedbackRequested" xml:space="preserve"><value>Feedback requested from the agent</value></data>
+  <data name="AskUserResolvedNoResponse" xml:space="preserve"><value>No response was submitted</value></data>
+  <data name="AskUserResolvedSent" xml:space="preserve"><value>Response sent to the agent</value></data>
+  <data name="InteractiveStateWaiting" xml:space="preserve"><value>Waiting</value></data>
+  <data name="InteractiveStateSubmitting" xml:space="preserve"><value>Submitting</value></data>
+  <data name="InteractiveStateSubmitted" xml:space="preserve"><value>Submitted</value></data>
+  <data name="InteractiveStateCompleted" xml:space="preserve"><value>Completed</value></data>
+  <data name="InteractiveStateCancelled" xml:space="preserve"><value>Cancelled</value></data>
+  <data name="InteractiveStateRejected" xml:space="preserve"><value>Rejected</value></data>
+  <data name="InteractiveStateExpired" xml:space="preserve"><value>Expired</value></data>
+  <data name="InteractiveStateConnectionLost" xml:space="preserve"><value>Connection lost</value></data>
+  <data name="InteractiveStateError" xml:space="preserve"><value>Try again</value></data>
+  <data name="InteractiveStateSkipped" xml:space="preserve"><value>Skipped</value></data>
+  <data name="InteractiveStateApproved" xml:space="preserve"><value>Approved</value></data>
+  <data name="InteractiveDescPending" xml:space="preserve"><value>The agent is paused until you respond.</value></data>
+  <data name="InteractiveDescSubmitting" xml:space="preserve"><value>Sending your response…</value></data>
+  <data name="InteractiveDescSubmitted" xml:space="preserve"><value>Your response was sent.</value></data>
+  <data name="InteractiveDescCompleted" xml:space="preserve"><value>This request has been completed.</value></data>
+  <data name="InteractiveDescCancelled" xml:space="preserve"><value>This request was cancelled.</value></data>
+  <data name="InteractiveDescRejected" xml:space="preserve"><value>The request was rejected.</value></data>
+  <data name="InteractiveDescExpired" xml:space="preserve"><value>This request is no longer active.</value></data>
+  <data name="InteractiveDescConnectionLost" xml:space="preserve"><value>Your input is preserved. Reconnect before responding.</value></data>
+  <data name="InteractiveDescError" xml:space="preserve"><value>The response was not sent. Your input is preserved.</value></data>
+  <data name="InteractiveDescSkipped" xml:space="preserve"><value>No response was submitted.</value></data>
+  <data name="InteractiveDescWasRejected" xml:space="preserve"><value>This request was rejected.</value></data>
+  <data name="InteractiveDescWasSubmitted" xml:space="preserve"><value>Your response was submitted.</value></data>
+  <data name="InteractiveOutcomeWaiting" xml:space="preserve"><value>Waiting for you</value></data>
+  <data name="InteractiveOutcomeChanges" xml:space="preserve"><value>Changes requested</value></data>
+  <data name="DiffCollapse" xml:space="preserve"><value>Collapse</value></data>
+  <data name="DiffExpand" xml:space="preserve"><value>Expand</value></data>
+  <data name="DiffTitleApplied" xml:space="preserve"><value>Changes applied to {0}</value></data>
+  <data name="DiffTitleRejected" xml:space="preserve"><value>Proposed changes rejected</value></data>
+  <data name="DiffTitleFailed" xml:space="preserve"><value>Changes could not be applied</value></data>
+  <data name="DiffTitlePartial" xml:space="preserve"><value>Changes may be partially applied</value></data>
+  <data name="DiffTitleDisconnected" xml:space="preserve"><value>Connection lost while applying changes</value></data>
+  <data name="DiffTitleUnconfirmed" xml:space="preserve"><value>Change result could not be confirmed</value></data>
+  <data name="DiffTitleApplying" xml:space="preserve"><value>Applying file changes</value></data>
+  <data name="DiffTitleReview" xml:space="preserve"><value>Review file changes</value></data>
+  <data name="DiffViewProposed" xml:space="preserve"><value>View proposed changes</value></data>
+  <data name="DiffProblemFailed" xml:space="preserve"><value>The file tool reported an error. Review the proposed changes and tool details.</value></data>
+  <data name="DiffProblemPartial" xml:space="preserve"><value>The tool reported a partial result. Verify the file before continuing.</value></data>
+  <data name="DiffProblemDisconnected" xml:space="preserve"><value>The connection ended before the file result was confirmed.</value></data>
+  <data name="DiffProblemUnconfirmed" xml:space="preserve"><value>The turn ended without a successful file result. The proposed changes are shown below.</value></data>
+  <data name="DiffChangesVisible" xml:space="preserve"><value>Changes visible</value></data>
+  <data name="DiffUnnamedFile" xml:space="preserve"><value>Proposed changes</value></data>
+  <data name="OnboardPaid" xml:space="preserve"><value>I've paid</value></data>
+  <data name="OnboardPaidAmount" xml:space="preserve"><value>I've transferred {0}</value></data>
+  <data name="OnboardTransferPrompt" xml:space="preserve"><value>Transfer {0} to the address below, then confirm.</value></data>
+  <data name="OnboardAmountRequired" xml:space="preserve"><value>This agent asks for {0} before it will talk.</value></data>
+  <data name="ToolActivityHeader" xml:space="preserve"><value>Tool activity</value></data>
+  <data name="ToolStatusDone" xml:space="preserve"><value>Done</value></data>
+  <data name="ToolStatusWarnings" xml:space="preserve"><value>Completed with warnings</value></data>
+  <data name="ToolStatusFailed" xml:space="preserve"><value>Failed</value></data>
+  <data name="ToolStatusCancelled" xml:space="preserve"><value>Cancelled</value></data>
+  <data name="ToolStatusWaitingApproval" xml:space="preserve"><value>Waiting for approval</value></data>
+  <data name="ToolStatusWorking" xml:space="preserve"><value>Working...</value></data>
+  <data name="UsageRangeToday" xml:space="preserve"><value>Today</value></data>
+  <data name="UsageRange7Days" xml:space="preserve"><value>Last 7 days</value></data>
+  <data name="UsageRange30Days" xml:space="preserve"><value>Last 30 days</value></data>
+  <data name="UsageRangeAllTime" xml:space="preserve"><value>All time</value></data>
+  <data name="ApprovalFallbackLine" xml:space="preserve"><value>This operation requires your approval before it can continue.</value></data>
+  <data name="ChatTranscript.AutomationProperties.Name" xml:space="preserve"><value>Conversation transcript</value></data>
+  <data name="InteractiveCardCollapse" xml:space="preserve"><value>Collapse {0}</value></data>
+  <data name="InteractiveCardExpand" xml:space="preserve"><value>Expand {0}</value></data>
+  <data name="PlanReviewSubtitle" xml:space="preserve"><value>The agent will not execute until you respond.</value></data>
 </root>

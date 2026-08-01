@@ -35,6 +35,13 @@ public sealed partial class AboutOverlay : UserControl
     /// <summary>Whether the dialog is currently shown (used to keep it single-instance).</summary>
     public bool IsOpen => Visibility == Visibility.Visible;
 
+    /// <summary>Exposes this overlay to UI Automation as a dialog. Without a peer the control is
+    /// invisible to UIA entirely — no dialog boundary for a screen reader, and its
+    /// AutomationId unreachable from a UI test. See <see cref="ModalOverlayAutomationPeer"/>.</summary>
+    protected override Microsoft.UI.Xaml.Automation.Peers.AutomationPeer OnCreateAutomationPeer()
+        => new ModalOverlayAutomationPeer(this);
+
+
     public void Show(FrameworkElement? focusReturnTarget)
     {
         // Already open: keep the one instance, just move focus back into it.

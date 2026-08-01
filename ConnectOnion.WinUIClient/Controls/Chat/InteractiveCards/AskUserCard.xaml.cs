@@ -2,6 +2,7 @@ using System;
 using ConnectOnion.WinUIClient.Models;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Windows.Storage;
 using Windows.System;
@@ -18,9 +19,10 @@ public sealed partial class AskUserCard : UserControl
     public event RoutedEventHandler? SubmitRequested;
     public event RoutedEventHandler? SkipRequested;
 
-    private void Option_Click(object sender, RoutedEventArgs e)
+    private void OptionSelection_Click(object sender, RoutedEventArgs e)
     {
-        if ((sender as FrameworkElement)?.Tag is AskUserOptionEntry option) option.Toggle();
+        if (sender is ToggleButton { Tag: AskUserOptionEntry option } toggle)
+            option.SetSelectedFromControl(toggle.IsChecked == true);
     }
     private void Submit_Click(object sender, RoutedEventArgs e) => SubmitRequested?.Invoke(this, e);
     private void Skip_Click(object sender, RoutedEventArgs e) => SkipRequested?.Invoke(this, e);
@@ -37,7 +39,7 @@ public sealed partial class AskUserCard : UserControl
         if (sender is PasswordBox { Tag: AskUserFieldEntry field } passwordBox)
             field.Value = passwordBox.Password;
     }
-    private async void QuestionImage_Tapped(object sender, TappedRoutedEventArgs e)
+    private async void QuestionImage_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.Tag is not ChatAttachment { LocalCachePath: { Length: > 0 } path })
             return;

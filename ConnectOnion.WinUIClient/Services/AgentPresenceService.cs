@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using ConnectOnion.WinUIClient.Models;
 
@@ -31,8 +32,27 @@ public enum AgentPresence
 /// </summary>
 public sealed class AgentPresenceService
 {
-    private static readonly TimeSpan OnlineTtl = TimeSpan.FromMinutes(1);
+    /// <summary>How long an <c>Online</c> answer is reused before the next sweep re-probes.
+    /// <para>Five minutes rather than one. This is not a timer — a sweep happens when the sidebar
+    /// refreshes, which is on every navigation — so a short TTL turns ordinary page-to-page
+    /// movement into a steady stream of HTTP, one request per agent per minute, each carrying
+    /// two Polly retries. An agent that goes down between sweeps is discovered the moment the
+    /// user actually sends to it, which is the case that matters; a stale green dot for a few
+    /// minutes is not.</para></summary>
+    private static readonly TimeSpan OnlineTtl = TimeSpan.FromMinutes(5);
+
+    /// <summary>Offline is re-probed far sooner: the user is likely waiting for the agent to
+    /// come back, and that is the transition worth catching quickly.</summary>
     private static readonly TimeSpan OfflineTtl = TimeSpan.FromSeconds(30);
+
+    /// <summary>Caps how many reachability probes are in flight at once.
+    /// <para>The sidebar sweeps agents in a plain <c>foreach</c>, so without this every agent
+    /// probes simultaneously — and each probe is an HTTP call with a retry pipeline behind it.
+    /// On a sidebar with a dozen agents that is a burst of connections and thread-pool work on
+    /// a path the user did not ask for. Four keeps a sweep prompt without the stampede.</para></summary>
+    private const int MaxConcurrentProbes = 4;
+
+    private static readonly SemaphoreSlim ProbeGate = new(MaxConcurrentProbes, MaxConcurrentProbes);
 
     private readonly object _gate = new();
     private readonly Dictionary<string, AgentPresence> _presence = new();
@@ -135,9 +155,15 @@ public sealed class AgentPresenceService
         // register this task before Set() re-enters the lock / fires the event.
         await Task.Yield();
 
+        // Checking is published before queueing, not after: the row should read "checking" while
+        // it waits its turn, otherwise a large sweep leaves most agents looking untouched.
         Set(agent.Id, AgentPresence.Checking, "Checking if the agent is online…");
+        var entered = false;
         try
         {
+            await ProbeGate.WaitAsync().ConfigureAwait(false);
+            entered = true;
+
             // A lean /health reachability probe. The detail page fetches and persists /info
             // independently, so list/status refreshes never download metadata.
             var result = await _connectionTester.TestAsync(
@@ -150,6 +176,7 @@ public sealed class AgentPresenceService
         }
         finally
         {
+            if (entered) ProbeGate.Release();
             lock (_gate) _inflight.Remove(agent.Id);
         }
     }

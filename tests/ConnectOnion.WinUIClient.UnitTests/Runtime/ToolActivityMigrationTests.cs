@@ -39,6 +39,23 @@ public sealed class ToolActivityMigrationTests
         Assert.Same(agent, upgraded[2]);
     }
 
+    [Fact]
+    public void UpgradeLegacyToolMessages_CachedPlanReview_StartsCollapsedAsHistory()
+    {
+        var plan = new ChatMessage
+        {
+            Role = ChatRole.Event,
+            EventKind = "plan_review",
+            EventTitle = "Review execution plan",
+            IsInteractiveCardExpanded = true,
+        };
+
+        var restored = Assert.Single(ToolActivityMigration.UpgradeLegacyToolMessages([plan]));
+
+        Assert.Same(plan, restored);
+        Assert.False(restored.IsInteractiveCardExpanded);
+    }
+
     // The legacy writer was `ms < 1000 ? $"{ms:0} ms" : $"{ms / 1000:0.0} s"`, so these two
     // shapes are the only ones real data can contain. "340 ms" used to come back as 340000
     // because the seconds check matched the "s" inside "ms".

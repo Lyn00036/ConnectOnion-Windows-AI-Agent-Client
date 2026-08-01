@@ -36,8 +36,9 @@ public sealed partial class ChatTurnProjection
     private ToolActivityProjector? _toolActivity;
     private ChatMessage? _streamedFinalReply;
     private readonly List<ChatMessage> _thinkingActivities = new();
-    // The card the current run of consecutive `thinking` frames is accumulating into; cleared by
-    // the first frame of any other type (see ApplyParsed).
+    // The card the current visible run of `thinking` frames is accumulating into. Protocol-only
+    // lifecycle frames do not end the run: Add clears this only when another transcript row is
+    // actually inserted between thoughts.
     private ChatMessage? _currentThinking;
     // The turn's single spinner row, opened by the first llm_call. Distinct from _currentThinking:
     // that one holds reasoning text the agent sent, this one holds nothing and exists only so a
@@ -312,6 +313,7 @@ public sealed partial class ChatTurnProjection
     private void CompleteThinkingActivities(EventStatus status)
     {
         SettleLlmThinking();
+        _currentThinking = null;
         foreach (var thinking in _thinkingActivities)
         {
             if (thinking.Status != EventStatus.Running) continue;
@@ -421,7 +423,14 @@ public sealed partial class ChatTurnProjection
     private IList<ChatMessage> Messages => _target.Messages;
     private string? AgentName => _target.AgentName;
     private long NextId() => _target.NextId();
-    private void Add(ChatMessage message) => _target.Add(message);
+    private void Add(ChatMessage message)
+    {
+        // Group by what the transcript actually shows, not by invisible wire traffic. Events such
+        // as llm_call/llm_result and tool_result mutate state without adding a row; clearing on
+        // those produced two adjacent Thinking blocks with nothing visible between them.
+        if (!ReferenceEquals(message, _currentThinking)) _currentThinking = null;
+        _target.Add(message);
+    }
     private void ReportUsage() => _target.ReportUsage(CurrentUsage);
 
     private ChatMessage NewActivity(string? key, string title, EventStatus status) => new()

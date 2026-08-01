@@ -54,6 +54,10 @@ public sealed partial class ConversationRepository
         // when their durable outcome is Failed, Pending, or another state that expands while a
         // live runtime is still handling it.
         if (m.IsDiffPreviewEvent) m.IsDiffExpanded = false;
+        // Plan disclosure is also presentation-only. A freshly received plan remains expanded
+        // so the user can review it immediately, while a row restored into history starts
+        // compact and can still be reopened from its header.
+        if (m.IsPlanReviewEvent) m.IsInteractiveCardExpanded = false;
 
         // Tool activity is stored in the existing event_args payload column. This keeps the
         // schema backward compatible while making the aggregate durable across page teardown

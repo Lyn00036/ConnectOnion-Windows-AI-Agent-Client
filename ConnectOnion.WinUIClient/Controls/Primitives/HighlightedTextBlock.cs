@@ -43,11 +43,16 @@ public sealed class HighlightedTextBlock : UserControl
             LineHeight = 22,
         };
 
-        _textBlock.SetBinding(RichTextBlock.ForegroundProperty, new Binding
-        {
-            Path = new PropertyPath(nameof(Foreground)),
-            Source = this,
-        });
+        // Synced by hand, not bound — same reason as MarkdownTextBlock: `UserControl` has no
+        // default style, so `Foreground` is null unless a caller sets it, and forwarding a null
+        // Brush means "do not paint" rather than "use the default". Today the one call site
+        // (ChatPage's user bubble) does set it, so this is a trap rather than a live bug — but
+        // it is the same trap that made every plan and tool-log body render invisible, and the
+        // symptom (text that only appears while selected) points nowhere near the cause.
+        RegisterPropertyChangedCallback(ForegroundProperty, (_, _) => SyncForeground());
+        ActualThemeChanged += (_, _) => SyncForeground();
+        SyncForeground();
+
         _textBlock.SetBinding(RichTextBlock.FontSizeProperty, new Binding
         {
             Path = new PropertyPath(nameof(FontSize)),
@@ -98,6 +103,12 @@ public sealed class HighlightedTextBlock : UserControl
 
     private static void OnRenderPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         => ((HighlightedTextBlock)d).Render();
+
+    /// <summary>Pushes an always-paintable foreground onto the inner <see cref="RichTextBlock"/>.
+    /// See the note in the constructor for why this is not a binding.</summary>
+    private void SyncForeground()
+        => _textBlock.Foreground =
+            Foreground ?? Presentation.ThemeBrushResolver.Resolve("TextPrimaryBrush");
 
     private void Render()
     {

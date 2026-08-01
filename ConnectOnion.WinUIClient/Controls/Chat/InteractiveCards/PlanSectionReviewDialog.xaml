@@ -10,7 +10,11 @@
     SecondaryButtonText="Request changes"
     CloseButtonText="Cancel"
     DefaultButton="Primary">
-    <Grid Width="620" MaxWidth="760" Height="620" MaxHeight="720">
+    <Grid x:Name="ContentGrid"
+          MinWidth="320"
+          MaxWidth="760"
+          MinHeight="240"
+          MaxHeight="720">
         <ListView x:Uid="PlanSectionList" ItemsSource="{x:Bind Sections}"
                   SelectionMode="None"
                   IsItemClickEnabled="False"
@@ -36,18 +40,29 @@
                             <local:MarkdownTextBlock Markdown="{x:Bind Markdown}"
                                                      FontSize="13"
                                                      AutomationProperties.Name="{x:Bind Heading}" />
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <ToggleButton x:Uid="PlanSectionLooksGood" Content="Looks good"
-                                              Tag="{x:Bind}"
-                                              IsChecked="{x:Bind IsApproved, Mode=OneWay}"
-                                              Click="ApproveSection_Click"
-                                              AutomationProperties.Name="{x:Bind ApproveAccessibilityName}" />
-                                <ToggleButton x:Uid="PlanSectionNeedsChanges" Content="Needs changes"
-                                              Tag="{x:Bind}"
-                                              IsChecked="{x:Bind NeedsChanges, Mode=OneWay}"
-                                              Click="RequestSectionChanges_Click"
-                                              AutomationProperties.Name="{x:Bind ChangesAccessibilityName}" />
-                            </StackPanel>
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <RadioButton Tag="{x:Bind}"
+                                             MinHeight="40"
+                                             HorizontalAlignment="Stretch"
+                                             IsChecked="{x:Bind IsApproved, Mode=OneWay}"
+                                             Click="ApproveSection_Click"
+                                             AutomationProperties.Name="{x:Bind ApproveAccessibilityName}">
+                                    <TextBlock x:Uid="PlanSectionLooksGoodText" Text="Looks good" TextWrapping="Wrap" />
+                                </RadioButton>
+                                <RadioButton Grid.Column="1"
+                                             Tag="{x:Bind}"
+                                             MinHeight="40"
+                                             HorizontalAlignment="Stretch"
+                                             IsChecked="{x:Bind NeedsChanges, Mode=OneWay}"
+                                             Click="RequestSectionChanges_Click"
+                                             AutomationProperties.Name="{x:Bind ChangesAccessibilityName}">
+                                    <TextBlock x:Uid="PlanSectionNeedsChangesText" Text="Needs changes" TextWrapping="Wrap" />
+                                </RadioButton>
+                            </Grid>
                             <TextBox x:Uid="PlanSectionFeedback" Text="{x:Bind Feedback, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                      PlaceholderText="Optional feedback for this section…"
                                      AcceptsReturn="True"

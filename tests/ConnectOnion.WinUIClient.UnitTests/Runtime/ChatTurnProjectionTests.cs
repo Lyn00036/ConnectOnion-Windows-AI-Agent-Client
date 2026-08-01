@@ -151,6 +151,40 @@ public sealed class ChatTurnProjectionTests
     }
 
     [Fact]
+    public void Apply_ThinkingSeparatedOnlyByInvisibleLifecycleFrames_StaysOneCard()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+
+        projection.Apply(Event("thinking", "{\"content\":\"The first attempt used the wrong type.\"}"));
+        projection.Apply(Event("llm_result", "{\"duration_ms\":8000}"));
+        projection.Apply(Event("llm_call", "{\"model\":\"test-model\",\"iteration\":2}"));
+        projection.Apply(Event("thinking", "{\"content\":\"Retry with an integer.\"}"));
+
+        var thinking = Assert.Single(target.Messages);
+        Assert.Equal(2, thinking.ThoughtSteps.Count);
+        Assert.Equal(
+            ["The first attempt used the wrong type.", "Retry with an integer."],
+            thinking.ThoughtSteps);
+    }
+
+    [Fact]
+    public void Apply_InvisibleUpdatesToExistingToolCard_DoNotSplitAdjacentThinking()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+
+        projection.Apply(Event("tool_call", "{\"tool_id\":\"one\",\"name\":\"dashboard\"}"));
+        projection.Apply(Event("thinking", "{\"content\":\"The dashboard call failed.\"}"));
+        projection.Apply(Event("tool_result", "{\"tool_id\":\"one\",\"status\":\"error\",\"error\":\"type mismatch\"}"));
+        projection.Apply(Event("llm_call", "{\"model\":\"test-model\",\"iteration\":2}"));
+        projection.Apply(Event("thinking", "{\"content\":\"Retry with the corrected value.\"}"));
+
+        var thinking = Assert.Single(target.Messages, message => message.IsThinkingEvent);
+        Assert.Equal(2, thinking.ThoughtSteps.Count);
+    }
+
+    [Fact]
     public void Apply_ThinkingSeparatedByAToolCall_StaysTwoCards()
     {
         var target = new FakeTarget();

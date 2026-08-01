@@ -73,6 +73,11 @@ public static class ServiceRegistration
         // every keystroke, and a rebind made in Settings has to be visible to them at once.
         services.AddSingleton<KeyboardShortcutService>();
 
+        // ---- Accessibility ----
+        // Singleton: it holds one OS event subscription, and the window reads it on every
+        // layout pass. See TextScaleService for why WinUI 3 needs this done by hand.
+        services.AddSingleton<TextScaleService>();
+
         // ---- Presence + runtime ----
         services.AddSingleton<AgentPresenceService>();
         // AgentSessionManager(HttpClient, ConversationRepository, UsageRepository?) — auto-wired.
@@ -105,7 +110,6 @@ public static class ServiceRegistration
         // ---- View models (transient: one per page/dialog, resolved in each view's ctor) ----
         services.AddTransient<ChatViewModel>();
         services.AddTransient<AddAgentViewModel>();
-        services.AddTransient<SessionsViewModel>();
         services.AddTransient<AgentDetailViewModel>();
         services.AddTransient<SettingsViewModel>();
         services.AddTransient<UsageViewModel>();

@@ -29,8 +29,9 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
 
     private readonly RichTextBlock _target;
     private readonly Stack<InlineCollection> _inlineScopes = new();
-    private readonly string _searchQuery;
-    private readonly int _activeMatchIndex;
+    // Not readonly: Reset() re-arms them so the renderer can be reused across renders.
+    private string _searchQuery;
+    private int _activeMatchIndex;
     private int _matchIndex;
     private int _quoteDepth;
     private int _listDepth;
@@ -68,6 +69,39 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
         ObjectRenderers.Add(new LinkInlineRenderer());
         ObjectRenderers.Add(new ContainerInlineRenderer());
         ObjectRenderers.Add(new HtmlInlineRenderer());
+    }
+
+    /// <summary>Re-arms this renderer for another pass over the same target.
+    ///
+    /// <para>Exists so a <see cref="Controls.MarkdownTextBlock"/> can keep one renderer for its
+    /// lifetime instead of constructing one per render. The constructor registers seventeen
+    /// <c>ObjectRenderer</c> instances and runs the Markdig pipeline setup, and a virtualized
+    /// transcript re-renders a row every time its container is recycled — so that was eighteen
+    /// allocations and a pipeline walk per recycled row, to produce a renderer identical to the
+    /// one just discarded.</para>
+    ///
+    /// <para>Only the three fields that vary are reset. <c>_target</c> does not: it is the
+    /// control's own <c>RichTextBlock</c>, created once and never replaced, which is precisely
+    /// what makes reuse safe here and would not be safe for a renderer shared across
+    /// controls.</para></summary>
+    internal void Reset(string searchQuery, int activeMatchIndex)
+    {
+        _searchQuery = searchQuery;
+        _activeMatchIndex = activeMatchIndex;
+
+        // _matchIndex is the running count of search hits emitted during a pass, and it is what
+        // decides which one gets the "current match" styling. Carrying it into the next render
+        // would put that highlight on the wrong occurrence — the single thing reuse would
+        // silently break, so it is reset first.
+        _matchIndex = 0;
+
+        // The rest are balanced by construction and should already be at zero/empty. Reset
+        // anyway: a render that threw part-way through would otherwise leave the next one
+        // indented, quoted, or refusing UI containers for no visible reason.
+        _uiContainerBlockedDepth = 0;
+        _quoteDepth = 0;
+        _listDepth = 0;
+        _inlineScopes.Clear();
     }
 
     public override object Render(MarkdownObject markdownObject)

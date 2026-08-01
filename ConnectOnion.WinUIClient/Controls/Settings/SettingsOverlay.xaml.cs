@@ -24,6 +24,13 @@ public sealed partial class SettingsOverlay : UserControl
     /// <summary>Whether the settings modal is currently shown.</summary>
     public bool IsOpen => Visibility == Visibility.Visible;
 
+    /// <summary>Exposes this overlay to UI Automation as a dialog. Without a peer the control is
+    /// invisible to UIA entirely — no dialog boundary for a screen reader, and its
+    /// AutomationId unreachable from a UI test. See <see cref="ModalOverlayAutomationPeer"/>.</summary>
+    protected override Microsoft.UI.Xaml.Automation.Peers.AutomationPeer OnCreateAutomationPeer()
+        => new ModalOverlayAutomationPeer(this);
+
+
     public void Show(FrameworkElement? focusReturnTarget)
     {
         _focusReturnTarget = focusReturnTarget;
@@ -108,11 +115,6 @@ public sealed partial class SettingsOverlay : UserControl
         var isKeyboard = category == "Keyboard";
         var isSettingsPage = !isIdentity && !isAgents && !isUsage && !isKeyboard;
 
-        SearchBox.Visibility = isSettingsPage ? Visibility.Visible : Visibility.Collapsed;
-        CompactSearchBox.Visibility = isSettingsPage ? Visibility.Visible : Visibility.Collapsed;
-        if (!isSettingsPage)
-            ClearSearch();
-
         SettingsContent.Visibility = isSettingsPage ? Visibility.Visible : Visibility.Collapsed;
         IdentityScrollViewer.Visibility = isIdentity ? Visibility.Visible : Visibility.Collapsed;
         AgentsScrollViewer.Visibility = isAgents ? Visibility.Visible : Visibility.Collapsed;
@@ -149,10 +151,25 @@ public sealed partial class SettingsOverlay : UserControl
         peer.Text = query;
         _syncingSearch = false;
 
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            SelectCategory(_selectedCategory);
+            return;
+        }
+
+        // Search is a modal-level affordance, so it must work from every category. Standalone
+        // panes used to hide the search boxes; merely keeping them visible would still leave the
+        // filtered SettingsPage collapsed behind Identity/Agents/Usage/Keyboard. Enter an
+        // explicit results mode and let clearing the query restore the selected category.
+        SettingsContent.Visibility = Visibility.Visible;
+        IdentityScrollViewer.Visibility = Visibility.Collapsed;
+        AgentsScrollViewer.Visibility = Visibility.Collapsed;
+        UsageScrollViewer.Visibility = Visibility.Collapsed;
+        KeyboardScrollViewer.Visibility = Visibility.Collapsed;
         SettingsContent.Filter(query);
-        CategoryTitle.Text = string.IsNullOrWhiteSpace(query)
-            ? LocalizedCategoryName(_selectedCategory)
-            : LocalizedStrings.Get("SettingsSearchResultsHeading", "Search results");
+        CategoryTitle.Text = LocalizedStrings.Get(
+            "SettingsSearchResultsHeading",
+            "Search results");
     }
 
     private void ClearSearch()

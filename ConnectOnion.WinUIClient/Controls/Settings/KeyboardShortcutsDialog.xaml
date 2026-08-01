@@ -39,7 +39,7 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                <TextBlock x:Uid="ShortcutsDialogTitle" Text="Keyboard shortcuts" Style="{StaticResource TitleTextBlockStyle}"
+                <TextBlock x:Uid="ShortcutsDialogTitle" AutomationProperties.HeadingLevel="Level1" Text="Keyboard shortcuts" Style="{StaticResource TitleTextBlockStyle}"
                                Foreground="{ThemeResource TextPrimaryBrush}" VerticalAlignment="Center" />
                     <Button x:Uid="KeyboardShortcutsClose" Grid.Column="1" TabIndex="1" Style="{StaticResource ShortcutsCloseButtonStyle}" Click="CloseButton_Click"
                             AutomationProperties.Name="Close keyboard shortcuts" ToolTipService.ToolTip="Close (Esc)">

@@ -66,9 +66,9 @@ The test projects can't reference the app project (`net10.0-windows` + Windows A
 
 - **Window**: `MainWindow` — the single top-level window with a custom title bar, split across partials:
   `MainWindow.xaml.cs` / `.FileMenu.cs` / `.EditMenu.cs` / `.ViewMenu.cs` / `.HelpMenu.cs` / `.DragDrop.cs` / `.Tray.cs` / `.Tray.Interop.cs` / `.Notifications.cs`
-- **Pages** (inside `ContentFrame`): `HomePage`, `ChatPage` (+ `ChatPage.Find.cs`), `AgentDetailPage`, `SessionsPage`, `SettingsPage`
+- **Pages**: `HomePage`, `ChatPage` (+ `ChatPage.Find.cs`), `AgentDetailPage` inside `ContentFrame`; `SettingsPage` hosted directly by `SettingsOverlay` rather than navigated to. `Architecture/NavigationReachabilityTests` fails the build on a page that is neither — which is what `SessionsPage` had become before it was deleted.
 - **In-window modal overlays** (**not separate Windows, not ContentDialogs**):
-  `SettingsOverlay`, `KeyboardShortcutsDialog`, `AboutOverlay` — all three share one shape: dimmed backdrop, centered card, Esc / backdrop / close-button dismissal, focus returned to the opener. Hosted as persistent singletons by `MainWindow`; `IsModalOverlayOpen` gates every global accelerator.
+  `SettingsOverlay`, `KeyboardShortcutsDialog`, `AboutOverlay`, `AddAgentForm`, `SessionSearchOverlay` — all share one shape: dimmed backdrop, centered card, Esc / backdrop / close-button dismissal, focus returned to the opener. Created lazily by `MainWindow.Overlays.cs`; `IsModalOverlayOpen` gates every global accelerator, `UpdateModalFocusScope` takes the background out of the Tab order, and each returns a `ModalOverlayAutomationPeer` so UIA sees a dialog (and so `ByAutomationId` resolves at all).
 - **Custom controls**: `ChatComposer` (+`.Speech`), `ShellSidebar` (+`.Events`), `AddAgentForm`, `AgentAvatar`, `ToolActivityView`, `MarkdownTextBlock`, `HighlightedTextBlock`, `InAppNotificationHost`, `OfflineNoticeBar`, `IconText`, `SettingRow`, `IdentitySettingsContent`
 
 ### 2.3 Main ViewModels
@@ -84,7 +84,6 @@ MVVM is implemented with **CommunityToolkit.Mvvm 8.4.2** source generators. Mode
 | ViewModel | Main responsibility |
 |---|---|
 | `ChatViewModel` (`.Run`, `.Conversation`, `.StreamEvents`) | Conversation loading, sending/stopping, run subscription, stream projection, and interactive responses |
-| `SessionsViewModel` | Session list, selection, ordering, and deletion |
 | `SettingsViewModel` | Theme, font, sidebar, microphone, notification, shortcut, identity, and usage settings |
 | `AgentDetailViewModel` | Agent details, capabilities, sharing, and presence |
 | `KeyboardShortcutsViewModel` | Shortcut groups, search, rebinding, conflict handling, and reset |

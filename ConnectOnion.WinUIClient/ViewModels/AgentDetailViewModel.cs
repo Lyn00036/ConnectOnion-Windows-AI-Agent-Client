@@ -231,8 +231,33 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
     /// into clean short offers yields nothing and the static chips stay. A chip is the first thing
     /// a user reads about an agent, so a bad one is worse than none (see
     /// <see cref="AgentSkills.BestOffers"/>).</para>
+    ///
+    /// <para>Memoized against <see cref="Skills"/>, which changes at most once per page (the
+    /// cached <c>/info</c> arrives). It used to recompute on every read — and every read came in
+    /// pairs, because <see cref="HasSkillOffers"/> asked for the whole list just to test its
+    /// count. <see cref="AgentSkills.BestOffers"/> is not free: it filters, cuts each description
+    /// at a clause boundary, fixes brand casing and ranks the survivors.</para>
     /// </summary>
-    public IReadOnlyList<string> SkillOffers => AgentSkills.BestOffers(Skills);
+    public IReadOnlyList<string> SkillOffers
+    {
+        get
+        {
+            // Keyed on the source reference rather than invalidated from an OnSkillsChanged
+            // hook, so this does not depend on where the MVVM generator happens to place that
+            // callback relative to the NotifyPropertyChangedFor notification. If the ordering
+            // were wrong that way, a binding would read the previous agent's chips exactly once
+            // — the kind of staleness that shows up in a screenshot and nowhere else.
+            if (_skillOffers is null || !ReferenceEquals(_skillOffersSource, Skills))
+            {
+                _skillOffersSource = Skills;
+                _skillOffers = AgentSkills.BestOffers(Skills);
+            }
+            return _skillOffers;
+        }
+    }
+
+    private IReadOnlyList<string>? _skillOffers;
+    private IReadOnlyList<SkillInfo>? _skillOffersSource;
 
     public bool HasSkillOffers => SkillOffers.Count > 0;
 
