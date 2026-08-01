@@ -60,10 +60,23 @@ public sealed class HighlightedTextBlock : UserControl
         // SearchCurrentBackground* tokens), resolved fresh on every render — force a
         // re-render on a live theme flip so visible matches don't stay stuck on the
         // old theme's colors.
-        ActualThemeChanged += (_, _) => Render();
+        ActualThemeChanged += (_, _) => { _renderedRuns = false; Render(); };
         Loaded += (_, _) => Render();
-        Unloaded += (_, _) => _textBlock.Blocks.Clear();
+        Unloaded += (_, _) =>
+        {
+            _textBlock.Blocks.Clear();
+            _renderedRuns = false;
+        };
     }
+
+    // Mirrors the guard in MarkdownTextBlock, for the same reason: Text, SearchQuery and
+    // ActiveMatchIndex all funnel into Render, and a find pass writes the query twice in quick
+    // succession (cleared, then re-applied), so each user bubble rebuilt its inlines twice per
+    // keystroke. False whenever the runs on screen do not match the fields below.
+    private bool _renderedRuns;
+    private string _renderedText = string.Empty;
+    private string _renderedQuery = string.Empty;
+    private int _renderedActiveMatchIndex = -1;
 
     public string Text
     {
@@ -88,13 +101,31 @@ public sealed class HighlightedTextBlock : UserControl
 
     private void Render()
     {
+        var text = Text ?? string.Empty;
+        var query = SearchQuery ?? string.Empty;
+
+        if (_renderedRuns
+            && string.Equals(_renderedText, text, StringComparison.Ordinal)
+            && string.Equals(_renderedQuery, query, StringComparison.Ordinal)
+            && _renderedActiveMatchIndex == ActiveMatchIndex)
+        {
+            return;
+        }
+
         _textBlock.Blocks.Clear();
+        _renderedRuns = false;
         if (!IsLoaded) return;
+
+        _renderedRuns = true;
+        _renderedText = text;
+        _renderedQuery = query;
+        _renderedActiveMatchIndex = ActiveMatchIndex;
+
         var paragraph = new Paragraph();
         _textBlock.Blocks.Add(paragraph);
 
         AddHighlightedRuns(
-            paragraph.Inlines, Text ?? string.Empty, SearchQuery ?? string.Empty, ActiveMatchIndex,
+            paragraph.Inlines, text, query, ActiveMatchIndex,
             fontSize: _textBlock.FontSize, fontFamily: _textBlock.FontFamily);
     }
 

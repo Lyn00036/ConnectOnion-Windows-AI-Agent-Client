@@ -364,13 +364,48 @@ public sealed partial class ChatPage
         MessageList.ScrollIntoView(Vm.Messages[^1]);
     }
 
-    private void MessageScrollViewer_ViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
+    private async void MessageScrollViewer_ViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
     {
         if (_messageScrollViewer is null) return;
 
         var distanceFromBottom = _messageScrollViewer.ScrollableHeight - _messageScrollViewer.VerticalOffset;
         _stickToBottom = distanceFromBottom < 96;
         ScrollToLatestButton.Visibility = _stickToBottom ? Visibility.Collapsed : Visibility.Visible;
+
+        // Keep the viewport anchored while an older page is prepended. Waiting until the user is
+        // near the top gives the database enough time to load before the boundary becomes visible,
+        // while the VM guard coalesces the several ViewChanged events one gesture produces.
+        if (_isLoadingConversation
+            || _olderHistoryUiLoadActive
+            || !Vm.HasMoreHistory
+            || _messageScrollViewer.VerticalOffset > 180)
+        {
+            return;
+        }
+
+        _olderHistoryUiLoadActive = true;
+        var previousOffset = _messageScrollViewer.VerticalOffset;
+        var previousScrollableHeight = _messageScrollViewer.ScrollableHeight;
+        try
+        {
+            var added = await Vm.LoadOlderMessagesAsync(_pageLifetimeCts.Token);
+            if (added == 0 || _messageScrollViewer is null) return;
+
+            await NextFrameAsync(_pageLifetimeCts.Token);
+            var addedExtent = Math.Max(0, _messageScrollViewer.ScrollableHeight - previousScrollableHeight);
+            _messageScrollViewer.ChangeView(
+                null,
+                previousOffset + addedExtent,
+                null,
+                disableAnimation: true);
+        }
+        catch (OperationCanceledException) when (_pageLifetimeCts.IsCancellationRequested)
+        {
+        }
+        finally
+        {
+            _olderHistoryUiLoadActive = false;
+        }
     }
 
     private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject

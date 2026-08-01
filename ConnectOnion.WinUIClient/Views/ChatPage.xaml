@@ -98,8 +98,8 @@
                                            Foreground="{ThemeResource TextSecondaryBrush}" />
                             </StackPanel>
                             <Button x:Uid="ChatSaveAttachment" Grid.Column="2"
-                                    Width="28"
-                                    Height="28"
+                                    Width="36"
+                                    Height="36"
                                     Padding="0"
                                     MinWidth="0"
                                     MinHeight="0"
@@ -108,6 +108,7 @@
                                     VerticalAlignment="Center"
                                     Tag="{Binding}"
                                     Click="SaveAttachment_Click"
+                                    AutomationProperties.Name="Save a copy"
                                     ToolTipService.ToolTip="Save a copy">
                                 <ic:FluentIcon Icon="SaveArrowRight"
                                                IconVariant="Regular"
@@ -141,10 +142,20 @@
                     <StackPanel HorizontalAlignment="Right"
                                 Spacing="8"
                                 Visibility="{x:Bind IsEditing, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}">
-                        <ItemsControl ItemsSource="{x:Bind Attachments}"
+                        <!-- x:Load rather than Visibility, and the same reasoning applies to every
+                             other x:Load in this file: a collapsed element is still *built*. XAML
+                             constructs the whole subtree for each realized row and then hides it,
+                             so an ItemsControl and its panel were created for every message the
+                             user has ever sent, the overwhelming majority of which carry no
+                             attachment. x:Load defers construction until the condition is true.
+                             (x:Name is required by x:Load; these names are not referenced from
+                             code, and a DataTemplate is its own namescope so they cannot clash
+                             with the identically-shaped elements in the other templates.) -->
+                        <ItemsControl x:Name="UserAttachments"
+                                      x:Load="{x:Bind HasAttachments, Mode=OneWay}"
+                                      ItemsSource="{x:Bind Attachments}"
                                       ItemTemplate="{StaticResource AttachmentChipTemplate}"
-                                      HorizontalAlignment="Right"
-                                      Visibility="{x:Bind HasAttachments, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                                      HorizontalAlignment="Right" />
                         <!-- A right-aligned chat bubble, capped narrow so it reads as a discrete user
                              utterance against the wider agent track. Borderless: the soft neutral
                              fill alone carries it so it reads as a message, not a button or input. -->
@@ -161,9 +172,10 @@
                                                            FontSize="{x:Bind MessageFontSize, Mode=OneWay}"
                                                            Foreground="{ThemeResource TextPrimaryBrush}" />
                         </Border>
-                        <!-- Reserve the action row so hovering never shifts later messages. Time
-                             and commands fade in together when this bubble is hovered or focused. -->
-                        <Grid MinHeight="36"
+                        <!-- Reserve the action row so interaction never shifts later messages.
+                             Commands stay softly visible for touch/discovery, then strengthen
+                             when this bubble is hovered or keyboard-focused. -->
+                        <Grid MinHeight="28"
                               HorizontalAlignment="Right"
                               ColumnSpacing="4"
                               Opacity="{x:Bind UserActionsOpacity, Mode=OneWay}">
@@ -181,9 +193,9 @@
                                          Spacing="0"
                                          Opacity="0.78">
                                 <Button x:Uid="ChatRetryFromMessage" Tag="{x:Bind}"
-                                        Padding="3"
-                                        MinWidth="36"
-                                        MinHeight="36"
+                                        Padding="2"
+                                        MinWidth="28"
+                                        MinHeight="28"
                                         Background="Transparent"
                                         BorderThickness="0"
                                         IsTabStop="True"
@@ -204,9 +216,9 @@
                                     </ic:FluentIcon>
                                 </Button>
                                 <Button x:Uid="ChatEditMessage" Tag="{x:Bind}"
-                                        Padding="3"
-                                        MinWidth="36"
-                                        MinHeight="36"
+                                        Padding="2"
+                                        MinWidth="28"
+                                        MinHeight="28"
                                         Background="Transparent"
                                         BorderThickness="0"
                                         IsTabStop="True"
@@ -222,9 +234,9 @@
                                         </ic:FluentIcon.RenderTransform>
                                     </ic:FluentIcon>
                                 </Button>
-                                <Button x:Uid="ChatCopyMessage" Padding="3"
-                                        MinWidth="36"
-                                        MinHeight="36"
+                                <Button x:Uid="ChatCopyMessage" Padding="2"
+                                        MinWidth="28"
+                                        MinHeight="28"
                                         Background="Transparent"
                                         BorderThickness="0"
                                         IsTabStop="True"
@@ -243,16 +255,29 @@
                         </Grid>
                     </StackPanel>
 
-                    <Border Padding="12"
+                    <!-- The single biggest deferral in this file: a TextBox, two Buttons, an icon
+                         and the explanatory text — built for every user message in the transcript
+                         to serve an editor that is open on at most one of them at a time, and
+                         usually none. EditDraft lives on the ChatMessage, so unloading the editor
+                         loses the control but never the text the user typed. -->
+                    <Border x:Name="UserEditor"
+                            x:Load="{x:Bind IsEditing, Mode=OneWay}"
+                            Padding="12"
                             CornerRadius="16"
                             Background="{ThemeResource UserMessageBackgroundBrush}"
                             BorderBrush="{ThemeResource BorderDefaultBrush}"
-                            BorderThickness="1"
-                            Visibility="{x:Bind IsEditing, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                            BorderThickness="1">
                         <StackPanel Spacing="10">
-                            <!-- Top: this wraps, so it opts out of the implicit style's centring. -->
+                            <!-- Keeps the implicit TextBox style's VerticalContentAlignment="Center"
+                                 rather than overriding it to Top. The override was there because
+                                 this box wraps and grows, but that reasoning only holds while the
+                                 content is taller than the box — and it never is: with no explicit
+                                 Height the TextBox sizes to its content, so past MinHeight the text
+                                 fills the box and Top and Center render identically. The one case
+                                 they differ is a draft shorter than MinHeight, which is the common
+                                 one, and there Top stranded a single line at the top of 48px with a
+                                 half-empty box under it. -->
                             <TextBox x:Uid="ChatEditMessageInput" Text="{x:Bind EditDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                     VerticalContentAlignment="Top"
                                      AcceptsReturn="True"
                                      TextWrapping="Wrap"
                                      MinHeight="48"
@@ -262,16 +287,26 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+                                <!-- Both halves of this row are centred against each other. Left to
+                                     itself a Grid cell stretches its child, so the note sat at the
+                                     top of a cell whose height the taller buttons opposite had set,
+                                     reading as misaligned with them. The icon's old Margin="0,2,0,0"
+                                     was a nudge compensating for the same thing one level down and
+                                     goes with it — VerticalAlignment does the job without a magic
+                                     number that only holds at one font size. -->
+                                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8"
+                                            VerticalAlignment="Center">
                                     <ic:FluentIcon Icon="Info" IconVariant="Regular" IconSize="Size16"
-                                                   Margin="0,2,0,0"
+                                                   VerticalAlignment="Center"
                                                    Foreground="{ThemeResource TextSecondaryBrush}" />
                                     <TextBlock x:Uid="ChatEditBranchDescription" Text="Editing creates a new conversation from this point. The original remains in the sidebar."
                                                TextWrapping="Wrap"
+                                               VerticalAlignment="Center"
                                                FontSize="12"
                                                Foreground="{ThemeResource TextSecondaryBrush}" />
                                 </StackPanel>
-                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"
+                                            VerticalAlignment="Center">
                                     <Button x:Uid="ChatEditCancel" Tag="{x:Bind}"
                                             Content="Cancel"
                                             Click="CancelEditUserMessage_Click" />
@@ -308,12 +343,13 @@
                                                 ActiveMatchIndex="{x:Bind ActiveFindMatchIndex, Mode=OneWay}"
                                                 FontSize="{x:Bind MessageFontSize, Mode=OneWay}"
                                                 Foreground="{ThemeResource TextPrimaryBrush}" />
-                    <StackPanel Orientation="Horizontal"
-                                Spacing="5"
-                                Visibility="{x:Bind HasEventMeta, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                    <StackPanel x:Name="AgentStopMeta"
+                                x:Load="{x:Bind HasEventMeta, Mode=OneWay}"
+                                Orientation="Horizontal"
+                                Spacing="5">
                         <ic:FluentIcon Icon="Stop" IconVariant="Regular" IconSize="Size16"
                                        RenderTransformOrigin="0.5,0.5"
-                                       Foreground="{ThemeResource TextTertiaryBrush}">
+                                       Foreground="{ThemeResource DangerBrush}">
                             <ic:FluentIcon.RenderTransform>
                                 <ScaleTransform ScaleX="0.7" ScaleY="0.7" />
                             </ic:FluentIcon.RenderTransform>
@@ -321,16 +357,22 @@
                         <TextBlock Text="{x:Bind EventMeta, Mode=OneWay}"
                                    FontSize="11"
                                    VerticalAlignment="Center"
-                                   Foreground="{ThemeResource TextTertiaryBrush}" />
+                                   Foreground="{ThemeResource DangerBrush}" />
                     </StackPanel>
-                    <ItemsControl ItemsSource="{x:Bind Attachments}"
-                                  ItemTemplate="{StaticResource AttachmentChipTemplate}"
-                                  Visibility="{x:Bind HasAttachments, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                    <ItemsControl x:Name="AgentAttachments"
+                                  x:Load="{x:Bind HasAttachments, Mode=OneWay}"
+                                  ItemsSource="{x:Bind Attachments}"
+                                  ItemTemplate="{StaticResource AttachmentChipTemplate}" />
                     <!-- Collapses (not just disables) once the code is submitted: a spent invite
                          box is dead UI, and IsOnboarding alone is not observable so it could
                          never take the row away. -->
-                    <Grid ColumnSpacing="8"
-                          Visibility="{x:Bind ShowOnboardInviteCode, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                    <!-- The three onboarding blocks below are the clearest deferral case in the
+                         agent bubble: a trust gate is answered once per agent, if ever, yet the
+                         invite row, the divider and the whole payment panel were constructed for
+                         every agent reply in every conversation. -->
+                    <Grid x:Name="OnboardInvite"
+                          x:Load="{x:Bind ShowOnboardInviteCode, Mode=OneWay}"
+                          ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
@@ -347,8 +389,9 @@
                     </Grid>
 
                     <!-- "or", shown only when the gate really offers both ways through. -->
-                    <Grid ColumnSpacing="10"
-                          Visibility="{x:Bind ShowOnboardMethodDivider, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                    <Grid x:Name="OnboardDivider"
+                          x:Load="{x:Bind ShowOnboardMethodDivider, Mode=OneWay}"
+                          ColumnSpacing="10">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
@@ -366,8 +409,9 @@
                     <!-- Payment branch. The button is an assertion the user makes ("I've
                          transferred X"), not a transaction: nothing here moves money, and the
                          agent verifies the claim itself before letting the conversation through. -->
-                    <StackPanel Spacing="8"
-                                Visibility="{x:Bind ShowOnboardPayment, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                    <StackPanel x:Name="OnboardPayment"
+                                x:Load="{x:Bind ShowOnboardPayment, Mode=OneWay}"
+                                Spacing="8">
                         <TextBlock Text="{x:Bind OnboardPaymentPrompt, Mode=OneWay}"
                                    TextWrapping="Wrap" MinWidth="0"
                                    Style="{StaticResource CaptionTextBlockStyle}"
@@ -392,7 +436,7 @@
                                 Click="SubmitOnboardPayment_Click"
                                 IsEnabled="{x:Bind IsOnboardingInputEnabled, Mode=OneWay}" />
                     </StackPanel>
-                    <Grid MinHeight="36"
+                    <Grid MinHeight="28"
                           HorizontalAlignment="Left"
                           ColumnSpacing="4"
                           Opacity="{x:Bind UserActionsOpacity, Mode=OneWay}">
@@ -409,9 +453,9 @@
                                     Spacing="0"
                                     Opacity="0.78">
                             <Button x:Uid="ChatRetryResponse" Tag="{x:Bind}"
-                                    Padding="3"
-                                    MinWidth="36"
-                                    MinHeight="36"
+                                    Padding="2"
+                                    MinWidth="28"
+                                    MinHeight="28"
                                     Background="Transparent"
                                     BorderThickness="0"
                                     IsTabStop="True"
@@ -427,9 +471,9 @@
                                     </ic:FluentIcon.RenderTransform>
                                 </ic:FluentIcon>
                             </Button>
-                            <Button x:Uid="ChatCopyResponse" Padding="3"
-                                    MinWidth="36"
-                                    MinHeight="36"
+                            <Button x:Uid="ChatCopyResponse" Padding="2"
+                                    MinWidth="28"
+                                    MinHeight="28"
                                     Background="Transparent"
                                     BorderThickness="0"
                                     IsTabStop="True"
@@ -606,8 +650,16 @@
 
                             <!-- Timeline panel, same geometry as the tool card's: 9px indent and
                                  a 1px rule down the gutter the steps hang off. -->
-                            <Grid Margin="9,5,0,0"
-                                  Visibility="{x:Bind IsActivityExpanded, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                            <!-- The thought timeline is collapsed until the user opens the card, so
+                                 its rule and ItemsControl are deferred rather than built-and-hidden
+                                 for every activity row. Unlike the other deferrals here this one
+                                 can toggle repeatedly, which x:Load handles by unloading again —
+                                 an acceptable trade, since re-realizing a short list of text rows
+                                 at the user's clicking pace costs far less than building it for
+                                 every row that is never expanded. -->
+                            <Grid x:Name="ThoughtTimeline"
+                                  x:Load="{x:Bind IsActivityExpanded, Mode=OneWay}"
+                                  Margin="9,5,0,0">
                                 <Border Width="1"
                                         Background="{ThemeResource BorderDefaultBrush}"
                                         HorizontalAlignment="Left"

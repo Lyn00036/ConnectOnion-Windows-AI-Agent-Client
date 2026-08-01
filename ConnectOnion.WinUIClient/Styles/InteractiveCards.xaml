@@ -30,7 +30,7 @@
         <Setter Property="MinHeight" Value="{StaticResource InteractiveControlMinHeight}" />
         <Setter Property="Padding" Value="16,6" />
     </Style>
-    <Style x:Key="InteractiveCardTertiaryButtonStyle" TargetType="Button" BasedOn="{StaticResource TransparentButtonStyle}">
+    <Style x:Key="InteractiveCardTertiaryButtonStyle" TargetType="Button" BasedOn="{StaticResource TextActionButtonStyle}">
         <Setter Property="MinHeight" Value="{StaticResource InteractiveControlMinHeight}" />
         <Setter Property="Padding" Value="10,6" />
     </Style>

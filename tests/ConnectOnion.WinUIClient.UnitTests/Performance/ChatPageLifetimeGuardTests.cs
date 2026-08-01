@@ -17,11 +17,12 @@ public sealed class ChatPageLifetimeGuardTests
         Assert.Contains("_pageLifetimeCts.Cancel()", source);
         Assert.Contains("MessageList.ItemsSource = null", source);
         Assert.Contains("Dispose();", source);
-        Assert.Contains("HeavyPageReclaimInterval = 4", source);
+        Assert.Contains("NativeReclaimPrivateBytesThreshold", source);
+        Assert.Contains("NativeReclaimCooldownTicks", source);
         Assert.Contains("ThreadPool.QueueUserWorkItem", source);
-        Assert.Contains("GCCollectionMode.Forced", source);
+        Assert.Contains("GCCollectionMode.Optimized", source);
         Assert.DoesNotContain("GC.WaitForPendingFinalizers()", source);
-        Assert.Contains("blocking: true", source);
+        Assert.Contains("blocking: false", source);
         Assert.Contains("compacting: false", source);
 
         var scrolling = ReadSource("Views", "ChatPage.Scrolling.cs");
@@ -64,7 +65,12 @@ public sealed class ChatPageLifetimeGuardTests
         Assert.DoesNotContain("DispatcherTimer", addAgentDialog);
 
         var mainWindowXaml = ReadSource("MainWindow.xaml");
-        Assert.Contains("<controls:AddAgentForm x:Name=\"AddAgentOverlay\"", mainWindowXaml);
+        Assert.DoesNotContain("<controls:AddAgentForm", mainWindowXaml);
+        Assert.DoesNotContain("<controls:SettingsOverlay", mainWindowXaml);
+        var overlays = ReadSource("Shell", "MainWindow.Overlays.cs");
+        Assert.Contains("EnsureAddAgentOverlay()", overlays);
+        Assert.Contains("EnsureSettingsOverlay()", overlays);
+        Assert.Contains("FloatingOverlayLayer.Children.Add", overlays);
     }
 
     private static string ReadChatPage()

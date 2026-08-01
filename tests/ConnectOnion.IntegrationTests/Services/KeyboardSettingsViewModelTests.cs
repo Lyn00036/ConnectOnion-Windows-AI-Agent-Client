@@ -39,7 +39,7 @@ public sealed class KeyboardSettingsViewModelTests
         var (vm, _) = await FreshAsync();
 
         var rows = vm.Groups.SelectMany(g => g.Rows).ToList();
-        Assert.Equal(14, rows.Count(r => r.IsCustomizable));
+        Assert.Equal(15, rows.Count(r => r.IsCustomizable));
         Assert.Equal(12, rows.Count(r => !r.IsCustomizable));
         Assert.False(vm.IsEmpty);
         Assert.False(vm.HasAnyRebinding);

@@ -3,6 +3,8 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Threading;
+using System.Threading.Tasks;
+using ConnectOnion.Protocol;
 using ConnectOnion.WinUIClient.Controls;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
@@ -26,15 +28,20 @@ public sealed partial class ChatPage : Page, IFindHost, IShutdownDisarmable, IDi
     private static readonly ConcurrentDictionary<string, double> ScrollPositions = new();
     private static readonly ConcurrentQueue<string> ScrollPositionOrder = new();
     private const int MaxRememberedScrollPositions = 64;
-    private const int HeavyPageReclaimInterval = 4;
+    private const int HeavyPageReclaimCheckInterval = 8;
+    private const long NativeReclaimPrivateBytesThreshold = 320L * 1024 * 1024;
+    private static readonly long NativeReclaimCooldownTicks =
+        System.Diagnostics.Stopwatch.Frequency * 30;
     private static int _releasedHeavyPages;
     private static int _nativeReclaimScheduled;
+    private static long _lastNativeReclaimTimestamp;
 
     public ChatViewModel Vm { get; } = App.GetService<ChatViewModel>();
     private ScrollViewer? _messageScrollViewer;
     private bool _isLoadingConversation;
     private bool _isAutoScrollQueued;
     private bool _stickToBottom = true;
+    private bool _olderHistoryUiLoadActive;
     private ComposerSubmission? _pendingInitialSubmission;
     private MainWindow? _hostWindow;
     private CancellationTokenSource? _loadCts;
@@ -127,12 +134,21 @@ public sealed partial class ChatPage : Page, IFindHost, IShutdownDisarmable, IDi
         Vm.Cleanup();
         _pageLifetimeCts.Dispose();
 
-        // RichTextBlock/ListView native trees can be tens of MiB while their managed wrappers
-        // are small, so native pressure alone may not make the CLR collect for many navigation
-        // cycles. Reclaim occasionally after the graph has been fully severed, on a worker so
-        // the full collection does not run inside the navigation handler.
-        // The one-at-a-time guard prevents a burst from queuing overlapping full collections.
-        if (Interlocked.Increment(ref _releasedHeavyPages) % HeavyPageReclaimInterval == 0
+        // Native transcript trees can be much larger than their wrappers, but a deterministic
+        // blocking Gen2 collection every few navigations creates periodic process-wide pauses.
+        // Check infrequently and collect only under demonstrated private-byte pressure, with a
+        // cooldown and a non-blocking optimized collection.
+        var released = Interlocked.Increment(ref _releasedHeavyPages);
+        var now = System.Diagnostics.Stopwatch.GetTimestamp();
+        var last = Volatile.Read(ref _lastNativeReclaimTimestamp);
+        long privateBytes;
+        using (var process = System.Diagnostics.Process.GetCurrentProcess())
+            privateBytes = process.PrivateMemorySize64;
+        var underPressure = released % HeavyPageReclaimCheckInterval == 0
+            && privateBytes >= NativeReclaimPrivateBytesThreshold;
+        if (underPressure
+            && now - last >= NativeReclaimCooldownTicks
+            && Interlocked.CompareExchange(ref _lastNativeReclaimTimestamp, now, last) == last
             && Interlocked.Exchange(ref _nativeReclaimScheduled, 1) == 0)
         {
             ThreadPool.QueueUserWorkItem(static _ =>
@@ -141,8 +157,8 @@ public sealed partial class ChatPage : Page, IFindHost, IShutdownDisarmable, IDi
                 {
                     GC.Collect(
                         GC.MaxGeneration,
-                        GCCollectionMode.Forced,
-                        blocking: true,
+                        GCCollectionMode.Optimized,
+                        blocking: false,
                         compacting: false);
                 }
                 finally
@@ -371,6 +387,10 @@ public sealed partial class ChatPage : Page, IFindHost, IShutdownDisarmable, IDi
 
     private async void Composer_ModeChangeRequested(object? sender, string mode)
         => await Vm.SetModeAsync(mode);
+
+    /// <summary>Cycles the same three choices shown by the composer's mode picker.</summary>
+    internal Task CycleApprovalModeAsync()
+        => Vm.SetModeAsync(AgentModes.Next(Vm.CurrentMode));
 
     private async void OfflineNotice_RecheckRequested(object? sender, System.EventArgs e)
         => await Vm.RecheckPresenceAsync();

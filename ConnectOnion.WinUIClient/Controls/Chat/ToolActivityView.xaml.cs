@@ -148,9 +148,17 @@ public sealed partial class ToolActivityView : UserControl
     /// a vertically-scrolling ScrollViewer, so its measured height is the full content height
     /// regardless of the cap — comparing it to the default tells us whether enlarging reveals more.
     /// Updates as the log streams (each growth re-fires SizeChanged) and on a wrap toggle.</summary>
+    /// <remarks>
+    /// Reads the step off <c>Tag</c>, not <c>DataContext</c>. A row's DataContext is only assigned
+    /// when its DataTemplate carries no compiled binding — the moment the template uses x:Bind the
+    /// framework calls ProcessBindings instead and leaves DataContext null, which would silently
+    /// stop this matching and leave <see cref="ToolStepViewModel.CanEnlargeLog"/> permanently false
+    /// (the Expand/Collapse action would simply never appear). That is the same trap that cost the
+    /// sidebar its hover state; every other handler in this file already reads Tag.
+    /// </remarks>
     private void Log_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        if ((sender as FrameworkElement)?.DataContext is ToolStepViewModel step)
+        if ((sender as FrameworkElement)?.Tag is ToolStepViewModel step)
             step.CanEnlargeLog = e.NewSize.Height > DefaultLogMaxHeight;
     }
 

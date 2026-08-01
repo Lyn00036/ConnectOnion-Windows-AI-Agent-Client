@@ -12,7 +12,7 @@ namespace ConnectOnion.WinUIClient.Services.Runtime;
 /// classification, display-name/target mapping and sensitive-data redaction; views only bind
 /// to the resulting activity. A result is never matched by tool name.
 /// </summary>
-public sealed class ToolActivityProjector
+public sealed partial class ToolActivityProjector
 {
     /// <summary>Argument/result JSON keys whose <i>value</i> is replaced wholesale by
     /// 
@@ -43,8 +43,24 @@ public sealed class ToolActivityProjector
     /// tracking id, so the card said "warning" while every word a user could read said success.
     /// Same reasoning as the leading space on <c>" error"</c> below.</para>
     /// </summary>
-    private static readonly Regex HttpProblemCodes =
-        new(@"\b(?:403|404)\b", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    [GeneratedRegex(@"\b(?:403|404)\b", RegexOptions.CultureInvariant)]
+    private static partial Regex HttpProblemCodes { get; }
+
+    /// <summary>403 alone, for the one caller that distinguishes it from 404. Kept separate from
+    /// <see cref="HttpProblemCodes"/> rather than reusing it: that one also matches 404, and
+    /// <see cref="FriendlyProblem"/> would then report a missing page as "Page access denied".</summary>
+    [GeneratedRegex(@"\b403\b", RegexOptions.CultureInvariant)]
+    private static partial Regex ForbiddenCode { get; }
+
+    /// <summary>Labelled credentials in free-form text — <c>token: abc</c>, <c>password=hunter2</c>.
+    /// <para><see cref="RegexOptions.CultureInvariant"/> matters on a case-insensitive match of
+    /// ASCII keywords: without it the comparison follows the current culture, and under tr-TR
+    /// <c>I</c> does not case-fold to <c>i</c>, so <c>API_KEY=…</c> would go unredacted on a
+    /// Turkish machine.</para></summary>
+    [GeneratedRegex(
+        @"(authorization|cookie|token|api[_-]?key|password|secret)\s*[:=]\s*([^\s,;]+)",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex LabelledSecrets { get; }
     /// <summary>Substrings that mean the tool call itself did not complete. Checked before the
     /// warning list, so an overlapping result classifies as the more severe of the two. Note
     /// the leading space on <c>" error"</c>: it keeps this off words that merely contain the
@@ -455,7 +471,7 @@ public sealed class ToolActivityProjector
     /// names it a secret and only knowing the value gives it away.</para></summary>
     public static string SanitizeText(string value)
     {
-        var scrubbed = Regex.Replace(value ?? "", "(?i)(authorization|cookie|token|api[_-]?key|password|secret)\\s*[:=]\\s*([^\\s,;]+)", "$1=[hidden]");
+        var scrubbed = LabelledSecrets.Replace(value ?? "", "$1=[hidden]");
         // Skipped entirely when no credential has ever been entered, which is the usual case.
         return SessionSecrets.IsEmpty ? scrubbed : SessionSecrets.Redact(scrubbed);
     }
@@ -633,7 +649,7 @@ public sealed class ToolActivityProjector
     {
         // "403" is matched with boundaries here for the same reason it is in HttpProblemCodes —
         // a bare Contains hits hex ids and query strings.
-        if (value.Contains("access denied", StringComparison.OrdinalIgnoreCase) || value.Contains("forbidden", StringComparison.OrdinalIgnoreCase) || Regex.IsMatch(value, @"\b403\b")) return "Page access denied";
+        if (value.Contains("access denied", StringComparison.OrdinalIgnoreCase) || value.Contains("forbidden", StringComparison.OrdinalIgnoreCase) || ForbiddenCode.IsMatch(value)) return "Page access denied";
         if (value.Contains("permission denied", StringComparison.OrdinalIgnoreCase) || value.Contains("unauthorized", StringComparison.OrdinalIgnoreCase)) return "Permission denied";
         if (value.Contains("timeout", StringComparison.OrdinalIgnoreCase)) return "Request timed out";
         if (value.Contains("connection refused", StringComparison.OrdinalIgnoreCase)) return "Connection refused";

@@ -57,7 +57,7 @@ public sealed partial class ChatViewModel
         _sessionsState.Sessions.Add(_session);
         _sessionsState.ActiveSessionId = _session.Id;
         CurrentMode = _session.Mode;
-        await _sessions.SaveAsync(_sessionsState);
+        await _sessions.AppendSessionAsync(_session);
 
         Messages.Clear();
         ResetIdCounter();
@@ -111,7 +111,7 @@ public sealed partial class ChatViewModel
         _sessionsState.Sessions.Add(_session);
         _sessionsState.ActiveSessionId = _session.Id;
         CurrentMode = _session.Mode;
-        await _sessions.SaveAsync(_sessionsState);
+        await _sessions.AppendSessionAsync(_session);
 
         if (prefix.Count > 0)
         {
