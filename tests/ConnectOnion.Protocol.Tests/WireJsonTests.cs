@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 
 namespace ConnectOnion.Protocol.Tests;
@@ -90,6 +91,17 @@ public class WireJsonTests
     [Fact]
     public void EmptyFrame_IsEmptyObject()
         => Assert.Equal("{}", WireJson.Serialize(new Dictionary<string, object?>()));
+
+    [Fact]
+    public void Utf8Serialization_MatchesStringContractWithoutAJsonStringRoundTrip()
+    {
+        var frame = InputMessageBuilder.BuildInput("中文 attachment", "input-utf8", null,
+            images: new[] { "data:image/png;base64,AAAA" });
+
+        Assert.Equal(
+            WireJson.Serialize(frame),
+            Encoding.UTF8.GetString(WireJson.SerializeToUtf8Bytes(frame)));
+    }
 
     [Fact]
     public void JsonElementValue_IsCopiedVerbatim()

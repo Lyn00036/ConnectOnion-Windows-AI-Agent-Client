@@ -143,39 +143,7 @@
                            TextWrapping="Wrap"
                            Visibility="{x:Bind Vm.HasAcceptedInputsSummary, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
 
-                <!-- Tier 3 · The one action. This inverted pill is the page's single bold element,
-                     so everything around it stays quiet — which is why Balance and Share below are
-                     links rather than the buttons they used to be, competing with it at the same
-                     weight and sitting between the identity and the thing to press. -->
-                <Button x:Uid="AgentDetailCapabilities" Content="What can you do?"
-                        Tag="What can you do?"
-                        MinHeight="36"
-                        Margin="0,26,0,0"
-                        Padding="18,0"
-                        CornerRadius="9"
-                        HorizontalAlignment="Center"
-                        Background="{ThemeResource TextPrimaryBrush}"
-                        Foreground="{ThemeResource AppBackgroundBrush}"
-                        BorderThickness="0"
-                        FontWeight="SemiBold"
-                        AutomationProperties.Name="Draft the prompt: What can you do?"
-                        Click="Suggestion_Click">
-                    <Button.Resources>
-                        <SolidColorBrush x:Key="ButtonBackgroundPointerOver"
-                                         Color="{ThemeResource TextSecondaryColor}" />
-                        <SolidColorBrush x:Key="ButtonBackgroundPressed"
-                                         Color="{ThemeResource TextTertiaryColor}" />
-                        <SolidColorBrush x:Key="ButtonForegroundPointerOver"
-                                         Color="{ThemeResource AppBackgroundColor}" />
-                        <SolidColorBrush x:Key="ButtonForegroundPressed"
-                                         Color="{ThemeResource AppBackgroundColor}" />
-                    </Button.Resources>
-                </Button>
-
-                <!-- Tier 4 · Quiet affordances, one row at one weight. Tools, balance and share
-                     are all "things you can consult or do about this agent"; they were previously
-                     spread across two rows at two different button weights, which read as three
-                     competing calls to action. -->
+                <!-- Quiet secondary actions stay together at one weight below the profile. -->
                 <StackPanel Orientation="Horizontal"
                             Margin="0,14,0,0"
                             Spacing="2"
@@ -184,7 +152,7 @@
                             MinHeight="32"
                             Padding="10,0"
                             CornerRadius="8"
-                            Style="{StaticResource TransparentButtonStyle}"
+                            Style="{StaticResource TextActionButtonStyle}"
                             UseSystemFocusVisuals="True"
                             AutomationProperties.Name="{x:Bind Vm.ToolsToggleLabel, Mode=OneWay}"
                             Visibility="{x:Bind Vm.HasToolSummary, Mode=OneWay, Converter={StaticResource BoolToVis}}">
@@ -224,7 +192,7 @@
                             CornerRadius="8"
                             FontSize="12"
                             Foreground="{ThemeResource TextSecondaryBrush}"
-                            Style="{StaticResource TransparentButtonStyle}"
+                            Style="{StaticResource TextActionButtonStyle}"
                             Visibility="Collapsed"
                             Click="Balance_Click"
                             AutomationProperties.Name="View balance and top up for this agent" />
@@ -236,7 +204,7 @@
                             CornerRadius="8"
                             FontSize="12"
                             Foreground="{ThemeResource TextSecondaryBrush}"
-                            Style="{StaticResource TransparentButtonStyle}"
+                            Style="{StaticResource TextActionButtonStyle}"
                             Click="Share_Click"
                             Visibility="{x:Bind Vm.CanShareAgent, Mode=OneWay, Converter={StaticResource BoolToVis}}"
                             AutomationProperties.Name="Share this relay agent" />

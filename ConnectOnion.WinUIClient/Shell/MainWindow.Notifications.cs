@@ -132,16 +132,10 @@ public sealed partial class MainWindow : IChatWindow
 
         NotificationLog.Info($"ShowConversationAsync: matched session — opening chat for agentId={agentId} conversationId={conversationId}");
 
-        var agents = await AppServices.Agents.LoadAsync();
-        agents.SelectedAgentId = agentId;
-        await AppServices.Agents.SaveAsync(agents);
-
-        sessions.ActiveSessionId = conversationId;
-        await AppServices.Sessions.SaveAsync(sessions);
+        await AppServices.Agents.SetSelectedAgentAsync(agentId);
+        await AppServices.Sessions.SetActiveSessionAsync(conversationId);
 
         NavigateTo(typeof(ChatPage), forceReload: true);
-        try { await ShellSidebar.RefreshAsync(); }
-        catch { /* sidebar refresh is best-effort */ }
     }
 
     public void ShowInAppToast(InAppToastModel toast) => InAppNotifications.ShowToast(toast);

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
 using System.Net.Http;
@@ -65,7 +64,11 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     private ConversationRunSnapshot? _pendingSnapshot;
     private int _snapshotDrainQueued;
 
-    public ObservableCollection<ChatMessage> Messages { get; } = new();
+    public ObservableRangeCollection<ChatMessage> Messages { get; } = new();
+    private bool _hasMoreHistory;
+    private int _olderHistoryLoadActive;
+
+    public bool HasMoreHistory => _hasMoreHistory;
 
     private readonly PreferencesRepository _preferences;
     private readonly AgentRepository _agents;
@@ -618,7 +621,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         }
 
         _sessionsState.ActiveSessionId = session.Id;
-        await _sessions.SaveAsync(_sessionsState);
+        await _sessions.SetActiveSessionAsync(session.Id, cancellationToken);
         return session;
     }
 
@@ -638,27 +641,31 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
             // here as on a database load. In particular this clears a live-only embedded
             // approval object that a just-completed Tool Activity may still reference.
             var cachedMessages = ToolActivityMigration.UpgradeLegacyToolMessages(cached.Messages);
-            Messages.Clear();
-            foreach (var message in cachedMessages) Messages.Add(message);
+            StampMessageFont(cachedMessages);
+            Messages.ReplaceAll(cachedMessages);
+            _hasMoreHistory = cached.HasMoreBefore;
             _createdAt = cached.CreatedAt;
             ResetIdCounter();
-            ConversationCache.Store(_session.Id, cached with { Messages = cachedMessages.ToList() });
+            ConversationCache.Store(
+                _session.Id,
+                cached with { Messages = cachedMessages.ToList(), HasMoreBefore = _hasMoreHistory });
             return;
         }
 
-        var loaded = await _conversations.LoadMessagesAsync(_session.Id, cancellationToken);
-        var messages = ToolActivityMigration.UpgradeLegacyToolMessages(loaded);
+        var loaded = await _conversations.LoadRecentMessagesAsync(
+            _session.Id, ConversationRepository.DefaultPageSize, cancellationToken);
+        var messages = ToolActivityMigration.UpgradeLegacyToolMessages(loaded.Messages);
         // A newer switch already owns the list — dropping this history is the whole point.
         if (generation != _loadGeneration) return;
 
-        Messages.Clear();
+        StampMessageFont(messages);
+        Messages.ReplaceAll(messages);
+        _hasMoreHistory = loaded.HasMoreBefore;
         _createdAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
         if (messages.Count > 0)
         {
-            foreach (var message in messages) Messages.Add(message);
-            // The whole conversation is loaded, so the first bubble is genuinely the start.
-            if (messages[0].Id > 0) _createdAt = messages[0].Id;
+            if (!_hasMoreHistory && messages[0].Id > 0) _createdAt = messages[0].Id;
         }
         ResetIdCounter();
 
@@ -693,6 +700,49 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     }
 
     private long NextId() => _nextId++;
+
+    /// <summary>Prepends one bounded page of older history. Concurrent scroll events coalesce.</summary>
+    public async Task<int> LoadOlderMessagesAsync(CancellationToken cancellationToken = default)
+    {
+        if (!_hasMoreHistory || _session is null || Messages.Count == 0) return 0;
+        if (Interlocked.Exchange(ref _olderHistoryLoadActive, 1) != 0) return 0;
+
+        try
+        {
+            var sessionId = _session.Id;
+            var generation = _loadGeneration;
+            var beforeId = Messages[0].Id;
+            var page = await _conversations.LoadMessagesBeforeAsync(
+                sessionId, beforeId, ConversationRepository.DefaultPageSize, cancellationToken);
+            if (generation != _loadGeneration
+                || !string.Equals(_session?.Id, sessionId, StringComparison.Ordinal))
+            {
+                return 0;
+            }
+            var older = ToolActivityMigration.UpgradeLegacyToolMessages(page.Messages);
+            if (older.Count == 0)
+            {
+                _hasMoreHistory = false;
+                return 0;
+            }
+
+            StampMessageFont(older);
+            Messages.InsertRange(0, older);
+            _hasMoreHistory = page.HasMoreBefore;
+            if (!_hasMoreHistory && Messages[0].Id > 0) _createdAt = Messages[0].Id;
+            if (_runManager.GetActiveRun(sessionId) is null) StoreSessionCache();
+            return older.Count;
+        }
+        finally
+        {
+            Volatile.Write(ref _olderHistoryLoadActive, 0);
+        }
+    }
+
+    private void StampMessageFont(IEnumerable<ChatMessage> messages)
+    {
+        foreach (var message in messages) message.MessageFontSize = MessageFontSize;
+    }
 
     private void TouchSession(string prompt)
     {
@@ -736,7 +786,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         if (_session is null || _agent is null) return;
         ConversationCache.Store(
             _session.Id,
-            new ConversationCache.Entry(_agent, _session, Messages.ToList(), _createdAt));
+            new ConversationCache.Entry(_agent, _session, Messages.ToList(), _createdAt, _hasMoreHistory));
     }
 
 

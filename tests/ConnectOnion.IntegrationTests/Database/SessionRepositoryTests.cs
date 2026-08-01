@@ -108,6 +108,75 @@ public sealed class SessionRepositoryTests
         Assert.Null(loaded.ActiveSessionId);
     }
 
+    [Fact]
+    public async Task AppendSession_AddsOneRowAndActivatesIt_WithoutDisturbingTheIndex()
+    {
+        var first = Summary("append-first", "First", "2026-01-01T00:00:00Z");
+        var second = Summary("append-second", "Second", "2026-01-02T00:00:00Z");
+        second.IsPinned = true;
+        await _sessions.SaveAsync(new SessionsState
+        {
+            Sessions = new List<SessionSummary> { first, second },
+            ActiveSessionId = first.Id,
+        });
+
+        var appended = Summary("append-third", "Third", "2026-01-03T00:00:00Z");
+        await _sessions.AppendSessionAsync(appended);
+
+        var state = await _sessions.LoadAsync();
+        // The point of the targeted write: the two existing rows are untouched, including the
+        // pinned flag that lives outside the sessions table entirely.
+        Assert.Equal(3, state.Sessions.Count);
+        Assert.Equal(appended.Id, state.ActiveSessionId);
+        Assert.True(state.Sessions.Single(s => s.Id == second.Id).IsPinned);
+        Assert.False(state.Sessions.Single(s => s.Id == appended.Id).IsPinned);
+        // sort_order continues the sequence, so LoadAsync's ORDER BY puts the new row last —
+        // matching where the caller's in-memory Sessions.Add placed it.
+        Assert.Equal(appended.Id, state.Sessions[^1].Id);
+
+        await _messages.DeleteMessagesAsync(first.Id);
+        await _sessions.SaveAsync(new SessionsState());
+    }
+
+    [Fact]
+    public async Task AppendSession_WithoutMakeActive_LeavesTheActivePointerAlone()
+    {
+        var existing = Summary("append-keep-active", "Existing", "2026-01-01T00:00:00Z");
+        await _sessions.SaveAsync(new SessionsState
+        {
+            Sessions = new List<SessionSummary> { existing },
+            ActiveSessionId = existing.Id,
+        });
+
+        await _sessions.AppendSessionAsync(
+            Summary("append-inactive", "Inactive", "2026-01-02T00:00:00Z"),
+            makeActive: false);
+
+        Assert.Equal(existing.Id, (await _sessions.LoadAsync()).ActiveSessionId);
+        await _sessions.SaveAsync(new SessionsState());
+    }
+
+    [Fact]
+    public async Task SetPinned_TogglesOneConversation_AndClearsTheMetadataRowWhenEmpty()
+    {
+        var pinned = Summary("pin-target", "Pinned", "2026-01-01T00:00:00Z");
+        var other = Summary("pin-other", "Other", "2026-01-02T00:00:00Z");
+        await _sessions.SaveAsync(new SessionsState
+        {
+            Sessions = new List<SessionSummary> { pinned, other },
+        });
+
+        await _sessions.SetPinnedAsync(pinned.Id, isPinned: true);
+        var afterPin = await _sessions.LoadAsync();
+        Assert.True(afterPin.Sessions.Single(s => s.Id == pinned.Id).IsPinned);
+        Assert.False(afterPin.Sessions.Single(s => s.Id == other.Id).IsPinned);
+
+        await _sessions.SetPinnedAsync(pinned.Id, isPinned: false);
+        Assert.All((await _sessions.LoadAsync()).Sessions, s => Assert.False(s.IsPinned));
+
+        await _sessions.SaveAsync(new SessionsState());
+    }
+
     private static SessionSummary Summary(string id, string title, string updatedAt) => new()
     {
         Id = id,

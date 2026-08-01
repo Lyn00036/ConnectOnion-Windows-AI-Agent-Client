@@ -21,6 +21,7 @@ public static class KeyboardTextLocalizer
             ["Go back"] = "KeyboardGoBack", ["Go forward"] = "KeyboardGoForward",
             ["Zoom in"] = "KeyboardZoomIn", ["Zoom out"] = "KeyboardZoomOut",
             ["Toggle full screen"] = "KeyboardToggleFullScreen", ["Send message"] = "KeyboardSendMessage",
+            ["Cycle approval mode"] = "KeyboardCycleChatMode",
             ["Insert new line"] = "KeyboardInsertNewLine", ["Next match"] = "KeyboardNextMatch",
             ["Previous match"] = "KeyboardPreviousMatch", ["Close find"] = "KeyboardCloseFind",
             ["Keyboard shortcuts"] = "KeyboardShortcutsName", ["Close dialog"] = "KeyboardCloseDialog",

@@ -94,7 +94,7 @@ public sealed partial class HomeAgentItem : Common.ObservableObject
 /// <summary>
 /// Agent picker. The virtualized list owns vertical scrolling; add-agent is a transient dialog.
 /// </summary>
-public sealed partial class HomePage : Page, IReloadablePage, IDisposable
+public sealed partial class HomePage : Page, IReloadablePage, IShutdownDisarmable, IDisposable
 {
     // The wide content is 960px plus its 48px margins on both sides. This threshold must use the
     // page viewport, not AdaptiveTrigger's top-level window width: during startup the shell can
@@ -170,7 +170,16 @@ public sealed partial class HomePage : Page, IReloadablePage, IDisposable
         catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested) { return; }
     }
 
-    public void Dispose()
+    /// <summary>
+    /// Stops callbacks without mutating the bound collection. Window teardown does not reliably
+    /// raise <see cref="FrameworkElement.Unloaded"/>, and an already queued presence callback can
+    /// otherwise update this page after WinUI has begun destroying its native peer.
+    /// </summary>
+    public void DisarmForShutdown() => DisposeCore(clearBoundItems: false);
+
+    public void Dispose() => DisposeCore(clearBoundItems: true);
+
+    private void DisposeCore(bool clearBoundItems)
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         _presence.PresenceChanged -= OnPresenceChanged;
@@ -179,7 +188,10 @@ public sealed partial class HomePage : Page, IReloadablePage, IDisposable
         Loaded -= HomePage_Loaded;
         Unloaded -= HomePage_Unloaded;
 
-        Agents.Clear();
+        // Clearing is useful when navigating away because it releases the item graph promptly.
+        // During final window teardown it would itself invalidate an ItemsRepeater/ListView whose
+        // native tree is already being dismantled, so DisarmForShutdown deliberately skips it.
+        if (clearBoundItems) Agents.Clear();
     }
 
     private async void HomePage_Loaded(object sender, RoutedEventArgs e)
@@ -237,8 +249,12 @@ public sealed partial class HomePage : Page, IReloadablePage, IDisposable
 
     private void OnPresenceChanged(string agentId)
     {
+        if (Volatile.Read(ref _disposed) != 0) return;
+
         DispatcherQueue.TryEnqueue(() =>
         {
+            // Unsubscribing cannot retract a callback that was queued just before shutdown.
+            if (Volatile.Read(ref _disposed) != 0) return;
             var item = Agents.FirstOrDefault(agent => agent.Id == agentId);
             if (item is not null) ApplyPresence(item);
         });
@@ -268,8 +284,7 @@ public sealed partial class HomePage : Page, IReloadablePage, IDisposable
             if (agentsState.Agents.All(agent => agent.Id != agentId))
                 throw new InvalidOperationException("This agent is no longer available.");
 
-            agentsState.SelectedAgentId = agentId;
-            await AppServices.Agents.SaveAsync(agentsState, _lifetimeCts.Token);
+            await AppServices.Agents.SetSelectedAgentAsync(agentId, _lifetimeCts.Token);
 
             var sessionsState = await AppServices.Sessions.LoadAsync(_lifetimeCts.Token);
             var recentSession = SessionSelection.FindExisting(
@@ -283,8 +298,7 @@ public sealed partial class HomePage : Page, IReloadablePage, IDisposable
                 return;
             }
 
-            sessionsState.ActiveSessionId = recentSession.Id;
-            await AppServices.Sessions.SaveAsync(sessionsState);
+            await AppServices.Sessions.SetActiveSessionAsync(recentSession.Id, _lifetimeCts.Token);
             Frame.Navigate(typeof(ChatPage));
         }
         catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested)
@@ -318,7 +332,7 @@ public sealed partial class HomePage : Page, IReloadablePage, IDisposable
     private async void EmptyStateDocs_Click(object sender, RoutedEventArgs e)
     {
         var launched = await AppServices.UriLauncher.LaunchAsync(new Uri(MainWindow.DocsUrl));
-        if (launched) return;
+        if (launched || Volatile.Read(ref _disposed) != 0) return;
 
         PageErrorBar.Title = LocalizedStrings.Get("HomeDocsOpenFailedTitle", "Couldn't open the docs");
         PageErrorBar.Message = LocalizedStrings.Format(

@@ -5,7 +5,7 @@ namespace ConnectOnion.WinUIClient.UnitTests.Models;
 public sealed class ChatMessageTests
 {
     [Fact]
-    public void MessageActions_AreInvisibleUntilHoveredOrFocused()
+    public void MessageActions_RemainDiscoverableAndStrengthenOnHoverOrFocus()
     {
         var message = new ChatMessage
         {
@@ -14,7 +14,7 @@ public sealed class ChatMessageTests
         };
 
         Assert.False(message.ShowUserActions);
-        Assert.Equal(0d, message.UserActionsOpacity);
+        Assert.Equal(0.62d, message.UserActionsOpacity);
 
         message.AreUserActionsVisible = true;
 

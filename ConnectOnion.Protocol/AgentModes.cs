@@ -31,6 +31,15 @@ public static class AgentModes
     public static bool IsValid(string? mode)
         => mode is Safe or AcceptEdits or Plan;
 
+    /// <summary>Returns the next mode in the same order as the composer's picker.</summary>
+    public static string Next(string? mode) => mode switch
+    {
+        Safe => AcceptEdits,
+        AcceptEdits => Plan,
+        Plan => Safe,
+        _ => Safe,
+    };
+
     /// <summary>Short label for the composer's mode pill.</summary>
     public static string DisplayName(string? mode) => mode switch
     {

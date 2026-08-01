@@ -3,12 +3,14 @@ namespace ConnectOnion.WinUIClient.UnitTests.Architecture;
 public sealed class ChatMessageActionContractTests
 {
     [Fact]
-    public void MessageMetadataAndCommands_AreHoverOrFocusOnly()
+    public void MessageMetadataAndCommands_StayVisibleAndGainEmphasisOnHoverOrFocus()
     {
         var xaml = ReadRepositoryFile("ConnectOnion.WinUIClient", "Views", "ChatPage.xaml");
+        var model = ReadRepositoryFile("ConnectOnion.WinUIClient.Core", "Models", "ChatMessage.cs");
         const string opacityBinding = "Opacity=\"{x:Bind UserActionsOpacity, Mode=OneWay}\"";
 
         Assert.Equal(2, xaml.Split(opacityBinding, StringSplitOptions.None).Length - 1);
+        Assert.Contains("ShowUserActions ? 1d : 0.62d", model, StringComparison.Ordinal);
     }
 
     [Fact]

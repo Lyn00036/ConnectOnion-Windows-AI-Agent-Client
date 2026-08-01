@@ -81,6 +81,15 @@ public sealed class ConversationCacheTests
     }
 
     [Fact]
+    public void Store_OversizedTranscript_DoesNotPinIt()
+    {
+        var id = Unique("oversized");
+        ConversationCache.Store(id, Entry("agent", new string('x', 9 * 1024 * 1024)));
+
+        Assert.Null(ConversationCache.Get(id, "agent"));
+    }
+
+    [Fact]
     public void RepeatedlySwitchingTwoCachedConversations_RemainsBounded()
     {
         var first = Unique("switch-a");

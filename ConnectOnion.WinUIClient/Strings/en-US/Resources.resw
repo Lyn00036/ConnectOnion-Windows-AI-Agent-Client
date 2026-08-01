@@ -66,9 +66,9 @@
   <data name="FindSearch.PlaceholderText" xml:space="preserve"><value>Search chat...</value></data>
   <data name="ZoomReset.Text" xml:space="preserve"><value>Reset</value></data>
   <data name="DropHint.Text" xml:space="preserve"><value>Drop files on the message box to attach</value></data>
-  <data name="ComposerSuggestionCapabilities.Content" xml:space="preserve"><value>What can you do?</value></data>
-  <data name="ComposerSuggestionSystem.Content" xml:space="preserve"><value>Show system info</value></data>
-  <data name="ComposerSuggestionFiles.Content" xml:space="preserve"><value>List files</value></data>
+  <data name="ComposerSuggestionCapabilities.Content" xml:space="preserve"><value>Summarize your capabilities</value></data>
+  <data name="ComposerSuggestionSystem.Content" xml:space="preserve"><value>Help me get started</value></data>
+  <data name="ComposerSuggestionFiles.Content" xml:space="preserve"><value>Suggest three useful tasks</value></data>
   <data name="ComposerSafeMode.Text" xml:space="preserve"><value>Safe</value></data>
   <data name="ComposerSafeModeDescription.Text" xml:space="preserve"><value>Safe — approve dangerous tools</value></data>
   <data name="ComposerAcceptEditsDescription.Text" xml:space="preserve"><value>Accept edits — file writes run unprompted</value></data>
@@ -104,13 +104,17 @@
   <data name="SettingsMessagePreview.Description" xml:space="preserve"><value>Include a snippet of the reply. When off, notifications only say you have a new response.</value></data>
   <data name="SettingsMicrophone.Description" xml:space="preserve"><value>Choose the microphone for voice input.</value></data>
   <data name="SidebarWorkspace.Text" xml:space="preserve"><value>Agent workspace</value></data>
-  <data name="SidebarAgentsNavigation.ToolTipService.ToolTip" xml:space="preserve"><value>Agents</value></data>
-  <data name="SidebarAgentsNavigation.AutomationProperties.Name" xml:space="preserve"><value>Agents</value></data>
-  <data name="SidebarAgentsNavigationLabel.Text" xml:space="preserve"><value>Agents</value></data>
+  <data name="SidebarAgentsNavigation.ToolTipService.ToolTip" xml:space="preserve"><value>Agent library</value></data>
+  <data name="SidebarAgentsNavigation.AutomationProperties.Name" xml:space="preserve"><value>Agent library</value></data>
+  <data name="SidebarAgentsNavigationLabel.Text" xml:space="preserve"><value>Agent library</value></data>
   <data name="SidebarSearchChats.ToolTipService.ToolTip" xml:space="preserve"><value>Search chats</value></data>
   <data name="SidebarSearchChats.AutomationProperties.Name" xml:space="preserve"><value>Search chats</value></data>
-  <data name="SidebarPinned.Text" xml:space="preserve"><value>Pinned</value></data>
-  <data name="SidebarConversations.Text" xml:space="preserve"><value>Conversations</value></data>
+  <data name="SidebarPinned.Text" xml:space="preserve"><value>Pinned shortcuts</value></data>
+  <data name="SidebarConversations.Text" xml:space="preserve"><value>Chats</value></data>
+  <data name="SidebarExpandAgentChats" xml:space="preserve"><value>Expand chats for {0}</value></data>
+  <data name="SidebarCollapseAgentChats" xml:space="preserve"><value>Collapse chats for {0}</value></data>
+  <data name="SidebarExpandPinnedChats" xml:space="preserve"><value>Expand pinned shortcuts</value></data>
+  <data name="SidebarCollapsePinnedChats" xml:space="preserve"><value>Collapse pinned shortcuts</value></data>
   <data name="SidebarDeleteChat.Text" xml:space="preserve"><value>Delete chat</value></data>
   <data name="SidebarAgentNewChat.Text" xml:space="preserve"><value>New chat</value></data>
   <data name="SidebarAgentDetails.Text" xml:space="preserve"><value>Agent details</value></data>
@@ -154,7 +158,6 @@
   <data name="HomeNoAgents.Text" xml:space="preserve"><value>No agents yet</value></data>
   <data name="HomeNoAgentsHint.Text" xml:space="preserve"><value>An agent is a ConnectOnion-compatible assistant you connect to. You need its 0x address or its HTTP URL — whoever runs the agent can give you one from its Share screen.</value></data>
   <data name="AgentDetailShare.Content" xml:space="preserve"><value>Share</value></data>
-  <data name="AgentDetailCapabilities.Content" xml:space="preserve"><value>What can you do?</value></data>
   <data name="AgentDetailTools.Text" xml:space="preserve"><value>Available tools</value></data>
   <data name="SettingsSearch.PlaceholderText" xml:space="preserve"><value>Search settings</value></data>
   <data name="SettingsCategoryGeneral.Text" xml:space="preserve"><value>General</value></data>
@@ -379,9 +382,9 @@
   <data name="ComposerAskAgent" xml:space="preserve"><value>Ask this agent anything</value></data>
   <data name="ComposerAskNamedAgent" xml:space="preserve"><value>Ask {0} anything</value></data>
   <data name="ComposerWriteMessage" xml:space="preserve"><value>Write a message...</value></data>
-  <data name="ComposerSuggestionCapabilities.Tag" xml:space="preserve"><value>What can you do?</value></data>
-  <data name="ComposerSuggestionSystem.Tag" xml:space="preserve"><value>Show system info</value></data>
-  <data name="ComposerSuggestionFiles.Tag" xml:space="preserve"><value>List files in current directory</value></data>
+  <data name="ComposerSuggestionCapabilities.Tag" xml:space="preserve"><value>Summarize your capabilities</value></data>
+  <data name="ComposerSuggestionSystem.Tag" xml:space="preserve"><value>Help me get started</value></data>
+  <data name="ComposerSuggestionFiles.Tag" xml:space="preserve"><value>Suggest three useful tasks</value></data>
   <data name="AddAgentTesting" xml:space="preserve"><value>Testing…</value></data>
   <data name="AddAgentTestConnection" xml:space="preserve"><value>Test connection</value></data>
   <data name="AddAgentAdding" xml:space="preserve"><value>Adding…</value></data>
@@ -403,6 +406,7 @@
   <data name="KeyboardOpenFolder" xml:space="preserve"><value>Open folder</value></data>
   <data name="KeyboardOpenSettings" xml:space="preserve"><value>Open settings</value></data>
   <data name="KeyboardCloseWindow" xml:space="preserve"><value>Close window</value></data>
+  <data name="KeyboardCycleChatMode" xml:space="preserve"><value>Cycle approval mode</value></data>
   <data name="KeyboardExit" xml:space="preserve"><value>Exit application</value></data>
   <data name="KeyboardUndo" xml:space="preserve"><value>Undo</value></data>
   <data name="KeyboardRedo" xml:space="preserve"><value>Redo</value></data>
@@ -428,9 +432,21 @@
   <data name="KeyboardReasonEnterPreference" xml:space="preserve"><value>Set by the Enter key preference</value></data>
   <data name="KeyboardReasonContextual" xml:space="preserve"><value>Fixed while this surface has focus</value></data>
   <data name="KeyboardReasonDismiss" xml:space="preserve"><value>Fixed so a dialog can always be dismissed</value></data>
-  <data name="ComposerSuggestionCapabilitiesPrompt" xml:space="preserve"><value>What can you do?</value></data>
-  <data name="ComposerSuggestionSystemPrompt" xml:space="preserve"><value>Show system info</value></data>
-  <data name="ComposerSuggestionFilesPrompt" xml:space="preserve"><value>List files in current directory</value></data>
+  <data name="ComposerSuggestionCapabilitiesPrompt" xml:space="preserve"><value>Summarize your capabilities and give me a few concrete examples.</value></data>
+  <data name="ComposerSuggestionSystemPrompt" xml:space="preserve"><value>Help me get started. What information do you need from me?</value></data>
+  <data name="ComposerSuggestionFilesPrompt" xml:space="preserve"><value>Suggest three useful tasks you can help me complete.</value></data>
+  <data name="ComposerModeButtonName" xml:space="preserve"><value>Approval mode: {0}. Shortcut: {1}</value></data>
+  <data name="SettingsSaveError.Title" xml:space="preserve"><value>Setting not saved</value></data>
+  <data name="SettingsSaveError.Message" xml:space="preserve"><value>ConnectOnion couldn't save this change. Try again.</value></data>
+  <data name="SettingsSaveErrorMessage" xml:space="preserve"><value>ConnectOnion couldn't save this change. Try again.</value></data>
+  <data name="SettingsLoadErrorMessage" xml:space="preserve"><value>Some settings couldn't be loaded. Close Settings and try again.</value></data>
+  <data name="SettingsRestartErrorMessage" xml:space="preserve"><value>ConnectOnion couldn't restart automatically. Restart it manually to apply the language.</value></data>
+  <data name="SettingsSearchResultsHeading" xml:space="preserve"><value>Search results</value></data>
+  <data name="SettingsSearchEmpty.Text" xml:space="preserve"><value>No settings match your search.</value></data>
+  <data name="UsageLoadError.Title" xml:space="preserve"><value>Usage unavailable</value></data>
+  <data name="UsageLoadError.Message" xml:space="preserve"><value>ConnectOnion couldn't load usage history. Try opening this page again.</value></data>
+  <data name="UsageLoadErrorMessage" xml:space="preserve"><value>ConnectOnion couldn't load usage history. Try opening this page again.</value></data>
+  <data name="UsageClearErrorMessage" xml:space="preserve"><value>ConnectOnion couldn't clear usage history. Try again.</value></data>
   <data name="IdentityHideLabel" xml:space="preserve"><value>Hide</value></data>
   <data name="IdentityRevealLabel" xml:space="preserve"><value>Reveal</value></data>
   <data name="IdentityApiKeyVisible" xml:space="preserve"><value>OpenOnion API key</value></data>
@@ -501,6 +517,7 @@
   <data name="MainZoomIn.ToolTipService.ToolTip" xml:space="preserve"><value>Zoom in</value></data>
   <data name="MainZoomIn.AutomationProperties.Name" xml:space="preserve"><value>Zoom in</value></data>
   <data name="ChatSaveAttachment.ToolTipService.ToolTip" xml:space="preserve"><value>Save a copy</value></data>
+  <data name="ChatSaveAttachment.AutomationProperties.Name" xml:space="preserve"><value>Save a copy</value></data>
   <data name="ChatRetryFromMessage.ToolTipService.ToolTip" xml:space="preserve"><value>Retry in this conversation</value></data>
   <data name="ChatRetryFromMessage.AutomationProperties.Name" xml:space="preserve"><value>Retry in this conversation</value></data>
   <data name="ChatEditMessage.ToolTipService.ToolTip" xml:space="preserve"><value>Edit in a new conversation</value></data>
@@ -644,7 +661,6 @@
   <data name="SettingsSearch.AutomationProperties.Name" xml:space="preserve"><value>Search settings</value></data>
   <data name="UsageClear.AutomationProperties.Name" xml:space="preserve"><value>Clear all recorded token usage</value></data>
   <data name="AgentDetailShare.AutomationProperties.Name" xml:space="preserve"><value>Share this relay agent</value></data>
-  <data name="AgentDetailCapabilities.AutomationProperties.Name" xml:space="preserve"><value>Draft the prompt: What can you do?</value></data>
   <data name="ChatEmptyTitle.Text" xml:space="preserve"><value>No messages yet</value></data>
   <data name="ChatEmptyDescription.Text" xml:space="preserve"><value>Type a message below to start the conversation.</value></data>
   <data name="SettingsEnterToSendSwitch.AutomationProperties.Name" xml:space="preserve"><value>Enter to send</value></data>

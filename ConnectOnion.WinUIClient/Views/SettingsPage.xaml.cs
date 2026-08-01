@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
@@ -91,7 +92,12 @@ public sealed partial class SettingsPage : Page
         }
         catch (Exception ex)
         {
-            Serilog.Log.Error(ex, "Settings page could not be initialized");
+            ShowSettingsError(
+                ex,
+                "Settings page could not be initialized",
+                LocalizedStrings.Get(
+                    "SettingsLoadErrorMessage",
+                    "Some settings couldn't be loaded. Close Settings and try again."));
         }
         finally
         {
@@ -119,13 +125,13 @@ public sealed partial class SettingsPage : Page
         // Only the persistence below is suppressed.
         NotificationDetailPanel.IsEnabled = EnableNotificationsSwitch.IsOn;
         if (_initializing) return;
-        await SaveNotificationSettingsAsync();
+        await SaveSettingAsync(SaveNotificationSettingsAsync, "Notification settings could not be saved");
     }
 
     private async void NotificationDetail_Toggled(object sender, RoutedEventArgs e)
     {
         if (_initializing) return;
-        await SaveNotificationSettingsAsync();
+        await SaveSettingAsync(SaveNotificationSettingsAsync, "Notification settings could not be saved");
     }
 
     /// <summary>Rebuilds the whole settings object from the switches and saves it. Writing
@@ -157,12 +163,13 @@ public sealed partial class SettingsPage : Page
             2 => ThemeMode.Dark,
             _ => ThemeMode.System,
         };
-        await _vm.SetThemeAsync(theme);
+        await SaveSettingAsync(() => _vm.SetThemeAsync(theme), "Theme setting could not be saved");
     }
 
     private async void LanguageChoice_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_initializing || LanguageChoice.SelectedIndex < 0) return;
+        SettingsErrorBar.IsOpen = false;
 
         var language = LanguageChoice.SelectedIndex switch
         {
@@ -184,7 +191,7 @@ public sealed partial class SettingsPage : Page
         }
         catch (Exception ex)
         {
-            Serilog.Log.Error(ex, "Application language could not be saved");
+            ShowSettingsError(ex, "Application language could not be saved");
         }
     }
 
@@ -197,13 +204,15 @@ public sealed partial class SettingsPage : Page
             2 => MessageFontSize.Lg,
             _ => MessageFontSize.Md,
         };
-        await _vm.SetMessageFontSizeAsync(size);
+        await SaveSettingAsync(() => _vm.SetMessageFontSizeAsync(size), "Message font setting could not be saved");
     }
 
     private async void EnterToSendSwitch_Toggled(object sender, RoutedEventArgs e)
     {
         if (_initializing) return;
-        await _vm.SetEnterToSendAsync(EnterToSendSwitch.IsOn);
+        await SaveSettingAsync(
+            () => _vm.SetEnterToSendAsync(EnterToSendSwitch.IsOn),
+            "Enter-to-send setting could not be saved");
     }
 
     /// <summary>
@@ -215,6 +224,7 @@ public sealed partial class SettingsPage : Page
     /// </summary>
     private async void LanguageRestartNow_Click(object sender, RoutedEventArgs e)
     {
+        SettingsErrorBar.IsOpen = false;
         try
         {
             // Drain runs and flush the database first; Restart terminates this process outright,
@@ -226,7 +236,12 @@ public sealed partial class SettingsPage : Page
         catch (Exception ex)
         {
             // The setting is already saved either way — the user can restart by hand.
-            Serilog.Log.Warning(ex, "Could not restart to apply the language change");
+            ShowSettingsError(
+                ex,
+                "Could not restart to apply the language change",
+                LocalizedStrings.Get(
+                    "SettingsRestartErrorMessage",
+                    "ConnectOnion couldn't restart automatically. Restart it manually to apply the language."));
         }
     }
 
@@ -240,13 +255,39 @@ public sealed partial class SettingsPage : Page
             2 => WindowCloseBehavior.Exit,
             _ => WindowCloseBehavior.Ask,
         };
-        await _vm.SetCloseBehaviorAsync(behavior);
+        await SaveSettingAsync(
+            () => _vm.SetCloseBehaviorAsync(behavior),
+            "Window close behavior could not be saved");
     }
 
-    private void MicChoice_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private async void MicChoice_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_initializing) return;
-        _vm.SelectedMicIndex = MicChoice.SelectedIndex;
+        await SaveSettingAsync(
+            () => _vm.SetSelectedMicrophoneAsync(MicChoice.SelectedIndex),
+            "Microphone setting could not be saved");
+    }
+
+    private async Task SaveSettingAsync(Func<Task> save, string logMessage)
+    {
+        SettingsErrorBar.IsOpen = false;
+        try
+        {
+            await save();
+        }
+        catch (Exception ex)
+        {
+            ShowSettingsError(ex, logMessage);
+        }
+    }
+
+    private void ShowSettingsError(Exception exception, string logMessage, string? fallbackMessage = null)
+    {
+        Serilog.Log.Error(exception, logMessage);
+        SettingsErrorBar.Message = fallbackMessage ?? LocalizedStrings.Get(
+            "SettingsSaveErrorMessage",
+            "ConnectOnion couldn't save this change. Try again.");
+        SettingsErrorBar.IsOpen = true;
     }
 
     /// <summary>Called by the settings shell when the user picks a category in the left rail.
@@ -255,6 +296,7 @@ public sealed partial class SettingsPage : Page
     public void SelectCategory(string category)
     {
         _currentCategory = category;
+        SearchEmptyState.Visibility = Visibility.Collapsed;
 
         // "General" is two cards: Appearance (how the app looks) and Chat (how chat behaves/reads).
         var isGeneral = category == "General";
@@ -285,11 +327,20 @@ public sealed partial class SettingsPage : Page
         }
 
         var value = query.Trim();
-        GeneralSection.Visibility = Contains(value, "general appearance theme light dark system language english chinese 中文 语言") ? Visibility.Visible : Visibility.Collapsed;
-        WindowSection.Visibility = Contains(value, "general window close closing exit quit tray minimize background 关闭 退出 托盘") ? Visibility.Visible : Visibility.Collapsed;
-        ChatSection.Visibility = Contains(value, "general chat message text size font enter send newline") ? Visibility.Visible : Visibility.Collapsed;
-        NotificationsSection.Visibility = Contains(value, "notifications agent replies task completion approval connection sound preview") ? Visibility.Visible : Visibility.Collapsed;
-        AudioSection.Visibility = Contains(value, "audio microphone voice input") ? Visibility.Visible : Visibility.Collapsed;
+        var showGeneral = Contains(value, "general appearance theme light dark system language english chinese 中文 语言");
+        var showWindow = Contains(value, "general window close closing exit quit tray minimize background 关闭 退出 托盘");
+        var showChat = Contains(value, "general chat message text size font enter send newline 聊天 消息 字体 发送 换行");
+        var showNotifications = Contains(value, "notifications agent replies task completion approval connection sound preview 通知 回复 完成 审批 连接 声音 预览");
+        var showAudio = Contains(value, "audio microphone voice input 音频 麦克风 语音 输入");
+
+        GeneralSection.Visibility = showGeneral ? Visibility.Visible : Visibility.Collapsed;
+        WindowSection.Visibility = showWindow ? Visibility.Visible : Visibility.Collapsed;
+        ChatSection.Visibility = showChat ? Visibility.Visible : Visibility.Collapsed;
+        NotificationsSection.Visibility = showNotifications ? Visibility.Visible : Visibility.Collapsed;
+        AudioSection.Visibility = showAudio ? Visibility.Visible : Visibility.Collapsed;
+        SearchEmptyState.Visibility = showGeneral || showWindow || showChat || showNotifications || showAudio
+            ? Visibility.Collapsed
+            : Visibility.Visible;
         ContentScrollViewer.ChangeView(null, 0, null, true);
     }
 

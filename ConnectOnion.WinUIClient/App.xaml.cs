@@ -152,8 +152,6 @@ namespace ConnectOnion.WinUIClient
                 // OS notification registration is not obviously safe for.
                 await _host.StartAsync();
                 Diagnostics.StartupTelemetry.Mark(Diagnostics.StartupPhases.HostStarted);
-                await AppServices.LanguagePreference.LoadAndApplyAsync();
-                await AppServices.WindowPlacement.LoadAsync();
                 _window = new MainWindow();
                 Diagnostics.StartupTelemetry.Mark(Diagnostics.StartupPhases.WindowCreated);
                 MainWindow = _window;

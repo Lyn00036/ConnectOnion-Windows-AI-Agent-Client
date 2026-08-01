@@ -27,6 +27,21 @@ public sealed class AgentsState
 /// </summary>
 public sealed class AgentRepository
 {
+    private const string SelectedAgentMetaKey = "selected_agent_id";
+
+    /// <summary>Updates only the selected-agent pointer without reconciling every agent row.</summary>
+    public async Task SetSelectedAgentAsync(
+        string? agentId,
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = await AppDatabase.OpenAsync(cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(agentId))
+            await AppDatabase.DeleteMetaAsync(connection, null, SelectedAgentMetaKey).ConfigureAwait(false);
+        else
+            await AppDatabase.SetMetaAsync(connection, null, SelectedAgentMetaKey, agentId).ConfigureAwait(false);
+        StorageRevision.Bump();
+    }
+
     /// <summary>
     /// Loads the agent list and selected id. Invalid rows are dropped (name
     /// required, the reserved "local-agent" id excluded, address required) and a
@@ -38,7 +53,7 @@ public sealed class AgentRepository
         await using var connection = await AppDatabase.OpenAsync(cancellationToken).ConfigureAwait(false);
         var state = new AgentsState
         {
-            SelectedAgentId = await AppDatabase.GetMetaAsync(connection, "selected_agent_id").ConfigureAwait(false),
+            SelectedAgentId = await AppDatabase.GetMetaAsync(connection, SelectedAgentMetaKey).ConfigureAwait(false),
         };
 
         await using (var command = connection.CreateCommand())
@@ -160,16 +175,17 @@ public sealed class AgentRepository
         // representation (a missing key) for GetMetaAsync's null to mean.
         if (string.IsNullOrWhiteSpace(state.SelectedAgentId))
         {
-            await AppDatabase.DeleteMetaAsync(connection, transaction, "selected_agent_id")
+            await AppDatabase.DeleteMetaAsync(connection, transaction, SelectedAgentMetaKey)
                 .ConfigureAwait(false);
         }
         else
         {
-            await AppDatabase.SetMetaAsync(connection, transaction, "selected_agent_id", state.SelectedAgentId!)
+            await AppDatabase.SetMetaAsync(connection, transaction, SelectedAgentMetaKey, state.SelectedAgentId!)
                 .ConfigureAwait(false);
         }
 
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        StorageRevision.Bump();
     }
 
     private static async Task DeleteRemovedAgentGraphsAsync(

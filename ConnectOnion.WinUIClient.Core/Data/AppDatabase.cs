@@ -83,7 +83,13 @@ public static class AppDatabase
             // ReadWriteCreate: first run has no file, and creating it here is what makes
             // "delete the .db to reset dev state" work without any other setup.
             Mode = SqliteOpenMode.ReadWriteCreate,
-            Cache = SqliteCacheMode.Shared,
+            // Deliberately *not* Cache=Shared. Shared-cache mode makes every connection in the
+            // process share one page cache and take table-level locks against each other, which
+            // is the opposite of what the WAL setting below is here for: a turn writing while the
+            // UI reads is exactly the case WAL keeps unblocked, and shared cache reintroduces the
+            // contention (as SQLITE_LOCKED rather than SQLITE_BUSY, which retry logic handles
+            // less well). The two settings were working against each other. Connection pooling is
+            // unaffected — it is on by default and is what keeps per-call opens cheap.
         };
         return builder.ToString();
     }

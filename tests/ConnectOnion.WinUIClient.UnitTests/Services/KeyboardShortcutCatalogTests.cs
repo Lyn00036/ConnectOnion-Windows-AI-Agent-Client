@@ -41,6 +41,16 @@ public sealed class KeyboardShortcutCatalogTests
         }
     }
 
+    [Fact]
+    public void GetGroups_CycleChatMode_IsCustomizableAndDefaultsToCtrlShiftM()
+    {
+        var item = KeyboardShortcutCatalog.GetCustomizable()
+            .Single(candidate => candidate.Id == KeyboardShortcutCatalog.Ids.CycleChatMode);
+
+        Assert.Equal("Cycle approval mode", item.Name);
+        Assert.Equal("Ctrl+Shift+M", item.DefaultChord.Canonical);
+    }
+
     private static string FindRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

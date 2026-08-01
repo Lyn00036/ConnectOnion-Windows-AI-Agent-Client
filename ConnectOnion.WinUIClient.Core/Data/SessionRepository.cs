@@ -36,6 +36,21 @@ public sealed class SessionRepository
     /// has, so nothing else needs telling.</summary>
     public event System.Action? SessionsChanged;
 
+    /// <summary>Updates only the active pointer; selecting a chat must not rewrite the index.</summary>
+    public async Task SetActiveSessionAsync(
+        string? sessionId,
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = await AppDatabase.OpenAsync(cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(sessionId))
+            await AppDatabase.DeleteMetaAsync(connection, null, ActiveSessionMetaKey).ConfigureAwait(false);
+        else
+            await AppDatabase.SetMetaAsync(connection, null, ActiveSessionMetaKey, sessionId).ConfigureAwait(false);
+        // No SessionsChanged here by design (selecting a chat is not an index change), but the
+        // sidebar still repaints selection from it, so the revision must move.
+        StorageRevision.Bump();
+    }
+
     /// <summary>
     /// Loads sessions, dropping partial/corrupt rows (id, agentId and title all
     /// required) and clearing a stale active pointer.
@@ -131,6 +146,101 @@ public sealed class SessionRepository
         AppDatabase.Add(command, "$id", session.Id);
         await command.ExecuteNonQueryAsync().ConfigureAwait(false);
 
+        StorageRevision.Bump();
+        SessionsChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// Inserts one new conversation and (optionally) makes it active, without touching any other
+    /// row. <see cref="SaveAsync"/> reconciles the entire index — every session upserted plus a
+    /// <c>NOT IN</c> delete — which is what "the user removed a conversation" needs and what
+    /// "the user started a conversation" very much does not: starting a chat cost one write per
+    /// conversation the user had ever had.
+    ///
+    /// <para><c>sort_order</c> continues the existing sequence so the row lands at the end of the
+    /// index, which is where the caller's in-memory <c>Sessions.Add</c> put it. Returns without
+    /// writing if the summary is missing the fields <see cref="LoadAsync"/> requires, matching
+    /// <see cref="SaveAsync"/>'s treatment of the same case.</para>
+    /// </summary>
+    public async Task AppendSessionAsync(SessionSummary session, bool makeActive = true)
+    {
+        if (string.IsNullOrWhiteSpace(session.Id) ||
+            string.IsNullOrWhiteSpace(session.AgentId) ||
+            string.IsNullOrWhiteSpace(session.Title))
+        {
+            return;
+        }
+
+        await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync().ConfigureAwait(false);
+
+        await using (var insert = connection.CreateCommand())
+        {
+            insert.Transaction = transaction;
+            // COALESCE(MAX(sort_order) + 1, 0) rather than a counted index: it is one scalar read
+            // instead of loading the index, and an empty table still yields 0.
+            insert.CommandText = """
+                INSERT INTO sessions (id, agent_id, title, has_custom_title, remote_session_id, last_processed_event_id, created_at, updated_at, sort_order, mode)
+                VALUES ($id, $agent_id, $title, $has_custom_title, $remote_session_id, $last_processed_event_id, $created_at, $updated_at,
+                        (SELECT COALESCE(MAX(sort_order) + 1, 0) FROM sessions), $mode)
+                ON CONFLICT(id) DO UPDATE SET
+                    agent_id = excluded.agent_id,
+                    title = excluded.title,
+                    has_custom_title = excluded.has_custom_title,
+                    remote_session_id = excluded.remote_session_id,
+                    last_processed_event_id = excluded.last_processed_event_id,
+                    updated_at = excluded.updated_at,
+                    mode = excluded.mode;
+                """;
+            AppDatabase.Add(insert, "$id", session.Id);
+            AppDatabase.Add(insert, "$agent_id", session.AgentId);
+            AppDatabase.Add(insert, "$title", session.Title);
+            AppDatabase.Add(insert, "$has_custom_title", session.HasCustomTitle ? 1 : 0);
+            AppDatabase.Add(insert, "$remote_session_id", session.RemoteSessionId);
+            AppDatabase.Add(insert, "$last_processed_event_id", session.LastProcessedEventId);
+            AppDatabase.Add(insert, "$created_at", session.CreatedAt);
+            AppDatabase.Add(insert, "$updated_at", session.UpdatedAt);
+            AppDatabase.Add(insert, "$mode", session.Mode);
+            await insert.ExecuteNonQueryAsync().ConfigureAwait(false);
+        }
+
+        // A brand-new conversation is never pinned, but the summary is the caller's object and
+        // nothing stops it arriving pinned — honour it rather than silently dropping the flag.
+        if (session.IsPinned)
+        {
+            var pinnedIds = await LoadPinnedIdsAsync(connection).ConfigureAwait(false);
+            if (pinnedIds.Add(session.Id))
+                await WritePinnedIdsAsync(connection, transaction, pinnedIds).ConfigureAwait(false);
+        }
+
+        if (makeActive)
+        {
+            await AppDatabase.SetMetaAsync(connection, transaction, ActiveSessionMetaKey, session.Id)
+                .ConfigureAwait(false);
+        }
+
+        await transaction.CommitAsync().ConfigureAwait(false);
+        StorageRevision.Bump();
+        SessionsChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// Pins or unpins one conversation. Pinned state is a JSON id list in <c>app_meta</c>
+    /// (see <see cref="PinnedSessionsMetaKey"/>), so this touches exactly one metadata row and
+    /// never the <c>sessions</c> table — where <see cref="SaveAsync"/> would have rewritten every
+    /// row to record a flag that is not even stored on them.
+    /// </summary>
+    public async Task SetPinnedAsync(string sessionId, bool isPinned)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId)) return;
+
+        await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
+        var pinnedIds = await LoadPinnedIdsAsync(connection).ConfigureAwait(false);
+        var changed = isPinned ? pinnedIds.Add(sessionId) : pinnedIds.Remove(sessionId);
+        if (!changed) return;
+
+        await WritePinnedIdsAsync(connection, null, pinnedIds).ConfigureAwait(false);
+        StorageRevision.Bump();
         SessionsChanged?.Invoke();
     }
 
@@ -198,14 +308,18 @@ public sealed class SessionRepository
             // The id list is built as numbered *parameters*, never interpolated text — session
             // ids are GUIDs today, but a NOT IN list assembled by string concatenation is an
             // injection waiting for the day an id becomes user-derived.
-            del.CommandText = "DELETE FROM sessions WHERE id NOT IN (";
+            // StringBuilder, not `CommandText +=`. SqliteCommand.CommandText is a property, so the
+            // old loop read the whole SQL back and reallocated it twice per session — O(N^2)
+            // character copying to build a statement that is itself only O(N).
+            var sql = new System.Text.StringBuilder("DELETE FROM sessions WHERE id NOT IN (");
             for (var i = 0; i < keepIds.Count; i++)
             {
-                del.CommandText += i > 0 ? ", $" : "$";
-                del.CommandText += $"p{i}";
+                if (i > 0) sql.Append(", ");
+                sql.Append('$').Append('p').Append(i);
                 AppDatabase.Add(del, $"$p{i}", keepIds[i]);
             }
-            del.CommandText += ");";
+            sql.Append(");");
+            del.CommandText = sql.ToString();
             await del.ExecuteNonQueryAsync().ConfigureAwait(false);
         }
         else
@@ -237,27 +351,41 @@ public sealed class SessionRepository
             .Select(session => session.Id)
             .Distinct()
             .ToList();
-        if (pinnedIds.Count == 0)
-        {
-            await AppDatabase.DeleteMetaAsync(connection, transaction, PinnedSessionsMetaKey)
-                .ConfigureAwait(false);
-        }
-        else
-        {
-            await AppDatabase.SetMetaAsync(
-                    connection,
-                    transaction,
-                    PinnedSessionsMetaKey,
-                    JsonSerializer.Serialize(pinnedIds, AppJsonContext.Default.ListString))
-                .ConfigureAwait(false);
-        }
+        await WritePinnedIdsAsync(connection, transaction, pinnedIds).ConfigureAwait(false);
 
         await transaction.CommitAsync().ConfigureAwait(false);
+        StorageRevision.Bump();
         SessionsChanged?.Invoke();
     }
 
     private static string? ReadNullableString(SqliteDataReader reader, int ordinal)
         => reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);
+
+    /// <summary>Persists the pinned-id list, deleting the metadata row entirely when nothing is
+    /// pinned so an empty list never lingers as <c>"[]"</c>. Shared by the whole-index save and
+    /// the single-conversation <see cref="SetPinnedAsync"/> so both agree on that representation.</summary>
+    private static async Task WritePinnedIdsAsync(
+        SqliteConnection connection,
+        SqliteTransaction? transaction,
+        IEnumerable<string> pinnedIds)
+    {
+        // Materialized as List<string> because that is the type the source-generated context has
+        // a converter for — AppJsonContext.Default.ListString, not an interface.
+        var ids = pinnedIds as List<string> ?? pinnedIds.ToList();
+        if (ids.Count == 0)
+        {
+            await AppDatabase.DeleteMetaAsync(connection, transaction, PinnedSessionsMetaKey)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        await AppDatabase.SetMetaAsync(
+                connection,
+                transaction,
+                PinnedSessionsMetaKey,
+                JsonSerializer.Serialize(ids, AppJsonContext.Default.ListString))
+            .ConfigureAwait(false);
+    }
 
     private static async Task<HashSet<string>> LoadPinnedIdsAsync(SqliteConnection connection)
     {

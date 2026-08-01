@@ -9,7 +9,8 @@ namespace ConnectOnion.WinUIClient.Services;
 /// it real; there is no second place to also edit.
 ///
 /// <para><b>Customizable</b> entries are the ones the app dispatches itself, in
-/// <c>MainWindow.FileMenu.cs</c>, <c>MainWindow.ViewMenu.cs</c> and <c>MainWindow.HelpMenu.cs</c>.
+/// <c>MainWindow.FileMenu.cs</c>, <c>MainWindow.ViewMenu.cs</c>,
+/// <c>MainWindow.ChatShortcuts.cs</c> and <c>MainWindow.HelpMenu.cs</c>.
 /// Those handlers ask the service for the live chord, so changing <see cref="Ids"/> or a default
 /// here changes behaviour with no handler edit.</para>
 ///
@@ -45,6 +46,8 @@ public static class KeyboardShortcutCatalog
         public const string ZoomIn = "view.zoomIn";
         public const string ZoomOut = "view.zoomOut";
         public const string ToggleFullScreen = "view.toggleFullScreen";
+
+        public const string CycleChatMode = "chat.cycleMode";
 
         public const string KeyboardShortcuts = "general.keyboardShortcuts";
     }
@@ -99,6 +102,7 @@ public static class KeyboardShortcutCatalog
         }),
         new("Chat", new List<KeyboardShortcutItem>
         {
+            Custom(Ids.CycleChatMode, "Cycle approval mode", CtrlShift('M')),
             Fixed("Send message", ComposerReason, Combo("Enter")),
             Fixed("Insert new line", ComposerReason, Combo("Shift", "Enter")),
         }),

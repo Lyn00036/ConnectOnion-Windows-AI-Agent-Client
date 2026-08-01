@@ -146,6 +146,25 @@
         </Setter>
     </Style>
 
+    <!-- Standalone low-emphasis text action. Unlike TransparentButtonStyle, this must read as a
+         button without relying on a parent row: a quiet fill and hairline establish the target at
+         rest, while the native Fluent template supplies theme-aware hover, pressed and focus
+         states. Use this for Share / Cancel / Reject / toolbar text actions; keep disclosure rows
+         and sidebar row buttons on TransparentButtonStyle so they retain one unified row hover. -->
+    <Style x:Key="TextActionButtonStyle"
+           TargetType="Button"
+           BasedOn="{StaticResource DefaultButtonStyle}">
+        <Setter Property="Background" Value="{ThemeResource SurfaceSecondaryBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource BorderSubtleBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Foreground" Value="{ThemeResource TextSecondaryBrush}" />
+        <Setter Property="CornerRadius" Value="7" />
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="MinHeight" Value="32" />
+        <Setter Property="Padding" Value="10,4" />
+        <Setter Property="UseSystemFocusVisuals" Value="True" />
+    </Style>
+
     <!-- Small icon-only button — compact, transparent, circular click target.
          Used for copy/dismiss/close/expand actions attached to a content row. -->
     <Style x:Key="SmallIconButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
@@ -154,8 +173,8 @@
         <Setter Property="CornerRadius" Value="6" />
         <Setter Property="MinHeight" Value="0" />
         <Setter Property="MinWidth" Value="0" />
-        <Setter Property="Width" Value="28" />
-        <Setter Property="Height" Value="28" />
+        <Setter Property="Width" Value="36" />
+        <Setter Property="Height" Value="36" />
         <Setter Property="Padding" Value="0" />
     </Style>
 

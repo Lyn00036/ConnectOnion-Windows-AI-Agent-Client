@@ -87,10 +87,10 @@ public sealed partial class ChatPage
     private void FindAllMatches()
     {
         _findMatches.Clear();
-        ClearFindHighlights();
 
         if (string.IsNullOrWhiteSpace(_searchQuery))
         {
+            ClearFindHighlights();
             _currentFindIndex = -1;
             FindStatusText = "0 / 0 results";
             UpdateFindButtons();
@@ -99,7 +99,16 @@ public sealed partial class ChatPage
 
         foreach (var message in Vm.Messages)
         {
-            if (string.IsNullOrEmpty(message.Content)) continue;
+            // Assign the outcome directly rather than clearing every message first and then
+            // re-applying the query to the hits. FindQuery is an observable property with the
+            // usual equality short-circuit, so an unchanged assignment costs nothing — but the
+            // clear-then-set pass changed every matching bubble twice per keystroke, and each of
+            // those changes rebuilds that bubble's whole document tree.
+            if (string.IsNullOrEmpty(message.Content))
+            {
+                message.FindQuery = "";
+                continue;
+            }
 
             // Two counters with different jobs: `cursor` walks characters, while `localIndex`
             // counts matches *within this message* and is what the highlighter uses to pick out
@@ -117,10 +126,7 @@ public sealed partial class ChatPage
                 cursor = index + _searchQuery.Length;
             }
 
-            if (localIndex > 0)
-            {
-                message.FindQuery = _searchQuery;
-            }
+            message.FindQuery = localIndex > 0 ? _searchQuery : "";
         }
 
         _currentFindIndex = _findMatches.Count > 0 ? 0 : -1;
@@ -149,11 +155,15 @@ public sealed partial class ChatPage
     /// around the transcript; true for explicit next/previous.</param>
     private void ApplyCurrentFindMatch(bool scroll)
     {
-        // Clear the active marker everywhere first. Note this leaves FindQuery intact, so all
-        // matches stay dimly highlighted and only the active one is re-marked below.
-        foreach (var message in Vm.Messages)
+        // Only the bubble that *held* the active marker needs clearing. Sweeping all of
+        // Vm.Messages worked because the observable property short-circuits an unchanged
+        // assignment, but it walked the whole transcript on every next/previous to find the one
+        // row that had actually changed. Tracked by reference, so a message removed from the list
+        // mid-search is still cleaned up rather than leaving a stale marker behind.
+        if (_activeHighlightMessage is { } previous)
         {
-            message.ActiveFindMatchIndex = -1;
+            previous.ActiveFindMatchIndex = -1;
+            _activeHighlightMessage = null;
         }
 
         if (_currentFindIndex >= 0 && _currentFindIndex < _findMatches.Count)
@@ -161,6 +171,7 @@ public sealed partial class ChatPage
             var match = _findMatches[_currentFindIndex];
             match.Message.FindQuery = _searchQuery;
             match.Message.ActiveFindMatchIndex = match.MatchIndexInMessage;
+            _activeHighlightMessage = match.Message;
 
             if (scroll)
             {
@@ -181,7 +192,12 @@ public sealed partial class ChatPage
             message.FindQuery = "";
             message.ActiveFindMatchIndex = -1;
         }
+        _activeHighlightMessage = null;
     }
+
+    /// <summary>The one bubble currently carrying the active-match marker, so moving the marker
+    /// touches two messages instead of the whole transcript. See <see cref="ApplyCurrentFindMatch"/>.</summary>
+    private ChatMessage? _activeHighlightMessage;
 
     /// <summary>Tells MainWindow's shared find overlay to re-read <see cref="FindStatusText"/>
     /// and <see cref="HasFindMatches"/>. The page owns the matching; the window owns the UI, so

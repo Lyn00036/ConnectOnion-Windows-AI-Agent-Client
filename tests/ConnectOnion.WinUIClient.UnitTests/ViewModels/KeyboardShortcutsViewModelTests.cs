@@ -39,7 +39,7 @@ public sealed class KeyboardShortcutsViewModelTests
 
         var group = Assert.Single(viewModel.Groups, candidate => candidate.Title == "Chat");
         Assert.Equal("Chat", group.Title);
-        Assert.Equal(2, group.Shortcuts.Count);
+        Assert.Equal(3, group.Shortcuts.Count);
     }
 
     [Fact]

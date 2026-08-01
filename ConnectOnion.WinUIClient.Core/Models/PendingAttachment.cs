@@ -3,8 +3,8 @@ using CommunityToolkit.Mvvm.ComponentModel;
 namespace ConnectOnion.WinUIClient.Models;
 
 /// <summary>
-/// A composer-side attachment draft: picked from disk, validated, and (if valid)
-/// encoded in the background before the user hits Send. Lives only in
+/// A composer-side attachment draft: picked from disk and validated before send.
+/// Encoding is deferred until the turn is ready to write its INPUT frame. Lives only in
 /// <c>ChatComposer</c>'s pending list — never persisted, never put in
 /// <see cref="ChatMessage"/> directly. On successful send it is converted into a
 /// <see cref="ChatAttachment"/> on the new user message and discarded.
@@ -42,14 +42,6 @@ public sealed partial class PendingAttachment : Common.ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasError))]
     public partial string? Error { get; set; }
-
-    /// <summary>
-    /// Populated by <c>AttachmentEncoder</c> once validation passes; a full
-    /// <c>data:&lt;mime&gt;;base64,...</c> string. Cleared immediately after the
-    /// message is sent (success or failure) so it never lingers as long-held
-    /// megabyte-sized string state.
-    /// </summary>
-    public string? DataUrl { get; set; }
 
     public bool IsImage => Kind == AttachmentKind.Image;
     public bool IsFailed => Status == AttachmentStatus.Failed;

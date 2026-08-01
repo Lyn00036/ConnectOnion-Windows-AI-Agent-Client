@@ -33,6 +33,9 @@ public sealed partial class ShellAgentItem : RowStateItem
     public string CopyAccessibilityName => $"Copy address for {DisplayName}";
     public string DeleteAccessibilityName => $"Delete {DisplayName}";
     public string OpenAccessibilityName => $"Open {DisplayName}";
+    public string ToggleAccessibilityName => IsExpanded
+        ? LocalizedStrings.Format("SidebarCollapseAgentChats", "Collapse chats for {0}", DisplayName)
+        : LocalizedStrings.Format("SidebarExpandAgentChats", "Expand chats for {0}", DisplayName);
     public int SessionCount => Sessions.Count;
     public ObservableCollection<ShellSessionItem> Sessions { get; } = new();
     public ObservableCollection<ShellSessionGroup> SessionGroups { get; } = new();
@@ -66,6 +69,7 @@ public sealed partial class ShellAgentItem : RowStateItem
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ChevronAngle))]
+    [NotifyPropertyChangedFor(nameof(ToggleAccessibilityName))]
     public partial bool IsExpanded { get; set; }
 
     [ObservableProperty]

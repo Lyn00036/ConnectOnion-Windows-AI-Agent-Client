@@ -730,8 +730,13 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
                 $"Markdown theme brush '{key}' has no color-token mapping."),
         };
 
+        // Shared instance per (token, theme), not a fresh brush per element. ResolveBrush is called
+        // for every paragraph, quote, link, code span, code block and table cell, so a reply with a
+        // few dozen nodes used to mint a few dozen SolidColorBrushes — each a DependencyObject with
+        // a native peer — and walk Application.Current.Resources.MergedDictionaries once apiece.
+        // Nothing here mutates the brush it gets back, which is what makes sharing safe.
         var isDark = _target.ActualTheme == ElementTheme.Dark;
-        return new SolidColorBrush(ThemeService.GetColor(colorKey, isDark));
+        return ThemeService.GetBrush(colorKey, isDark);
     }
 
 }

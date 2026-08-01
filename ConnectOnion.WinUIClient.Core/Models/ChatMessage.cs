@@ -297,7 +297,7 @@ public sealed partial class ChatMessage : Common.ObservableObject
     public bool ShowUserActions => AreUserActionsVisible && !IsEditing;
 
     [JsonIgnore]
-    public double UserActionsOpacity => ShowUserActions ? 1d : 0d;
+    public double UserActionsOpacity => IsEditing ? 0d : ShowUserActions ? 1d : 0.62d;
 
     public void BeginEditing()
     {

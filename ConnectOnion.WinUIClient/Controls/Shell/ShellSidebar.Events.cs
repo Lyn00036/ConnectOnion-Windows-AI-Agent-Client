@@ -47,6 +47,13 @@ public sealed partial class ShellSidebar
     // Agent and session rows share one interaction model (see RowStateItem):
     // pointer hover and keyboard focus both reveal the row's action buttons and
     // paint its hover background. Both row kinds bind to these same handlers.
+    //
+    // The row is resolved through DataContext, and every row root in ShellSidebar.xaml therefore
+    // carries an explicit DataContext="{x:Bind}". That is not redundant: ItemsRepeater only assigns
+    // DataContext to a realized element when its DataTemplate has *no* compiled bindings — a
+    // template carrying x:Bind gets ProcessBindings instead, and its DataContext stays null. So the
+    // moment these templates moved from {Binding} to {x:Bind}, SetRowInteractive stopped matching,
+    // which silently cost the whole sidebar its hover wash and its per-row action buttons.
     private void Row_PointerEntered(object sender, PointerRoutedEventArgs e) => SetRowInteractive(sender, true);
     private void Row_PointerExited(object sender, PointerRoutedEventArgs e) => SetRowInteractive(sender, false);
     private void Row_GotFocus(object sender, RoutedEventArgs e) => SetRowInteractive(sender, true);
@@ -355,7 +362,9 @@ public sealed partial class ShellSidebar
         if (session is null) return;
 
         session.IsPinned = !session.IsPinned;
-        await AppServices.Sessions.SaveAsync(sessionsState);
+        // Targeted write: pinned state lives in one app_meta row, so this never touches the
+        // sessions table. SaveAsync would have upserted every conversation the user has.
+        await AppServices.Sessions.SetPinnedAsync(session.Id, session.IsPinned);
         await RefreshAsync();
     }
 
