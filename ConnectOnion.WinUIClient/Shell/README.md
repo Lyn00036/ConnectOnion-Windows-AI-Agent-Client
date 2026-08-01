@@ -12,6 +12,7 @@ namespace across every file, and `MainWindow.xaml.cs` must stay in the project r
 | `MainWindow.FileMenu.cs` | File menu commands and their shortcuts |
 | `MainWindow.EditMenu.cs` | Undo/cut/copy/paste against the last focused text box |
 | `MainWindow.ViewMenu.cs` | Zoom, full screen, sidebar toggle, and the shared find overlay |
+| `MainWindow.ChatShortcuts.cs` | Conversation-only shortcuts, including approval-mode cycling |
 | `MainWindow.HelpMenu.cs` | About / keyboard-shortcuts dialogs |
 | `MainWindow.Shortcuts.cs` | Pushes live chords into the menu items' accelerator text |
 | `MainWindow.Notifications.cs` | In-app toast host wiring |

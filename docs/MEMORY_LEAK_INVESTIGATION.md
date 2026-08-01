@@ -137,11 +137,10 @@ timers, queues, WebSocket registries, and large payload paths. It added these li
 - deleting a conversation removes its connection-wiring marker; deleting an agent also removes
   the manager's agent config, presence result, and pending/offline notification state.
 - the highlighted-text font-metric cache is capped at 32 family/size combinations.
-- every fourth fully detached heavy `ChatPage` schedules one background Gen2 collection. The
-  managed wrappers are small but own very large native XAML document trees, so native pressure
-  alone did not reliably trigger CLR collection. Requests are serialized and do not compact the
-  LOH. It deliberately does not wait for COM/XAML finalizers from a worker thread, which can
-  depend on the UI apartment and suppress later reclamation requests.
+- every eighth fully detached heavy `ChatPage` checks private bytes. Only pressure at or above
+  320 MiB schedules an optimized, non-blocking background Gen2 collection, and a 30-second
+  cooldown prevents periodic navigation pauses. Requests remain serialized and do not compact
+  the LOH or wait for apartment-sensitive finalizers.
 
 An attempted byte-weight limit on `ConversationCache` was rejected by measurement. The test
 profile contains a large transcript; declining to cache it caused every navigation to recreate
@@ -152,6 +151,12 @@ measured **0.67 MB/cycle** with a **7.9 MB** Private Bytes range. The two-conver
 measured **0.15 MB/cycle** with a **4.9 MB** range; its handles and threads both fell in the tail.
 An additional 32-cycle alternating stress run measured **0.29 MB/cycle**, a **6.8 MB** range,
 handle range 9, and thread range 1.
+
+That rejection applied to caching an otherwise complete transcript. The 2026-08-01 paging change
+loads only the newest 160 rows and keeps older history on disk until the user scrolls upward, so
+the cache now has a 16 MiB estimate cap in addition to its four-entry LRU without forcing ordinary
+navigation to rebuild a complete large transcript. This newer design still needs the real-window
+memory gate before its slope can be compared with the historical figures above.
 
 Because WinUI and CLR reclamation is batched for large document trees, the regression defaults
 are now 24 measured cycles, 6 warm-up cycles, and 750 ms settling. The pass/fail limits were not

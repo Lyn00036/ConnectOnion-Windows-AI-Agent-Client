@@ -199,10 +199,19 @@ Reading of the baseline:
 
 ## Optimizations tried and rejected
 
-Both were measured with the harness above and **neither reduced time to first frame**. They are
-recorded here so the next person spends their time somewhere else.
+The two experiments below were measured with the harness and **neither reduced time to first
+frame in its original form**. A later structural pass (2026-08-01) replaced eager overlay
+construction with working on-demand creation, consolidated startup persistence reads, paged
+transcripts, bounded caches, indexed global search, and reduced attachment/WebSocket buffer
+retention. That pass is covered by build, regression tests, and the qualified warm report below.
 
-**Deferring the modal overlays (`x:Load="False"`).** `MainWindow.xaml` builds three full-window
+The post-change `WarmUnpackaged` run on 2026-08-01 recorded medians of **912.6 ms** to first
+frame, **187.5 MB** idle working set, **119.8 MB** private bytes, **3.6 MB** managed heap, and
+**153 ms** graceful shutdown; all configured budgets passed. This is a health gate, not a causal
+before/after attribution: it does not isolate any one change, qualify cold cache, or cover a large
+conversation fixture.
+
+**Deferring the modal overlays (`x:Load="False"`).** The old `MainWindow.xaml` built three full-window
 modals eagerly — settings, keyboard shortcuts, About — and `SettingsOverlay` alone hosts the
 entire `SettingsPage` and resolves its view model from the container. Deferring them cut
 `MainWindow.InitializeComponent` from 189 ms to 110 ms and idle working set from ~190 MB to
@@ -211,6 +220,11 @@ launch stayed inside run-to-run noise). It also did not work: `FindName` returns
 elements from both `RootGrid` and the direct parent panel, so the generated field stayed null and
 clicking Settings silently did nothing. Reverted — a ~9 MB working-set win did not justify
 replacing declarative XAML with hand-rolled realization, and the latency win was zero.
+
+That specific `x:Load` attempt remains rejected. The current implementation creates and wires
+each overlay in `MainWindow.Overlays.cs` on first use, so it does not depend on deferred XAML name
+resolution. Its behavior is verified, and the warm report above covers the complete build, but it
+does not isolate how much of the result comes from overlay realization alone.
 
 **Starting the Generic Host concurrently with window construction.** `OnLaunched` awaits
 `_host.StartAsync()` before building the window, and host start is ~110 ms of SQLite reads plus
