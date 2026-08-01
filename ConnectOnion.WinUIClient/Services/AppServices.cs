@@ -28,6 +28,7 @@ public static class AppServices
     public static ConversationRepository Conversations => Provider.GetRequiredService<ConversationRepository>();
     public static WindowPlacementStore WindowPlacement => Provider.GetRequiredService<WindowPlacementStore>();
     public static LanguagePreferenceStore LanguagePreference => Provider.GetRequiredService<LanguagePreferenceStore>();
+    public static StartupStateService StartupState => Provider.GetRequiredService<StartupStateService>();
 
     /// <summary>Token-usage ledger. Deliberately independent of conversation/agent lifetime —
     /// deleting a chat never erases the record that its tokens were spent.</summary>

@@ -19,19 +19,9 @@ public sealed class LanguagePreferenceStore
 
     public string Current { get; private set; } = English;
 
-    public async Task LoadAndApplyAsync()
+    public void ApplyLoaded(string? language)
     {
-        try
-        {
-            await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
-            Current = Normalize(await AppDatabase.GetMetaAsync(connection, MetaKey).ConfigureAwait(false));
-        }
-        catch (Exception ex)
-        {
-            Serilog.Log.Warning(ex, "Application language could not be loaded; using English");
-            Current = English;
-        }
-
+        Current = Normalize(language);
         try
         {
             ApplicationLanguages.PrimaryLanguageOverride = Current;
@@ -39,10 +29,24 @@ public sealed class LanguagePreferenceStore
         }
         catch (Exception ex)
         {
-            // A language preference must never make the app unable to launch. This can happen
-            // when a Windows runtime without unpackaged language override support is active.
             Serilog.Log.Warning(ex, "Application language override could not be applied");
         }
+    }
+
+    public async Task LoadAndApplyAsync()
+    {
+        try
+        {
+            await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
+            var loaded = await AppDatabase.GetMetaAsync(connection, MetaKey).ConfigureAwait(false);
+            ApplyLoaded(loaded);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Warning(ex, "Application language could not be loaded; using English");
+            ApplyLoaded(English);
+        }
+
     }
 
     public async Task SaveAsync(string language)

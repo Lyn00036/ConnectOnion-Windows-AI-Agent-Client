@@ -64,6 +64,7 @@ public static class ServiceRegistration
         services.AddSingleton<PreferencesRepository>();
         services.AddSingleton<ConversationRepository>();
         services.AddSingleton<UsageRepository>();
+        services.AddSingleton<StartupSnapshotRepository>();
         services.AddSingleton<WindowPlacementStore>();
         services.AddSingleton<LanguagePreferenceStore>();
 
@@ -96,8 +97,9 @@ public static class ServiceRegistration
         services.AddSingleton<NotificationActivationRouter>();
 
         // ---- Startup wiring (runs when the host starts) ----
+        services.AddSingleton<StartupStateService>();
+        services.AddHostedService(sp => sp.GetRequiredService<StartupStateService>());
         services.AddHostedService<NotificationStartupService>();
-        services.AddHostedService<KeyboardShortcutStartupService>();
         services.AddHostedService<ImageCacheMaintenanceService>();
 
         // ---- View models (transient: one per page/dialog, resolved in each view's ctor) ----

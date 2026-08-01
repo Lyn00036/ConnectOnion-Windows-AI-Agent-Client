@@ -60,6 +60,11 @@ public sealed class KeyboardShortcutService
     public async Task LoadAsync(CancellationToken cancellationToken = default)
     {
         var snapshot = await _preferences.LoadAsync(cancellationToken).ConfigureAwait(false);
+        ApplySnapshot(snapshot);
+    }
+
+    public void ApplySnapshot(PreferencesSnapshot snapshot)
+    {
         Rebuild(snapshot.ShortcutOverrides);
         BindingsChanged?.Invoke();
     }

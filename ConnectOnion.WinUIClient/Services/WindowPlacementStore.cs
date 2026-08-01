@@ -16,13 +16,15 @@ public sealed class WindowPlacementStore
 
     public WindowPlacement? Current { get; private set; }
 
+    public void ApplyLoaded(string? value) => Current = WindowPlacementPolicy.TryParse(value);
+
     public async Task LoadAsync()
     {
         try
         {
             await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
             var value = await AppDatabase.GetMetaAsync(connection, MetaKey).ConfigureAwait(false);
-            Current = WindowPlacementPolicy.TryParse(value);
+            ApplyLoaded(value);
         }
         catch (Exception ex)
         {
