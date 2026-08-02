@@ -44,6 +44,7 @@ internal sealed class ComposerSuggestion
 
 public sealed partial class ChatComposer : UserControl, IDisposable
 {
+    private static readonly TimeSpan MinimumStopFeedbackDuration = TimeSpan.FromMilliseconds(500);
     // The attachment pipeline swallows its failures so a bad file cannot take the composer down.
     // These are what stops "I picked a file and nothing happened" from being untraceable; the
     // successful steps are deliberately not logged, because a working attachment reports itself
@@ -152,6 +153,13 @@ public sealed partial class ChatComposer : UserControl, IDisposable
             typeof(ChatComposer),
             new PropertyMetadata(false, OnIsBusyChanged));
 
+    public static readonly DependencyProperty IsStoppingProperty =
+        DependencyProperty.Register(
+            nameof(IsStopping),
+            typeof(bool),
+            typeof(ChatComposer),
+            new PropertyMetadata(false, OnIsBusyChanged));
+
     public static readonly DependencyProperty PlaceholderTextProperty =
         DependencyProperty.Register(
             nameof(PlaceholderText),
@@ -183,7 +191,8 @@ public sealed partial class ChatComposer : UserControl, IDisposable
     public event EventHandler<ComposerSubmission>? SubmitRequested;
 
     /// <summary>The stop button was pressed. The host decides what that can achieve; the composer
-    /// only reports the press and immediately re-renders from its bound busy state.</summary>
+    /// reports the press and keeps a short local feedback latch so a fast terminal update cannot
+    /// erase the acknowledgement before the user sees it.</summary>
     public event EventHandler? StopRequested;
 
     /// <summary>The user picked an approval mode from the pill. Carries the wire value
@@ -194,6 +203,7 @@ public sealed partial class ChatComposer : UserControl, IDisposable
     public ObservableCollection<PendingAttachment> PendingAttachments { get; } = new();
 
     private CancellationTokenSource _lifetimeCts = new();
+    private bool _showStopFeedback;
     private int _disposed;
 
     public ChatComposer()
@@ -325,6 +335,13 @@ public sealed partial class ChatComposer : UserControl, IDisposable
     {
         get => (bool)GetValue(CanStopProperty);
         set => SetValue(CanStopProperty, value);
+    }
+
+    /// <summary>A stop request was sent and the active run has not settled yet.</summary>
+    public bool IsStopping
+    {
+        get => (bool)GetValue(IsStoppingProperty);
+        set => SetValue(IsStoppingProperty, value);
     }
 
     public string PlaceholderText
@@ -460,10 +477,26 @@ public sealed partial class ChatComposer : UserControl, IDisposable
         RefreshModeSelector();
     }
 
-    private void Stop_Click(object sender, RoutedEventArgs e)
+    private async void Stop_Click(object sender, RoutedEventArgs e)
     {
-        if (!CanStop) return;
-        StopRequested?.Invoke(this, EventArgs.Empty);
+        if (!CanStop || _showStopFeedback) return;
+
+        _showStopFeedback = true;
+        RefreshSendButtonState();
+        try
+        {
+            StopRequested?.Invoke(this, EventArgs.Empty);
+            await Task.Delay(MinimumStopFeedbackDuration, _lifetimeCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // Navigation/unload ends visual feedback; the run itself remains owned by the VM.
+        }
+        finally
+        {
+            _showStopFeedback = false;
+            if (Volatile.Read(ref _disposed) == 0) RefreshSendButtonState();
+        }
     }
 
     /// <summary>Keeps the agent's skill offers first, then fills the three-chip row with generic
@@ -950,7 +983,9 @@ public sealed partial class ChatComposer : UserControl, IDisposable
         SpeechButton.IsEnabled = CanSubmit && !isActive;
 
         // Send and Stop share the slot: a turn is running or it isn't.
-        SendButton.Visibility = IsBusy ? Visibility.Collapsed : Visibility.Visible;
+        SendButton.Visibility = IsBusy || _showStopFeedback
+            ? Visibility.Collapsed
+            : Visibility.Visible;
         SendButton.IsEnabled = canSend || isActive;
         SendButton.Background = isActive || canSend
             ? Brush("ComposerPrimaryButtonBackgroundBrush")
@@ -959,11 +994,19 @@ public sealed partial class ChatComposer : UserControl, IDisposable
             ? Brush("ComposerPrimaryButtonForegroundBrush")
             : Brush("ComposerDisabledButtonForegroundBrush");
 
-        StopButton.Visibility = CanStop ? Visibility.Visible : Visibility.Collapsed;
-        StopButton.IsEnabled = CanStop;
-        StopButton.Width = 36;
-        StopGlyph.Visibility = Visibility.Visible;
-        var stopLabel = LocalizedStrings.Get("RuntimeComposerStop", "Stop");
+        var showStop = CanStop || IsStopping || _showStopFeedback;
+        StopButton.Visibility = showStop ? Visibility.Visible : Visibility.Collapsed;
+        StopButton.IsEnabled = CanStop && !IsStopping && !_showStopFeedback;
+        // Match the familiar ChatGPT stop affordance: the square remains a stable target and the
+        // ring rotates only while Stop is actionable. Clicking immediately freezes the motion,
+        // which acknowledges the request even before the host settles the run.
+        var animateStop = CanStop && !IsStopping && !_showStopFeedback;
+        StopGlyph.Visibility = showStop ? Visibility.Visible : Visibility.Collapsed;
+        StopRing.IsActive = animateStop;
+        StopRing.Visibility = animateStop ? Visibility.Visible : Visibility.Collapsed;
+        var stopLabel = IsStopping || _showStopFeedback
+            ? LocalizedStrings.Get("RuntimeComposerStopping", "Stopping...")
+            : LocalizedStrings.Get("RuntimeComposerStop", "Stop");
         ToolTipService.SetToolTip(StopButton, stopLabel);
         AutomationProperties.SetName(StopButton, stopLabel);
 

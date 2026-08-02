@@ -565,14 +565,47 @@
                             VerticalContentAlignment="Center"
                             Visibility="Collapsed"
                             Click="Stop_Click">
-                        <Rectangle x:Name="StopGlyph"
-                                   Width="9"
-                                   Height="9"
-                                   RadiusX="1"
-                                   RadiusY="1"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Center"
-                                   Fill="{ThemeResource ComposerPrimaryButtonForegroundBrush}" />
+                        <!-- The stock Button visual states otherwise replace this dark primary
+                             surface with the app-wide pale toolbar hover brush while the stop
+                             glyph stays white. Scope the primary CTA palette to this button so
+                             its square and progress ring keep sufficient contrast in every
+                             pointer state, including Windows high contrast. -->
+                        <Button.Resources>
+                            <ResourceDictionary>
+                                <ResourceDictionary.ThemeDictionaries>
+                                    <ResourceDictionary x:Key="HighContrast">
+                                        <SolidColorBrush x:Key="ButtonBackgroundPointerOver"
+                                                         Color="{ThemeResource SystemColorHighlightColor}" />
+                                        <SolidColorBrush x:Key="ButtonBackgroundPressed"
+                                                         Color="{ThemeResource SystemColorHighlightColor}" />
+                                        <SolidColorBrush x:Key="ButtonBackgroundDisabled"
+                                                         Color="{ThemeResource SystemColorHighlightColor}" />
+                                    </ResourceDictionary>
+                                </ResourceDictionary.ThemeDictionaries>
+                                <SolidColorBrush x:Key="ButtonBackgroundPointerOver"
+                                                 Color="{ThemeResource BrandPrimaryHoverColor}" />
+                                <SolidColorBrush x:Key="ButtonBackgroundPressed"
+                                                 Color="{ThemeResource BrandPrimaryPressedColor}" />
+                                <SolidColorBrush x:Key="ButtonBackgroundDisabled"
+                                                 Color="{ThemeResource BrandPrimaryColor}" />
+                            </ResourceDictionary>
+                        </Button.Resources>
+                        <Grid Width="20" Height="20">
+                            <ProgressRing x:Name="StopRing"
+                                          Width="26"
+                                          Height="26"
+                                          IsActive="False"
+                                          Visibility="Collapsed"
+                                          Foreground="{ThemeResource ComposerPrimaryButtonForegroundBrush}" />
+                            <Rectangle x:Name="StopGlyph"
+                                       Width="9"
+                                       Height="9"
+                                       RadiusX="1"
+                                       RadiusY="1"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       Fill="{ThemeResource ComposerPrimaryButtonForegroundBrush}" />
+                        </Grid>
                     </Button>
                 </Grid>
 

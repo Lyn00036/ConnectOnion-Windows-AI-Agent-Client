@@ -68,6 +68,8 @@ public sealed partial class ChatMessage
     [JsonIgnore] public bool IsInteractiveReadOnly => !IsInteractiveEditable && !IsInteractiveSubmitting;
     [JsonIgnore] public bool ShowInteractiveResult => Status != EventStatus.Running;
     [JsonIgnore] public bool ShowInteractiveActions => Status == EventStatus.Running;
+    [JsonIgnore] public bool ShowAskUserSkipAction
+        => ShowInteractiveActions && !IsFileChangeApproval;
     [JsonIgnore] public bool ShowAskUserFields => Status == EventStatus.Running && HasAskUserFields;
     [JsonIgnore] public bool ShowAskUserPendingContent => Status == EventStatus.Running;
     [JsonIgnore] public bool ShowAskUserStatusBadge => Status == EventStatus.Running;
@@ -445,6 +447,7 @@ public sealed partial class ChatMessage
         EventMeta = outcome;
         InteractivePhase = rejected ? InteractiveCardPhase.Rejected : InteractiveCardPhase.Submitted;
         Status = rejected ? EventStatus.Error : EventStatus.Done;
+        if (IsPlanReviewEvent) IsInteractiveCardExpanded = false;
     }
 
     public void FailInteractiveSubmit(string message, bool connectionLost)
@@ -505,6 +508,7 @@ public sealed partial class ChatMessage
     partial void OnEventKindChanged(string value)
     {
         if (value == "diff_preview") SynchronizeDiffPresentation();
+        OnPropertyChanged(nameof(IsTranscriptRowVisible));
     }
     partial void OnEventResultChanged(string? value)
     {
@@ -528,6 +532,8 @@ public sealed partial class ChatMessage
         OnPropertyChanged(nameof(AskUserCardTitle));
         OnPropertyChanged(nameof(AskUserCardSubtitle));
         OnPropertyChanged(nameof(AskUserSubmitLabel));
+        OnPropertyChanged(nameof(ShowAskUserSkipAction));
+        RelatedDiffPreview?.NotifyRelatedDiffApprovalChanged();
     }
 
     private bool IsRejectedAskUserResult
@@ -582,9 +588,45 @@ public sealed partial class ChatMessage
         return path.Length > 0;
     }
 
-    /// <summary>The ask_user card paired with this diff. Transient by design: replay reconstructs
+    /// <summary>The diff paired with this ask_user card. Transient by design: replay reconstructs
     /// the relation from event order, while the durable outcome lives on the diff itself.</summary>
-    [JsonIgnore] public ChatMessage? RelatedDiffPreview { get; set; }
+    [JsonIgnore] public ChatMessage? RelatedDiffPreview { get; private set; }
+
+    /// <summary>The ask_user decision surface rendered directly beneath this diff while pending.</summary>
+    [JsonIgnore] public ChatMessage? RelatedDiffApproval { get; private set; }
+
+    [JsonIgnore] public bool ShowRelatedDiffApprovalCard
+        => RelatedDiffApproval is { Status: EventStatus.Running };
+
+    /// <summary>Messages remain in the projection for answer and persistence alignment even when
+    /// another card owns their UI. Collapsing the container as well as selecting an empty template
+    /// prevents those implementation-only rows from leaving a six-pixel transcript gap.</summary>
+    [JsonIgnore] public bool IsTranscriptRowVisible
+        => !IsApprovalEvent && !(IsAskUserEvent && RelatedDiffPreview is not null);
+
+    public void AttachRelatedDiffPreview(ChatMessage? diff)
+    {
+        if (ReferenceEquals(RelatedDiffPreview, diff)) return;
+
+        if (RelatedDiffPreview is { } previous && ReferenceEquals(previous.RelatedDiffApproval, this))
+        {
+            previous.RelatedDiffApproval = null;
+            previous.NotifyRelatedDiffApprovalChanged();
+        }
+
+        RelatedDiffPreview = diff;
+        OnPropertyChanged(nameof(RelatedDiffPreview));
+        OnPropertyChanged(nameof(IsTranscriptRowVisible));
+
+        if (diff is null) return;
+        diff.RelatedDiffApproval = this;
+        diff.OnPropertyChanged(nameof(RelatedDiffApproval));
+        diff.NotifyRelatedDiffApprovalChanged();
+        diff.ApplyDiffApprovalAnswer(EventMeta);
+    }
+
+    internal void NotifyRelatedDiffApprovalChanged()
+        => OnPropertyChanged(nameof(ShowRelatedDiffApprovalCard));
 
     public void ToggleDiffExpanded()
     {

@@ -9,11 +9,9 @@
     <UserControl.Resources>
         <common:InteractiveTextConverter x:Key="InteractiveText" />
     </UserControl.Resources>
-    <!-- No IsExpanded binding on purpose. This card already owns a disclosure — the
-         "View changes"/"Hide changes" toggle over Message.IsDiffExpanded, which is what ShowBody
-         below is bound to. Adding the header toggle as well would give one card two independent
-         ways to fold the same content, and folding it by the header would hide the very button
-         that unfolds it. -->
+    <!-- This card already owns a disclosure — the "View changes"/"Hide changes" footer action
+         over Message.IsDiffExpanded, which is what ShowBody below is bound to. Disable the
+         generic header disclosure so there is no second chevron or independent folded state. -->
     <local:InteractiveCard Message="{x:Bind Message, Mode=OneWay}"
         IconGlyph="{x:Bind Message.DiffIconGlyph, Mode=OneWay}"
         Title="{x:Bind Message.DiffCardTitle, Mode=OneWay, Converter={StaticResource InteractiveText}}"
@@ -21,6 +19,7 @@
         HeaderMeta="{x:Bind Message.DiffHeaderMeta, Mode=OneWay}"
         ShowStatusBadge="False"
         ShowBody="{x:Bind Message.ShowDiffBody, Mode=OneWay}"
+        AllowHeaderDisclosure="False"
         IsCompact="False"
         ChromeTone="{x:Bind Message.DiffChromeTone, Mode=OneWay}"
         IconTone="{x:Bind Message.DiffIconTone, Mode=OneWay}"
@@ -87,11 +86,10 @@
                                                 <Border Background="{x:Bind Kind, Converter={StaticResource DiffKindToBrush}}"
                                                     AutomationProperties.Name="{x:Bind AccessibilityName}">
                                                     <Grid>
-                                                        <Grid.ColumnDefinitions><ColumnDefinition Width="42" /><ColumnDefinition Width="42" /><ColumnDefinition Width="22" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                                        <TextBlock Text="{x:Bind OldLineNumber}" FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="11" Padding="8,2" TextAlignment="Right" Foreground="{ThemeResource TextTertiaryBrush}" />
-                                                        <TextBlock Grid.Column="1" Text="{x:Bind NewLineNumber}" FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="11" Padding="8,2" TextAlignment="Right" Foreground="{ThemeResource TextTertiaryBrush}" />
-                                                        <TextBlock Grid.Column="2" Text="{x:Bind Marker}" FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="12" Padding="6,2" TextAlignment="Center" />
-                                                        <Grid Grid.Column="3" MinWidth="0">
+                                                        <Grid.ColumnDefinitions><ColumnDefinition Width="50" /><ColumnDefinition Width="22" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                                        <TextBlock Text="{x:Bind DisplayLineNumber}" FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="11" Padding="8,2" TextAlignment="Right" Foreground="{ThemeResource TextTertiaryBrush}" />
+                                                        <TextBlock Grid.Column="1" Text="{x:Bind Marker}" FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="12" Padding="6,2" TextAlignment="Center" />
+                                                        <Grid Grid.Column="2" MinWidth="0">
                                                             <TextBlock Text="{x:Bind Content}" FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="12" Padding="4,2,14,2" TextWrapping="NoWrap" IsTextSelectionEnabled="True"
                                                                 Visibility="{x:Bind IsWrapped, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
                                                             <TextBlock Text="{x:Bind Content}" MinWidth="0" FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="12" Padding="4,2,14,2" TextWrapping="Wrap" IsTextSelectionEnabled="True"

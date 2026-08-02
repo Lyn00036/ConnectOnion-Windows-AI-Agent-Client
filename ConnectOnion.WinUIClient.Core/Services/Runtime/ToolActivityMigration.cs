@@ -72,7 +72,27 @@ public static class ToolActivityMigration
                 ToolActivity = activity,
             });
         }
+        PairRelatedDiffApprovals(upgraded);
         return upgraded;
+    }
+
+    /// <summary>Restores the live diff/decision composition for cached and SQLite-backed history.
+    /// A completed decision remains linked so its standalone row stays collapsed, while the diff
+    /// retains the durable applied/rejected state and can still be expanded for inspection.</summary>
+    private static void PairRelatedDiffApprovals(IReadOnlyList<ChatMessage> messages)
+    {
+        for (var i = 0; i < messages.Count; i++)
+        {
+            var approval = messages[i];
+            if (!approval.IsFileChangeApproval || approval.RelatedDiffPreview is not null) continue;
+
+            var diff = messages.Take(i).LastOrDefault(candidate =>
+                candidate.IsDiffPreviewEvent
+                && candidate.RelatedDiffApproval is null
+                && string.Equals(candidate.EventTitle, approval.AskUserTargetPath,
+                    StringComparison.OrdinalIgnoreCase));
+            if (diff is not null) approval.AttachRelatedDiffPreview(diff);
+        }
     }
 
     /// <summary>

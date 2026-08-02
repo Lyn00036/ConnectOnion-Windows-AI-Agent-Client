@@ -53,6 +53,58 @@ public sealed class DiffPreviewModelTests
     }
 
     [Fact]
+    public void UnifiedGutter_UsesOneAlignedDisplayNumberPerChangedRow()
+    {
+        var model = DiffPreviewModel.Parse("test.txt", "@@ -1 +1 @@\n-old\n+new");
+        var changed = model.Files[0].Lines
+            .Where(line => line.Kind is DiffLineKind.Deletion or DiffLineKind.Addition)
+            .ToArray();
+
+        Assert.Equal([1, 1], changed.Select(line => line.DisplayLineNumber));
+        Assert.Equal(1, changed[0].OldLineNumber);
+        Assert.Equal(1, changed[1].NewLineNumber);
+    }
+
+    [Fact]
+    public void JoinedFinalReplacement_IsRepairedUsingHunkCounts()
+    {
+        const string diff = "--- a/test1.txt\n+++ b/test1.txt\n@@ -1 +1 @@\n- hello world+new";
+
+        var model = DiffPreviewModel.Parse("/home/user/test1.txt", diff);
+        var changedLines = model.Files[0].Lines
+            .Where(line => line.Kind is DiffLineKind.Deletion or DiffLineKind.Addition)
+            .ToList();
+
+        Assert.Equal(1, model.Deletions);
+        Assert.Equal(1, model.Additions);
+        Assert.Collection(changedLines,
+            line =>
+            {
+                Assert.Equal(DiffLineKind.Deletion, line.Kind);
+                Assert.Equal(" hello world", line.Content);
+            },
+            line =>
+            {
+                Assert.Equal(DiffLineKind.Addition, line.Kind);
+                Assert.Equal("new", line.Content);
+            });
+        Assert.Equal(diff, model.RawText);
+    }
+
+    [Fact]
+    public void PlusInsideDeletion_IsNotSplitWhenHunkCountsAreAlreadySatisfied()
+    {
+        const string diff = "@@ -1 +1 @@\n-a+b\n+new";
+
+        var model = DiffPreviewModel.Parse("math.txt", diff);
+
+        Assert.Equal(1, model.Deletions);
+        Assert.Equal(1, model.Additions);
+        Assert.Contains(model.Files[0].Lines,
+            line => line.Kind == DiffLineKind.Deletion && line.Content == "a+b");
+    }
+
+    [Fact]
     public void MultipleFiles_AreGroupedAndOnlyFirstStartsExpanded()
     {
         const string diff = "diff --git a/a.txt b/a.txt\n@@ -1 +1 @@\n-old\n+new\ndiff --git a/b.txt b/b.txt\n@@ -2 +2 @@\n-x\n+y";

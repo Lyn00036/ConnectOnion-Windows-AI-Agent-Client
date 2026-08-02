@@ -254,6 +254,7 @@ public sealed class ChatTurnProjectionTests
         Assert.Single(target.Messages);
         Assert.Equal(EventStatus.Done, card.Status);
         Assert.False(card.IsInteractiveEditable);
+        Assert.False(card.IsInteractiveCardExpanded);
     }
 
     [Fact]

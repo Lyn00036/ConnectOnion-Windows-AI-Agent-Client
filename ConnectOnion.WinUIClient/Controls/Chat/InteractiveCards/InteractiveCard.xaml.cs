@@ -60,6 +60,14 @@ public sealed partial class InteractiveCard : UserControl
         nameof(ShowBody), typeof(bool), typeof(InteractiveCard),
         new PropertyMetadata(true, OnDisclosureInputChanged));
 
+    /// <summary>Whether the header itself owns disclosure. Some cards, such as the diff preview,
+    /// expose a dedicated footer action backed by their own presentation state; giving those
+    /// cards a second header disclosure would create two independent controls for one body.</summary>
+    public bool AllowHeaderDisclosure { get => (bool)GetValue(AllowHeaderDisclosureProperty); set => SetValue(AllowHeaderDisclosureProperty, value); }
+    public static readonly DependencyProperty AllowHeaderDisclosureProperty = DependencyProperty.Register(
+        nameof(AllowHeaderDisclosure), typeof(bool), typeof(InteractiveCard),
+        new PropertyMetadata(true, OnDisclosureInputChanged));
+
     /// <summary>Whether the user has the card open. Starts open — a card that appears folded
     /// would hide a question the agent is blocked on.
     ///
@@ -102,8 +110,8 @@ public sealed partial class InteractiveCard : UserControl
 
     private void RefreshDisclosure()
     {
-        CanCollapse = ShowBody;
-        IsBodyVisible = ShowBody && IsExpanded;
+        CanCollapse = ShowBody && AllowHeaderDisclosure;
+        IsBodyVisible = ShowBody && (!AllowHeaderDisclosure || IsExpanded);
         ChevronAngle = IsBodyVisible ? 0 : 270;
         HeaderToggleName = !CanCollapse
             ? AccessibilityName

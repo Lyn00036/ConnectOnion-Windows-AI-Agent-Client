@@ -60,6 +60,12 @@ public sealed partial class DiffLineModel : Common.ObservableObject
 {
     public int? OldLineNumber { get; set; }
     public int? NewLineNumber { get; set; }
+    /// <summary>A unified-diff row has one visual gutter. Deleted rows use the source line,
+    /// while additions and context use the resulting-file line. The complete old/new pair stays
+    /// available to accessibility through <see cref="AccessibilityName"/>.</summary>
+    public int? DisplayLineNumber => Kind == DiffLineKind.Deletion
+        ? OldLineNumber
+        : NewLineNumber ?? OldLineNumber;
     public string Marker { get; set; } = " ";
     public string Content { get; set; } = "";
     public string RawText { get; set; } = "";
@@ -138,7 +144,7 @@ public sealed class DiffPreviewModel
     public static DiffPreviewModel Parse(string path, string? preview, bool isNewFile = false)
     {
         var model = new DiffPreviewModel { RawText = preview ?? "" };
-        var lines = Normalize(preview).ToList();
+        var lines = Normalize(preview);
         model.IsUnifiedDiff = isNewFile
             || lines.Any(line => line.StartsWith("@@", StringComparison.Ordinal))
             || (lines.Any(line => line.StartsWith("--- ", StringComparison.Ordinal))
@@ -233,8 +239,80 @@ public sealed class DiffPreviewModel
         }
     }
 
-    private static IEnumerable<string> Normalize(string? text)
-        => (text ?? "").Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
+    private static List<string> Normalize(string? text)
+    {
+        var lines = (text ?? "").Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Split('\n').ToList();
+
+        // Some DiffWriter versions concatenate the final removed and added records when both
+        // source files omit their trailing newline. The hunk header still declares one record
+        // on each side, but the payload ends in e.g. "-old+new". Repair only that unambiguous
+        // one-marker deficit for presentation; RawText deliberately stays byte-for-byte what
+        // arrived so Copy diff never invents wire content.
+        for (var hunkIndex = 0; hunkIndex < lines.Count; hunkIndex++)
+        {
+            var hunk = Hunk.Match(lines[hunkIndex]);
+            if (!hunk.Success) continue;
+
+            var end = hunkIndex + 1;
+            while (end < lines.Count
+                   && !Hunk.IsMatch(lines[end])
+                   && !lines[end].StartsWith("diff --git ", StringComparison.Ordinal))
+                end++;
+
+            RepairJoinedReplacement(lines, hunkIndex + 1, end, hunk);
+            hunkIndex = end - 1;
+        }
+
+        return lines;
+    }
+
+    private static void RepairJoinedReplacement(
+        List<string> lines, int start, int end, Match hunk)
+    {
+        var expectedOld = HunkCount(hunk, "oldCount");
+        var expectedNew = HunkCount(hunk, "newCount");
+        var observedOld = 0;
+        var observedNew = 0;
+
+        for (var index = start; index < end; index++)
+        {
+            var line = lines[index];
+            if (line.Length == 0) return;
+            switch (line[0])
+            {
+                case '-': observedOld++; break;
+                case '+': observedNew++; break;
+                case ' ': observedOld++; observedNew++; break;
+                case '\\': break; // "No newline at end of file" marker.
+                default: return; // A truncated/non-diff body is not safe to reconstruct.
+            }
+        }
+
+        if (observedOld != expectedOld || observedNew + 1 != expectedNew) return;
+
+        var candidateIndex = -1;
+        var markerIndex = -1;
+        for (var index = start; index < end; index++)
+        {
+            if (!lines[index].StartsWith('-')) continue;
+            var firstPlus = lines[index].IndexOf('+', 1);
+            if (firstPlus < 0 || lines[index].IndexOf('+', firstPlus + 1) >= 0) continue;
+            if (candidateIndex >= 0) return;
+            candidateIndex = index;
+            markerIndex = firstPlus;
+        }
+
+        if (candidateIndex < 0) return;
+        var joined = lines[candidateIndex];
+        lines[candidateIndex] = joined[..markerIndex];
+        lines.Insert(candidateIndex + 1, joined[markerIndex..]);
+    }
+
+    private static int HunkCount(Match hunk, string groupName)
+        => hunk.Groups[groupName].Success
+            ? int.Parse(hunk.Groups[groupName].Value, System.Globalization.CultureInfo.InvariantCulture)
+            : 1;
 
     private static DiffFileModel NewFile(string path)
     {

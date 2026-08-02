@@ -10,16 +10,26 @@ namespace ConnectOnion.WinUIClient.Controls;
 
 public sealed partial class PlanSectionReviewDialog : ContentDialog
 {
-    public PlanSectionReviewDialog(string markdown)
+    public PlanSectionReviewDialog(string markdown, bool isReadOnly = false)
     {
+        IsReadOnly = isReadOnly;
         Sections = new ObservableCollection<PlanReviewSectionItem>(
             PlanReviewSections.Parse(markdown)
-                .Select(section => new PlanReviewSectionItem(section.Heading, section.Markdown)));
+                .Select(section => new PlanReviewSectionItem(
+                    section.Heading, section.Markdown, isReadOnly)));
         InitializeComponent();
+        if (isReadOnly)
+        {
+            PrimaryButtonText = "";
+            SecondaryButtonText = "";
+            CloseButtonText = Common.LocalizedStrings.Get("CommonClose", "Close");
+            DefaultButton = ContentDialogButton.None;
+        }
         Opened += OnOpened;
         Closed += OnClosed;
     }
 
+    public bool IsReadOnly { get; }
     public ObservableCollection<PlanReviewSectionItem> Sections { get; }
 
     private void OnOpened(ContentDialog sender, ContentDialogOpenedEventArgs args)
@@ -72,15 +82,17 @@ public sealed partial class PlanSectionReviewDialog : ContentDialog
 
 public sealed partial class PlanReviewSectionItem : ObservableObject
 {
-    public PlanReviewSectionItem(string heading, string markdown)
+    public PlanReviewSectionItem(string heading, string markdown, bool isReadOnly = false)
     {
         Heading = heading;
         Markdown = markdown;
+        IsReadOnly = isReadOnly;
         Feedback = "";
     }
 
     public string Heading { get; set; }
     public string Markdown { get; set; }
+    public bool IsReadOnly { get; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ApproveAccessibilityName))]

@@ -63,6 +63,10 @@ public class DiffPreviewProjectionTests
         Assert.True(diff.IsDiffExpanded);
         Assert.Equal(1, diff.DiffPreview.Additions);
         Assert.Equal(0, diff.DiffPreview.Deletions);
+        Assert.Same(diff, ask.RelatedDiffPreview);
+        Assert.Same(ask, diff.RelatedDiffApproval);
+        Assert.True(diff.ShowRelatedDiffApprovalCard);
+        Assert.False(ask.IsTranscriptRowVisible);
 
         ask.EventMeta = "Answered: Yes, apply this change";
         Assert.Equal(DiffChangeState.Applying, diff.DiffState);
@@ -73,6 +77,19 @@ public class DiffPreviewProjectionTests
         Assert.Equal(DiffChangeState.Applied, diff.DiffState);
         Assert.False(diff.IsDiffExpanded);
         Assert.Equal("Changes applied to test.txt", diff.DiffCardTitle);
+    }
+
+    [Fact]
+    public void ResolvedWriteApproval_DisappearsFromDiffWithoutRemovingProtocolMessage()
+    {
+        var (_, target, diff, ask) = ProjectWriteApproval();
+
+        ask.CompleteInteractiveSubmit("Answered: Yes, apply this change");
+
+        Assert.False(diff.ShowRelatedDiffApprovalCard);
+        Assert.False(ask.IsTranscriptRowVisible);
+        Assert.Contains(ask, target.Messages);
+        Assert.Equal(DiffChangeState.Applying, diff.DiffState);
     }
 
     [Fact]

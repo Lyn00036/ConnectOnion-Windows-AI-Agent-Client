@@ -237,8 +237,8 @@ public sealed partial class ChatViewModel
         SendCancelled?.Invoke(pending.Text, pending.Attachments);
     }
 
-    /// <summary>Sends one graceful-stop request, freezes in-flight visuals and immediately returns
-    /// the composer to send mode. The run itself remains open until OUTPUT/ERROR.</summary>
+    /// <summary>Sends one graceful-stop request and freezes in-flight visuals. The composer keeps
+    /// a disabled stopping indicator in the same slot until the run reaches OUTPUT/ERROR.</summary>
     public async Task StopAsync()
     {
         if (_session is null || !CanStop || IsStopping) return;
@@ -253,8 +253,11 @@ public sealed partial class ChatViewModel
         }
         catch (Exception ex)
         {
-            // Match oo-chat's local dismissal: the composer remains available even when the
-            // transport raced the click. Surface the failure without reviving stale spinners.
+            // The request did not reach the host: remove the optimistic pending state and restore
+            // the stop action when the run is still active so the user can retry deliberately.
+            IsStopping = false;
+            _optimisticStopRunId = null;
+            RefreshStopAvailability(_runManager.GetActiveRun(_session.Id));
             AddErrorActivity($"Stop failed: {UserFacingError(ex)}");
         }
     }

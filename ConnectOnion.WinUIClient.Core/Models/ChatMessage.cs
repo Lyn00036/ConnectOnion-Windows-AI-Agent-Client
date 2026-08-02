@@ -162,6 +162,7 @@ public sealed partial class ChatMessage : Common.ObservableObject
         OnPropertyChanged(nameof(IsInteractiveReadOnly));
         OnPropertyChanged(nameof(ShowInteractiveResult));
         OnPropertyChanged(nameof(ShowInteractiveActions));
+        OnPropertyChanged(nameof(ShowAskUserSkipAction));
         OnPropertyChanged(nameof(ShowAskUserFields));
         OnPropertyChanged(nameof(InteractiveStateLabel));
         OnPropertyChanged(nameof(InteractiveStateDescription));

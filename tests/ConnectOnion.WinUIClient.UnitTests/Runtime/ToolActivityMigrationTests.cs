@@ -56,6 +56,36 @@ public sealed class ToolActivityMigrationTests
         Assert.False(restored.IsInteractiveCardExpanded);
     }
 
+    [Fact]
+    public void UpgradeLegacyToolMessages_RelinksHistoricalDiffAndApproval()
+    {
+        var diff = new ChatMessage
+        {
+            Role = ChatRole.Event,
+            EventKind = "diff_preview",
+            EventTitle = "/tmp/test.txt",
+            EventDetail = "+new",
+            Status = EventStatus.Done,
+        };
+        var approval = new ChatMessage
+        {
+            Role = ChatRole.Event,
+            EventKind = "ask_user",
+            EventTitle = "Apply changes to /tmp/test.txt?",
+            EventMeta = "Answered: Yes, apply this change",
+            Status = EventStatus.Done,
+        };
+
+        var restored = ToolActivityMigration.UpgradeLegacyToolMessages([diff, approval]);
+
+        Assert.Same(diff, approval.RelatedDiffPreview);
+        Assert.Same(approval, diff.RelatedDiffApproval);
+        Assert.False(approval.IsTranscriptRowVisible);
+        Assert.False(diff.ShowRelatedDiffApprovalCard);
+        Assert.Equal(DiffChangeState.Unconfirmed, diff.DiffState);
+        Assert.Equal(2, restored.Count);
+    }
+
     // The legacy writer was `ms < 1000 ? $"{ms:0} ms" : $"{ms / 1000:0.0} s"`, so these two
     // shapes are the only ones real data can contain. "340 ms" used to come back as 340000
     // because the seconds check matched the "s" inside "ms".

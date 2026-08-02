@@ -45,7 +45,11 @@ public sealed partial class ChatMessageTemplateSelector : DataTemplateSelector
         if (message.IsTurnUsageEvent) return Usage;
         if (message.IsActivityEvent) return Activity;
         if (message.IsToolActivityEvent) return ToolActivity;
-        if (message.IsAskUserEvent) return AskUser;
+        // A file-change ask_user is rendered directly under its diff so the proposal and its
+        // decision cannot be separated by another streamed event. Its message still stays in the
+        // collection for protocol response and persistence alignment.
+        if (message.IsAskUserEvent)
+            return message.RelatedDiffPreview is null ? AskUser : Empty;
         // Every approval is rendered by its owning ToolActivityView. The message remains in the
         // list for answer/persistence alignment but never owns a standalone fallback card; that
         // legacy route produced a second, visually incompatible approval UI when ownership lagged.

@@ -129,6 +129,10 @@ public sealed class InteractiveCardDisclosureTests
             "IsExpanded=\"{x:Bind Message.IsInteractiveCardExpanded",
             diff,
             StringComparison.Ordinal);
+        Assert.Contains("AllowHeaderDisclosure=\"False\"", diff, StringComparison.Ordinal);
+        Assert.Contains("Text=\"{x:Bind DisplayLineNumber}\"", diff, StringComparison.Ordinal);
+        Assert.DoesNotContain("Text=\"{x:Bind OldLineNumber}\"", diff, StringComparison.Ordinal);
+        Assert.DoesNotContain("Text=\"{x:Bind NewLineNumber}\"", diff, StringComparison.Ordinal);
     }
 
     /// <summary>The header is the disclosure control, and the body is gated on both facts: the
@@ -150,9 +154,39 @@ public sealed class InteractiveCardDisclosureTests
 
         var code = ReadAppSource(
             "Controls", "Chat", "InteractiveCards", "InteractiveCard.xaml.cs");
-        Assert.Contains("IsBodyVisible = ShowBody && IsExpanded;", code, StringComparison.Ordinal);
-        // No body means no affordance, rather than a chevron that does nothing.
-        Assert.Contains("CanCollapse = ShowBody;", code, StringComparison.Ordinal);
+        Assert.Contains(
+            "IsBodyVisible = ShowBody && (!AllowHeaderDisclosure || IsExpanded);",
+            code,
+            StringComparison.Ordinal);
+        // No body, or a card-owned footer disclosure, means no header affordance.
+        Assert.Contains(
+            "CanCollapse = ShowBody && AllowHeaderDisclosure;",
+            code,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Diff_OwnsPendingApprovalAndCompletedPlanRemainsInspectable()
+    {
+        var chatPage = ReadAppSource("Views", "ChatPage.xaml");
+        Assert.Contains("x:Load=\"{x:Bind ShowRelatedDiffApprovalCard, Mode=OneWay}\"",
+            chatPage, StringComparison.Ordinal);
+        Assert.Contains("Value=\"{Binding IsTranscriptRowVisible, Converter={StaticResource BoolToVis}}\"",
+            chatPage, StringComparison.Ordinal);
+
+        var ask = ReadCardXaml("AskUserCard");
+        Assert.Contains("Message.ShowAskUserSkipAction", ask, StringComparison.Ordinal);
+
+        var plan = ReadCardXaml("PlanReviewCard");
+        var reviewButton = XDocument.Parse(plan).Descendants().Single(element =>
+            element.Attributes().Any(attribute =>
+                attribute.Name.LocalName == "Name" && attribute.Value == "ReviewSectionsButton"));
+        Assert.DoesNotContain(reviewButton.Attributes(), attribute =>
+            attribute.Name.LocalName == "IsEnabled");
+
+        var dialog = ReadAppSource(
+            "Controls", "Chat", "InteractiveCards", "PlanSectionReviewDialog.xaml");
+        Assert.Contains("IsReadOnly", dialog, StringComparison.Ordinal);
     }
 
     private static string ReadCardXaml(string name)

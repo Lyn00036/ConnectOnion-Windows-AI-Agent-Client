@@ -1,3 +1,5 @@
+using System.Xml.Linq;
+
 namespace ConnectOnion.WinUIClient.UnitTests.Architecture;
 
 public sealed class StopUiContractTests
@@ -26,9 +28,45 @@ public sealed class StopUiContractTests
         Assert.Contains("StopButton.IsEnabled = CanStop", source, StringComparison.Ordinal);
         Assert.Contains("InputBox.IsEnabled = CanSubmit", source, StringComparison.Ordinal);
         Assert.Contains("var canSend = CanSubmit && !isAttachmentsBusy", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("Stopping...", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("StopRing", xaml, StringComparison.Ordinal);
+        Assert.Contains("RuntimeComposerStopping", source, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"StopRing\"", xaml, StringComparison.Ordinal);
         Assert.Contains("IsBusy=\"{x:Bind Vm.IsComposerBusy", page, StringComparison.Ordinal);
+        Assert.Contains("IsStopping=\"{x:Bind Vm.IsStopping", page, StringComparison.Ordinal);
+        Assert.Contains("MinimumStopFeedbackDuration = TimeSpan.FromMilliseconds(500)", source, StringComparison.Ordinal);
+        Assert.Contains("Task.Delay(MinimumStopFeedbackDuration, _lifetimeCts.Token)", source, StringComparison.Ordinal);
+        Assert.Contains("var showStop = CanStop || IsStopping || _showStopFeedback", source, StringComparison.Ordinal);
+        Assert.Contains("StopButton.Visibility = showStop", source, StringComparison.Ordinal);
+        Assert.Contains("StopButton.IsEnabled = CanStop && !IsStopping && !_showStopFeedback", source, StringComparison.Ordinal);
+        Assert.Contains("var animateStop = CanStop && !IsStopping && !_showStopFeedback", source, StringComparison.Ordinal);
+        Assert.Contains("StopRing.IsActive = animateStop", source, StringComparison.Ordinal);
+        Assert.Contains("StopGlyph.Visibility = showStop", source, StringComparison.Ordinal);
+
+        var stopButton = XDocument.Parse(xaml).Descendants().Single(element =>
+            element.Attributes().Any(attribute =>
+                attribute.Name.LocalName == "Name" && attribute.Value == "StopButton"));
+        Assert.Equal("40", stopButton.Attribute("Width")?.Value);
+        Assert.Equal("40", stopButton.Attribute("Height")?.Value);
+        Assert.Equal("20", stopButton.Attribute("CornerRadius")?.Value);
+        Assert.DoesNotContain("StopButton.Width", source, StringComparison.Ordinal);
+
+        var stopStateBrushes = stopButton.Descendants()
+            .Where(element => element.Name.LocalName == "SolidColorBrush")
+            .ToArray();
+        Assert.Contains(stopStateBrushes, element =>
+            element.Attributes().Any(attribute =>
+                attribute.Name.LocalName == "Key"
+                && attribute.Value == "ButtonBackgroundPointerOver")
+            && element.Attribute("Color")?.Value.Contains("BrandPrimaryHoverColor", StringComparison.Ordinal) == true);
+        Assert.Contains(stopStateBrushes, element =>
+            element.Attributes().Any(attribute =>
+                attribute.Name.LocalName == "Key"
+                && attribute.Value == "ButtonBackgroundPressed")
+            && element.Attribute("Color")?.Value.Contains("BrandPrimaryPressedColor", StringComparison.Ordinal) == true);
+        Assert.Contains(stopStateBrushes, element =>
+            element.Attributes().Any(attribute =>
+                attribute.Name.LocalName == "Key"
+                && attribute.Value == "ButtonBackgroundDisabled")
+            && element.Attribute("Color")?.Value.Contains("BrandPrimaryColor", StringComparison.Ordinal) == true);
     }
 
     [Fact]

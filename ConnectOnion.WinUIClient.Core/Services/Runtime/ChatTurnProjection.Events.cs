@@ -442,11 +442,11 @@ public sealed partial class ChatTurnProjection
                 }
                 if (message.IsFileChangeApproval)
                 {
-                    message.RelatedDiffPreview = Messages.LastOrDefault(candidate =>
+                    message.AttachRelatedDiffPreview(Messages.LastOrDefault(candidate =>
                         candidate.IsDiffPreviewEvent
                         && candidate.DiffState is DiffChangeState.Pending or DiffChangeState.Preview
                         && string.Equals(candidate.EventTitle, message.AskUserTargetPath,
-                            StringComparison.OrdinalIgnoreCase));
+                            StringComparison.OrdinalIgnoreCase)));
                 }
                 Add(message);
                 // A QR/login image immediately before ask_user is part of the question. Waiting

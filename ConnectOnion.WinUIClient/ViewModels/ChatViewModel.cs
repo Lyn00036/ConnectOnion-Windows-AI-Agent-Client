@@ -265,7 +265,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     // you can chat" model — not on holding a live socket (the transport connects lazily).
     public bool CanSend => HasAgent && _session is not null && IsOnline && !IsConnecting;
     public bool CanReconnect => HasAgent && !IsProcessing && !IsConnecting && Presence != AgentPresence.Checking;
-    public bool IsComposerBusy => IsProcessing && !IsStopping;
+    public bool IsComposerBusy => IsProcessing;
 
     /// <summary>True when the conversation's last run failed and is still retryable (only within
     /// the same app session — a restart clears the registry's retryable state). Drives the
@@ -408,12 +408,11 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     // ---- Stop ----
 
     /// <summary>
-    /// A graceful stop was requested and the composer has optimistically returned to send mode.
-    /// The underlying run remains active until OUTPUT/ERROR; sending again during this window is
-    /// a runtime interjection into that run, matching oo-chat.
+    /// A graceful stop was requested and the underlying run has not reached OUTPUT/ERROR yet.
+    /// The composer keeps the stop slot visible but disabled so the request has an explicit,
+    /// stable pending state and cannot be submitted twice.
     /// </summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CanSend))]
     [NotifyPropertyChangedFor(nameof(IsComposerBusy))]
     public partial bool IsStopping { get; private set; }
 

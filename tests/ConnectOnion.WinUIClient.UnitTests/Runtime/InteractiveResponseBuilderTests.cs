@@ -36,6 +36,17 @@ public sealed class InteractiveResponseBuilderTests
     }
 
     [Fact]
+    public void FileChangeApproval_HidesAmbiguousSkipAction()
+    {
+        var approval = Ask(options: ["Yes, apply this change", "No, reject and give feedback"]);
+        approval.EventTitle = "Apply changes to src/app.py?";
+
+        Assert.True(approval.ShowInteractiveActions);
+        Assert.False(approval.ShowAskUserSkipAction);
+        Assert.True(Ask(options: ["Continue", "Stop"]).ShowAskUserSkipAction);
+    }
+
+    [Fact]
     public void AskUser_FreeText_TrimsAndSubmitsText()
     {
         var message = Ask();

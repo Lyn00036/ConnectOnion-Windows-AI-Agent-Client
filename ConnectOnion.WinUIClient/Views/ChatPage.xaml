@@ -774,7 +774,19 @@
                                          RejectRequested="PlanReviewCard_RejectRequested" />
             </DataTemplate>
             <DataTemplate x:Key="ChatDiffPreviewTemplate" x:DataType="models:ChatMessage">
-                <controls:DiffPreviewCard Message="{x:Bind}" />
+                <Grid RowSpacing="2">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <controls:DiffPreviewCard Message="{x:Bind}" />
+                    <controls:AskUserCard Grid.Row="1"
+                                          x:Name="RelatedDiffApprovalCard"
+                                          x:Load="{x:Bind ShowRelatedDiffApprovalCard, Mode=OneWay}"
+                                          Message="{x:Bind RelatedDiffApproval, Mode=OneWay}"
+                                          SubmitRequested="AskUserCard_SubmitRequested"
+                                          SkipRequested="AskUserCard_SkipRequested" />
+                </Grid>
             </DataTemplate>
             <DataTemplate x:Key="ChatEmptyTemplate">
                 <Grid />
@@ -901,6 +913,8 @@
                          thought line, a usage line) and shows up as gap the Margin above cannot
                          take back. Zeroing it is what makes the spacing actually settable. -->
                     <Setter Property="MinHeight" Value="0" />
+                    <Setter Property="Visibility"
+                            Value="{Binding IsTranscriptRowVisible, Converter={StaticResource BoolToVis}}" />
                 </Style>
             </ListView.ItemContainerStyle>
         </ListView>
@@ -956,6 +970,7 @@
                                        EnterToSubmit="{x:Bind Vm.EnterToSend, Mode=OneWay}"
                                        IsBusy="{x:Bind Vm.IsComposerBusy, Mode=OneWay}"
                                        CanStop="{x:Bind Vm.CanStop, Mode=OneWay}"
+                                       IsStopping="{x:Bind Vm.IsStopping, Mode=OneWay}"
                                        Mode="{x:Bind Vm.CurrentMode, Mode=OneWay}"
                                        ShowModeSelector="True"
                                        ShowConnectionStatus="False"

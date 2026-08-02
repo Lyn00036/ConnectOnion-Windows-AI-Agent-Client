@@ -19,8 +19,10 @@ public sealed partial class PlanReviewCard : UserControl
     private void Approve_Click(object sender, RoutedEventArgs e) => ApproveRequested?.Invoke(this, e);
     private async void ReviewSections_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new PlanSectionReviewDialog(Message.EventDetail ?? "") { XamlRoot = XamlRoot };
+        var isReadOnly = !Message.IsInteractiveEditable;
+        var dialog = new PlanSectionReviewDialog(Message.EventDetail ?? "", isReadOnly) { XamlRoot = XamlRoot };
         var result = await dialog.ShowThemedAsync();
+        if (isReadOnly) return;
         if (result == ContentDialogResult.None) return;
 
         Message.PlanFeedback = dialog.BuildFeedback();

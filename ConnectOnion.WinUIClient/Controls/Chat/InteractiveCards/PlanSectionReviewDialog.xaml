@@ -40,7 +40,8 @@
                             <local:MarkdownTextBlock Markdown="{x:Bind Markdown}"
                                                      FontSize="13"
                                                      AutomationProperties.Name="{x:Bind Heading}" />
-                            <Grid ColumnSpacing="8">
+                            <Grid ColumnSpacing="8"
+                                  Visibility="{x:Bind IsReadOnly, Converter={StaticResource BoolToVis}, ConverterParameter=invert}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="*" />
@@ -69,6 +70,7 @@
                                      TextWrapping="Wrap"
                                      MinHeight="48"
                                      MaxHeight="120"
+                                     Visibility="{x:Bind IsReadOnly, Converter={StaticResource BoolToVis}, ConverterParameter=invert}"
                                      AutomationProperties.Name="{x:Bind FeedbackAccessibilityName}" />
                         </StackPanel>
                     </Border>
