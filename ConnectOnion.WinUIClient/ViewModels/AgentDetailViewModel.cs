@@ -224,12 +224,12 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
     public partial IReadOnlyList<SkillInfo>? Skills { get; private set; }
 
     /// <summary>
-    /// Up to three of the agent's skills phrased as things to ask for — the chips shown instead of
-    /// the generic "What can you do?" starters.
+    /// Up to three of the agent's skills phrased as things to ask for. The composer puts these
+    /// first, then fills any unused slots with its generic starters.
     ///
     /// <para>Empty is a normal outcome, not a failure: an agent whose descriptions will not cut
-    /// into clean short offers yields nothing and the static chips stay. A chip is the first thing
-    /// a user reads about an agent, so a bad one is worse than none (see
+    /// into clean short offers yields nothing and the static chips fill the row. A chip is the
+    /// first thing a user reads about an agent, so a bad one is worse than none (see
     /// <see cref="AgentSkills.BestOffers"/>).</para>
     ///
     /// <para>Memoized against <see cref="Skills"/>, which changes at most once per page (the

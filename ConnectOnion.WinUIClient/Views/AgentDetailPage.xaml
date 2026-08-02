@@ -207,7 +207,20 @@
                             Style="{StaticResource TextActionButtonStyle}"
                             Click="Share_Click"
                             Visibility="{x:Bind Vm.CanShareAgent, Mode=OneWay, Converter={StaticResource BoolToVis}}"
-                            AutomationProperties.Name="Share this relay agent" />
+                            AutomationProperties.Name="Share this relay agent">
+                        <Button.ContentTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="5">
+                                    <ic:FluentIcon Icon="QrCode"
+                                                   IconVariant="Regular"
+                                                   IconSize="Size16"
+                                                   VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding}"
+                                               VerticalAlignment="Center" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </Button.ContentTemplate>
+                    </Button>
                 </StackPanel>
 
                 <ProgressRing x:Uid="AgentDetailCapabilitiesProgress" Width="18"
@@ -267,8 +280,8 @@
         </StackPanel>
 
         <!-- Suggestions are on here and nowhere else: this is the agent's landing surface, the one
-             moment a user has nothing typed and no idea what to ask for. They show the agent's own
-             skill offers when it declares usable ones, and the generic starters otherwise. -->
+             moment a user has nothing typed and no idea what to ask for. The agent's usable skill
+             offers come first, and generic starters fill the row to three. -->
         <controls:ChatComposer x:Name="Composer"
                                Grid.Row="1"
                                CanSubmit="{x:Bind Vm.CanStartConversation, Mode=OneWay}"

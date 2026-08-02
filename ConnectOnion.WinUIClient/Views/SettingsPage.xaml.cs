@@ -324,14 +324,14 @@ public sealed partial class SettingsPage : Page
         _currentCategory = category;
         SearchEmptyState.Visibility = Visibility.Collapsed;
 
-        // "General" is two cards: Appearance (how the app looks) and Chat (how chat behaves/reads).
+        // General groups the app-wide preferences: appearance, window behaviour, chat and audio.
         var isGeneral = category == "General";
         GeneralSection.Visibility = isGeneral ? Visibility.Visible : Visibility.Collapsed;
         WindowSection.Visibility = isGeneral ? Visibility.Visible : Visibility.Collapsed;
         ChatSection.Visibility = isGeneral ? Visibility.Visible : Visibility.Collapsed;
+        AudioSection.Visibility = isGeneral ? Visibility.Visible : Visibility.Collapsed;
 
         NotificationsSection.Visibility = category == "Notifications" ? Visibility.Visible : Visibility.Collapsed;
-        AudioSection.Visibility = category == "Audio" ? Visibility.Visible : Visibility.Collapsed;
         ContentScrollViewer.ChangeView(null, 0, null, true);
     }
 

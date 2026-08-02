@@ -89,7 +89,6 @@ public sealed partial class SettingsOverlay : UserControl
     private void GeneralNav_Click(object sender, RoutedEventArgs e) => SelectCategory("General");
     private void AgentsNav_Click(object sender, RoutedEventArgs e) => SelectCategory("Agents");
     private void NotificationsNav_Click(object sender, RoutedEventArgs e) => SelectCategory("Notifications");
-    private void AudioNav_Click(object sender, RoutedEventArgs e) => SelectCategory("Audio");
     private void IdentityNav_Click(object sender, RoutedEventArgs e) => SelectCategory("Identity");
     private void UsageNav_Click(object sender, RoutedEventArgs e) => SelectCategory("Usage");
     private void KeyboardNav_Click(object sender, RoutedEventArgs e) => SelectCategory("Keyboard");
@@ -191,7 +190,6 @@ public sealed partial class SettingsOverlay : UserControl
     {
         "Agents" => LocalizedStrings.Get("SettingsCategoryAgentsName", "Agents"),
         "Notifications" => LocalizedStrings.Get("SettingsCategoryNotificationsName", "Notifications"),
-        "Audio" => LocalizedStrings.Get("SettingsCategoryAudioName", "Audio"),
         "Keyboard" => LocalizedStrings.Get("SettingsCategoryKeyboardName", "Keyboard"),
         "Identity" => LocalizedStrings.Get("SettingsCategoryIdentityName", "Identity"),
         "Usage" => LocalizedStrings.Get("SettingsCategoryUsageName", "Usage"),

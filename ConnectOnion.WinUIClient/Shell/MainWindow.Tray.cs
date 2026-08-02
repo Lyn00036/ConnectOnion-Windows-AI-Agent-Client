@@ -19,6 +19,7 @@ public sealed partial class MainWindow
     private const int SizeMaximized = 2;
 
     private const int SwHide = 0;
+    private const int SwShowMaximized = 3;
     private const int SwShow = 5;
     private const int SwRestore = 9;
     private const uint RedrawInvalidate = 0x0001;
@@ -254,10 +255,24 @@ public sealed partial class MainWindow
         if (_isHiddenToTray)
             ResetCaptionButtonChrome();
 
-        // SW_RESTORE un-minimizes and unhides in one call; SW_SHOW guarantees the window
-        // is visible even when it was hidden to the tray via SW_HIDE.
-        ShowWindow(_hwnd, SwRestore);
-        ShowWindow(_hwnd, SwShow);
+        // SW_RESTORE is not a neutral "make visible" operation: when the window is already
+        // maximized it changes it back to its restored size. Notification navigation reaches
+        // this method even while the window is visible, which is why clicking a toast used to
+        // cancel maximization. Only minimized windows need a restore command. If the window was
+        // maximized before minimizing, show it maximized directly so there is no restored-state
+        // flash (and no transient placement event that records the wrong state). SW_SHOW alone
+        // is enough for visible and tray-hidden windows and preserves their presenter state.
+        var presenter = _appWindow.Presenter as Microsoft.UI.Windowing.OverlappedPresenter;
+        if (presenter?.State == Microsoft.UI.Windowing.OverlappedPresenterState.Minimized)
+        {
+            ShowWindow(
+                _hwnd,
+                _lastNonMinimizedWasMaximized ? SwShowMaximized : SwRestore);
+        }
+        else
+        {
+            ShowWindow(_hwnd, SwShow);
+        }
         SetForegroundWindow(_hwnd);
         try { Activate(); }
         catch { /* Activate can throw during teardown; best-effort. */ }

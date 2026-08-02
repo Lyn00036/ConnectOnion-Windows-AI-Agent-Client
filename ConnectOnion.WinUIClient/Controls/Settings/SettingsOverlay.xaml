@@ -123,10 +123,6 @@
                                 Click="NotificationsNav_Click" AutomationProperties.Name="Notification settings">
                         <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="Alert"/><TextBlock x:Uid="SettingsCategoryNotifications" x:Name="NotificationsNavLabel" Text="Notifications"/></StackPanel>
                             </RadioButton>
-                            <RadioButton x:Uid="SettingsNavAudio" GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
-                                Click="AudioNav_Click" AutomationProperties.Name="Audio settings">
-                        <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="Speaker2"/><TextBlock x:Uid="SettingsCategoryAudio" x:Name="AudioNavLabel" Text="Audio"/></StackPanel>
-                            </RadioButton>
                             <RadioButton x:Uid="SettingsNavKeyboard" GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
                                 Click="KeyboardNav_Click" AutomationProperties.Name="Keyboard shortcuts settings">
                         <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="Keyboard"/><TextBlock x:Uid="SettingsCategoryKeyboard" x:Name="KeyboardNavLabel" Text="Keyboard"/></StackPanel>
@@ -166,7 +162,6 @@
                                 <ComboBoxItem x:Uid="SettingsCompactCategoryGeneral" Content="General" Tag="General" />
                                 <ComboBoxItem x:Uid="SettingsCompactCategoryAgents" Content="Agents" Tag="Agents" />
                                 <ComboBoxItem x:Uid="SettingsCompactCategoryNotifications" Content="Notifications" Tag="Notifications" />
-                                <ComboBoxItem x:Uid="SettingsCompactCategoryAudio" Content="Audio" Tag="Audio" />
                                 <ComboBoxItem x:Uid="SettingsCompactCategoryKeyboard" Content="Keyboard" Tag="Keyboard" />
                                 <ComboBoxItem x:Uid="SettingsCompactCategoryIdentity" Content="Identity" Tag="Identity" />
                                 <ComboBoxItem x:Uid="SettingsCompactCategoryUsage" Content="Usage" Tag="Usage" />
@@ -242,7 +237,6 @@
                         <Setter Target="GeneralNavLabel.Visibility" Value="Visible" />
                         <Setter Target="AgentsNavLabel.Visibility" Value="Visible" />
                         <Setter Target="NotificationsNavLabel.Visibility" Value="Visible" />
-                        <Setter Target="AudioNavLabel.Visibility" Value="Visible" />
                         <Setter Target="KeyboardNavLabel.Visibility" Value="Visible" />
                         <Setter Target="IdentityNavLabel.Visibility" Value="Visible" />
                         <Setter Target="UsageNavLabel.Visibility" Value="Visible" />

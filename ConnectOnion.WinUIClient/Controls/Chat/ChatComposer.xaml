@@ -26,8 +26,8 @@
                       VerticalScrollBarVisibility="Disabled"
                       HorizontalContentAlignment="Center">
             <Grid Padding="2,0">
-                <!-- The agent's own best skills replace the generic starters when available. -->
-                <ItemsControl x:Name="SkillSuggestionList"
+                <!-- The agent's own best skills lead; generic starters fill any empty slots. -->
+                <ItemsControl x:Name="SuggestionList"
                               Visibility="Collapsed"
                               HorizontalAlignment="Center">
                     <ItemsControl.ItemsPanel>
@@ -37,8 +37,8 @@
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Button Content="{Binding}"
-                                    Tag="{Binding}"
+                            <Button Content="{Binding Label}"
+                                    Tag="{Binding Prompt}"
                                     MinHeight="36"
                                     Padding="14,6"
                                     CornerRadius="18"
@@ -49,41 +49,6 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
-
-                <!-- Generic starters stay useful across agents that expose no skill metadata. -->
-                <StackPanel x:Name="SuggestionPanel"
-                            Visibility="Collapsed"
-                            Orientation="Horizontal"
-                            HorizontalAlignment="Center"
-                            Spacing="8">
-                    <Button x:Uid="ComposerSuggestionCapabilities" Content="Summarize your capabilities"
-                            Tag="Summarize your capabilities"
-                            MinHeight="36"
-                            Padding="14,6"
-                            CornerRadius="18"
-                            Background="{ThemeResource SurfaceElevatedBrush}"
-                            BorderBrush="{ThemeResource BorderDefaultBrush}"
-                            BorderThickness="1"
-                            Click="Suggestion_Click" />
-                    <Button x:Uid="ComposerSuggestionSystem" Content="Help me get started"
-                            Tag="Help me get started"
-                            MinHeight="36"
-                            Padding="14,6"
-                            CornerRadius="18"
-                            Background="{ThemeResource SurfaceElevatedBrush}"
-                            BorderBrush="{ThemeResource BorderDefaultBrush}"
-                            BorderThickness="1"
-                            Click="Suggestion_Click" />
-                    <Button x:Uid="ComposerSuggestionFiles" Content="Suggest three useful tasks"
-                            Tag="Suggest three useful tasks"
-                            MinHeight="36"
-                            Padding="14,6"
-                            CornerRadius="18"
-                            Background="{ThemeResource SurfaceElevatedBrush}"
-                            BorderBrush="{ThemeResource BorderDefaultBrush}"
-                            BorderThickness="1"
-                            Click="Suggestion_Click" />
-                </StackPanel>
             </Grid>
         </ScrollViewer>
 

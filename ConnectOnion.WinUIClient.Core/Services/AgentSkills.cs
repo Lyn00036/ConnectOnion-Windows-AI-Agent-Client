@@ -141,14 +141,14 @@ public static partial class AgentSkills
     // ---- Opening suggestions ------------------------------------------------
 
     /// <summary>
-    /// The agent's best few skills phrased as offers — the chips a landing page shows instead of
+    /// The agent's best few skills phrased as offers — the chips a landing page puts before its
     /// generic "What can you do?" prompts.
     ///
     /// <para>Best, not merely parseable: internal utilities are dropped, descriptions that will not
     /// cut into a clean short phrase are dropped rather than truncated, and what survives is
     /// ordered by whether it leads with an outcome. An agent whose descriptions are all unusable
-    /// yields nothing, and the caller falls back to its static prompts — a bad chip is worse than
-    /// no chip, because it is the first thing the user reads about the agent.</para>
+    /// yields nothing, and the caller fills the row from its static prompts. A bad chip is worse
+    /// than no chip, because it is the first thing the user reads about the agent.</para>
     /// </summary>
     public static IReadOnlyList<string> BestOffers(IReadOnlyList<SkillInfo>? skills, int max = MaxOffers)
     {
@@ -164,6 +164,43 @@ public static partial class AgentSkills
             .ThenBy(offer => offer.Length)
             .Take(max)
             .ToList();
+    }
+
+    /// <summary>
+    /// Keeps an agent's own opening offers first, then fills any empty slots with generic
+    /// starters. Duplicate or blank text never consumes a slot.
+    ///
+    /// <para>The landing row is designed as a set of three choices. Treating one usable skill as
+    /// a replacement for the whole generic set left the row looking accidentally incomplete;
+    /// this makes replacement happen per slot instead.</para>
+    /// </summary>
+    public static IReadOnlyList<string> CompleteOffers(
+        IReadOnlyList<string>? offers,
+        IReadOnlyList<string>? fallbacks,
+        int max = MaxOffers)
+    {
+        if (max <= 0) return [];
+
+        var completed = new List<string>(max);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        Append(offers);
+        Append(fallbacks);
+        return completed;
+
+        void Append(IReadOnlyList<string>? candidates)
+        {
+            if (candidates is null) return;
+
+            foreach (var candidate in candidates)
+            {
+                if (completed.Count == max) return;
+                if (string.IsNullOrWhiteSpace(candidate)) continue;
+
+                var normalized = candidate.Trim();
+                if (seen.Add(normalized)) completed.Add(normalized);
+            }
+        }
     }
 
     /// <summary>

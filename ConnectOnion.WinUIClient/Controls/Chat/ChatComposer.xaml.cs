@@ -29,6 +29,19 @@ namespace ConnectOnion.WinUIClient.Controls;
 /// <summary>Text plus whatever attachments were ready to send at submit time.</summary>
 public sealed record ComposerSubmission(string Text, IReadOnlyList<PendingAttachment> Attachments);
 
+/// <summary>A quick prompt's visible chip label and the fuller draft inserted when selected.</summary>
+internal sealed class ComposerSuggestion
+{
+    public ComposerSuggestion(string label, string prompt)
+    {
+        Label = label;
+        Prompt = prompt;
+    }
+
+    public string Label { get; }
+    public string Prompt { get; }
+}
+
 public sealed partial class ChatComposer : UserControl, IDisposable
 {
     // The attachment pipeline swallows its failures so a bad file cannot take the composer down.
@@ -107,7 +120,7 @@ public sealed partial class ChatComposer : UserControl, IDisposable
             new PropertyMetadata("", OnUsageTextChanged));
 
     /// <summary>
-    /// Ready-made prompts to offer above the input, replacing the generic starters. Separate from
+    /// Ready-made prompts to offer above the input before the generic starters. Separate from
     /// <see cref="Skills"/> because these are already-phrased sentences the caller chose (see
     /// <c>AgentSkills.BestOffers</c>), not names to complete.
     /// </summary>
@@ -258,8 +271,8 @@ public sealed partial class ChatComposer : UserControl, IDisposable
         set => SetValue(SkillsProperty, value);
     }
 
-    /// <summary>Prompts shown as chips above the input in place of the generic starters. Empty or
-    /// null falls back to those starters.</summary>
+    /// <summary>Prompts shown first as chips above the input. The generic starters fill any slots
+    /// left in the three-chip row.</summary>
     public IReadOnlyList<string>? SuggestionPrompts
     {
         get => (IReadOnlyList<string>?)GetValue(SuggestionPromptsProperty);
@@ -453,18 +466,56 @@ public sealed partial class ChatComposer : UserControl, IDisposable
         StopRequested?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>Picks either the agent's skill offers or the generic starters. The containing
-    /// horizontal rail keeps onboarding reachable instead of dropping it at narrow widths.</summary>
+    /// <summary>Keeps the agent's skill offers first, then fills the three-chip row with generic
+    /// starters. The containing horizontal rail keeps onboarding reachable at narrow widths.</summary>
     private void ApplySuggestionVisibility(double width)
     {
         var offers = FilterSuggestionsForActiveLanguage(SuggestionPrompts);
-        var hasOffers = offers is { Count: > 0 };
+        var genericSuggestions = GenericSuggestions();
+        var labels = AgentSkills.CompleteOffers(
+            offers,
+            genericSuggestions.Select(suggestion => suggestion.Label).ToList());
+        var genericByLabel = genericSuggestions.ToDictionary(
+            suggestion => suggestion.Label,
+            StringComparer.OrdinalIgnoreCase);
+        var suggestions = labels
+            .Select(label => genericByLabel.TryGetValue(label, out var generic)
+                ? generic
+                : new ComposerSuggestion(label, label))
+            .ToList();
 
-        SkillSuggestionList.ItemsSource = hasOffers ? offers : null;
-        SkillSuggestionList.Visibility = ShowSuggestions && hasOffers ? Visibility.Visible : Visibility.Collapsed;
-        SuggestionPanel.Visibility = ShowSuggestions && !hasOffers ? Visibility.Visible : Visibility.Collapsed;
-        SuggestionScroller.Visibility = ShowSuggestions ? Visibility.Visible : Visibility.Collapsed;
+        SuggestionList.ItemsSource = suggestions;
+        SuggestionList.Visibility = ShowSuggestions && suggestions.Count > 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        SuggestionScroller.Visibility = SuggestionList.Visibility;
     }
+
+    private static IReadOnlyList<ComposerSuggestion> GenericSuggestions()
+        =>
+        [
+            new(
+                LocalizedStrings.Get(
+                    "ComposerSuggestionCapabilitiesLabel",
+                    "Summarize your capabilities"),
+                LocalizedStrings.Get(
+                    "ComposerSuggestionCapabilitiesPrompt",
+                    "Summarize your capabilities and give me a few concrete examples.")),
+            new(
+                LocalizedStrings.Get(
+                    "ComposerSuggestionSystemLabel",
+                    "Help me get started"),
+                LocalizedStrings.Get(
+                    "ComposerSuggestionSystemPrompt",
+                    "Help me get started. What information do you need from me?")),
+            new(
+                LocalizedStrings.Get(
+                    "ComposerSuggestionFilesLabel",
+                    "Suggest three useful tasks"),
+                LocalizedStrings.Get(
+                    "ComposerSuggestionFilesPrompt",
+                    "Suggest three useful tasks you can help me complete.")),
+        ];
 
     private static IReadOnlyList<string>? FilterSuggestionsForActiveLanguage(
         IReadOnlyList<string>? offers)
@@ -738,19 +789,7 @@ public sealed partial class ChatComposer : UserControl, IDisposable
     private void Suggestion_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.Tag is not string prompt) return;
-        SetDraft(prompt switch
-        {
-            "Summarize your capabilities" => LocalizedStrings.Get(
-                "ComposerSuggestionCapabilitiesPrompt",
-                "Summarize your capabilities and give me a few concrete examples."),
-            "Help me get started" => LocalizedStrings.Get(
-                "ComposerSuggestionSystemPrompt",
-                "Help me get started. What information do you need from me?"),
-            "Suggest three useful tasks" => LocalizedStrings.Get(
-                "ComposerSuggestionFilesPrompt",
-                "Suggest three useful tasks you can help me complete."),
-            _ => prompt,
-        });
+        SetDraft(prompt);
     }
 
     private void InputBox_TextChanged(object sender, TextChangedEventArgs e)

@@ -33,6 +33,29 @@ public sealed class WindowPlacementLifecycleContractTests
         Assert.Contains("new WindowPlacement(position, isMaximized,", source, StringComparison.Ordinal);
     }
 
+    /// <summary>Notification clicks and redirected second launches both bring the existing window
+    /// forward. <c>SW_RESTORE</c> must only be used for a genuinely minimized window: applying it
+    /// to an already-maximized window cancels maximization as a side effect.</summary>
+    [Fact]
+    public void BringToForeground_PreservesMaximizedState()
+    {
+        var source = ReadAppSource("Shell", "MainWindow.Tray.cs");
+
+        Assert.Contains(
+            "presenter?.State == Microsoft.UI.Windowing.OverlappedPresenterState.Minimized",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_lastNonMinimizedWasMaximized ? SwShowMaximized : SwRestore",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains("ShowWindow(_hwnd, SwShow);", source, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "ShowWindow(_hwnd, SwRestore);\r\n        ShowWindow(_hwnd, SwShow);",
+            source,
+            StringComparison.Ordinal);
+    }
+
     /// <summary>The window's size is restored as well as its position. It used to be neither
     /// saved nor applied — <c>WindowPlacement</c> carried only a position and the restore path
     /// called <c>Move</c> and never <c>Resize</c> — so a resized window reopened at the default

@@ -162,7 +162,6 @@
   <data name="SettingsCategoryGeneral.Text" xml:space="preserve"><value>常规</value></data>
   <data name="SettingsCategoryAgents.Text" xml:space="preserve"><value>Agent</value></data>
   <data name="SettingsCategoryNotifications.Text" xml:space="preserve"><value>通知</value></data>
-  <data name="SettingsCategoryAudio.Text" xml:space="preserve"><value>音频</value></data>
   <data name="SettingsCategoryKeyboard.Text" xml:space="preserve"><value>键盘</value></data>
   <data name="SettingsCategoryIdentity.Text" xml:space="preserve"><value>身份</value></data>
   <data name="SettingsCategoryUsage.Text" xml:space="preserve"><value>用量</value></data>
@@ -436,6 +435,9 @@
   <data name="ComposerSuggestionCapabilitiesPrompt" xml:space="preserve"><value>请概括你的能力，并给出几个具体示例。</value></data>
   <data name="ComposerSuggestionSystemPrompt" xml:space="preserve"><value>请帮我开始使用。你需要我提供哪些信息？</value></data>
   <data name="ComposerSuggestionFilesPrompt" xml:space="preserve"><value>推荐三个你可以帮助我完成的实用任务。</value></data>
+  <data name="ComposerSuggestionCapabilitiesLabel" xml:space="preserve"><value>概括你的能力</value></data>
+  <data name="ComposerSuggestionSystemLabel" xml:space="preserve"><value>帮我开始使用</value></data>
+  <data name="ComposerSuggestionFilesLabel" xml:space="preserve"><value>推荐三个实用任务</value></data>
   <data name="ComposerModeButtonName" xml:space="preserve"><value>审批模式：{0}。快捷键：{1}</value></data>
   <data name="SettingsSaveError.Title" xml:space="preserve"><value>设置未保存</value></data>
   <data name="SettingsSaveError.Message" xml:space="preserve"><value>ConnectOnion 无法保存此更改，请重试。</value></data>
@@ -618,7 +620,6 @@
   <data name="SettingsCompactCategoryGeneral.Content" xml:space="preserve"><value>常规</value></data>
   <data name="SettingsCompactCategoryAgents.Content" xml:space="preserve"><value>Agent</value></data>
   <data name="SettingsCompactCategoryNotifications.Content" xml:space="preserve"><value>通知</value></data>
-  <data name="SettingsCompactCategoryAudio.Content" xml:space="preserve"><value>音频</value></data>
   <data name="SettingsCompactCategoryKeyboard.Content" xml:space="preserve"><value>键盘</value></data>
   <data name="SettingsCompactCategoryIdentity.Content" xml:space="preserve"><value>身份</value></data>
   <data name="SettingsCompactCategoryUsage.Content" xml:space="preserve"><value>用量</value></data>
@@ -631,7 +632,6 @@
   <data name="SettingsCategoryGeneralName" xml:space="preserve"><value>常规</value></data>
   <data name="SettingsCategoryAgentsName" xml:space="preserve"><value>Agent</value></data>
   <data name="SettingsCategoryNotificationsName" xml:space="preserve"><value>通知</value></data>
-  <data name="SettingsCategoryAudioName" xml:space="preserve"><value>音频</value></data>
   <data name="SettingsCategoryKeyboardName" xml:space="preserve"><value>键盘</value></data>
   <data name="SettingsCategoryIdentityName" xml:space="preserve"><value>身份</value></data>
   <data name="SettingsCategoryUsageName" xml:space="preserve"><value>用量</value></data>
@@ -690,7 +690,6 @@
   <data name="SettingsNavGeneral.AutomationProperties.Name" xml:space="preserve"><value>常规设置</value></data>
   <data name="SettingsNavAgents.AutomationProperties.Name" xml:space="preserve"><value>智能体设置</value></data>
   <data name="SettingsNavNotifications.AutomationProperties.Name" xml:space="preserve"><value>通知设置</value></data>
-  <data name="SettingsNavAudio.AutomationProperties.Name" xml:space="preserve"><value>音频设置</value></data>
   <data name="SettingsNavKeyboard.AutomationProperties.Name" xml:space="preserve"><value>快捷键设置</value></data>
   <data name="SettingsNavIdentity.AutomationProperties.Name" xml:space="preserve"><value>身份设置</value></data>
   <data name="SettingsNavUsage.AutomationProperties.Name" xml:space="preserve"><value>Token 用量</value></data>

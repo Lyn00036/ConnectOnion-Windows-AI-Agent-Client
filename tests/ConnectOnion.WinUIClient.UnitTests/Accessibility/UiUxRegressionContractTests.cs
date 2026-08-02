@@ -13,9 +13,12 @@ public sealed class UiUxRegressionContractTests
         Assert.Contains("x:Name=\"SuggestionScroller\"", xaml, StringComparison.Ordinal);
         Assert.Contains("HorizontalScrollMode=\"Enabled\"", xaml, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"ComposerFooter\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("Summarize your capabilities", xaml, StringComparison.Ordinal);
-        Assert.Contains("Help me get started", xaml, StringComparison.Ordinal);
-        Assert.Contains("Suggest three useful tasks", xaml, StringComparison.Ordinal);
+        Assert.Contains("Content=\"{Binding Label}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Tag=\"{Binding Prompt}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AgentSkills.CompleteOffers", code, StringComparison.Ordinal);
+        Assert.Contains("Summarize your capabilities", code, StringComparison.Ordinal);
+        Assert.Contains("Help me get started", code, StringComparison.Ordinal);
+        Assert.Contains("Suggest three useful tasks", code, StringComparison.Ordinal);
         Assert.DoesNotContain("What can you do?", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("width >= 620", code, StringComparison.Ordinal);
         Assert.DoesNotContain("Math.Max(280", code, StringComparison.Ordinal);
@@ -62,6 +65,7 @@ public sealed class UiUxRegressionContractTests
     [Fact]
     public void Settings_SearchScopeAndFailures_AreVisibleToTheUser()
     {
+        var overlayXaml = Read("ConnectOnion.WinUIClient", "Controls", "Settings", "SettingsOverlay.xaml");
         var overlay = Read("ConnectOnion.WinUIClient", "Controls", "Settings", "SettingsOverlay.xaml.cs");
         var settingsXaml = Read("ConnectOnion.WinUIClient", "Views", "SettingsPage.xaml");
         var settingsCode = Read("ConnectOnion.WinUIClient", "Views", "SettingsPage.xaml.cs");
@@ -70,6 +74,8 @@ public sealed class UiUxRegressionContractTests
 
         Assert.DoesNotContain("SearchBox.Visibility = isSettingsPage", overlay, StringComparison.Ordinal);
         Assert.DoesNotContain("CompactSearchBox.Visibility = isSettingsPage", overlay, StringComparison.Ordinal);
+        Assert.DoesNotContain("SettingsNavAudio", overlayXaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("SettingsCompactCategoryAudio", overlayXaml, StringComparison.Ordinal);
         Assert.Contains("SettingsContent.Visibility = Visibility.Visible", overlay, StringComparison.Ordinal);
         Assert.Contains("IdentityScrollViewer.Visibility = Visibility.Collapsed", overlay, StringComparison.Ordinal);
         Assert.Contains("SettingsSearchResultsHeading", overlay, StringComparison.Ordinal);
@@ -77,6 +83,7 @@ public sealed class UiUxRegressionContractTests
         Assert.Contains("x:Name=\"SettingsErrorBar\"", settingsXaml, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"InterfaceTextSizeChoice\"", settingsXaml, StringComparison.Ordinal);
         Assert.Contains("SetInterfaceTextSizeAsync", settingsCode, StringComparison.Ordinal);
+        Assert.Contains("AudioSection.Visibility = isGeneral", settingsCode, StringComparison.Ordinal);
         Assert.Contains("interface text size", settingsCode, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("SaveSettingAsync", settingsCode, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"UsageErrorBar\"", usageXaml, StringComparison.Ordinal);
