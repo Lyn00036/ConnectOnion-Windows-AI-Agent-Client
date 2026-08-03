@@ -79,6 +79,21 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     /// presence probes running — those are TTL-based and must not stall just because the tree
     /// did not need redrawing.</summary>
     private IReadOnlyList<AgentConfig> _knownAgents = Array.Empty<AgentConfig>();
+    /// <summary>
+    /// Monotonically identifies refresh attempts. Storage reads yield, so an older attempt can
+    /// otherwise resume after a newer navigation and repaint the previous selection. Only the
+    /// newest attempt is allowed to commit cache markers or rebuild the row collections.
+    /// </summary>
+    private long _refreshGeneration;
+    /// <summary>
+    /// Serializes the two metadata writes behind a conversation click. The row highlight is
+    /// applied before this queue, so rapid clicks remain responsive while persistence still
+    /// finishes in click order and the last click is the only one allowed to navigate.
+    /// </summary>
+    private readonly object _sessionSelectionQueueGate = new();
+    private System.Threading.Tasks.Task _sessionSelectionTail =
+        System.Threading.Tasks.Task.CompletedTask;
+    private long _sessionSelectionGeneration;
     private int _shutdown;
 
     public int OnlineAgentCount
@@ -190,6 +205,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     public async System.Threading.Tasks.Task RefreshAsync()
     {
         if (Volatile.Read(ref _shutdown) != 0) return;
+        var refreshGeneration = Interlocked.Increment(ref _refreshGeneration);
 
         // Cheapest possible short-circuit, and it has to come first. The render-signature guard
         // further down avoids rebuilding the tree, but it is computed *from* the data — so a
@@ -210,19 +226,18 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         }
 
         var agentsState = await AppServices.Agents.LoadAsync();
-        if (Volatile.Read(ref _shutdown) != 0) return;
+        if (IsRefreshSuperseded(refreshGeneration)) return;
         var sessionsState = await AppServices.Sessions.LoadAsync();
-        if (Volatile.Read(ref _shutdown) != 0) return;
+        if (IsRefreshSuperseded(refreshGeneration)) return;
         await RefreshSessionPreviewCacheAsync(sessionsState.Sessions);
-        if (Volatile.Read(ref _shutdown) != 0) return;
-        _lastLoadedRevision = revision;
-        _lastLoadedPageType = _currentPageType;
+        if (IsRefreshSuperseded(refreshGeneration)) return;
 
         // Must run *before* the Clear below, while the old items still hold their expansion.
         RememberExpandedAgentsFromUi();
         if (!_loadedPersistedExpansionState)
         {
             var persisted = await AppServices.SidebarState.LoadAsync();
+            if (IsRefreshSuperseded(refreshGeneration)) return;
             if (!_hasExpansionState && persisted.HasAgentExpansionState)
             {
                 _expandedAgentIds.Clear();
@@ -232,6 +247,13 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
             IsPinnedExpanded = persisted.IsPinnedExpanded;
             _loadedPersistedExpansionState = true;
         }
+        if (IsRefreshSuperseded(refreshGeneration)) return;
+
+        // Publish the cache markers only after the final await and supersession check. Setting
+        // them earlier lets a newer refresh take the skip path while this older one is still
+        // waiting, after which the older attempt is discarded and neither one repaints the rows.
+        _lastLoadedRevision = revision;
+        _lastLoadedPageType = _currentPageType;
 
         var renderSignature = ComputeRenderSignature(agentsState, sessionsState);
         if (_lastRenderSignature == renderSignature)
@@ -299,6 +321,10 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
 
         _hasExpansionState = true;
     }
+
+    private bool IsRefreshSuperseded(long refreshGeneration)
+        => Volatile.Read(ref _shutdown) != 0
+           || refreshGeneration != Interlocked.Read(ref _refreshGeneration);
 
     /// <summary>Keeps the reachability probes ticking on the path that skips the reload. They are
     /// TTL-based and coalesced inside the service, so calling this on every navigation costs a
@@ -590,15 +616,106 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     /// an agent other than the current one) while preserving every branch the user has open.</summary>
     private async System.Threading.Tasks.Task SelectSessionAsync(string sessionId)
     {
-        var sessionsState = await AppServices.Sessions.LoadAsync();
-        var session = sessionsState.Sessions.FirstOrDefault(s => s.Id == sessionId);
-        if (session is null) return;
+        // Every pinned row also has a canonical copy under its owning agent, even while that
+        // branch is collapsed. Resolve the owner from the already-rendered tree instead of
+        // re-reading the complete session index before the click can do anything visible.
+        var agentId = ShellAgents
+            .FirstOrDefault(agent => agent.Sessions.Any(session => session.Id == sessionId))
+            ?.Id;
+        if (agentId is null) return;
 
-        await AppServices.Sessions.SetActiveSessionAsync(session.Id);
-        await AppServices.Agents.SetSelectedAgentAsync(session.AgentId);
+        var selectionGeneration = Interlocked.Increment(ref _sessionSelectionGeneration);
+        ApplyOptimisticSessionSelection(sessionId);
 
-        RevealAgentInSidebar(session.AgentId);
-        RequestNavigation(typeof(ChatPage), forceReload: true);
+        try
+        {
+            // Microsoft.Data.Sqlite delegates to SQLite's synchronous API. Running these small
+            // metadata writes on the worker pool lets WinUI render the optimistic selection in
+            // the click frame instead of holding it behind connection open + two writes.
+            if (!await QueueSessionSelectionPersistenceAsync(
+                    sessionId,
+                    agentId,
+                    selectionGeneration)) return;
+
+            RevealAgentInSidebar(agentId);
+            RequestNavigation(typeof(ChatPage), forceReload: true);
+        }
+        catch
+        {
+            if (IsCurrentSessionSelection(selectionGeneration))
+            {
+                // The optimistic paint must not survive a failed write. Force an authoritative
+                // rebuild even if the storage revision did not move before the exception.
+                _lastLoadedRevision = -1;
+                _lastRenderSignature = null;
+                try { await RefreshAsync(); }
+                catch { /* best-effort rollback; persistence failure remains non-fatal */ }
+            }
+        }
+    }
+
+    /// <summary>Updates both representations of a conversation in place. Session groups contain
+    /// these same item instances, so this changes the visible accent without clearing a collection
+    /// or triggering a new XAML measure/arrange pass for every sidebar row.</summary>
+    private void ApplyOptimisticSessionSelection(string sessionId)
+    {
+        foreach (var session in PinnedSessions)
+            session.IsSelected = session.Id == sessionId;
+
+        foreach (var agent in ShellAgents)
+        {
+            // A conversation is now the pending destination, so an Agent Detail row must stop
+            // presenting itself as the current location immediately as well.
+            agent.IsSelected = false;
+            foreach (var session in agent.Sessions)
+                session.IsSelected = session.Id == sessionId;
+        }
+    }
+
+    private bool IsCurrentSessionSelection(long selectionGeneration)
+        => Volatile.Read(ref _shutdown) == 0
+           && selectionGeneration == Interlocked.Read(ref _sessionSelectionGeneration);
+
+    private System.Threading.Tasks.Task<bool> QueueSessionSelectionPersistenceAsync(
+        string sessionId,
+        string agentId,
+        long selectionGeneration)
+    {
+        lock (_sessionSelectionQueueGate)
+        {
+            var queued = PersistSessionSelectionAfterAsync(
+                _sessionSelectionTail,
+                sessionId,
+                agentId,
+                selectionGeneration);
+            _sessionSelectionTail = queued;
+            return queued;
+        }
+    }
+
+    private System.Threading.Tasks.Task<bool> PersistSessionSelectionAfterAsync(
+        System.Threading.Tasks.Task predecessor,
+        string sessionId,
+        string agentId,
+        long selectionGeneration)
+    {
+        var sessions = AppServices.Sessions;
+        var agents = AppServices.Agents;
+        // ContinueWith runs even when the predecessor faulted (its own SelectSessionAsync caller
+        // observes that failure), so one failed click cannot poison the queue. TaskScheduler.Default
+        // also guarantees the synchronous SQLite work never resumes on WinUI's dispatcher.
+        return System.Threading.Tasks.TaskExtensions.Unwrap(
+            predecessor.ContinueWith(
+                async _ =>
+                {
+                    if (!IsCurrentSessionSelection(selectionGeneration)) return false;
+                    await sessions.SetActiveSessionAsync(sessionId).ConfigureAwait(false);
+                    await agents.SetSelectedAgentAsync(agentId).ConfigureAwait(false);
+                    return IsCurrentSessionSelection(selectionGeneration);
+                },
+                CancellationToken.None,
+                System.Threading.Tasks.TaskContinuationOptions.None,
+                System.Threading.Tasks.TaskScheduler.Default));
     }
 
     private ShellAgentItem? FindShellAgent(string agentId)

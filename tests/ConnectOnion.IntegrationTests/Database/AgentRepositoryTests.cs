@@ -96,6 +96,44 @@ public sealed class AgentRepositoryTests
     }
 
     [Fact]
+    public async Task UpdateInfoAsync_PreservesSelectionAndOtherAgentFields()
+    {
+        var fetchingAgent = new AgentConfig
+        {
+            Id = "info-fetching",
+            Name = "Original name",
+            Address = "0x1",
+        };
+        var selectedAgent = new AgentConfig
+        {
+            Id = "new-selection",
+            Name = "Selected agent",
+            Address = "0x2",
+        };
+        await _repository.SaveAsync(new AgentsState
+        {
+            Agents = new List<AgentConfig> { fetchingAgent, selectedAgent },
+            SelectedAgentId = fetchingAgent.Id,
+        });
+
+        // Model the race that caused the sidebar bug: the user changes selection while the
+        // first agent's /info request is still in flight, then that delayed request persists.
+        await _repository.SetSelectedAgentAsync(selectedAgent.Id);
+        await _repository.UpdateInfoAsync(
+            fetchingAgent.Id,
+            "{\"model\":\"gpt-test\"}",
+            "2026-08-03T00:00:00.0000000Z");
+
+        var loaded = await _repository.LoadAsync();
+        Assert.Equal(selectedAgent.Id, loaded.SelectedAgentId);
+        var updated = Assert.Single(loaded.Agents, agent => agent.Id == fetchingAgent.Id);
+        Assert.Equal(fetchingAgent.Name, updated.Name);
+        Assert.Equal(fetchingAgent.Address, updated.Address);
+        Assert.Equal("{\"model\":\"gpt-test\"}", updated.InfoJson);
+        Assert.Equal("2026-08-03T00:00:00.0000000Z", updated.InfoUpdatedAt);
+    }
+
+    [Fact]
     public async Task SaveAsync_RemovingAgent_DeletesItsConversationGraphFirst()
     {
         var agent = new AgentConfig { Id = "agent-with-session", Name = "Agent", Address = "0x1" };

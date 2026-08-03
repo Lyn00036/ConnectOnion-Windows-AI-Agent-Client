@@ -56,7 +56,20 @@ public sealed partial class ShellSidebar
     // which silently cost the whole sidebar its hover wash and its per-row action buttons.
     private void Row_PointerEntered(object sender, PointerRoutedEventArgs e) => SetRowInteractive(sender, true);
     private void Row_PointerExited(object sender, PointerRoutedEventArgs e) => SetRowInteractive(sender, false);
-    private void Row_GotFocus(object sender, RoutedEventArgs e) => SetRowInteractive(sender, true);
+    /// <summary>
+    /// Arms the row for keyboard traversal only. GotFocus bubbles, so focus the framework assigns
+    /// implicitly reaches this handler too — and an agent row carries no accent rail, which makes
+    /// this wash its entire selected appearance. Clicking the sidebar's blank background therefore
+    /// painted the first agent as selected when nothing had been selected at all. Pointer focus
+    /// needs no arm of its own: Row_PointerEntered already covers every mouse case, and a row the
+    /// pointer has left should not keep the wash merely because its button still holds focus.
+    /// </summary>
+    private void Row_GotFocus(object sender, RoutedEventArgs e)
+    {
+        if ((e.OriginalSource as Microsoft.UI.Xaml.Controls.Control)?.FocusState != FocusState.Keyboard) return;
+        SetRowInteractive(sender, true);
+    }
+
     private void Row_LostFocus(object sender, RoutedEventArgs e) => SetRowInteractive(sender, false);
 
     private static void SetRowInteractive(object sender, bool active)

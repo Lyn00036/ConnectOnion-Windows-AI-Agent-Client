@@ -20,7 +20,7 @@ public sealed class SidebarPinnedNavigationContractTests
         var source = ReadAppSource("Controls", "Shell", "ShellSidebar.xaml.cs");
         var events = ReadAppSource("Controls", "Shell", "ShellSidebar.Events.cs");
 
-        Assert.Contains("RevealAgentInSidebar(session.AgentId)", source, StringComparison.Ordinal);
+        Assert.Contains("RevealAgentInSidebar(agentId)", source, StringComparison.Ordinal);
         Assert.Contains("_expandedAgentIds.Add(agentId)", source, StringComparison.Ordinal);
         Assert.Contains("agent.IsExpanded = true", source, StringComparison.Ordinal);
         Assert.DoesNotContain("FocusAgentInSidebar(session.AgentId)", source, StringComparison.Ordinal);

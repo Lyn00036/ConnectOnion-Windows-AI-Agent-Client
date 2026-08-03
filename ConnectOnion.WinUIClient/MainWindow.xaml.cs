@@ -531,10 +531,14 @@ public sealed partial class MainWindow : Window
             && ContentFrame.Content is Views.IReloadablePage reloadable)
         {
             CloseFindOverlay();
-            try { await reloadable.ReloadAsync(); }
-            catch { /* a failed reload leaves the page on its previous selection */ }
+            // Selection is persisted before navigation is requested. Paint that new selection
+            // before reloading the page: AgentDetailPage.ReloadAsync can wait on a remote /info
+            // fetch, and putting this refresh afterwards left the previous agent highlighted for
+            // the entire request.
             try { await ShellSidebar.RefreshAsync(); }
             catch { /* best-effort sidebar refresh */ }
+            try { await reloadable.ReloadAsync(); }
+            catch { /* a failed reload leaves the page on its previous selection */ }
             return;
         }
 
