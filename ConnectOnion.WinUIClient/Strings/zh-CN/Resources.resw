@@ -726,6 +726,7 @@
   <data name="HomeDocsOpenFailedTitle" xml:space="preserve"><value>无法打开文档</value></data>
   <data name="HomeDocsOpenFailedBody" xml:space="preserve"><value>请在浏览器中访问 {0}。</value></data>
   <data name="AddAgentWhereToGetOne.Content" xml:space="preserve"><value>到哪里获取智能体地址？</value></data>
+  <data name="AddAgentHostDocsHint.Text" xml:space="preserve"><value>用 host(agent) 运行智能体，复制终端中显示的 0x 地址，或填入已部署智能体的 HTTP URL。</value></data>
   <data name="AddAgentDocsOpenFailed" xml:space="preserve"><value>无法打开文档。请在浏览器中访问 {0}。</value></data>
   <data name="ChatFindNoMatches" xml:space="preserve"><value>0 / 0 个结果</value></data>
   <data name="ChatFindMatchCounter" xml:space="preserve"><value>第 {0} / {1} 个结果</value></data>
