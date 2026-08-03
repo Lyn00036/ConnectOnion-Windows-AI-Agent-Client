@@ -229,11 +229,15 @@
                         <Button.ContentTemplate>
                             <DataTemplate>
                                 <StackPanel Orientation="Horizontal" Spacing="5">
+                                    <!-- QrCode ships only in Size20+ font files (not Size16); Size16
+                                         reserved an empty slot and looked like a missing icon. -->
                                     <ic:FluentIcon Icon="QrCode"
                                                    IconVariant="Regular"
-                                                   IconSize="Size16"
+                                                   IconSize="Size20"
+                                                   Foreground="{ThemeResource TextTertiaryBrush}"
                                                    VerticalAlignment="Center" />
                                     <TextBlock Text="{Binding}"
+                                               Foreground="{ThemeResource TextTertiaryBrush}"
                                                VerticalAlignment="Center" />
                                 </StackPanel>
                             </DataTemplate>

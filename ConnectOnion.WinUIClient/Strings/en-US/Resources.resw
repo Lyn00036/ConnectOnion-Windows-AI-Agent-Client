@@ -726,6 +726,7 @@
   <data name="HomeDocsOpenFailedTitle" xml:space="preserve"><value>Couldn't open the docs</value></data>
   <data name="HomeDocsOpenFailedBody" xml:space="preserve"><value>Visit {0} in your browser.</value></data>
   <data name="AddAgentWhereToGetOne.Content" xml:space="preserve"><value>Where do I get an agent address?</value></data>
+  <data name="AddAgentHostDocsHint.Text" xml:space="preserve"><value>Run your agent with host(agent) and copy the 0x address shown in the terminal, or enter the HTTP URL of a deployed agent.</value></data>
   <data name="AddAgentDocsOpenFailed" xml:space="preserve"><value>Couldn't open the docs. Visit {0} in your browser.</value></data>
   <data name="ChatFindNoMatches" xml:space="preserve"><value>0 / 0 results</value></data>
   <data name="ChatFindMatchCounter" xml:space="preserve"><value>{0} / {1} results</value></data>

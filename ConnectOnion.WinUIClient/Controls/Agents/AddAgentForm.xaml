@@ -71,6 +71,11 @@
                                      FontSize="{StaticResource ProductCaptionFontSize}"
                                      AutomationProperties.AutomationId="AddAgentDocsLink"
                                      Click="AddAgentDocs_Click" />
+                    <TextBlock x:Uid="AddAgentHostDocsHint"
+                               Text="Run your agent with host(agent) and copy the 0x address shown in the terminal, or enter the HTTP URL of a deployed agent."
+                               FontSize="{StaticResource ProductMicroFontSize}"
+                               Foreground="{ThemeResource TextTertiaryBrush}"
+                               TextWrapping="Wrap" />
                     <TextBlock x:Uid="AddAgentAddressError" Text="Enter a valid agent address or HTTP URL."
                                FontSize="{StaticResource ProductCaptionFontSize}"
                                Foreground="{ThemeResource DangerBrush}"

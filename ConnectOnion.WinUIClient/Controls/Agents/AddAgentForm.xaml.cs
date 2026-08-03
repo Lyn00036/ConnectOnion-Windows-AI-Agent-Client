@@ -421,20 +421,23 @@ public sealed partial class AddAgentForm : UserControl, IDisposable
     };
 
     /// <summary>
-    /// "Where do I get an agent address?" — the way out of this dialog for someone who does not
-    /// already have one. Reuses the icon error line to report a launch failure rather than doing
-    /// nothing, on the same reasoning as everywhere else: silence here strands the user.
+    /// "Where do I get an agent address?" — points at the host() docs so a first-run user can
+    /// produce a 0x / HTTP endpoint. Reuses the icon error line to report a launch failure rather
+    /// than doing nothing, on the same reasoning as everywhere else: silence here strands the user.
     /// </summary>
     private async void AddAgentDocs_Click(object sender, RoutedEventArgs e)
     {
-        var launched = await AppServices.UriLauncher.LaunchAsync(new Uri(MainWindow.DocsUrl));
+        var docsUri = new Uri(HostDocsUrl);
+        var launched = await AppServices.UriLauncher.LaunchAsync(docsUri);
         if (launched) return;
 
         ShowIconError(LocalizedStrings.Format(
             "AddAgentDocsOpenFailed",
             "Couldn't open the docs. Visit {0} in your browser.",
-            MainWindow.DocsUrl));
+            HostDocsUrl));
     }
+
+    private const string HostDocsUrl = "https://docs.connectonion.com/host";
 
     private void Cancel_Click(object sender, RoutedEventArgs e) => Hide();
 
