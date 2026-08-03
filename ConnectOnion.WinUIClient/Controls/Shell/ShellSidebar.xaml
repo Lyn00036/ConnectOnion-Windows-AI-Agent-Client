@@ -579,15 +579,28 @@
 
             <Button x:Uid="SidebarAddAgentButton" Style="{StaticResource SidebarNavButtonStyle}"
                     MinHeight="{StaticResource SidebarPrimaryRowHeight}"
+                    Padding="12,0"
                     Click="AddAgent_Click"
                     AutomationProperties.AutomationId="AddAgentButton"
-                    AutomationProperties.Name="Add agent">
-                <local:IconText x:Uid="SidebarAddAgent" Glyph="Add"
-                                IconSize="Size16"
-                                Spacing="10"
-                                FontSize="{StaticResource ProductBodyFontSize}"
-                                Text="Add Agent"
-                                Foreground="{ThemeResource TextSecondaryBrush}" />
+                    AutomationProperties.Name="Add agent"
+                    ToolTipService.ToolTip="Add agent">
+                <Grid ColumnSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <ic:FluentIcon Icon="Add"
+                                   IconVariant="Regular"
+                                   IconSize="Size16"
+                                   VerticalAlignment="Center" />
+                    <TextBlock x:Uid="SidebarAddAgent"
+                               Grid.Column="1"
+                               Text="Add Agent"
+                               FontSize="{StaticResource ProductBodyFontSize}"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" />
+                </Grid>
             </Button>
 
             <Button x:Uid="SidebarSettingsButton"
