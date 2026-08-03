@@ -39,7 +39,8 @@
                  path to get wrong. -->
             <ItemsRepeater x:Name="WordsRepeater" Visibility="Collapsed">
                 <ItemsRepeater.Layout>
-                    <UniformGridLayout MinItemWidth="130" MinItemHeight="46"
+                    <!-- 46px clipped JetBrains Mono descenders (p/g/y); room for caption + body + pad. -->
+                    <UniformGridLayout MinItemWidth="130" MinItemHeight="58"
                                        MinColumnSpacing="8" MinRowSpacing="8"
                                        ItemsStretch="Fill" />
                 </ItemsRepeater.Layout>
@@ -47,13 +48,14 @@
                     <DataTemplate x:DataType="controls:RecoveryPhraseWord">
                         <Border Background="{ThemeResource SurfaceSecondaryBrush}"
                                 BorderBrush="{ThemeResource BorderSubtleBrush}" BorderThickness="1"
-                                CornerRadius="8" Padding="10,6">
-                            <StackPanel Spacing="1">
+                                CornerRadius="8" Padding="10,8">
+                            <StackPanel Spacing="2">
                                 <TextBlock Text="{x:Bind Position}"
-                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           FontSize="{StaticResource ProductCaptionFontSize}"
                                            Foreground="{ThemeResource TextSecondaryBrush}" />
                                 <TextBlock Text="{x:Bind Word}" IsTextSelectionEnabled="True"
-                                           FontFamily="{StaticResource JetBrainsMonoFontFamily}" />
+                                           FontFamily="{StaticResource JetBrainsMonoFontFamily}"
+                                           FontSize="{StaticResource ProductBodyFontSize}" />
                             </StackPanel>
                         </Border>
                     </DataTemplate>
