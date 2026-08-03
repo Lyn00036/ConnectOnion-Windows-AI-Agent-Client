@@ -121,11 +121,15 @@
                         <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="Bot"/><TextBlock x:Uid="SettingsCategoryAgents" x:Name="AgentsNavLabel" Text="Agents"/></StackPanel>
                             </RadioButton>
                             <RadioButton x:Uid="SettingsNavNotifications" x:Name="NotificationsNav" GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
-                                Click="NotificationsNav_Click" AutomationProperties.Name="Notification settings">
+                                Click="NotificationsNav_Click"
+                                AutomationProperties.AutomationId="NotificationsNav"
+                                AutomationProperties.Name="Notification settings">
                         <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="Alert"/><TextBlock x:Uid="SettingsCategoryNotifications" x:Name="NotificationsNavLabel" Text="Notifications"/></StackPanel>
                             </RadioButton>
                             <RadioButton x:Uid="SettingsNavKeyboard" x:Name="KeyboardNav" GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
-                                Click="KeyboardNav_Click" AutomationProperties.Name="Keyboard shortcuts settings">
+                                Click="KeyboardNav_Click"
+                                AutomationProperties.AutomationId="KeyboardNav"
+                                AutomationProperties.Name="Keyboard shortcuts settings">
                         <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="Keyboard"/><TextBlock x:Uid="SettingsCategoryKeyboard" x:Name="KeyboardNavLabel" Text="Keyboard"/></StackPanel>
                             </RadioButton>
                             <RadioButton x:Uid="SettingsNavIdentity" x:Name="IdentityNav" GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
