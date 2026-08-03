@@ -718,6 +718,7 @@
   <data name="SettingsMicChoice.AutomationProperties.Name" xml:space="preserve"><value>Microphone</value></data>
   <data name="SettingsAgentsAddButton.AutomationProperties.Name" xml:space="preserve"><value>Add agent</value></data>
   <data name="SidebarAddAgentButton.AutomationProperties.Name" xml:space="preserve"><value>Add agent</value></data>
+  <data name="SidebarAddAgentButton.ToolTipService.ToolTip" xml:space="preserve"><value>Add agent</value></data>
   <data name="NoAgentsTitle" xml:space="preserve"><value>No agents available</value></data>
   <data name="NoAgentsBody" xml:space="preserve"><value>Add an agent before starting a chat.</value></data>
   <data name="SettingsLanguageRestartNow.Content" xml:space="preserve"><value>Restart now</value></data>
