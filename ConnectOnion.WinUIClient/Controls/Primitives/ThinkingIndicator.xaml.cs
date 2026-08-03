@@ -193,7 +193,7 @@ public sealed partial class ThinkingIndicator : UserControl, IDisposable
         // than competing with it. Read through ThemeService because Win2D needs a raw Color, not
         // a Brush, and this keeps the hex out of the code (see the colour-system notes in
         // CLAUDE.md).
-        _rayColor = ThemeService.GetColor("TextSecondaryColor", isDark);
+        _rayColor = ThemeService.GetColor("TextTertiaryColor", isDark);
 
         // The canvas is cleared to the transcript's own background rather than to Transparent.
         // CanvasAnimatedControl draws through a swap chain, and a transparent clear leaves that

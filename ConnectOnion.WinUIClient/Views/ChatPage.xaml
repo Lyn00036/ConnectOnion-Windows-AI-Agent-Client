@@ -545,7 +545,7 @@
                             <TextBlock Text="{x:Bind ActivityHeaderTitle, Mode=OneWay}"
                                        FontSize="{StaticResource ProductBodyFontSize}"
                                        VerticalAlignment="Center"
-                                       Foreground="{ThemeResource TextSecondaryBrush}" />
+                                       Foreground="{ThemeResource TextTertiaryBrush}" />
                             <!-- Live seconds, ticked by ChatViewModel while the call is out. It
                                  exists only during the wait: once the model answers the row goes
                                  away entirely, so there is no "thought for" epitaph to leave
@@ -576,13 +576,13 @@
                                        Text="{x:Bind ActivityTimelineText, Mode=OneWay}"
                                        FontSize="{StaticResource ProductBodyFontSize}"
                                        FontStyle="Italic"
-                                       Foreground="{ThemeResource TextSecondaryBrush}"
+                                       Foreground="{ThemeResource TextTertiaryBrush}"
                                        TextWrapping="WrapWholeWords"
                                        IsTextSelectionEnabled="True" />
                         </Grid>
                         <TextBlock Text="{x:Bind ActivityTimelineText, Mode=OneWay}"
                                    FontSize="{StaticResource ProductBodyFontSize}"
-                                   Foreground="{ThemeResource TextSecondaryBrush}"
+                                   Foreground="{ThemeResource TextTertiaryBrush}"
                                    TextWrapping="WrapWholeWords"
                                    IsTextSelectionEnabled="True"
                                    Visibility="{x:Bind IsPlainSingleActivity, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
@@ -611,7 +611,7 @@
 
                                     <TextBlock Text="{x:Bind ActivityHeaderTitle, Mode=OneWay}"
                                                FontSize="{StaticResource ProductBodyFontSize}"
-                                               Foreground="{ThemeResource TextSecondaryBrush}"
+                                               Foreground="{ThemeResource TextTertiaryBrush}"
                                                VerticalAlignment="Center" />
 
                                     <StackPanel Grid.Column="1"
@@ -664,7 +664,7 @@
                                                        Margin="31,2,0,10"
                                                        FontSize="{StaticResource ProductBodyFontSize}"
                                                        FontStyle="Italic"
-                                                       Foreground="{ThemeResource TextSecondaryBrush}"
+                                                       Foreground="{ThemeResource TextTertiaryBrush}"
                                                        TextWrapping="WrapWholeWords"
                                                        IsTextSelectionEnabled="True" />
                                         </DataTemplate>
@@ -731,7 +731,7 @@
                     <StackPanel Grid.Column="1" Spacing="1">
                         <TextBlock Text="{x:Bind TurnUsagePrimary, Mode=OneWay}"
                                    FontSize="{StaticResource ProductCaptionFontSize}"
-                                   Foreground="{ThemeResource TextSecondaryBrush}"
+                                   Foreground="{ThemeResource TextTertiaryBrush}"
                                    TextTrimming="CharacterEllipsis"
                                    IsTextSelectionEnabled="True" />
                         <TextBlock Text="{x:Bind TurnUsageSecondary, Mode=OneWay}"

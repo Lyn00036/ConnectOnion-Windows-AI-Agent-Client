@@ -142,7 +142,9 @@
             <SolidColorBrush x:Key="StatusErrorTextBrush" Color="{ThemeResource DangerColor}" />
 
             <SolidColorBrush x:Key="ComposerBackgroundBrush" Color="{ThemeResource ChatInputBackgroundColor}" />
-            <SolidColorBrush x:Key="ComposerBorderBrush" Color="{ThemeResource BorderDefaultColor}" />
+            <!-- BorderStrong (not Default): the composer is the primary action surface on sparse
+                 agent-detail landings; a quieter hairline made it disappear into the page ground. -->
+            <SolidColorBrush x:Key="ComposerBorderBrush" Color="{ThemeResource BorderStrongColor}" />
             <SolidColorBrush x:Key="ComposerTextBrush" Color="{ThemeResource TextPrimaryColor}" />
             <SolidColorBrush x:Key="ComposerPlaceholderBrush" Color="{ThemeResource TextTertiaryColor}" />
             <SolidColorBrush x:Key="ComposerMutedControlBrush" Color="{ThemeResource TextSecondaryColor}" />
@@ -305,7 +307,9 @@
             <SolidColorBrush x:Key="StatusErrorTextBrush" Color="{ThemeResource DangerColor}" />
 
             <SolidColorBrush x:Key="ComposerBackgroundBrush" Color="{ThemeResource ChatInputBackgroundColor}" />
-            <SolidColorBrush x:Key="ComposerBorderBrush" Color="{ThemeResource BorderDefaultColor}" />
+            <!-- BorderStrong (not Default): the composer is the primary action surface on sparse
+                 agent-detail landings; a quieter hairline made it disappear into the page ground. -->
+            <SolidColorBrush x:Key="ComposerBorderBrush" Color="{ThemeResource BorderStrongColor}" />
             <SolidColorBrush x:Key="ComposerTextBrush" Color="{ThemeResource TextPrimaryColor}" />
             <SolidColorBrush x:Key="ComposerPlaceholderBrush" Color="{ThemeResource TextTertiaryColor}" />
             <SolidColorBrush x:Key="ComposerMutedControlBrush" Color="{ThemeResource TextSecondaryColor}" />
