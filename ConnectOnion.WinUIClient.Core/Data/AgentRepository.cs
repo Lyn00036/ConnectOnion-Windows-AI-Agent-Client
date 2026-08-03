@@ -43,6 +43,38 @@ public sealed class AgentRepository
     }
 
     /// <summary>
+    /// Updates only the cached <c>/info</c> payload for one agent.
+    ///
+    /// <para>The network fetch can finish long after it started. Re-saving an
+    /// <see cref="AgentsState"/> snapshot here would therefore be unsafe: a selection, rename, or
+    /// reorder made while the request was in flight could be overwritten by that stale snapshot.
+    /// A targeted update also means a fetch that finishes after deletion cannot recreate the
+    /// deleted row.</para>
+    /// </summary>
+    public async Task UpdateInfoAsync(
+        string agentId,
+        string infoJson,
+        string infoUpdatedAt,
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = await AppDatabase.OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE agents
+            SET info_json = $info_json,
+                info_updated_at = $info_updated_at
+            WHERE id = $id;
+            """;
+        AppDatabase.Add(command, "$id", agentId);
+        AppDatabase.Add(command, "$info_json", infoJson);
+        AppDatabase.Add(command, "$info_updated_at", infoUpdatedAt);
+        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+
+        // The sidebar renders identity, endpoint, icon, order, and selection, but not cached
+        // capability metadata. Do not invalidate and rebuild it for an invisible cache write.
+    }
+
+    /// <summary>
     /// Loads the agent list and selected id. Invalid rows are dropped (name
     /// required, the reserved "local-agent" id excluded, address required) and a
     /// stale selected pointer left after a deletion is cleared — mirroring the

@@ -47,18 +47,12 @@ public static class AgentInfoService
 
         if (infoJson is null) return null;
 
-        // Persist to the agent record and save.
+        // Update the page's live model, then persist only this cache entry. A whole-state save
+        // here can overwrite a sidebar selection made while the network request was in flight.
+        var updatedAt = DateTime.UtcNow.ToString("o");
         agent.InfoJson = infoJson;
-        agent.InfoUpdatedAt = DateTime.UtcNow.ToString("o");
-
-        var agentsState = await AppServices.Agents.LoadAsync();
-        var stored = agentsState.Agents.Find(a => a.Id == agent.Id);
-        if (stored is not null)
-        {
-            stored.InfoJson = infoJson;
-            stored.InfoUpdatedAt = agent.InfoUpdatedAt;
-            await AppServices.Agents.SaveAsync(agentsState);
-        }
+        agent.InfoUpdatedAt = updatedAt;
+        await AppServices.Agents.UpdateInfoAsync(agent.Id, infoJson, updatedAt);
 
         return infoJson;
     }
@@ -86,17 +80,10 @@ public static class AgentInfoService
         var changed = agent.InfoJson != freshJson;
         if (changed)
         {
+            var updatedAt = DateTime.UtcNow.ToString("o");
             agent.InfoJson = freshJson;
-            agent.InfoUpdatedAt = DateTime.UtcNow.ToString("o");
-
-            var agentsState = await AppServices.Agents.LoadAsync();
-            var stored = agentsState.Agents.Find(a => a.Id == agent.Id);
-            if (stored is not null)
-            {
-                stored.InfoJson = freshJson;
-                stored.InfoUpdatedAt = agent.InfoUpdatedAt;
-                await AppServices.Agents.SaveAsync(agentsState);
-            }
+            agent.InfoUpdatedAt = updatedAt;
+            await AppServices.Agents.UpdateInfoAsync(agent.Id, freshJson, updatedAt);
         }
 
         return (changed, freshJson);
