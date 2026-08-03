@@ -78,7 +78,7 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
             OnPropertyChanged(nameof(CanShareAgent));
             OnPropertyChanged(nameof(HasAgent));
             OnPropertyChanged(nameof(AgentInitial));
-            OnPropertyChanged(nameof(AgentAvatarPaletteIndex));
+            OnPropertyChanged(nameof(AgentIconPath));
             RaisePresenceProperties();
             RaiseProfileSummaryProperties();
         }
@@ -87,14 +87,18 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
     public string AgentName => _agent?.Name ?? "";
     public string AgentDisplayName => _agent?.DisplayName ?? "";
     public string AgentInitial => NameInitial.From(AgentDisplayName);
-    public int AgentAvatarPaletteIndex => AvatarPalette.From(AgentName);
+
+    /// <summary>The agent's chosen icon, relative to the data root. Null falls back to
+    /// <see cref="AgentInitial"/> on a theme-neutral background.</summary>
+    public string? AgentIconPath => _agent?.IconPath;
+
     public string AgentAddress => _agent?.Address ?? "";
     public string? DirectUrl => _agent?.DirectUrl;
     public bool CanShareAgent => _agent?.IsRelayOnly == true;
     public bool HasAgent => _agent is not null;
     public string ComposerPlaceholder => string.IsNullOrWhiteSpace(AgentDisplayName)
-        ? "Ask this agent anything"
-        : $"Ask {AgentDisplayName} anything";
+        ? LocalizedStrings.Get("ComposerAskAgent", "Ask this agent anything")
+        : LocalizedStrings.Format("ComposerAskNamedAgent", "Ask {0} anything", AgentDisplayName);
 
     public bool CanStartConversation => HasAgent && IsOnline;
 
@@ -126,15 +130,18 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
     public string DisplayModel => GetInfoValue("model") ?? "";
 
     public bool HasDisplayModel => !string.IsNullOrWhiteSpace(DisplayModel);
-    public string Trust => GetInfoValue("trust") ?? "";
     public string Version => GetInfoValue("version") ?? "";
-    public string ProfileMetadata => string.Join(" · ", new[]
-    {
-        DisplayModel,
-        Trust,
-        string.IsNullOrWhiteSpace(Version) ? "" : $"v{Version}",
-    }.Where(value => !string.IsNullOrWhiteSpace(value)));
-    public bool HasProfileMetadata => !string.IsNullOrWhiteSpace(ProfileMetadata);
+
+    /// <summary>
+    /// Provenance shown under the identity block. Version only — <c>/info</c>'s <c>trust</c> is
+    /// deliberately not surfaced: agents report it as an absolute path to a policy file, so it
+    /// rendered as the widest line on the page, middle-truncated to
+    /// <c>…/remote-admin-agent/.co/trust-pol…</c>, competing with the agent's own name while
+    /// saying nothing a reader could act on.
+    /// </summary>
+    public string ProfileDetail
+        => string.IsNullOrWhiteSpace(Version) ? "" : $"v{Version}";
+    public bool HasProfileDetail => !string.IsNullOrWhiteSpace(ProfileDetail);
 
     public bool HasToolSummary => ToolNames.Count > 0;
     public int ToolCount => ToolNames.Count;
@@ -148,9 +155,17 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
     }
 
     public ObservableCollection<string> ToolNames { get; } = new();
-    public string ToolsDisplayText => $"Tools: {string.Join(" · ", ToolNames)}";
+    public string ToolsDisplayText => LocalizedStrings.Format(
+        "AgentDetailToolsList",
+        "Tools: {0}",
+        string.Join(" · ", ToolNames));
     public string ToolsToggleLabel
-        => $"View {ToolCount} {(ToolCount == 1 ? "tool" : "tools")}";
+        => ToolCount == 1
+            ? LocalizedStrings.Get("AgentDetailViewOneTool", "View 1 tool")
+            : LocalizedStrings.Format(
+                "AgentDetailViewTools",
+                "View {0} tools",
+                ToolCount);
 
     public string ShortAddress
         => string.IsNullOrWhiteSpace(AgentAddress)
@@ -178,11 +193,24 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
         {
             if (AcceptedInputs is null) return "";
             var parts = new List<string>();
-            if (AcceptedInputs.Text == true) parts.Add("text");
-            if (AcceptedInputs.Images == true) parts.Add("images");
+            if (AcceptedInputs.Text == true)
+                parts.Add(LocalizedStrings.Get("AgentInputText", "text"));
+            if (AcceptedInputs.Images == true)
+                parts.Add(LocalizedStrings.Get("AgentInputImages", "images"));
             if (AcceptedInputs.Files is { } files)
-                parts.Add($"files ({files.MaxFileSizeMb} MB, up to {files.MaxFilesPerRequest})");
-            return parts.Count == 0 ? "No declared inputs" : $"Accepts {string.Join(" · ", parts)}";
+            {
+                parts.Add(LocalizedStrings.Format(
+                    "AgentInputFiles",
+                    "files ({0} MB, up to {1})",
+                    files.MaxFileSizeMb,
+                    files.MaxFilesPerRequest));
+            }
+            return parts.Count == 0
+                ? LocalizedStrings.Get("AgentNoDeclaredInputs", "No declared inputs")
+                : LocalizedStrings.Format(
+                    "AgentAcceptsInputs",
+                    "Accepts {0}",
+                    string.Join(" · ", parts));
         }
     }
     public bool HasAcceptedInputsSummary => AcceptedInputs is not null;
@@ -196,15 +224,40 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
     public partial IReadOnlyList<SkillInfo>? Skills { get; private set; }
 
     /// <summary>
-    /// Up to three of the agent's skills phrased as things to ask for — the chips shown instead of
-    /// the generic "What can you do?" starters.
+    /// Up to three of the agent's skills phrased as things to ask for. The composer puts these
+    /// first, then fills any unused slots with its generic starters.
     ///
     /// <para>Empty is a normal outcome, not a failure: an agent whose descriptions will not cut
-    /// into clean short offers yields nothing and the static chips stay. A chip is the first thing
-    /// a user reads about an agent, so a bad one is worse than none (see
+    /// into clean short offers yields nothing and the static chips fill the row. A chip is the
+    /// first thing a user reads about an agent, so a bad one is worse than none (see
     /// <see cref="AgentSkills.BestOffers"/>).</para>
+    ///
+    /// <para>Memoized against <see cref="Skills"/>, which changes at most once per page (the
+    /// cached <c>/info</c> arrives). It used to recompute on every read — and every read came in
+    /// pairs, because <see cref="HasSkillOffers"/> asked for the whole list just to test its
+    /// count. <see cref="AgentSkills.BestOffers"/> is not free: it filters, cuts each description
+    /// at a clause boundary, fixes brand casing and ranks the survivors.</para>
     /// </summary>
-    public IReadOnlyList<string> SkillOffers => AgentSkills.BestOffers(Skills);
+    public IReadOnlyList<string> SkillOffers
+    {
+        get
+        {
+            // Keyed on the source reference rather than invalidated from an OnSkillsChanged
+            // hook, so this does not depend on where the MVVM generator happens to place that
+            // callback relative to the NotifyPropertyChangedFor notification. If the ordering
+            // were wrong that way, a binding would read the previous agent's chips exactly once
+            // — the kind of staleness that shows up in a screenshot and nowhere else.
+            if (_skillOffers is null || !ReferenceEquals(_skillOffersSource, Skills))
+            {
+                _skillOffersSource = Skills;
+                _skillOffers = AgentSkills.BestOffers(Skills);
+            }
+            return _skillOffers;
+        }
+    }
+
+    private IReadOnlyList<string>? _skillOffers;
+    private IReadOnlyList<SkillInfo>? _skillOffersSource;
 
     public bool HasSkillOffers => SkillOffers.Count > 0;
 
@@ -222,7 +275,9 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
         if (!IsOnline)
         {
             HasError = true;
-            StatusText = "The agent is not online. Recheck the connection before starting a conversation.";
+            StatusText = LocalizedStrings.Get(
+                "AgentDetailOfflineError",
+                "The agent is not online. Recheck the connection before starting a conversation.");
             return false;
         }
 
@@ -234,21 +289,22 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
             // Note what this does *not* do: it creates and selects the session but never sends the
             // prompt. The caller navigates to ChatPage, which picks up the prompt and sends it —
             // sending here would race the page that is about to own the conversation.
-            var agentsState = await _agents.LoadAsync();
-            agentsState.SelectedAgentId = Agent.Id;
-            await _agents.SaveAsync(agentsState);
+            await _agents.SetSelectedAgentAsync(Agent.Id);
 
             var sessionsState = await _sessions.LoadAsync();
-            var session = SessionSummary.NewConversation(Agent.Id, sessionsState.Sessions);
+            var session = SessionSummary.NewConversation(Agent.Id, sessionsState.Sessions, Common.SessionTitles.PlaceholderFormat);
             sessionsState.Sessions.Add(session);
             sessionsState.ActiveSessionId = session.Id;
-            await _sessions.SaveAsync(sessionsState);
+            await _sessions.AppendSessionAsync(session);
             return true;
         }
         catch (Exception ex)
         {
             HasError = true;
-            StatusText = $"Could not start the conversation: {ex.Message}";
+            StatusText = LocalizedStrings.Format(
+                "AgentDetailStartFailure",
+                "Could not start the conversation: {0}",
+                ex.Message);
             return false;
         }
     }
@@ -288,7 +344,7 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
         if (!string.IsNullOrWhiteSpace(Agent.InfoJson))
         {
             PopulateFromCachedJson(Agent.InfoJson);
-            StatusText = $"Cached — {LastUpdated}";
+        StatusText = LocalizedStrings.Format("AgentDetailCached", "Cached — {0}", LastUpdated);
             if (AgentInfoService.IsCacheFresh(Agent)) return;
         }
 
@@ -332,19 +388,19 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
                     HasError = false;
                     PopulateFromCachedJson(freshJson);
                     OnPropertyChanged(nameof(LastUpdated));
-                    StatusText = $"Updated - {LastUpdated}";
+            StatusText = LocalizedStrings.Format("AgentDetailUpdated", "Updated - {0}", LastUpdated);
                 }
                 else if (hadCache)
                 {
                     HasError = false;
-                    StatusText = $"Cached - {LastUpdated}";
+            StatusText = LocalizedStrings.Format("AgentDetailCachedDash", "Cached - {0}", LastUpdated);
                 }
                 else
                 {
                     InfoFields.Clear();
                     InfoJson = "";
                     HasError = true;
-                    StatusText = "Could not load agent info.";
+            StatusText = LocalizedStrings.Get("AgentDetailLoadFailure", "Could not load agent info.");
                 }
             }
             finally
@@ -448,10 +504,9 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
         RefreshToolNames();
         OnPropertyChanged(nameof(DisplayModel));
         OnPropertyChanged(nameof(HasDisplayModel));
-        OnPropertyChanged(nameof(Trust));
         OnPropertyChanged(nameof(Version));
-        OnPropertyChanged(nameof(ProfileMetadata));
-        OnPropertyChanged(nameof(HasProfileMetadata));
+        OnPropertyChanged(nameof(ProfileDetail));
+        OnPropertyChanged(nameof(HasProfileDetail));
         OnPropertyChanged(nameof(HasToolSummary));
         OnPropertyChanged(nameof(ToolCount));
         OnPropertyChanged(nameof(ModelAndToolCount));

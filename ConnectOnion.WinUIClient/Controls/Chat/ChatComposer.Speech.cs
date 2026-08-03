@@ -15,6 +15,7 @@ using Windows.Media.Render;
 using Windows.Media.SpeechRecognition;
 using WinRT;
 using ConnectOnion.WinUIClient.Services;
+using ConnectOnion.WinUIClient.Common;
 
 namespace ConnectOnion.WinUIClient.Controls;
 
@@ -373,7 +374,14 @@ public sealed partial class ChatComposer
         _sampleWritePos = 0;
         _sampleCount = 0;
         Array.Clear(_sampleRing);
-        foreach (var bar in _waveformBars) bar.Visibility = Visibility.Collapsed;
+        foreach (var bar in _waveformBars)
+        {
+            // Zero the scale as well as hiding: the bar keeps its transform across sessions, so a
+            // restart would otherwise flash the previous recording's shape for one frame before
+            // the first tick overwrote it.
+            if (bar.RenderTransform is ScaleTransform scale) scale.ScaleY = 0;
+            bar.Visibility = Visibility.Collapsed;
+        }
     }
 
     private void StartRecordingVisuals()
@@ -382,7 +390,7 @@ public sealed partial class ChatComposer
         // spinner time spent waiting for the recogniser is not part of the recording.
         _recordingStartedAt = DateTimeOffset.Now;
         ResetRecordingVisuals();
-        InputBox.PlaceholderText = "Listening...";
+        InputBox.PlaceholderText = LocalizedStrings.Get("VoiceListening", "Listening...");
         _recordingElapsedTimer.Start();
         _waveformTimer.Start();
     }
@@ -394,7 +402,7 @@ public sealed partial class ChatComposer
         _sampleCount = 0;
         _sampleWritePos = 0;
         Array.Clear(_sampleRing);
-        InputBox.PlaceholderText = "Do anything";
+        InputBox.PlaceholderText = LocalizedStrings.Get("ComposerDoAnything", "Do anything");
     }
 
     private void RecordingElapsedTimer_Tick(object? sender, object e)
@@ -434,6 +442,7 @@ public sealed partial class ChatComposer
         WaveformBaseline.Y1 = centerY;
         WaveformBaseline.Y2 = centerY;
         EnsureWaveformBars((int)(e.NewSize.Width / SampleStride));
+        LayoutWaveformBars();
         RenderWaveform();
     }
 
@@ -449,34 +458,76 @@ public sealed partial class ChatComposer
                 RadiusY = 1,
                 Fill = _waveformBrush,
                 Visibility = Visibility.Collapsed,
+                // Scaled about its own middle, so shrinking a full-height bar keeps it centred on
+                // the baseline without also having to move it.
+                RenderTransformOrigin = new Windows.Foundation.Point(0.5, 0.5),
+                RenderTransform = new ScaleTransform { ScaleX = 1, ScaleY = 0 },
             };
             _waveformBars.Add(bar);
             WaveformCanvas.Children.Add(bar);
         }
     }
 
+    /// <summary>
+    /// Sizes and positions every bar at full scale. Split out of <see cref="RenderWaveform"/> and
+    /// called only when the canvas resizes, because these are the properties that cost a layout
+    /// pass — see the note there.
+    /// </summary>
+    private void LayoutWaveformBars()
+    {
+        var width = WaveformCanvas.ActualWidth;
+        var centerY = WaveformCanvas.ActualHeight / 2;
+        if (width <= 0 || centerY <= 2) return;
+
+        var fullHalfHeight = centerY - 2;
+        for (var index = 0; index < _waveformBars.Count; index++)
+        {
+            var bar = _waveformBars[index];
+            bar.Height = fullHalfHeight * 2;
+            Canvas.SetLeft(bar, width - BarWidth - index * SampleStride);
+            Canvas.SetTop(bar, centerY - fullHalfHeight);
+        }
+    }
+
+    /// <summary>
+    /// Per-frame update, running at 30 fps for the whole recording.
+    ///
+    /// <para>It writes <b>only</b> <see cref="ScaleTransform.ScaleY"/>. A render transform does not
+    /// participate in layout, so a frame costs a composition update and nothing else. The previous
+    /// version set <c>bar.Height</c> — a layout property — on every bar every frame, which
+    /// invalidated measure on the whole canvas 30 times a second (~130 bars on a typical composer
+    /// width). <c>Canvas.Left</c>/<c>Top</c> moved out to <see cref="LayoutWaveformBars"/> for the
+    /// same reason; they only change when the canvas resizes, so re-setting them per frame was
+    /// pure waste even before the layout cost.</para>
+    /// </summary>
     private void RenderWaveform()
     {
         var width = WaveformCanvas.ActualWidth;
         var centerY = WaveformCanvas.ActualHeight / 2;
         if (width <= 0 || centerY <= 2) return;
 
+        // The floor keeps a silent bar as a visible 2px tick rather than nothing at all, matching
+        // what Math.Max(1, …) did when this was expressed as a height.
+        var fullHalfHeight = centerY - 2;
+        var minimumScale = 1 / fullHalfHeight;
+
         var visibleBars = Math.Min(_waveformBars.Count, (int)(width / SampleStride));
         var count = Math.Min(_sampleCount, visibleBars);
         for (var index = 0; index < visibleBars; index++)
         {
             var bar = _waveformBars[index];
+            if (bar.RenderTransform is not ScaleTransform scale) continue;
+
             if (index >= count)
             {
-                bar.Visibility = Visibility.Collapsed;
+                // Zero scale rather than Visibility.Collapsed: collapsing is a layout change, and
+                // this branch is crossed on every frame until the ring buffer first fills.
+                scale.ScaleY = 0;
                 continue;
             }
 
             var ringIndex = ((_sampleWritePos - 1 - index) % MaxRingSamples + MaxRingSamples) % MaxRingSamples;
-            var halfHeight = Math.Max(1, _sampleRing[ringIndex] * (centerY - 2));
-            bar.Height = halfHeight * 2;
-            Canvas.SetLeft(bar, width - BarWidth - index * SampleStride);
-            Canvas.SetTop(bar, centerY - halfHeight);
+            scale.ScaleY = Math.Max(minimumScale, _sampleRing[ringIndex]);
             bar.Visibility = Visibility.Visible;
         }
     }
@@ -637,12 +688,12 @@ public sealed partial class ChatComposer
 
         var dialog = new ContentDialog
         {
-            Title = "Voice input",
+            Title = LocalizedStrings.Get("VoiceInputTitle", "Voice input"),
             Content = message,
-            CloseButtonText = "OK",
+            CloseButtonText = LocalizedStrings.Get("CommonOk", "OK"),
             XamlRoot = XamlRoot,
         };
-        _ = await dialog.ShowAsync();
+        _ = await dialog.ShowThemedAsync();
     }
 
     [ComImport]

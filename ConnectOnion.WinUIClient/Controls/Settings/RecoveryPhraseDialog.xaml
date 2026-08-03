@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ContentDialog x:Class="ConnectOnion.WinUIClient.Controls.RecoveryPhraseDialog"
+<ContentDialog x:Uid="RecoveryPhraseDialog" x:Class="ConnectOnion.WinUIClient.Controls.RecoveryPhraseDialog"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:ic="using:FluentIcons.WinUI"
@@ -72,14 +72,14 @@
             <Button x:Name="CopyButton" Click="Copy_Click" HorizontalAlignment="Left">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <ic:FluentIcon Icon="Copy" IconVariant="Regular" IconSize="Size16" />
-                    <TextBlock x:Name="CopyButtonText" Text="Copy" />
+                            <TextBlock x:Uid="RecoveryCopy" x:Name="CopyButtonText" Text="Copy" />
                 </StackPanel>
             </Button>
 
             <!-- Restoring to the wrong address is the failure this catches: the user can compare
                  what they wrote down against the address the phrase actually belongs to. -->
             <StackPanel Spacing="2">
-                <TextBlock Text="Belongs to address" Style="{StaticResource CaptionTextBlockStyle}"
+                    <TextBlock x:Uid="RecoveryBelongsTo" Text="Belongs to address" Style="{StaticResource CaptionTextBlockStyle}"
                            Foreground="{ThemeResource TextSecondaryBrush}" />
                 <TextBlock x:Name="AddressText" TextWrapping="Wrap" MinWidth="0" IsTextSelectionEnabled="True"
                            Style="{StaticResource CaptionTextBlockStyle}"

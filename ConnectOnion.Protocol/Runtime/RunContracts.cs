@@ -23,7 +23,18 @@ public sealed record TurnRequest(
     /// <summary>The approval mode this turn should run under (see <see cref="AgentModes"/>).
     /// Re-sent with every turn because the host's session merge discards a mode we only put in
     /// CONNECT, and asserting an unchanged mode is a no-op host-side.</summary>
-    string? Mode = null);
+    string? Mode = null,
+    IReadOnlyList<TurnAttachmentSource>? AttachmentSources = null);
+
+/// <summary>
+/// Retry-safe reference to a local attachment. The runtime keeps this descriptor instead of
+/// pinning its Base64 wire representation; the app executor encodes it immediately before send.
+/// </summary>
+public sealed record TurnAttachmentSource(
+    string Name,
+    string LocalPath,
+    string MimeType,
+    bool IsImage);
 
 /// <summary>
 /// The channel an <see cref="ITurnExecutor"/> uses to report progress back into the

@@ -113,7 +113,7 @@ public sealed partial class ToolActivityViewModel : Common.ObservableObject
     [JsonIgnore] public bool HasApproval => Approval is not null;
     [JsonIgnore] public string HeaderTitle => HasApproval && !string.IsNullOrWhiteSpace(Approval!.EventTitle)
         ? Approval.EventTitle
-        : "Tool activity";
+        : Common.CoreStrings.Get("ToolActivityHeader", "Tool activity");
     [JsonIgnore] public ToolIconKind HeaderIconKind => HasApproval
         ? ToolIcons.ForTool(Approval!.EventTitle)
         : ToolIconKind.Generic;
@@ -260,16 +260,22 @@ public sealed partial class ToolActivityViewModel : Common.ObservableObject
     };
     [JsonIgnore] public string CompletionLabel => Status switch
     {
-        ToolActivityStatus.Success => "Done",
-        ToolActivityStatus.PartialSuccess => "Completed with warnings",
-        ToolActivityStatus.Failed => "Failed",
-        ToolActivityStatus.Cancelled => "Cancelled",
-        ToolActivityStatus.WaitingForConfirmation => "Waiting for approval",
-        ToolActivityStatus.WaitingForPermission => "Waiting for approval",
-        _ => "Working...",
+        ToolActivityStatus.Success => Common.CoreStrings.Get("ToolStatusDone", "Done"),
+        ToolActivityStatus.PartialSuccess
+            => Common.CoreStrings.Get("ToolStatusWarnings", "Completed with warnings"),
+        ToolActivityStatus.Failed => Common.CoreStrings.Get("ToolStatusFailed", "Failed"),
+        ToolActivityStatus.Cancelled
+            => Common.CoreStrings.Get("ToolStatusCancelled", "Cancelled"),
+        ToolActivityStatus.WaitingForConfirmation
+            => Common.CoreStrings.Get("ToolStatusWaitingApproval", "Waiting for approval"),
+        ToolActivityStatus.WaitingForPermission
+            => Common.CoreStrings.Get("ToolStatusWaitingApproval", "Waiting for approval"),
+        _ => Common.CoreStrings.Get("ToolStatusWorking", "Working..."),
     };
     [JsonIgnore] public string AccessibilityName
-        => $"Tool activity. {Summary}. {CompletionLabel}. {(IsExpanded ? "Collapse" : "Expand")}";
+        => $"{Common.CoreStrings.Get("ToolActivityHeader", "Tool activity")}. {Summary}. " +
+           $"{CompletionLabel}. " +
+           $"{(IsExpanded ? Common.CoreStrings.Get("DiffCollapse", "Collapse") : Common.CoreStrings.Get("DiffExpand", "Expand"))}";
     [JsonIgnore] public double DurationSeconds => Math.Max(0, ((CompletedAt ?? DateTimeOffset.UtcNow) - StartedAt).TotalSeconds);
     [JsonIgnore] public string DurationLabel => DurationSeconds < 1 ? $"{DurationSeconds * 1000:0} ms" : $"{DurationSeconds:0.0} s";
 
@@ -398,7 +404,9 @@ public sealed partial class ToolStepViewModel : Common.ObservableObject
     /// to avoid.</summary>
     [JsonIgnore] public bool ShowInlineInvocation => HasInvocation && !IsExpanded;
     [JsonIgnore] public string InvocationLabel => Invocation.Label;
-    [JsonIgnore] public string InvocationText => Invocation.Text;
+    /// <summary>The collapsed row's one-line preview. Flattened, not raw — see
+    /// <see cref="ToolInvocation.SingleLineText"/>.</summary>
+    [JsonIgnore] public string InvocationText => Invocation.SingleLineText;
     /// <summary>Rendered before the text: a shell <c>$</c> for a command, empty otherwise. The gap
     /// after it is layout (the row panel's spacing), never a trailing space — XAML collapses
     /// whitespace between adjacent inlines, which rendered the command as <c>$rm</c>.</summary>

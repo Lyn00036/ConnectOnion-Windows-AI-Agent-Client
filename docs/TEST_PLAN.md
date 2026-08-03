@@ -66,9 +66,9 @@ The test projects can't reference the app project (`net10.0-windows` + Windows A
 
 - **Window**: `MainWindow` — the single top-level window with a custom title bar, split across partials:
   `MainWindow.xaml.cs` / `.FileMenu.cs` / `.EditMenu.cs` / `.ViewMenu.cs` / `.HelpMenu.cs` / `.DragDrop.cs` / `.Tray.cs` / `.Tray.Interop.cs` / `.Notifications.cs`
-- **Pages** (inside `ContentFrame`): `HomePage`, `ChatPage` (+ `ChatPage.Find.cs`), `AgentDetailPage`, `SessionsPage`, `SettingsPage`
+- **Pages**: `HomePage`, `ChatPage` (+ `ChatPage.Find.cs`), `AgentDetailPage` inside `ContentFrame`; `SettingsPage` hosted directly by `SettingsOverlay` rather than navigated to. `Architecture/NavigationReachabilityTests` fails the build on a page that is neither — which is what `SessionsPage` had become before it was deleted.
 - **In-window modal overlays** (**not separate Windows, not ContentDialogs**):
-  `SettingsOverlay`, `KeyboardShortcutsDialog`, `AboutOverlay` — all three share one shape: dimmed backdrop, centered card, Esc / backdrop / close-button dismissal, focus returned to the opener. Hosted as persistent singletons by `MainWindow`; `IsModalOverlayOpen` gates every global accelerator.
+  `SettingsOverlay`, `KeyboardShortcutsDialog`, `AboutOverlay`, `AddAgentForm`, `SessionSearchOverlay` — all share one shape: dimmed backdrop, centered card, Esc / backdrop / close-button dismissal, focus returned to the opener. Created lazily by `MainWindow.Overlays.cs`; `IsModalOverlayOpen` gates every global accelerator, `UpdateModalFocusScope` takes the background out of the Tab order, and each returns a `ModalOverlayAutomationPeer` so UIA sees a dialog (and so `ByAutomationId` resolves at all).
 - **Custom controls**: `ChatComposer` (+`.Speech`), `ShellSidebar` (+`.Events`), `AddAgentForm`, `AgentAvatar`, `ToolActivityView`, `MarkdownTextBlock`, `HighlightedTextBlock`, `InAppNotificationHost`, `OfflineNoticeBar`, `IconText`, `SettingRow`, `IdentitySettingsContent`
 
 ### 2.3 Main ViewModels
@@ -84,7 +84,6 @@ MVVM is implemented with **CommunityToolkit.Mvvm 8.4.2** source generators. Mode
 | ViewModel | Main responsibility |
 |---|---|
 | `ChatViewModel` (`.Run`, `.Conversation`, `.StreamEvents`) | Conversation loading, sending/stopping, run subscription, stream projection, and interactive responses |
-| `SessionsViewModel` | Session list, selection, ordering, and deletion |
 | `SettingsViewModel` | Theme, font, sidebar, microphone, notification, shortcut, identity, and usage settings |
 | `AgentDetailViewModel` | Agent details, capabilities, sharing, and presence |
 | `KeyboardShortcutsViewModel` | Shortcut groups, search, rebinding, conflict handling, and reset |
@@ -102,9 +101,9 @@ MVVM is implemented with **CommunityToolkit.Mvvm 8.4.2** source generators. Mode
 ### 2.5 Persistence
 
 SQLite (`Microsoft.Data.Sqlite.Core` + `SQLitePCLRaw.provider.winsqlite3`), WAL journal, `foreign_keys = ON`.
-Path: unpackaged → `%AppData%\ConnectOnion\connectonion.db`; packaged → MSIX LocalState.
+Path: unpackaged → `%AppData%\ConnectOnion\connectonion.db`; packaged → MSIX LocalState. Caches, agent icons and logs sit beside it under the same root.
 
-**Tables**: `app_meta`, `agents`, `sessions`, `preferences`, `messages` (one row per rendered bubble, not a JSON blob), `message_attachments` (metadata + local cache path only), `executions`, `trace_events`, `identity_keys` (DPAPI-protected seed), and `usage_events` (the non-cascading token-usage ledger).
+**Tables**: `app_meta`, `agents` (incl. `icon_path`, a path relative to the data root — never image bytes), `sessions`, `preferences`, `messages` (one row per rendered bubble, not a JSON blob), `message_attachments` (metadata + local cache path only), `executions`, `trace_events`, `identity_keys` (DPAPI-protected seed and mnemonic), and `usage_events` (the non-cascading token-usage ledger).
 
 **Migration status:** `SchemaMigrator` versions the database with `PRAGMA user_version`, applies ordered forward migrations transactionally, and rejects databases created by a newer app version. Schema evolution remains high-risk, so every migration must add an old-snapshot integration test (see §10.4 and `DB-MIGRATION-*`).
 
@@ -389,6 +388,9 @@ The Generic Host is the production composition root. Tests normally construct th
 | **DB-SCHEMA-001** | Schema creation is idempotent | D | **P0** | Init ×3 | No error; schema unchanged | ✅ | xunit | `CreateSchemaAsync` |
 | **DB-MIGRATION-001** | **An old DB (v0 snapshot) opens under the current build** | D | **P0** | Initialize current code against the legacy schema fixture | No crash, no data loss; `user_version` advances | ✅ | xunit | `SchemaMigrationTests` exercises the real `SchemaMigrator` against a temporary SQLite file. |
 | **DB-MIGRATION-002** | A DB missing a column fails loudly | D | P1 | Hand-craft a DB with a column removed | Explicit error, not silent data loss | ✅ | xunit | same |
+| **DB-MIGRATION-003** | A v5 DB gains `agents.icon_path` without disturbing its agents | D | **P0** | Stamp a baseline DB at `user_version = 5` with an existing agent, then migrate | `user_version` reaches the latest; the column exists; the existing agent's `icon_path` is NULL (no custom icon is the normal upgrade state) | ✅ | xunit | `AppDatabaseSchemaTests.ApplyAsync_VersionFiveDatabase_…` |
+| **DB-ICON-001** | `icon_path` round-trips through the agent repository | D | P1 | Save an agent carrying an icon path, reload | The relative path comes back verbatim; blank normalizes to NULL so "no icon" has one representation | ✅ | xunit | `AgentRepositoryTests` |
+| **DB-ICON-002** | **A stored icon path cannot escape the managed directory** | D | **P0** | Resolve `../connectonion.db`, `avatars/../../secrets.png`, a non-leaf filename | Rejected; the display path reports failure instead of throwing, and falls back to the initial avatar | ✅ | xunit | `AppStorageTests` — **`icon_path` is hand-editable, and the same resolution guards the delete paths** |
 | **DB-MSG-001** | Incremental upsert touches only the given rows | D | **P0** | 100 existing rows, upsert 3 | Only 3 rows written; others' `created_at` unchanged | ✅ | xunit | `ConversationRepository.UpsertMessagesAsync` |
 | **DB-MSG-002** | `created_at` survives an update | D | **P0** | Upsert an existing id | `created_at` not overwritten (it is absent from the DO UPDATE list) | ✅ | xunit | same |
 | **DB-MSG-003** | Message ordering is stable on `(conversation_id, id)` | D | **P0** | Upsert out of order | Read-back order is correct | ✅ | xunit | same |

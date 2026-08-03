@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<UserControl
+<UserControl x:Uid="AddAgentRoot"
     x:Class="ConnectOnion.WinUIClient.Controls.AddAgentForm"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:ConnectOnion.WinUIClient.Controls"
     xmlns:ic="using:FluentIcons.WinUI"
     HorizontalAlignment="Stretch"
     VerticalAlignment="Stretch"
@@ -33,33 +34,122 @@
 
             <StackPanel Padding="24"
                         Spacing="0">
-                <TextBlock Text="Add an agent"
+                <TextBlock x:Uid="AddAgentTitle" Text="Add an agent"
                            FontSize="24"
                            FontWeight="SemiBold" />
+                <TextBlock x:Uid="AddAgentIntro"
+                           Margin="0,6,0,0"
+                           Text="Paste the connection details from the agent's Share screen."
+                           FontSize="13"
+                           Foreground="{ThemeResource TextSecondaryBrush}"
+                           TextWrapping="Wrap" />
 
                 <StackPanel Margin="0,20,0,0"
                             Spacing="8">
-                    <TextBlock Text="Address or Direct URL"
+                    <TextBlock x:Uid="AddAgentAddressLabel" Text="Agent connection"
                                FontWeight="SemiBold" />
                     <TextBox x:Name="InputBox"
+                             x:Uid="AddAgentInput"
                              AutomationProperties.AutomationId="AgentAddressInput"
-                             AutomationProperties.HelpText="{x:Bind Vm.InputHelpText, Mode=OneWay}"
-                             PlaceholderText="0x… or wss://example.com/agent"
+                             AutomationProperties.HelpText="{x:Bind LocalizedInputHelpText(Vm.ShowValidationError), Mode=OneWay}"
+                             PlaceholderText="0x… or https://example.com/agent"
                              Text="{x:Bind Vm.Input, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                              IsEnabled="{x:Bind Vm.IsInputEnabled, Mode=OneWay}"
                              LostFocus="InputBox_LostFocus"
                              KeyDown="InputBox_KeyDown" />
-                    <TextBlock Text="Enter an agent address or a direct WebSocket URL."
+                    <TextBlock x:Uid="AddAgentAddressHint"
+                               Text="Use a 0x address for a shared relay agent, or an HTTP URL for a direct connection."
                                FontSize="12"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                TextWrapping="Wrap" />
-                    <TextBlock Text="Enter a valid agent address or WebSocket URL."
+                    <!-- The form above assumes the user already holds an address. On a first run
+                         nobody does, and there was nothing here pointing at where one comes
+                         from — so this dialog was the end of the road for a new install. -->
+                    <HyperlinkButton x:Uid="AddAgentWhereToGetOne"
+                                     Content="Where do I get an agent address?"
+                                     Padding="0,2"
+                                     FontSize="12"
+                                     AutomationProperties.AutomationId="AddAgentDocsLink"
+                                     Click="AddAgentDocs_Click" />
+                    <TextBlock x:Uid="AddAgentAddressError" Text="Enter a valid agent address or HTTP URL."
                                FontSize="12"
                                Foreground="{ThemeResource DangerBrush}"
                                TextWrapping="Wrap"
                                AutomationProperties.LiveSetting="Polite"
                                Visibility="{x:Bind Vm.ShowValidationError, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                 </StackPanel>
+
+                <Expander x:Uid="AddAgentAppearance"
+                          Margin="0,16,0,0"
+                          Header="Customize appearance (optional)"
+                          IsExpanded="False">
+                    <StackPanel Spacing="8"
+                                Padding="0,8,0,0">
+
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Previews the uncommitted temporary file: AgentAvatar accepts an
+                             absolute path as long as it is inside the managed directories, which
+                             is what lets the user see the pick before the agent exists. -->
+                        <controls:AgentAvatar x:Uid="AddAgentIconPreview" x:Name="AvatarPreview"
+                                              Grid.Column="0"
+                                              Size="72"
+                                              CornerRadius="36"
+                                              FontSize="26"
+                                              VerticalAlignment="Top"
+                                              Initial="?"
+                                              AutomationProperties.Name="Agent icon preview" />
+
+                        <StackPanel Grid.Column="1"
+                                    VerticalAlignment="Center"
+                                    Spacing="8">
+                            <StackPanel Orientation="Horizontal"
+                                        Spacing="8">
+                                <Button x:Name="ChooseIconButton"
+                                        x:Uid="AddAgentChooseIcon"
+                                        MinWidth="112"
+                                        Height="36"
+                                        Content="Choose image"
+                                        Click="ChooseIcon_Click"
+                                        AutomationProperties.Name="Choose an agent icon" />
+
+                                <Button x:Name="RemoveIconButton"
+                                        x:Uid="AddAgentRemoveIcon"
+                                        Height="36"
+                                        Content="Remove"
+                                        Click="RemoveIcon_Click"
+                                        Visibility="Collapsed"
+                                        AutomationProperties.Name="Remove the selected agent icon" />
+
+                                <ProgressRing x:Name="IconProgressRing"
+                                              Width="18"
+                                              Height="18"
+                                              Margin="4,0,0,0"
+                                              VerticalAlignment="Center"
+                                              IsActive="False"
+                                              Visibility="Collapsed" />
+                            </StackPanel>
+
+                            <TextBlock x:Uid="AddAgentIconHint"
+                                       Text="Optional. PNG, JPG, JPEG or WebP, up to 5 MB."
+                                       FontSize="12"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap" />
+
+                            <TextBlock x:Name="IconErrorText"
+                                       FontSize="12"
+                                       Foreground="{ThemeResource DangerBrush}"
+                                       TextWrapping="Wrap"
+                                       Visibility="Collapsed"
+                                       AutomationProperties.LiveSetting="Polite" />
+                        </StackPanel>
+                    </Grid>
+                    </StackPanel>
+                </Expander>
 
                 <Grid Margin="0,16,0,0"
                       MinHeight="40"
@@ -75,14 +165,14 @@
                             HorizontalAlignment="Left"
                             IsEnabled="{x:Bind Vm.CanTest, Mode=OneWay}"
                             Click="TestConnection_Click"
-                            AutomationProperties.Name="{x:Bind Vm.TestButtonText, Mode=OneWay}">
+                            AutomationProperties.Name="{x:Bind LocalizedTestButtonText(Vm.IsTesting), Mode=OneWay}">
                         <StackPanel Orientation="Horizontal"
                                     Spacing="8">
                             <ProgressRing Width="16"
                                           Height="16"
                                           IsActive="{x:Bind Vm.IsTesting, Mode=OneWay}"
                                           Visibility="{x:Bind Vm.IsTesting, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-                            <TextBlock Text="{x:Bind Vm.TestButtonText, Mode=OneWay}"
+                            <TextBlock Text="{x:Bind LocalizedTestButtonText(Vm.IsTesting), Mode=OneWay}"
                                        VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
@@ -97,7 +187,7 @@
                             <ProgressRing Width="14"
                                           Height="14"
                                           IsActive="{x:Bind Vm.IsTesting, Mode=OneWay}" />
-                            <TextBlock Text="{x:Bind Vm.StatusText, Mode=OneWay}"
+                            <TextBlock Text="{x:Bind LocalizedStatusText(Vm.StatusText), Mode=OneWay}"
                                        FontSize="12"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        TextWrapping="Wrap"
@@ -108,12 +198,12 @@
                                     Spacing="7"
                                     VerticalAlignment="Center"
                                     Visibility="{x:Bind Vm.ShowConnected, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                            <ic:FluentIcon Icon="CheckmarkCircle"
+                            <ic:FluentIcon x:Uid="AddAgentConnectionOk" Icon="CheckmarkCircle"
                                            IconVariant="Regular"
                                            IconSize="Size16"
                                            Foreground="{ThemeResource SuccessBrush}"
                                            AutomationProperties.Name="Connection successful" />
-                            <TextBlock Text="{x:Bind Vm.StatusText, Mode=OneWay}"
+                            <TextBlock Text="{x:Bind LocalizedStatusText(Vm.StatusText), Mode=OneWay}"
                                        FontSize="12"
                                        Foreground="{ThemeResource SuccessBrush}"
                                        TextWrapping="Wrap"
@@ -124,12 +214,12 @@
                                     Spacing="7"
                                     VerticalAlignment="Center"
                                     Visibility="{x:Bind Vm.ShowConnectionError, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                            <ic:FluentIcon Icon="ErrorCircle"
+                            <ic:FluentIcon x:Uid="AddAgentConnectionFailed" Icon="ErrorCircle"
                                            IconVariant="Regular"
                                            IconSize="Size16"
                                            Foreground="{ThemeResource DangerBrush}"
                                            AutomationProperties.Name="Connection failed" />
-                            <TextBlock Text="{x:Bind Vm.StatusText, Mode=OneWay}"
+                            <TextBlock Text="{x:Bind LocalizedStatusText(Vm.StatusText), Mode=OneWay}"
                                        FontSize="12"
                                        Foreground="{ThemeResource DangerBrush}"
                                        TextWrapping="Wrap"
@@ -143,7 +233,7 @@
                             Orientation="Horizontal"
                             Spacing="8"
                             HorizontalAlignment="Right">
-                    <Button Width="96"
+                    <Button x:Uid="AddAgentCancel" Width="96"
                             Height="40"
                             Content="Cancel"
                             Click="Cancel_Click"
@@ -155,7 +245,7 @@
                             IsEnabled="{x:Bind Vm.CanAdd, Mode=OneWay}"
                             Click="AddAgent_Click"
                             AutomationProperties.AutomationId="SubmitAgentButton"
-                            AutomationProperties.Name="{x:Bind Vm.AddButtonText, Mode=OneWay}">
+                            AutomationProperties.Name="{x:Bind LocalizedAddButtonText(Vm.IsAdding), Mode=OneWay}">
                         <StackPanel Orientation="Horizontal"
                                     HorizontalAlignment="Center"
                                     Spacing="8">
@@ -163,7 +253,7 @@
                                           Height="16"
                                           IsActive="{x:Bind Vm.IsAdding, Mode=OneWay}"
                                           Visibility="{x:Bind Vm.IsAdding, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-                            <TextBlock Text="{x:Bind Vm.AddButtonText, Mode=OneWay}"
+                            <TextBlock Text="{x:Bind LocalizedAddButtonText(Vm.IsAdding), Mode=OneWay}"
                                        VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>

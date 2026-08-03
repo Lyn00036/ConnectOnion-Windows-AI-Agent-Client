@@ -88,15 +88,37 @@ public sealed class AgentTurnExecutor : ITurnExecutor
         try
         {
             sink.SetConnecting();
+            var images = request.Images;
+            var files = request.Files;
+            if (!_resumeExisting && request.AttachmentSources is { Count: > 0 })
+            {
+                var encoded = await AgentSessionManager
+                    .EncodeAttachmentSourcesAsync(request.AttachmentSources)
+                    .ConfigureAwait(false);
+                images = encoded.Images;
+                files = encoded.Files;
+            }
             // Resuming deliberately sends nothing: the agent is mid-turn and an INPUT here would
             // reach the host as a RUNTIME_INPUT — an extra prompt the user never typed.
-            var reply = _resumeExisting
-                ? await _connection.ResumeRunningSessionAsync(request.SessionId!, sink.CancellationToken)
-                    .ConfigureAwait(false)
-                : await _connection.SendInputAsync(
-                    request.Prompt, request.SessionId, request.Images, request.Files, request.Mode,
-                    sink.CancellationToken)
+            string reply;
+            if (_resumeExisting)
+            {
+                reply = await _connection.ResumeRunningSessionAsync(
+                        request.SessionId!, sink.CancellationToken)
                     .ConfigureAwait(false);
+            }
+            else
+            {
+                var completion = await _connection.BeginInputAsync(
+                        request.Prompt, request.SessionId, images, files, request.Mode,
+                        sink.CancellationToken)
+                    .ConfigureAwait(false);
+                // The INPUT frame is now on the socket. Drop its large encoded representation
+                // before awaiting OUTPUT; retry retains only request.AttachmentSources.
+                images = null;
+                files = null;
+                reply = await completion.ConfigureAwait(false);
+            }
             if (!string.IsNullOrEmpty(reply)) sink.UpdatePartial(reply);
             return reply;
         }

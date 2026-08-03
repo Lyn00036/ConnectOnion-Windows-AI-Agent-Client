@@ -19,6 +19,20 @@ public sealed class NotificationSettingsStore : INotificationSettingsProvider
 
     public NotificationSettings Current => _current;
 
+    public void ApplySerialized(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return;
+        try
+        {
+            var loaded = JsonSerializer.Deserialize(json, AppJsonContext.Default.NotificationSettings);
+            if (loaded is not null) _current = loaded;
+        }
+        catch (JsonException ex)
+        {
+            NotificationLog.Warn("settings content was unreadable; using defaults", ex);
+        }
+    }
+
     /// <summary>Loads persisted settings; falls back to defaults on any error.</summary>
     public async Task LoadAsync()
     {
@@ -26,10 +40,7 @@ public sealed class NotificationSettingsStore : INotificationSettingsProvider
         {
             await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
             var json = await AppDatabase.GetMetaAsync(connection, MetaKey).ConfigureAwait(false);
-            if (string.IsNullOrWhiteSpace(json)) return;
-
-            var loaded = JsonSerializer.Deserialize(json, AppJsonContext.Default.NotificationSettings);
-            if (loaded is not null) _current = loaded;
+            ApplySerialized(json);
         }
         catch (Exception ex)
         {

@@ -249,6 +249,24 @@ public sealed class AgentConnectionService : IAsyncDisposable
         string? mode = null,
         CancellationToken ct = default)
     {
+        var completion = await BeginInputAsync(prompt, sessionId, images, files, mode, ct)
+            .ConfigureAwait(false);
+        return await completion.ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Sends INPUT and returns the separate task that completes on OUTPUT. Callers handling large
+    /// attachments can release their encoded lists as soon as this method returns instead of
+    /// retaining them for the entire agent turn.
+    /// </summary>
+    public async Task<Task<string>> BeginInputAsync(
+        string prompt,
+        string? sessionId,
+        IReadOnlyList<string>? images = null,
+        IReadOnlyList<OutgoingFileAttachment>? files = null,
+        string? mode = null,
+        CancellationToken ct = default)
+    {
         // Carried into the CONNECT below when this is the socket's first turn.
         if (mode is not null) InitialMode = mode;
 
@@ -264,6 +282,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
             images: images,
             files: files);
         await SendJsonAsync(inputMsg, ct).ConfigureAwait(false);
+        inputMsg.Clear();
         InputSent?.Invoke();
 
         // Mode has to be (re)asserted *after* the INPUT, never before. The host only forwards
@@ -276,10 +295,17 @@ public sealed class AgentConnectionService : IAsyncDisposable
         // already knows: its session merge would have thrown ours away.
         if (mode is not null) await SendModeChangeAsync(mode, null, ct).ConfigureAwait(false);
 
-        await using (ct.Register(() => inputTcs.TrySetCanceled()))
-        {
+        return AwaitInputAsync(inputTcs, ct);
+    }
+
+    private static async Task<string> AwaitInputAsync(
+        TaskCompletionSource<string> inputTcs,
+        CancellationToken ct)
+    {
+        await using (ct.Register(() => inputTcs.TrySetCanceled(ct)))
+#pragma warning disable VSTHRD003 // This TCS is the protocol operation; cancellation is wired above.
             return await inputTcs.Task.ConfigureAwait(false);
-        }
+#pragma warning restore VSTHRD003
     }
 
     /// <summary>
@@ -359,6 +385,30 @@ public sealed class AgentConnectionService : IAsyncDisposable
     {
         if (!IsConnected) throw new InvalidOperationException("Cannot stop: the agent connection is not open.");
         return SendJsonAsync(new Dictionary<string, object?> { ["type"] = "INTERRUPT" }, ct);
+    }
+
+    /// <summary>
+    /// Sends an additional INPUT while the current turn is still awaiting OUTPUT. The host routes
+    /// this frame to the running agent as RUNTIME_INPUT; unlike <see cref="SendInputAsync"/>, this
+    /// method deliberately does not replace the pending OUTPUT completion source or start another
+    /// client-side turn.
+    /// </summary>
+    public Task SendRuntimeInputAsync(
+        string prompt,
+        IReadOnlyList<string>? images = null,
+        IReadOnlyList<OutgoingFileAttachment>? files = null,
+        CancellationToken ct = default)
+    {
+        if (!IsConnected || _inputTcs is null)
+            throw new InvalidOperationException("Cannot send runtime input: no agent turn is active.");
+
+        var inputMsg = InputMessageBuilder.BuildInput(
+            prompt,
+            Guid.NewGuid().ToString(),
+            toAddress: _isDirect ? null : _address,
+            images: images,
+            files: files);
+        return SendJsonAsync(inputMsg, ct);
     }
 
     /// <summary>
@@ -587,6 +637,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
     /// exhaust the desktop process.
     /// </summary>
     public const int MaxIncomingFrameBytes = 80 * 1024 * 1024;
+    private const int RetainedIncomingFrameCapacityBytes = 1024 * 1024;
 
     internal int IncomingFrameSizeLimitBytes { get; set; } = MaxIncomingFrameBytes;
 
@@ -594,7 +645,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
     {
         var ws = _ws!;
         var buffer = new byte[16 * 1024];
-        using var frame = new MemoryStream();
+        var frame = new MemoryStream();
         try
         {
             while (!ct.IsCancellationRequested && ws.State == WebSocketState.Open)
@@ -636,7 +687,15 @@ public sealed class AgentConnectionService : IAsyncDisposable
                     frame.GetBuffer(),
                     0,
                     checked((int)frame.Length));
-                frame.SetLength(0);
+                if (frame.Capacity > RetainedIncomingFrameCapacityBytes)
+                {
+                    frame.Dispose();
+                    frame = new MemoryStream();
+                }
+                else
+                {
+                    frame.SetLength(0);
+                }
                 _lastActivityUtc = DateTime.UtcNow;
                 await HandleMessageAsync(json, ct).ConfigureAwait(false);
             }
@@ -648,6 +707,10 @@ public sealed class AgentConnectionService : IAsyncDisposable
         catch (Exception ex)
         {
             HandleConnectionLoss(ex);
+        }
+        finally
+        {
+            frame.Dispose();
         }
     }
 
@@ -812,8 +875,9 @@ public sealed class AgentConnectionService : IAsyncDisposable
     /// while the client consumes only the current mode. Retaining every full sync makes one long
     /// turn hold a growing series of near-duplicate session snapshots.
     /// </summary>
-    private static string BufferedEventJson(WireMessage msg)
+    internal static string BufferedEventJson(WireMessage msg)
     {
+        if (msg.Type is "llm_call" or "llm_result") return CompactLlmEvent(msg);
         if (msg.Type != "session_sync") return msg.Root.GetRawText();
 
         var compact = new Dictionary<string, object?>
@@ -832,6 +896,34 @@ public sealed class AgentConnectionService : IAsyncDisposable
             CopyScalar(session, sessionState, "turn");
             CopyScalar(session, sessionState, "iteration");
             compact["session"] = sessionState;
+        }
+
+        return WireJson.Serialize(compact);
+    }
+
+    private static string CompactLlmEvent(WireMessage msg)
+    {
+        var compact = new Dictionary<string, object?> { ["type"] = msg.Type };
+        foreach (var name in new[]
+                 {
+                     "id", "ts", "model", "duration_ms", "context_percent",
+                     "tool_calls_count", "context_before", "context_after",
+                 })
+        {
+            CopyScalar(msg.Root, compact, name);
+        }
+
+        if (msg.TryGet("usage", out var usage) && usage.ValueKind == JsonValueKind.Object)
+        {
+            var compactUsage = new Dictionary<string, object?>();
+            foreach (var name in new[]
+                     {
+                         "input_tokens", "output_tokens", "cached_tokens", "cache_write_tokens",
+                     })
+            {
+                CopyScalar(usage, compactUsage, name);
+            }
+            compact["usage"] = compactUsage;
         }
 
         return WireJson.Serialize(compact);
@@ -1009,8 +1101,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
 
     private async Task SendJsonAsync(Dictionary<string, object?> message, CancellationToken ct)
     {
-        var json = WireJson.Serialize(message);
-        var bytes = Encoding.UTF8.GetBytes(json);
+        var bytes = WireJson.SerializeToUtf8Bytes(message);
         await _ws!.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, ct)
             .ConfigureAwait(false);
     }

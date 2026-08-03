@@ -14,7 +14,10 @@ namespace ConnectOnion.WinUIClient;
 /// </summary>
 public sealed partial class MainWindow
 {
-    private const string DocsUrl = "https://docs.connectonion.com/";
+    /// <summary>The public docs. Internal rather than private because the first-run empty state on
+    /// <see cref="Views.HomePage"/> links to the same place — a new user with no agent needs the
+    /// docs more than anyone reaching them from the Help menu.</summary>
+    internal const string DocsUrl = "https://docs.connectonion.com/";
 
     private void RegisterHelpMenuAccelerators()
         => RootGrid.KeyDown += HelpMenuShortcut_KeyDown;
@@ -45,10 +48,10 @@ public sealed partial class MainWindow
         => ShowKeyboardShortcutsOverlay(HelpMenuBarItem);
 
     private void ShowKeyboardShortcutsOverlay(FrameworkElement? opener = null)
-        => KeyboardShortcutsDialog.Show(opener);
+        => EnsureKeyboardShortcutsDialog().Show(opener);
 
     private void CloseKeyboardShortcutsOverlay()
-        => KeyboardShortcutsDialog.Hide();
+        => _keyboardShortcutsDialog?.Hide();
 
     /// <summary>Opens the public docs in the default browser. Goes through
     /// <see cref="AppServices.UriLauncher"/> (rather than the static, unmockable <c>Launcher</c>)
@@ -74,8 +77,8 @@ public sealed partial class MainWindow
         => ShowAboutOverlay(HelpMenuBarItem);
 
     private void ShowAboutOverlay(FrameworkElement? opener = null)
-        => AboutOverlay.Show(opener);
+        => EnsureAboutOverlay().Show(opener);
 
     private void CloseAboutOverlay()
-        => AboutOverlay.Hide();
+        => _aboutOverlay?.Hide();
 }

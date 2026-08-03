@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using ConnectOnion.Protocol;
+using Microsoft.Extensions.Logging;
 
 namespace ConnectOnion.WinUIClient.Data;
 
@@ -42,6 +43,25 @@ public sealed record IdentityBackup(string Address, string? Mnemonic, string See
 /// </summary>
 public static class IdentityStore
 {
+    private static readonly Action<ILogger, string, Exception?> LogIdentityReset =
+        LoggerMessage.Define<string>(LogLevel.Warning, new EventId(1, "IdentityReset"),
+            "Local identity was reset ({Reason}); this device signs as a new address and every agent must re-authorize it");
+
+    private static readonly Action<ILogger, Exception?> LogIdentityPersistFailed =
+        LoggerMessage.Define(LogLevel.Error, new EventId(2, "IdentityPersistFailed"),
+            "The local identity could not be saved; a new address will be minted on the next launch");
+
+    /// <summary>
+    /// Set once at startup. This is a static class reached from connection setup — there is no
+    /// instance for the container to inject into — so it takes the same shape as
+    /// <c>NotificationLog</c>: a facade that is a no-op until the host wires it up.
+    /// </summary>
+    private static ILogger? _logger;
+
+    /// <summary>Called from <c>App</c> once the host is built.</summary>
+    public static void Configure(ILoggerFactory loggerFactory)
+        => _logger = loggerFactory.CreateLogger("ConnectOnion.Identity");
+
     // Extra DPAPI entropy so another process running as the same Windows user
     // cannot blindly call CryptUnprotectData on our blob without knowing this
     // value. Not a secret by itself (it's compiled into the binary) — it's
@@ -347,6 +367,7 @@ public static class IdentityStore
         ResetReason = reason;
 
         System.Diagnostics.Debug.WriteLine($"[IdentityStore] identity reset: {reason}");
+        if (_logger is { } logger) LogIdentityReset(logger, reason, null);
 
         try { IdentityReset?.Invoke(reason); }
         catch { /* a listener must never block identity creation */ }
@@ -415,10 +436,12 @@ public static class IdentityStore
             // Persist is best-effort on the first-run path; a fresh identity per run still works —
             // but "works" here means the app functions, not that the user is unaffected. An identity
             // that never persists gives a new address on every launch, so every agent has to
-            // re-authorize this client each time. If that is ever reported, this silent catch is the
-            // place to look: unlike the unreadable-identity path above, it raises no IdentityReset
-            // and sets no WasReset flag, so nothing surfaces it.
+            // re-authorize this client each time. Nothing surfaces this in the UI — unlike the
+            // unreadable-identity path above, it raises no IdentityReset and sets no WasReset flag
+            // — so the log line is the only trace, which is why it is a real one and not just a
+            // Debug write that a Release build compiles away.
             System.Diagnostics.Debug.WriteLine($"[IdentityStore] identity persist failed: {ex.Message}");
+            if (_logger is { } logger) LogIdentityPersistFailed(logger, ex);
         }
         catch (Exception ex)
         {

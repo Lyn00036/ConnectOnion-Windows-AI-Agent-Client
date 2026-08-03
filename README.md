@@ -43,13 +43,25 @@ of `Microsoft.UI` dependencies. Package versions are centrally managed by
 `Directory.Packages.props`. See [engineering optimization notes](docs/OPTIMIZATION.md)
 for diagnostics, performance, localization, and verification details.
 
-Local app data is stored in SQLite at:
+Local app data lives in SQLite, with everything else stored beside it under the
+same data root:
 
 ```text
-%AppData%\ConnectOnion\connectonion.db
+%AppData%\ConnectOnion\
+  connectonion.db
+  conversations\
+  cache\images\        Received agent images, named by content hash
+  avatars\             User-chosen agent icons (agents.icon_path points here)
+  temp\avatars\        A picked icon awaiting save; emptied at startup
+  logs\                Structured rolling logs (10 MB cap, 14 retained)
 ```
 
-Structured rolling logs are stored under `%AppData%\ConnectOnion\logs`.
+That root is `%AppData%\ConnectOnion` for an unpackaged or portable run, the
+package's `LocalState\ConnectOnion` for an installed MSIX, and whatever
+`CONNECTONION_DATA_ROOT` names when it is set (used to run an isolated instance
+for automation). Logs and caches follow the database rather than living at a
+fixed path.
+
 Speech/audio resources and page-load database work are cancellation-aware and
 are released when their owning WinUI surface unloads.
 
@@ -65,14 +77,14 @@ Current SQLite tables:
 | Table | Key columns |
 | --- | --- |
 | `app_meta` | key, value |
-| `agents` | id, name, address, direct_url, invite_code, info_json, info_updated_at, sort_order |
+| `agents` | id, name, address, direct_url, icon_path, invite_code, info_json, info_updated_at, sort_order |
 | `sessions` | id, agent_id, title, remote_session_id, last_processed_event_id, created_at, updated_at, sort_order, mode |
 | `preferences` | theme, sidebar_visible, message_font_size, shortcut_overrides_json, microphone_device_id |
 | `messages` | conversation_id, id, role, content, agent_name, event_kind/key/eyebrow/title/detail/meta/args/result/status, is_onboarding, created_at |
 | `message_attachments` | conversation_id, message_id, id, kind, file_name, mime_type, size_bytes, local_cache_path, remote_uri, status |
 | `executions` | id, conversation_id, remote_session_id, prompt, result, status, duration_ms, created_at |
 | `trace_events` | id, conversation_id, execution_id, session_id, type, payload_json, ts |
-| `identity_keys` | address, private_seed (DPAPI-protected, base64-encoded) |
+| `identity_keys` | address, private_seed, mnemonic (both DPAPI-protected, base64-encoded) |
 | `usage_events` | id, conversation_id, agent_id, agent_name, model, input_tokens, output_tokens, cached_tokens, cache_write_tokens, duration_ms, created_at |
 
 `messages` is one row per rendered chat bubble (not a serialized conversation
@@ -84,6 +96,14 @@ it, so persisting a turn costs the size of the turn rather than the length of
 the conversation. `message_attachments` stores attachment metadata only; the
 base64 payload is never persisted. The database uses WAL journal mode and
 enforces foreign keys.
+
+`agents.icon_path` follows the same rule as attachments: the database stores a
+path relative to the data root (`avatars/agent-….png`), never the image bytes.
+The file is written before the row that references it and deleted only after
+that row is gone, so a failure leaves an unreferenced file rather than an agent
+pointing at one that no longer exists. Because the column is hand-editable,
+every read resolves through `AppStorage.GetAgentIconAbsolutePath`, which refuses
+a path that escapes the managed `avatars\` directory.
 
 ## Project Structure
 
@@ -97,7 +117,7 @@ connectonion-desktop/
     Data/                             SQLite persistence (this whole layer is Core-only)
       AppDatabase.cs                  Connection open, baseline schema, PRAGMA setup
       SchemaMigrator.cs               Versioned forward migrations (PRAGMA user_version)
-      AppStorage.cs                   Local filesystem directory setup
+      AppStorage.cs                   Data-root selection, directory setup, icon path guards
       AgentRepository.cs              Agent CRUD
       SessionRepository.cs            Session CRUD
       ConversationRepository.cs       Message/attachment persistence, incremental upsert
@@ -187,6 +207,7 @@ connectonion-desktop/
       AppServices.cs                  Typed accessor over App.Services for framework-created code-behind
       AgentPresenceService.cs         In-memory online status cache with TTL
       AgentInfoService.cs             /info fetch, cache, change detection
+      AgentIconService.cs             Icon pick, decode/crop/resize to PNG, commit, delete
       ConnectionTester.cs             Direct URL and relay reachability probes
       ThemeService.cs                 Light/dark theme management, raw Color lookup
       UriLauncher.cs                  Mockable wrapper over Launcher.LaunchUriAsync
@@ -203,7 +224,8 @@ connectonion-desktop/
     Models/                           Sidebar row items only (the rest live in Core)
     Rendering/
       WinUiMarkdownRenderer.cs        Markdown -> WinUI inline/block rendering for chat
-    Common/                           Template selector and XAML value converters (incl. HeatmapLevelToBrush)
+    Common/                           Template selector, XAML value converters (incl. HeatmapLevelToBrush),
+                                      AvatarPalette, LocalizedStrings (resw lookup with a fallback)
     Styles/
       Colors.xaml                     Raw Light/Dark Color resources (brand palette)
       Brushes.xaml                    Semantic brushes + re-pointed Fluent theme keys
@@ -591,7 +613,7 @@ Known deployed development agents:
 - Speech-to-text dictation input in the chat composer
 - System tray icon with left-click restore, right-click menu (Open Window / Exit)
 - Close button (X) dialog with Minimize to tray / Exit / Cancel options
-- File menu with keyboard shortcuts (Ctrl+N new chat, Ctrl+Shift+N new window, Ctrl+W close)
+- File menu with keyboard shortcuts (Ctrl+N new chat, Ctrl+O open data folder, Ctrl+W hide to tray)
 - Edit menu (undo/redo/cut/copy/paste/select all) and View menu (sidebar, zoom, full screen, find)
 - Help menu (keyboard shortcuts dialog, ConnectOnion docs, About overlay)
 - Protocol conformance test gate

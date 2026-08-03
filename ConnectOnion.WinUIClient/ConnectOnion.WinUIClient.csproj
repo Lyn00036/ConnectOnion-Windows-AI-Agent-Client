@@ -92,6 +92,7 @@
     <PackageReference Include="Microsoft.WindowsAppSDK" />
     <PackageReference Include="QRCoder" />
     <PackageReference Include="Serilog.Extensions.Hosting" />
+    <PackageReference Include="Serilog.Sinks.Async" />
     <PackageReference Include="Serilog.Sinks.File" />
   </ItemGroup>
 
@@ -113,6 +114,26 @@
   <PropertyGroup>
     <PublishReadyToRun Condition="'$(Configuration)' == 'Debug'">False</PublishReadyToRun>
     <PublishReadyToRun Condition="'$(Configuration)' != 'Debug'">True</PublishReadyToRun>
+
+    <!--
+      Dynamic PGO. Complements ReadyToRun rather than competing with it: R2R code starts fast but
+      is compiled without knowledge of what this app actually does, and TieredPGO lets the hot
+      paths be re-jitted against real profile data. Off by default for R2R-compiled code unless
+      this is set, which is exactly the configuration this project ships.
+    -->
+    <TieredPGO>true</TieredPGO>
+
+    <!--
+      InvariantGlobalization is deliberately NOT set, and must not be.
+
+      It is the usual companion to these settings and it would break this app in three places:
+      the zh-CN locale, `CultureInfo.GetCultureInfo` in Common/LayoutDirection (which decides
+      right-to-left layout and would start throwing CultureNotFoundException), and every
+      `CultureInfo.CurrentCulture` format — message timestamps, token counts, the payment amount
+      on an onboarding card. The wins here are not worth a client that formats a transfer amount
+      with the wrong decimal separator.
+    -->
+
     <PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>
     <!--
       LOAD-BEARING. Not a leftover default.
@@ -129,9 +150,20 @@
     -->
     <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">False</PublishTrimmed>
     <GenerateAppInstallerFile>False</GenerateAppInstallerFile>
-    <AppxPackageSigningEnabled>True</AppxPackageSigningEnabled>
-    <PackageCertificateThumbprint>35589B9A6EF8FF79618AE60A00A484F0520338D7</PackageCertificateThumbprint>
-    <AppxPackageSigningTimestampDigestAlgorithm>SHA256</AppxPackageSigningTimestampDigestAlgorithm>
+    <!--
+      Local packaging is deliberately unsigned. A PackageCertificateThumbprint resolves against
+      the building machine's certificate store, so a committed thumbprint fails every clone but
+      the one machine that happens to hold that certificate. Nothing in the pipeline needs it:
+      the release workflow ships a self-contained portable ZIP, not an MSIX, and
+      PackageIdentityTests asserts signtool and the signing secrets stay out of it.
+
+      Developer-mode F5/Deploy still works — it registers the loose layout rather than installing
+      a package, which does not check a signature. Only an actual .msix install does, so if you
+      ever need one (scripts\Test-ReleaseUpgrade.ps1), sign it out of band: create a certificate
+      whose subject is byte-for-byte Package.appxmanifest's Publisher (CN=ConnectOnion) and pass
+      -p:AppxPackageSigningEnabled=true -p:PackageCertificateThumbprint=... on that build only.
+    -->
+    <AppxPackageSigningEnabled>False</AppxPackageSigningEnabled>
     <AppxAutoIncrementPackageRevision>True</AppxAutoIncrementPackageRevision>
     <GenerateTestArtifacts>False</GenerateTestArtifacts>
     <AppxBundle>Never</AppxBundle>

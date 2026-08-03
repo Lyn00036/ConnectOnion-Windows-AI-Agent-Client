@@ -1,4 +1,5 @@
 using System.Threading.Tasks;
+using ConnectOnion.WinUIClient.Common;
 using CommunityToolkit.Mvvm.ComponentModel;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
@@ -63,10 +64,10 @@ public abstract partial class PresenceAwareViewModel : Common.ObservableObject
     public string PresenceDetail => PresenceAgent is null ? "" : PresenceService.GetDetail(PresenceAgent.Id);
     public string PresenceLabel => Presence switch
     {
-        AgentPresence.Online => "Online",
-        AgentPresence.Checking => "Connecting",
-        AgentPresence.Offline => "Offline",
-        _ => "Unavailable",
+        AgentPresence.Online => LocalizedStrings.Get("PresenceOnline", "Online"),
+        AgentPresence.Checking => LocalizedStrings.Get("PresenceConnecting", "Connecting"),
+        AgentPresence.Offline => LocalizedStrings.Get("PresenceOffline", "Offline"),
+        _ => LocalizedStrings.Get("PresenceUnavailable", "Unavailable"),
     };
 
     /// <summary>Attention line shown in the offline bar after a manual recheck that resolved to still-offline.</summary>

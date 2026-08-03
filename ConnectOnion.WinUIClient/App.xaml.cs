@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
+using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Services;
 using ConnectOnion.WinUIClient.Services.Notifications;
@@ -92,6 +93,12 @@ namespace ConnectOnion.WinUIClient
             InitializeComponent();
 
             AppStorage.EnsureDirectories();
+
+            // Anything in the temporary avatar directory belongs to an Add Agent form that never
+            // finished, so nothing in the database points at it. Sweep it off the startup path —
+            // the folder would otherwise grow by one PNG per interrupted pick, forever.
+            _ = Task.Run(AppStorage.PurgeTemporaryAgentIcons);
+
             // The three Override categories are all framework chatter that reports success, not
             // behaviour. HttpClient logs four lines per request and the resilience pipeline one
             // per attempt, so every presence probe sweep writes ~30 lines; left at Information
@@ -103,14 +110,26 @@ namespace ConnectOnion.WinUIClient
                 .MinimumLevel.Override("System.Net.Http", LogEventLevel.Warning)
                 .MinimumLevel.Override("Polly", LogEventLevel.Warning)
                 .Enrich.FromLogContext()
-                .WriteTo.File(
-                    System.IO.Path.Combine(AppStorage.LogsDir, "connectonion-.log"),
-                    formatProvider: System.Globalization.CultureInfo.InvariantCulture,
-                    rollingInterval: RollingInterval.Day,
-                    rollOnFileSizeLimit: true,
-                    fileSizeLimitBytes: 10 * 1024 * 1024,
-                    retainedFileCountLimit: 14,
-                    shared: true)
+                // Wrapped in the async sink so a log call is a queue push, not a disk write.
+                // The file sink is synchronous and `shared: true` additionally takes a
+                // cross-process mutex per write — a cost that was being paid on whatever thread
+                // logged, including the UI thread. `shared` itself has to stay: a toast
+                // activation launches a short-lived second process that writes to the same file.
+                //
+                // The trade is that a hard crash can lose whatever is still queued. That is
+                // acceptable here because the queue drains continuously and `ShutdownAsync`
+                // ends on `Log.CloseAndFlushAsync()`, which the async sink honours — and because
+                // the alternative, `blockWhenFull`, would put the UI thread back on the disk.
+                .WriteTo.Async(
+                    sink => sink.File(
+                        System.IO.Path.Combine(AppStorage.LogsDir, "connectonion-.log"),
+                        formatProvider: System.Globalization.CultureInfo.InvariantCulture,
+                        rollingInterval: RollingInterval.Day,
+                        rollOnFileSizeLimit: true,
+                        fileSizeLimitBytes: 10 * 1024 * 1024,
+                        retainedFileCountLimit: 14,
+                        shared: true),
+                    bufferSize: 20000)
                 .CreateLogger();
 
             // Build the composition root before any window/page is created (OnLaunched, and every
@@ -121,7 +140,16 @@ namespace ConnectOnion.WinUIClient
             builder.Services.AddSerilog(Log.Logger, dispose: false);
             _host = builder.Build();
             Services = _host.Services;
-            NotificationLog.Configure(_host.Services.GetRequiredService<ILoggerFactory>());
+            // The static facades in Core. All three are reached from places with no instance for
+            // the container to inject into, and all three no-op (or fall back to English) until
+            // this runs.
+            var loggerFactory = _host.Services.GetRequiredService<ILoggerFactory>();
+            NotificationLog.Configure(loggerFactory);
+            IdentityStore.Configure(loggerFactory);
+            // Core computes a lot of XAML-bound display text (the approval card, the activity
+            // header, ask_user labels) and cannot hold a ResourceManager — that is Windows App
+            // SDK, which the Core seam exists to keep out. Point it at ours.
+            CoreStrings.Configure(LocalizedStrings.Get);
         }
 
         /// <summary>
@@ -142,7 +170,6 @@ namespace ConnectOnion.WinUIClient
                 // OS notification registration is not obviously safe for.
                 await _host.StartAsync();
                 Diagnostics.StartupTelemetry.Mark(Diagnostics.StartupPhases.HostStarted);
-                await AppServices.WindowPlacement.LoadAsync();
                 _window = new MainWindow();
                 Diagnostics.StartupTelemetry.Mark(Diagnostics.StartupPhases.WindowCreated);
                 MainWindow = _window;

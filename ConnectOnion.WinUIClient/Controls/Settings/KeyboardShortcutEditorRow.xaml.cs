@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.ViewModels;
 using Microsoft.UI.Xaml;
@@ -77,10 +78,10 @@ public sealed partial class KeyboardShortcutEditorRow : UserControl
     {
         if (Row is null) return;
 
-        NameText.Text = Row.Name;
+        NameText.Text = KeyboardTextLocalizer.Localize(Row.Name);
 
         var reason = Row.IsCustomizable ? "" : Row.ReadOnlyReason;
-        ReasonText.Text = reason;
+        ReasonText.Text = KeyboardTextLocalizer.Localize(reason);
         ReasonText.Visibility = reason.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
 
         ConflictText.Text = Row.Conflict;

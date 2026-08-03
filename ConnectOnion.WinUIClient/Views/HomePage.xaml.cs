@@ -25,7 +25,7 @@ public sealed partial class HomeAgentItem : Common.ObservableObject
     public string FullAddress { get; set; } = "";
     public string ConnectionSummary { get; set; } = "";
     public string LastUsedLabel { get; set; } = "Not used yet";
-    public int AvatarPaletteIndex { get; set; }
+    public string? IconPath { get; set; }
     public bool IsSelected { get; set; }
     public bool ShowSelection => IsSelected || IsHighlighted;
     public string AutomationName
@@ -54,6 +54,30 @@ public sealed partial class HomeAgentItem : Common.ObservableObject
     [NotifyPropertyChangedFor(nameof(ShowSelection))]
     public partial bool IsHighlighted { get; set; }
 
+    // Row density, pushed down by HomePage.ApplyRowDensity when the page is measured.
+    //
+    // These used to be an AdaptiveTrigger VisualStateGroup inside the row's DataTemplate, which
+    // measured the *window* — but the content pane is up to a whole sidebar narrower than the
+    // window, so a 920px window put the "detailed" columns into a ~630px row. The page-level
+    // states above already avoid that trap (see WideViewportMinWidth); the row states could not,
+    // because a VisualStateManager inside a DataTemplate has no way to see its own viewport.
+    [ObservableProperty]
+    public partial bool ShowStatusLabel { get; set; }
+
+    [ObservableProperty]
+    public partial bool ShowLastUsed { get; set; }
+
+    [ObservableProperty]
+    public partial bool ShowEndpoint { get; set; }
+
+    public HomeAgentItem()
+    {
+        // The status word is the one that survives at every width; the other two are extras that
+        // only appear once the row is genuinely wide. Seeded here because a partial-property
+        // declaration cannot carry an initializer.
+        ShowStatusLabel = true;
+    }
+
     public bool IsChecking => Presence is AgentPresence.Unknown or AgentPresence.Checking;
     public bool IsStandardStatus => !IsChecking && !IsUnavailable;
 
@@ -70,8 +94,16 @@ public sealed partial class HomeAgentItem : Common.ObservableObject
 /// <summary>
 /// Agent picker. The virtualized list owns vertical scrolling; add-agent is a transient dialog.
 /// </summary>
-public sealed partial class HomePage : Page, IReloadablePage, IDisposable
+public sealed partial class HomePage : Page, IReloadablePage, IShutdownDisarmable, IDisposable
 {
+    // The wide content is 960px plus its 48px margins on both sides. This threshold must use the
+    // page viewport, not AdaptiveTrigger's top-level window width: during startup the shell can
+    // restore from a wider presenter before the content Frame receives its final size, and in
+    // steady state the sidebar takes up to 288px that the window width would wrongly count as
+    // available. The row-level thresholds below are on the page for the same reason.
+    private const double WideViewportMinWidth = 1056;
+    private const double RegularViewportMinWidth = 600;
+
     private readonly AgentPresenceService _presence = AppServices.Presence;
     private readonly CancellationTokenSource _lifetimeCts = new();
     private bool _isOpeningAgent;
@@ -87,6 +119,44 @@ public sealed partial class HomePage : Page, IReloadablePage, IDisposable
         Unloaded += HomePage_Unloaded;
     }
 
+    /// <summary>Row is wide enough for the "Last used" column and the endpoint line.</summary>
+    private const double DetailedRowMinWidth = 920;
+
+    /// <summary>Row is wide enough to spell the status out rather than show only its dot.</summary>
+    private const double LabelledStatusRowMinWidth = 560;
+
+    private void PageRoot_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        VisualStateManager.GoToState(
+            this,
+            e.NewSize.Width >= WideViewportMinWidth
+                ? "Wide"
+                : e.NewSize.Width >= RegularViewportMinWidth
+                    ? "Adaptive"
+                    : "Narrow",
+            useTransitions: false);
+
+        ApplyRowDensity(e.NewSize.Width);
+    }
+
+    /// <summary>
+    /// Pushes the current viewport width down into every row. The rows used to decide this for
+    /// themselves with <c>AdaptiveTrigger MinWindowWidth</c>, which reads the top-level window and
+    /// therefore counted the sidebar's width as if it were available to the row.
+    /// </summary>
+    private void ApplyRowDensity(double viewportWidth)
+    {
+        var detailed = viewportWidth >= DetailedRowMinWidth;
+        var labelledStatus = viewportWidth >= LabelledStatusRowMinWidth;
+
+        foreach (var item in Agents)
+        {
+            item.ShowStatusLabel = labelledStatus;
+            item.ShowLastUsed = detailed;
+            item.ShowEndpoint = detailed;
+        }
+    }
+
     protected override void OnNavigatedFrom(Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
     {
         Dispose();
@@ -100,7 +170,16 @@ public sealed partial class HomePage : Page, IReloadablePage, IDisposable
         catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested) { return; }
     }
 
-    public void Dispose()
+    /// <summary>
+    /// Stops callbacks without mutating the bound collection. Window teardown does not reliably
+    /// raise <see cref="FrameworkElement.Unloaded"/>, and an already queued presence callback can
+    /// otherwise update this page after WinUI has begun destroying its native peer.
+    /// </summary>
+    public void DisarmForShutdown() => DisposeCore(clearBoundItems: false);
+
+    public void Dispose() => DisposeCore(clearBoundItems: true);
+
+    private void DisposeCore(bool clearBoundItems)
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         _presence.PresenceChanged -= OnPresenceChanged;
@@ -109,7 +188,10 @@ public sealed partial class HomePage : Page, IReloadablePage, IDisposable
         Loaded -= HomePage_Loaded;
         Unloaded -= HomePage_Unloaded;
 
-        Agents.Clear();
+        // Clearing is useful when navigating away because it releases the item graph promptly.
+        // During final window teardown it would itself invalidate an ItemsRepeater/ListView whose
+        // native tree is already being dismantled, so DisarmForShutdown deliberately skips it.
+        if (clearBoundItems) Agents.Clear();
     }
 
     private async void HomePage_Loaded(object sender, RoutedEventArgs e)
@@ -148,7 +230,7 @@ public sealed partial class HomePage : Page, IReloadablePage, IDisposable
                         .Where(session => session.AgentId == agent.Id)
                         .OrderByDescending(session => session.UpdatedAt, StringComparer.Ordinal)
                         .FirstOrDefault()?.UpdatedAt),
-                AvatarPaletteIndex = AvatarPalette.From(agent.Name),
+                IconPath = agent.IconPath,
                 IsInteractionEnabled = true,
                 IsSelected = agent.Id == state.SelectedAgentId,
             };
@@ -158,13 +240,21 @@ public sealed partial class HomePage : Page, IReloadablePage, IDisposable
             _ = _presence.EnsureCheckedAsync(agent);
         }
 
+        // Rows created after the last SizeChanged would otherwise sit at their constructed
+        // density until the window is next resized.
+        ApplyRowDensity(PageRoot.ActualWidth);
+
         Bindings.Update();
     }
 
     private void OnPresenceChanged(string agentId)
     {
+        if (Volatile.Read(ref _disposed) != 0) return;
+
         DispatcherQueue.TryEnqueue(() =>
         {
+            // Unsubscribing cannot retract a callback that was queued just before shutdown.
+            if (Volatile.Read(ref _disposed) != 0) return;
             var item = Agents.FirstOrDefault(agent => agent.Id == agentId);
             if (item is not null) ApplyPresence(item);
         });
@@ -194,8 +284,7 @@ public sealed partial class HomePage : Page, IReloadablePage, IDisposable
             if (agentsState.Agents.All(agent => agent.Id != agentId))
                 throw new InvalidOperationException("This agent is no longer available.");
 
-            agentsState.SelectedAgentId = agentId;
-            await AppServices.Agents.SaveAsync(agentsState, _lifetimeCts.Token);
+            await AppServices.Agents.SetSelectedAgentAsync(agentId, _lifetimeCts.Token);
 
             var sessionsState = await AppServices.Sessions.LoadAsync(_lifetimeCts.Token);
             var recentSession = SessionSelection.FindExisting(
@@ -209,8 +298,7 @@ public sealed partial class HomePage : Page, IReloadablePage, IDisposable
                 return;
             }
 
-            sessionsState.ActiveSessionId = recentSession.Id;
-            await AppServices.Sessions.SaveAsync(sessionsState);
+            await AppServices.Sessions.SetActiveSessionAsync(recentSession.Id, _lifetimeCts.Token);
             Frame.Navigate(typeof(ChatPage));
         }
         catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested)
@@ -235,6 +323,24 @@ public sealed partial class HomePage : Page, IReloadablePage, IDisposable
 
     private void AddAnotherAgent_Click(object sender, RoutedEventArgs e)
         => MainWindow.FromXamlRoot(XamlRoot)?.ShowAddAgentOverlay(sender as FrameworkElement);
+
+    /// <summary>
+    /// The empty state's "How do I get one?" link. Routed through the same
+    /// <see cref="AppServices.UriLauncher"/> the Help menu uses, and reports failure rather than
+    /// doing nothing — a user with no agent has nowhere else to go if this link is silent.
+    /// </summary>
+    private async void EmptyStateDocs_Click(object sender, RoutedEventArgs e)
+    {
+        var launched = await AppServices.UriLauncher.LaunchAsync(new Uri(MainWindow.DocsUrl));
+        if (launched || Volatile.Read(ref _disposed) != 0) return;
+
+        PageErrorBar.Title = LocalizedStrings.Get("HomeDocsOpenFailedTitle", "Couldn't open the docs");
+        PageErrorBar.Message = LocalizedStrings.Format(
+            "HomeDocsOpenFailedBody",
+            "Visit {0} in your browser.",
+            MainWindow.DocsUrl);
+        PageErrorBar.IsOpen = true;
+    }
 
     public async Task RefreshAfterAgentAddedAsync(string agentId)
     {

@@ -79,9 +79,10 @@ public sealed class PreferencesRepository
         AppDatabase.Add(command, "$theme", snapshot.Theme.ToString());
         AppDatabase.Add(command, "$sidebar_visible", snapshot.SidebarVisible ? 1 : 0);
         AppDatabase.Add(command, "$message_font_size", snapshot.MessageFontSize.ToString());
-        // shortcut_overrides_json is a shared column: it holds the keyboard rebinds *and* the
-        // unrelated composer.enterKey entry. Callers must merge into the existing map rather
-        // than replace it wholesale, or one feature's save will wipe the other's setting.
+        // shortcut_overrides_json is a shared extensible map: it holds keyboard rebinds plus
+        // small compatibility preferences such as composer.enterKey and window.closeBehavior.
+        // Callers must merge into the existing map rather than replace it wholesale, or one
+        // feature's save will wipe another feature's setting.
         AppDatabase.Add(command, "$shortcut_overrides_json", JsonSerializer.Serialize(snapshot.ShortcutOverrides, AppJsonContext.Default.DictionaryStringString));
         AppDatabase.Add(command, "$mic", snapshot.MicrophoneDeviceId);
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);

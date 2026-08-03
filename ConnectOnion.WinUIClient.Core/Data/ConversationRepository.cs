@@ -1,10 +1,14 @@
 using System.Diagnostics;
+using System.Text.Json;
 using ConnectOnion.WinUIClient.Models;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ConnectOnion.WinUIClient.Data;
+
+/// <summary>A bounded slice of a conversation, ordered oldest to newest.</summary>
+public sealed record ConversationPage(IReadOnlyList<ChatMessage> Messages, bool HasMoreBefore);
 
 /// <summary>
 /// Row-level message persistence. Each chat bubble is a row in the
@@ -14,6 +18,7 @@ namespace ConnectOnion.WinUIClient.Data;
 /// </summary>
 public sealed partial class ConversationRepository
 {
+    public const int DefaultPageSize = 160;
     private static readonly Action<ILogger, string, string, Exception?> LogDatabaseFailure =
         LoggerMessage.Define<string, string>(LogLevel.Error, new EventId(1, "ConversationDatabaseFailure"),
             "Database operation {Operation} failed for conversation {ConversationId}");
@@ -75,6 +80,87 @@ public sealed partial class ConversationRepository
     }
 
     /// <summary>
+    /// Loads only the newest bounded page of a conversation. Fetching one extra row answers
+    /// whether an older page exists without a separate <c>COUNT(*)</c> scan.
+    /// </summary>
+    public Task<ConversationPage> LoadRecentMessagesAsync(
+        string conversationId,
+        int pageSize = DefaultPageSize,
+        CancellationToken cancellationToken = default)
+        => LoadMessagePageAsync(conversationId, beforeMessageId: null, pageSize, cancellationToken);
+
+    /// <summary>Loads the page immediately before <paramref name="beforeMessageId"/>.</summary>
+    public Task<ConversationPage> LoadMessagesBeforeAsync(
+        string conversationId,
+        long beforeMessageId,
+        int pageSize = DefaultPageSize,
+        CancellationToken cancellationToken = default)
+        => LoadMessagePageAsync(conversationId, beforeMessageId, pageSize, cancellationToken);
+
+    private async Task<ConversationPage> LoadMessagePageAsync(
+        string conversationId,
+        long? beforeMessageId,
+        int pageSize,
+        CancellationToken cancellationToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(pageSize, 1);
+        var messages = new List<ChatMessage>(pageSize + 1);
+
+        await using var connection = await AppDatabase.OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using (var command = connection.CreateCommand())
+        {
+            command.CommandText = beforeMessageId is null
+                ? """
+                    SELECT id, role, content, agent_name,
+                           event_kind, event_key, event_eyebrow, event_title,
+                           event_detail, event_meta, event_args, event_result,
+                           event_status, is_onboarding, created_at
+                    FROM messages
+                    WHERE conversation_id = $conversation_id AND event_kind IS NOT 'approval'
+                    ORDER BY id DESC
+                    LIMIT $limit;
+                    """
+                : """
+                    SELECT id, role, content, agent_name,
+                           event_kind, event_key, event_eyebrow, event_title,
+                           event_detail, event_meta, event_args, event_result,
+                           event_status, is_onboarding, created_at
+                    FROM messages
+                    WHERE conversation_id = $conversation_id
+                      AND event_kind IS NOT 'approval'
+                      AND id < $before_id
+                    ORDER BY id DESC
+                    LIMIT $limit;
+                    """;
+            AppDatabase.Add(command, "$conversation_id", conversationId);
+            AppDatabase.Add(command, "$limit", pageSize + 1);
+            if (beforeMessageId is { } before) AppDatabase.Add(command, "$before_id", before);
+
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                messages.Add(RowToMessage(reader));
+        }
+
+        var hasMore = messages.Count > pageSize;
+        if (hasMore) messages.RemoveAt(messages.Count - 1);
+        messages.Reverse();
+
+        if (messages.Count > 0)
+        {
+            await LoadAttachmentsIntoAsync(
+                    connection,
+                    conversationId,
+                    messages,
+                    minimumMessageId: messages[0].Id,
+                    maximumMessageId: messages[^1].Id,
+                    cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        return new ConversationPage(messages, hasMore);
+    }
+
+    /// <summary>
     /// Attaches each row's attachments to the already-materialized messages, in one pass.
     ///
     /// Separate query rather than a JOIN on the message read: a JOIN would repeat every
@@ -84,7 +170,10 @@ public sealed partial class ConversationRepository
     /// </summary>
     private static async Task LoadAttachmentsIntoAsync(
         SqliteConnection connection, string conversationId, IReadOnlyList<ChatMessage> messages,
-        long? onlyMessageId = null, CancellationToken cancellationToken = default)
+        long? onlyMessageId = null,
+        long? minimumMessageId = null,
+        long? maximumMessageId = null,
+        CancellationToken cancellationToken = default)
     {
         if (messages.Count == 0) return;
 
@@ -94,23 +183,34 @@ public sealed partial class ConversationRepository
         foreach (var m in messages) byId[m.Id] = m;
 
         await using var command = connection.CreateCommand();
-        command.CommandText = onlyMessageId is null
+        command.CommandText = onlyMessageId is not null
             ? """
-                SELECT message_id, id, kind, file_name, mime_type, size_bytes,
-                       local_cache_path, remote_uri, status
-                FROM message_attachments
-                WHERE conversation_id = $conversation_id
-                ORDER BY message_id, rowid;
-                """
-            : """
                 SELECT message_id, id, kind, file_name, mime_type, size_bytes,
                        local_cache_path, remote_uri, status
                 FROM message_attachments
                 WHERE conversation_id = $conversation_id AND message_id = $message_id
                 ORDER BY rowid;
+                """
+            : minimumMessageId is not null && maximumMessageId is not null
+                ? """
+                    SELECT message_id, id, kind, file_name, mime_type, size_bytes,
+                           local_cache_path, remote_uri, status
+                    FROM message_attachments
+                    WHERE conversation_id = $conversation_id
+                      AND message_id BETWEEN $minimum_message_id AND $maximum_message_id
+                    ORDER BY message_id, rowid;
+                    """
+                : """
+                SELECT message_id, id, kind, file_name, mime_type, size_bytes,
+                       local_cache_path, remote_uri, status
+                FROM message_attachments
+                WHERE conversation_id = $conversation_id
+                ORDER BY message_id, rowid;
                 """;
         AppDatabase.Add(command, "$conversation_id", conversationId);
         if (onlyMessageId is { } scopedMessageId) AppDatabase.Add(command, "$message_id", scopedMessageId);
+        if (minimumMessageId is { } minimum) AppDatabase.Add(command, "$minimum_message_id", minimum);
+        if (maximumMessageId is { } maximum) AppDatabase.Add(command, "$maximum_message_id", maximum);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
@@ -204,6 +304,81 @@ public sealed partial class ConversationRepository
     }
 
     /// <summary>
+    /// Finds conversations whose transcript contains <paramref name="query"/>, returning one
+    /// excerpt per conversation (the most recent matching message).
+    ///
+    /// <para>This is the only path in the app that searches what was actually <i>said</i>. The
+    /// sidebar's conversation search matches titles and previews, and Ctrl+F only searches the
+    /// page already open, so "find the chat where we discussed the migration" had no answer
+    /// unless those words happened to be in the first message that became the title.</para>
+    ///
+    /// <para>Restricted to <c>user</c> and <c>agent</c> rows on purpose: the same table holds
+    /// tool arguments, tool output and process narration, and matching those would return
+    /// conversations on the strength of a file path scrolling past inside a tool card. Ordering by
+    /// <c>created_at DESC</c> before the group means the excerpt is the newest hit, and
+    /// <paramref name="limit"/> bounds the scan on a large history.</para>
+    /// </summary>
+    /// <returns>Conversation id → excerpt. Empty on a blank query or on failure; this backs a
+    /// search box, so a broken query degrades to "no content matches" rather than an error.</returns>
+    public async Task<IReadOnlyDictionary<string, string>> SearchMessageContentAsync(
+        string query,
+        int limit = 200,
+        CancellationToken ct = default)
+    {
+        var results = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (string.IsNullOrWhiteSpace(query)) return results;
+        var normalizedQuery = query.Trim();
+        // FTS5's trigram tokenizer needs at least three characters. Shorter input still filters
+        // the in-memory session/agent catalog instantly, but does not justify a transcript scan.
+        if (normalizedQuery.Length < 3) return results;
+
+        try
+        {
+            await using var connection = await AppDatabase.OpenAsync(ct).ConfigureAwait(false);
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                WITH ranked AS (
+                    SELECT search.conversation_id,
+                           messages.content,
+                           messages.created_at,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY search.conversation_id
+                               ORDER BY messages.created_at DESC, messages.id DESC
+                           ) AS rank_in_conversation
+                    FROM message_search AS search
+                    JOIN messages ON messages.conversation_id = search.conversation_id
+                                 AND messages.id = search.message_id
+                    WHERE message_search MATCH $match
+                )
+                SELECT conversation_id, content
+                FROM ranked
+                WHERE rank_in_conversation = 1
+                ORDER BY created_at DESC
+                LIMIT $limit;
+                """;
+            AppDatabase.Add(command, "$match", $"\"{normalizedQuery.Replace("\"", "\"\"")}\"");
+            AppDatabase.Add(command, "$limit", limit);
+
+            await using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
+            while (await reader.ReadAsync(ct).ConfigureAwait(false))
+            {
+                results[reader.GetString(0)] = reader.GetString(1);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // The user typed another character; this query's results are already stale.
+            return results;
+        }
+        catch (Exception ex)
+        {
+            LogFailure(nameof(SearchMessageContentAsync), query, ex);
+        }
+
+        return results;
+    }
+
+    /// <summary>
     /// The conversation's most recent agent bubble (with its attachments), or null if it has
     /// none yet. This is the only pre-existing row a turn's projection can still touch — an
     /// <c>agent_image</c> event hangs its attachment on the last agent bubble, and the final
@@ -243,6 +418,52 @@ public sealed partial class ConversationRepository
             LogFailure(nameof(LoadLastMessageAsync), conversationId, ex);
             return null;
         }
+    }
+
+    /// <summary>
+    /// Loads the newest visible bubble for every requested conversation in one connection and
+    /// one SQL statement. This is the sidebar preview path; issuing one query per row makes a
+    /// navigation refresh scale with the number of conversations.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<string, ChatMessage>> LoadLastMessagesAsync(
+        IReadOnlyCollection<string> conversationIds,
+        CancellationToken cancellationToken = default)
+    {
+        var results = new Dictionary<string, ChatMessage>(StringComparer.Ordinal);
+        if (conversationIds.Count == 0) return results;
+
+        await using var connection = await AppDatabase.OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            WITH requested(conversation_id) AS (
+                SELECT value FROM json_each($conversation_ids)
+            )
+            SELECT id, role, content, agent_name,
+                   event_kind, event_key, event_eyebrow, event_title,
+                   event_detail, event_meta, event_args, event_result,
+                   event_status, is_onboarding, created_at, conversation_id
+            FROM messages AS candidate
+            JOIN requested USING (conversation_id)
+            WHERE event_kind IS NOT 'approval'
+              AND id = (
+                  SELECT MAX(newest.id)
+                  FROM messages AS newest
+                  WHERE newest.conversation_id = candidate.conversation_id
+                    AND newest.event_kind IS NOT 'approval'
+            );
+            """;
+        var ids = conversationIds.Distinct(StringComparer.Ordinal).ToList();
+        AppDatabase.Add(
+            command,
+            "$conversation_ids",
+            JsonSerializer.Serialize(ids, AppJsonContext.Default.ListString));
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            results[reader.GetString(15)] = RowToMessage(reader);
+        }
+        return results;
     }
 
     public async Task<ChatMessage?> LoadLastAgentMessageAsync(string conversationId)
@@ -335,6 +556,10 @@ public sealed partial class ConversationRepository
             // Best-effort: keep the live conversation working if the write fails.
             LogFailure(nameof(UpsertMessagesAsync), conversationId, ex);
         }
+        // The sidebar draws each row's preview from the newest message, so a transcript write is
+        // one of the things StorageRevision has to account for. Bumped outside the try: a failed
+        // write leaves nothing new to read, so there is no cache to invalidate.
+        StorageRevision.Bump();
     }
 
     /// <summary>

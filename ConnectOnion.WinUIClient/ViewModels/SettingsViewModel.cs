@@ -22,36 +22,40 @@ namespace ConnectOnion.WinUIClient.ViewModels;
 public sealed partial class SettingsViewModel : Common.ObservableObject
 {
     private readonly PreferencesRepository _repo;
+    private readonly TextScaleService _textScale;
     private PreferencesSnapshot _prefs = new();
     /// <summary>False until <see cref="LoadAsync"/> finishes. Gates every save, so the load's
     /// own assignments cannot write the freshly-read values straight back.</summary>
     private bool _loaded;
 
     public ThemeMode Theme => _prefs.Theme;
+    public InterfaceTextSize InterfaceTextSize => _prefs.InterfaceTextSize;
     public MessageFontSize MessageFontSize => _prefs.MessageFontSize;
     public bool EnterToSend => _prefs.EnterToSend;
     public string MicrophoneDeviceId => _prefs.MicrophoneDeviceId;
+    public WindowCloseBehavior CloseBehavior => _prefs.CloseBehavior;
 
     public IReadOnlyList<MicrophoneItem> Microphones { get; private set; } = [];
 
     // -1 default seeded in the ctor (partial-property declarations can't carry an initializer);
     // it fires the hook while _loaded is still false, so it no-ops.
-    public SettingsViewModel(PreferencesRepository preferences)
+    public SettingsViewModel(PreferencesRepository preferences, TextScaleService textScale)
     {
         _repo = preferences;
+        _textScale = textScale;
         SelectedMicIndex = -1;
     }
 
     [ObservableProperty]
     public partial int SelectedMicIndex { get; set; }
 
-    // Only a user-driven change persists a new device; the initial selection in LoadAsync is set
-    // while _loaded is still false, so this hook no-ops for it (the load happens before _loaded is
-    // flipped, precisely so restoring the saved index doesn't re-save it).
-    partial void OnSelectedMicIndexChanged(int value)
+    /// <summary>Updates the selected row and persists it as one observable operation so the page
+    /// can report a failed save instead of losing an exception from a fire-and-forget hook.</summary>
+    public async Task SetSelectedMicrophoneAsync(int value)
     {
+        SelectedMicIndex = value;
         if (_loaded && value >= 0 && value < Microphones.Count)
-            _ = SetMicrophoneAsync(Microphones[value].DeviceId);
+            await SetMicrophoneAsync(Microphones[value].DeviceId);
     }
 
     public async Task LoadAsync()
@@ -75,6 +79,7 @@ public sealed partial class SettingsViewModel : Common.ObservableObject
         // Manual notifications: these are computed from _prefs, which was replaced wholesale
         // above, so nothing raised a change for them.
         OnPropertyChanged(nameof(Theme));
+        OnPropertyChanged(nameof(InterfaceTextSize));
         OnPropertyChanged(nameof(MessageFontSize));
         OnPropertyChanged(nameof(EnterToSend));
         OnPropertyChanged(nameof(Microphones));
@@ -105,12 +110,35 @@ public sealed partial class SettingsViewModel : Common.ObservableObject
         await _repo.SaveAsync(_prefs);
     }
 
+    public async Task SetInterfaceTextSizeAsync(InterfaceTextSize size)
+    {
+        if (!_loaded || _prefs.InterfaceTextSize == size) return;
+        _prefs.InterfaceTextSize = size;
+        _textScale.ApplyInterfaceTextSize(size);
+        OnPropertyChanged(nameof(InterfaceTextSize));
+        await _repo.SaveAsync(_prefs);
+    }
+
     public async Task SetEnterToSendAsync(bool enterToSend)
     {
         if (!_loaded || _prefs.EnterToSend == enterToSend) return;
         _prefs.EnterToSend = enterToSend;
         OnPropertyChanged(nameof(EnterToSend));
         await _repo.SaveAsync(_prefs);
+    }
+
+    /// <summary>
+    /// Changes what the title-bar close button does. <see cref="MainWindow"/> caches this value
+    /// after its first read, so it is told to re-read rather than left holding the old one until
+    /// the next launch.
+    /// </summary>
+    public async Task SetCloseBehaviorAsync(WindowCloseBehavior behavior)
+    {
+        if (!_loaded || _prefs.CloseBehavior == behavior) return;
+        _prefs.CloseBehavior = behavior;
+        OnPropertyChanged(nameof(CloseBehavior));
+        await _repo.SaveAsync(_prefs);
+        MainWindow.InvalidateCloseBehaviorCache();
     }
 
     private async Task SetMicrophoneAsync(string deviceId)

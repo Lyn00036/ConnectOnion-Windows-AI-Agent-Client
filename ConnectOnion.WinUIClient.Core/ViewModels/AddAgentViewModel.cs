@@ -22,7 +22,7 @@ public enum AddAgentConnectionState
 /// </summary>
 public sealed partial class AddAgentViewModel : Common.ObservableObject
 {
-    public const string ValidationError = "Enter a valid agent address or WebSocket URL.";
+    public const string ValidationError = "Enter a valid agent address or HTTP URL.";
 
     private readonly AgentRepository _agents;
     private readonly ConnectionTester _connectionTester;
@@ -165,7 +165,21 @@ public sealed partial class AddAgentViewModel : Common.ObservableObject
         }
     }
 
-    public async Task<AgentConfig?> AddAsync(CancellationToken cancellationToken)
+    /// <param name="commitIcon">
+    /// Optional hook invoked with the new agent's id once it exists but before anything is
+    /// written, returning the relative icon path to store (or null for none). It takes this shape
+    /// because the icon is committed under a filename derived from an id that only exists here,
+    /// yet the result has to land in the <i>same</i> save as the agent — a second write would open
+    /// a window where a concurrent agent-list save silently drops the icon. Keeping it a delegate
+    /// also keeps this view model free of the picker and file APIs, which are WinUI-only.
+    ///
+    /// <para>The hook owns its own failures: returning null means "no icon", and the agent is
+    /// still created. An icon is optional decoration and must not cost the user the agent they
+    /// were adding.</para>
+    /// </param>
+    public async Task<AgentConfig?> AddAsync(
+        CancellationToken cancellationToken,
+        Func<string, CancellationToken, Task<string?>>? commitIcon = null)
     {
         if (!CanAdd || IsAdding ||
             !TryParseInput(Input, out var address, out var directUrl))
@@ -196,6 +210,12 @@ public sealed partial class AddAgentViewModel : Common.ObservableObject
                 Address = address,
                 DirectUrl = string.IsNullOrWhiteSpace(directUrl) ? null : directUrl,
             };
+
+            if (commitIcon is not null)
+            {
+                agent.IconPath = await commitIcon(agent.Id, cancellationToken);
+            }
+
             agentsState.Agents.Add(agent);
             agentsState.SelectedAgentId = agent.Id;
             await _agents.SaveAsync(agentsState, cancellationToken);
@@ -268,7 +288,7 @@ public sealed partial class AddAgentViewModel : Common.ObservableObject
         address = "";
         directUrl = input;
         if (!Uri.TryCreate(input, UriKind.Absolute, out var uri)) return false;
-        return uri.Scheme is "ws" or "wss" && !string.IsNullOrWhiteSpace(uri.Host);
+        return uri.Scheme is "http" or "https" && !string.IsNullOrWhiteSpace(uri.Host);
     }
 
     private static string DuplicateMessage(AgentEndpointDuplicate duplicate) => duplicate switch

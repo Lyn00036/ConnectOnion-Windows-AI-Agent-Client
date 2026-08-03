@@ -5,6 +5,7 @@
     xmlns:ic="using:FluentIcons.WinUI"
     HorizontalAlignment="Stretch"
     VerticalAlignment="Stretch"
+    AutomationProperties.AutomationId="AboutOverlay"
     Visibility="Collapsed"
     IsHitTestVisible="False"
     IsTabStop="False">
@@ -41,11 +42,11 @@
                     <Image Source="ms-appx:///Assets/icon.png" Width="20" Height="20"
                            VerticalAlignment="Center"
                            AutomationProperties.AccessibilityView="Raw" />
-                    <TextBlock Grid.Column="1" Text="About ConnectOnion"
+                    <TextBlock x:Uid="AboutTitle" Grid.Column="1" Text="About ConnectOnion"
                                Style="{StaticResource BodyStrongTextBlockStyle}"
                                TextTrimming="CharacterEllipsis"
                                Foreground="{ThemeResource TextPrimaryBrush}" VerticalAlignment="Center" />
-                    <Button Grid.Column="2" TabIndex="1" Style="{StaticResource AboutCloseButtonStyle}" Click="CloseButton_Click"
+                    <Button x:Uid="AboutClose" Grid.Column="2" TabIndex="1" Style="{StaticResource AboutCloseButtonStyle}" Click="CloseButton_Click"
                             AutomationProperties.Name="Close About ConnectOnion" ToolTipService.ToolTip="Close (Esc)">
                         <ic:FluentIcon Icon="Dismiss" IconVariant="Regular" IconSize="Size20"
                                        Foreground="{ThemeResource TextSecondaryBrush}" />
@@ -58,7 +59,7 @@
                               HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled"
                               VerticalScrollMode="Enabled" VerticalScrollBarVisibility="Auto">
                     <StackPanel HorizontalAlignment="Center" Spacing="6">
-                        <Image Source="ms-appx:///Assets/icon.png" Width="72" Height="72"
+                        <Image x:Uid="AboutLogo" Source="ms-appx:///Assets/icon.png" Width="72" Height="72"
                                Margin="0,16,0,10" HorizontalAlignment="Center"
                                AutomationProperties.Name="ConnectOnion logo" />
 
@@ -66,7 +67,7 @@
                                    HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"
                                    Foreground="{ThemeResource TextPrimaryBrush}" />
 
-                        <TextBlock Text="Native access to ConnectOnion AI agents"
+                        <TextBlock x:Uid="AboutTagline" Text="Native access to ConnectOnion AI agents"
                                    HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"
                                    Foreground="{ThemeResource TextSecondaryBrush}" />
 
@@ -87,7 +88,7 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <Border Height="1" Background="{ThemeResource DividerBrush}" />
-                    <Button x:Name="OkButton" Grid.Row="1" TabIndex="0"
+                    <Button x:Uid="AboutOk" x:Name="OkButton" Grid.Row="1" TabIndex="0"
                             AutomationProperties.AutomationId="AboutOkButton"
                             Style="{StaticResource AccentButtonStyle}"
                             Content="OK" MinWidth="88" Margin="16,14,16,16"

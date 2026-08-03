@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Linq;
 using System.Net.Http;
 using System.Text.RegularExpressions;
@@ -34,8 +34,8 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     private static readonly Action<ILogger, string?, Exception?> LogSendFailure =
         LoggerMessage.Define<string?>(LogLevel.Error, new EventId(1, "ChatSendFailure"),
             "Send failed for session {SessionId}");
-    private static readonly Regex GenericTitle = new(@"^Conversation \d+$", RegexOptions.Compiled);
-    private static readonly Regex Whitespace = new(@"\s+", RegexOptions.Compiled);
+    // Title derivation moved to SessionSummary.TryApplyTitleFromPrompt, which keys off the
+    // stored HasCustomTitle flag instead of pattern-matching the placeholder's English text.
 
     private readonly DispatcherQueue _dispatcher = DispatcherQueue.GetForCurrentThread();
 
@@ -64,7 +64,11 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     private ConversationRunSnapshot? _pendingSnapshot;
     private int _snapshotDrainQueued;
 
-    public ObservableCollection<ChatMessage> Messages { get; } = new();
+    public ObservableRangeCollection<ChatMessage> Messages { get; } = new();
+    private bool _hasMoreHistory;
+    private int _olderHistoryLoadActive;
+
+    public bool HasMoreHistory => _hasMoreHistory;
 
     private readonly PreferencesRepository _preferences;
     private readonly AgentRepository _agents;
@@ -98,7 +102,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
 
         // Partial-property [ObservableProperty] declarations can't carry initializers, so the
         // non-default seeds live here.
-        HeaderText = "Chat";
+        HeaderText = LocalizedStrings.Get("ChatHeader", "Chat");
         MessageFontSize = 14;
         EnterToSend = true;
         CurrentMode = AgentModes.Safe;
@@ -184,6 +188,8 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         _liveRunId = null;
         _appliedEventCount = 0;
         _historyLoadedRunId = null;
+        _runHasVisibleFeedback = false;
+        RemoveTurnProgress();
     }
 
     /// <summary>Full teardown: the run subscription plus the shared presence hook. For genuine
@@ -228,13 +234,22 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanSend))]
     [NotifyPropertyChangedFor(nameof(CanReconnect))]
+    [NotifyPropertyChangedFor(nameof(IsComposerBusy))]
     public partial bool IsProcessing { get; private set; }
 
     // Hooked here rather than at the two places that start a turn: this is the one property that
     // *means* "a turn is running", so a third start path added later gets the reset for free.
     partial void OnIsProcessingChanged(bool value)
     {
-        if (value) ResetLiveUsage();
+        if (value)
+        {
+            ResetLiveUsage();
+            EnsureTurnProgress();
+        }
+        else
+        {
+            RemoveTurnProgress();
+        }
     }
 
     /// <summary>True only after INPUT reached the socket and before OUTPUT/ERROR.</summary>
@@ -248,8 +263,9 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
 
     // Sending is gated on the agent being confirmed online — matching the "green dot means
     // you can chat" model — not on holding a live socket (the transport connects lazily).
-    public bool CanSend => HasAgent && _session is not null && IsOnline && !IsProcessing && !IsConnecting;
+    public bool CanSend => HasAgent && _session is not null && IsOnline && !IsConnecting;
     public bool CanReconnect => HasAgent && !IsProcessing && !IsConnecting && Presence != AgentPresence.Checking;
+    public bool IsComposerBusy => IsProcessing;
 
     /// <summary>True when the conversation's last run failed and is still retryable (only within
     /// the same app session — a restart clears the registry's retryable state). Drives the
@@ -273,8 +289,25 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         : Common.FriendlyAgentName.From(_agent.Name);
 
     public string SelectedAgentInitial => NameInitial.From(_agent?.Name);
-    public int SelectedAgentAvatarPaletteIndex => AvatarPalette.From(_agent?.Name);
+    public string? SelectedAgentIconPath => _agent?.IconPath;
     public string SessionShortId => _session is null ? "" : _session.Id[..Math.Min(8, _session.Id.Length)];
+    public string SessionUpdatedTimeText
+    {
+        get
+        {
+            if (_session is null ||
+                !DateTimeOffset.TryParse(
+                    _session.UpdatedAt,
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal,
+                    out var updatedAt))
+            {
+                return "";
+            }
+
+            return updatedAt.ToLocalTime().ToString("g", CultureInfo.CurrentCulture);
+        }
+    }
     public string? SessionId => _session?.Id;
     public string? AgentId => _agent?.Id;
 
@@ -291,8 +324,8 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     public partial string HeaderText { get; private set; }
 
     /// <summary>
-    /// The conversation socket's current phase, shown under the composer. Derived rather than
-    /// stored on the connection: the three facts that decide it arrive from three places — run
+    /// The conversation socket's current phase, narrated by the transient progress row while a
+    /// turn is live. It is derived from three sources rather than stored on the connection: run
     /// snapshots (Connecting/Running), the reconnect markers the session manager publishes into
     /// the run's event stream (Reconnecting), and presence plus the connection registry for the
     /// idle baseline. <see cref="RefreshConnectionPhase"/> is the single place they are combined.
@@ -301,22 +334,30 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     [NotifyPropertyChangedFor(nameof(ConnectionPhaseText))]
     public partial ConnectionPhase ConnectionPhase { get; private set; }
 
+    partial void OnConnectionPhaseChanged(ConnectionPhase value) => RefreshTurnProgressText();
+
     /// <summary>Attempt number behind a <see cref="Models.ConnectionPhase.Reconnecting"/> phase,
     /// so the label can count down the tries left before the turn is given up on.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ConnectionPhaseText))]
     public partial int ReconnectAttempt { get; private set; }
 
+    partial void OnReconnectAttemptChanged(int value) => RefreshTurnProgressText();
+
     public string ConnectionPhaseText => ConnectionPhase switch
     {
-        Models.ConnectionPhase.Connecting => "Connecting",
-        Models.ConnectionPhase.Connected => "Ready",
-        Models.ConnectionPhase.Running => "Working",
-        Models.ConnectionPhase.Waiting => "Waiting for approval",
+        Models.ConnectionPhase.Connecting => LocalizedStrings.Get("PresenceConnecting", "Connecting"),
+        Models.ConnectionPhase.Connected => LocalizedStrings.Get("ConnectionReady", "Ready"),
+        Models.ConnectionPhase.Running => LocalizedStrings.Get("ConnectionWorking", "Working"),
+        Models.ConnectionPhase.Waiting => LocalizedStrings.Get("ConnectionWaitingApproval", "Waiting for approval"),
         Models.ConnectionPhase.Reconnecting =>
-            $"Reconnecting {ReconnectAttempt}/{ReconnectPolicy.MaxAttempts}",
-        Models.ConnectionPhase.Offline => "Offline",
-        _ => "Ready",
+            LocalizedStrings.Format(
+                "ConnectionReconnecting",
+                "Reconnecting {0}/{1}",
+                ReconnectAttempt,
+                ReconnectPolicy.MaxAttempts),
+        Models.ConnectionPhase.Offline => LocalizedStrings.Get("PresenceOffline", "Offline"),
+        _ => LocalizedStrings.Get("ConnectionReady", "Ready"),
     };
 
     /// <summary>
@@ -366,12 +407,19 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
 
     // ---- Stop ----
 
-    /// <summary>A graceful stop was sent and the current iteration is still finishing.</summary>
+    /// <summary>
+    /// A graceful stop was requested and the underlying run has not reached OUTPUT/ERROR yet.
+    /// The composer keeps the stop slot visible but disabled so the request has an explicit,
+    /// stable pending state and cannot be submitted twice.
+    /// </summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(StopButtonTooltip))]
+    [NotifyPropertyChangedFor(nameof(IsComposerBusy))]
     public partial bool IsStopping { get; private set; }
 
-    public string StopButtonTooltip => IsStopping ? "Stopping..." : "Stop";
+    partial void OnIsStoppingChanged(bool value)
+    {
+        if (value) RemoveTurnProgress();
+    }
 
     /// <summary>
     /// Loads (or re-loads) whichever conversation is currently active. Re-entrant: switching
@@ -398,6 +446,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         IsProcessing = false;
         CanStop = false;
         IsStopping = false;
+        _optimisticStopRunId = null;
         // Cleared here rather than only in RestoreConversationAsync, so the early returns below
         // (no agent, no session) can't leave the previous conversation's bubbles on screen.
         Messages.Clear();
@@ -415,7 +464,9 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
 
         if (_agent is null)
         {
-            HeaderText = "Select an agent to start chatting";
+            HeaderText = LocalizedStrings.Get(
+                "ChatSelectAgent",
+                "Select an agent to start chatting");
             RaiseHeaderProperties();
             return;
         }
@@ -569,7 +620,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         }
 
         _sessionsState.ActiveSessionId = session.Id;
-        await _sessions.SaveAsync(_sessionsState);
+        await _sessions.SetActiveSessionAsync(session.Id, cancellationToken);
         return session;
     }
 
@@ -589,27 +640,31 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
             // here as on a database load. In particular this clears a live-only embedded
             // approval object that a just-completed Tool Activity may still reference.
             var cachedMessages = ToolActivityMigration.UpgradeLegacyToolMessages(cached.Messages);
-            Messages.Clear();
-            foreach (var message in cachedMessages) Messages.Add(message);
+            StampMessageFont(cachedMessages);
+            Messages.ReplaceAll(cachedMessages);
+            _hasMoreHistory = cached.HasMoreBefore;
             _createdAt = cached.CreatedAt;
             ResetIdCounter();
-            ConversationCache.Store(_session.Id, cached with { Messages = cachedMessages.ToList() });
+            ConversationCache.Store(
+                _session.Id,
+                cached with { Messages = cachedMessages.ToList(), HasMoreBefore = _hasMoreHistory });
             return;
         }
 
-        var loaded = await _conversations.LoadMessagesAsync(_session.Id, cancellationToken);
-        var messages = ToolActivityMigration.UpgradeLegacyToolMessages(loaded);
+        var loaded = await _conversations.LoadRecentMessagesAsync(
+            _session.Id, ConversationRepository.DefaultPageSize, cancellationToken);
+        var messages = ToolActivityMigration.UpgradeLegacyToolMessages(loaded.Messages);
         // A newer switch already owns the list — dropping this history is the whole point.
         if (generation != _loadGeneration) return;
 
-        Messages.Clear();
+        StampMessageFont(messages);
+        Messages.ReplaceAll(messages);
+        _hasMoreHistory = loaded.HasMoreBefore;
         _createdAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
         if (messages.Count > 0)
         {
-            foreach (var message in messages) Messages.Add(message);
-            // The whole conversation is loaded, so the first bubble is genuinely the start.
-            if (messages[0].Id > 0) _createdAt = messages[0].Id;
+            if (!_hasMoreHistory && messages[0].Id > 0) _createdAt = messages[0].Id;
         }
         ResetIdCounter();
 
@@ -645,15 +700,54 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
 
     private long NextId() => _nextId++;
 
+    /// <summary>Prepends one bounded page of older history. Concurrent scroll events coalesce.</summary>
+    public async Task<int> LoadOlderMessagesAsync(CancellationToken cancellationToken = default)
+    {
+        if (!_hasMoreHistory || _session is null || Messages.Count == 0) return 0;
+        if (Interlocked.Exchange(ref _olderHistoryLoadActive, 1) != 0) return 0;
+
+        try
+        {
+            var sessionId = _session.Id;
+            var generation = _loadGeneration;
+            var beforeId = Messages[0].Id;
+            var page = await _conversations.LoadMessagesBeforeAsync(
+                sessionId, beforeId, ConversationRepository.DefaultPageSize, cancellationToken);
+            if (generation != _loadGeneration
+                || !string.Equals(_session?.Id, sessionId, StringComparison.Ordinal))
+            {
+                return 0;
+            }
+            var older = ToolActivityMigration.UpgradeLegacyToolMessages(page.Messages);
+            if (older.Count == 0)
+            {
+                _hasMoreHistory = false;
+                return 0;
+            }
+
+            StampMessageFont(older);
+            Messages.InsertRange(0, older);
+            _hasMoreHistory = page.HasMoreBefore;
+            if (!_hasMoreHistory && Messages[0].Id > 0) _createdAt = Messages[0].Id;
+            if (_runManager.GetActiveRun(sessionId) is null) StoreSessionCache();
+            return older.Count;
+        }
+        finally
+        {
+            Volatile.Write(ref _olderHistoryLoadActive, 0);
+        }
+    }
+
+    private void StampMessageFont(IEnumerable<ChatMessage> messages)
+    {
+        foreach (var message in messages) message.MessageFontSize = MessageFontSize;
+    }
+
     private void TouchSession(string prompt)
     {
         if (_session is null) return;
 
-        if (GenericTitle.IsMatch(_session.Title) && !string.IsNullOrWhiteSpace(prompt))
-        {
-            var title = Whitespace.Replace(prompt.Trim(), " ");
-            _session.Title = title.Length > 48 ? title[..48] : title;
-        }
+        _session.TryApplyTitleFromPrompt(prompt);
         _session.UpdatedAt = DateTime.UtcNow.ToString("o");
         HeaderText = $"{_agent!.DisplayName} - {_session.Title}";
         RaiseHeaderProperties();
@@ -666,8 +760,9 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         OnPropertyChanged(nameof(SelectedAgentName));
         OnPropertyChanged(nameof(SelectedAgentDisplayName));
         OnPropertyChanged(nameof(SelectedAgentInitial));
-        OnPropertyChanged(nameof(SelectedAgentAvatarPaletteIndex));
+        OnPropertyChanged(nameof(SelectedAgentIconPath));
         OnPropertyChanged(nameof(SessionShortId));
+        OnPropertyChanged(nameof(SessionUpdatedTimeText));
     }
 
     protected override void OnPresenceRaised()
@@ -690,7 +785,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         if (_session is null || _agent is null) return;
         ConversationCache.Store(
             _session.Id,
-            new ConversationCache.Entry(_agent, _session, Messages.ToList(), _createdAt));
+            new ConversationCache.Entry(_agent, _session, Messages.ToList(), _createdAt, _hasMoreHistory));
     }
 
 

@@ -5,7 +5,9 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using ConnectOnion.WinUIClient.Models;
+using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Services;
 using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Views;
@@ -38,11 +40,14 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     public ObservableCollection<ShellSessionItem> PinnedSessions { get; } = new();
 
     public event Action<Type, bool>? NavigationRequested;
-    public event Action? NewChatRequested;
+    /// <summary>
+    /// Requests a new top-level navigation root after destructive state changes. Unlike an
+    /// ordinary navigation, the shell clears Back/Forward history so an entity-backed page that
+    /// has just become invalid cannot be reopened with the title-bar arrows.
+    /// </summary>
+    public event Action<Type>? NavigationResetRequested;
     public event Action<FrameworkElement>? SettingsRequested;
-    public event Action<FrameworkElement>? KeyboardShortcutsRequested;
-    public event Action<FrameworkElement>? AboutRequested;
-    public event Action? ExitRequested;
+    public event Action<FrameworkElement>? SessionSearchRequested;
     /// <summary>The sidebar click means "I want the
     /// add-agent form open", not merely "show me the landing page" — the shell answers it by
     /// opening the overlay without navigating. The button is passed back for focus restoration.</summary>
@@ -65,7 +70,16 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     private bool _hasExpansionState;
     private bool _loadedPersistedExpansionState;
     private bool _isPinnedExpanded = true;
-    private string _newChatTargetText = "Start a new chat";
+    private int? _lastRenderSignature;
+    /// <summary>The <see cref="Data.StorageRevision"/> and page the last full load was made
+    /// against, so an unchanged refresh can return without touching SQLite at all.</summary>
+    private long _lastLoadedRevision = -1;
+    private Type? _lastLoadedPageType;
+    /// <summary>The agents the last load saw, kept only so the skip path above can still keep the
+    /// presence probes running — those are TTL-based and must not stall just because the tree
+    /// did not need redrawing.</summary>
+    private IReadOnlyList<AgentConfig> _knownAgents = Array.Empty<AgentConfig>();
+    private int _shutdown;
 
     public int OnlineAgentCount
     {
@@ -76,30 +90,28 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
             _onlineAgentCount = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(OnlineAgentCountText));
+            OnPropertyChanged(nameof(OnlineAgentStatusText));
             OnPropertyChanged(nameof(HasOnlineAgents));
         }
     }
 
+    public string AppVersionBadgeText => $"v{AppVersionService.DisplayVersion}";
     public bool HasOnlineAgents => OnlineAgentCount > 0;
     public string OnlineAgentCountText => OnlineAgentCount switch
     {
-        0 => "No agents online",
-        1 => "1 agent online",
-        _ => $"{OnlineAgentCount} agents online",
+        0 => LocalizedStrings.Get("AgentCountNoneOnline", "No agents online"),
+        1 => LocalizedStrings.Get("AgentCountOneOnline", "1 agent online"),
+        _ => LocalizedStrings.Format(
+            "AgentCountOnline",
+            "{0} agents online",
+            OnlineAgentCount),
     };
+    public string OnlineAgentStatusText => OnlineAgentCountText.ToUpper(CultureInfo.CurrentUICulture);
     public bool HasPinnedSessions => PinnedSessions.Count > 0;
     public double PinnedChevronAngle => IsPinnedExpanded ? 0 : 270;
-    public string NewChatTargetText
-    {
-        get => _newChatTargetText;
-        private set
-        {
-            if (_newChatTargetText == value) return;
-            _newChatTargetText = value;
-            OnPropertyChanged();
-        }
-    }
-
+    public string PinnedToggleAccessibilityName => IsPinnedExpanded
+        ? LocalizedStrings.Get("SidebarCollapsePinnedChats", "Collapse pinned shortcuts")
+        : LocalizedStrings.Get("SidebarExpandPinnedChats", "Expand pinned shortcuts");
     public bool IsPinnedExpanded
     {
         get => _isPinnedExpanded;
@@ -109,6 +121,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
             _isPinnedExpanded = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(PinnedChevronAngle));
+            OnPropertyChanged(nameof(PinnedToggleAccessibilityName));
         }
     }
 
@@ -128,6 +141,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
 
     private void OnLoadedAttachPresence(object sender, RoutedEventArgs e)
     {
+        if (Volatile.Read(ref _shutdown) != 0) return;
         _presence.PresenceChanged -= OnPresenceChanged;
         _presence.PresenceChanged += OnPresenceChanged;
     }
@@ -135,22 +149,74 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     private void OnUnloadedDetachPresence(object sender, RoutedEventArgs e)
         => _presence.PresenceChanged -= OnPresenceChanged;
 
+    /// <summary>
+    /// Synchronously detaches every app-level callback before the window's native XAML tree is
+    /// destroyed. Unloaded is not guaranteed on application exit, and removing the event alone
+    /// cannot retract a presence update that is already queued on the dispatcher.
+    /// </summary>
+    public void Shutdown()
+    {
+        if (Interlocked.Exchange(ref _shutdown, 1) != 0) return;
+        _presence.PresenceChanged -= OnPresenceChanged;
+        Loaded -= OnLoadedAttachPresence;
+        Unloaded -= OnUnloadedDetachPresence;
+    }
+
     public void SetCurrentPage(Type? pageType)
-        => _currentPageType = pageType;
+    {
+        _currentPageType = pageType;
+        // Agent library is a navigation destination, so it carries a selected state like any
+        // other. This is the only thing that can change it — selection is derived purely from
+        // which page the frame is on, never stored.
+        OnPropertyChanged(nameof(IsAgentLibrarySelected));
+    }
+
+    /// <summary>
+    /// Whether the shell is currently *on* the agent library, which is what the nav button paints
+    /// its selected background and accent rail from.
+    ///
+    /// <para>Deliberately not symmetric with <see cref="IsAgentSelected"/>: that one asks "is this
+    /// agent the chosen one", which is only meaningful on a page about an agent. This asks which
+    /// destination the frame is showing, so exactly one nav row is ever lit.</para>
+    /// </summary>
+    public bool IsAgentLibrarySelected => _currentPageType == typeof(HomePage);
+
+    public void FocusFirstNavigation()
+        => AgentsNavigationButton.Focus(FocusState.Programmatic);
 
     /// <summary>Rebuilds the entire tree from storage. Called after anything that could change
     /// what the sidebar shows — agent added/renamed/deleted, conversation created/pinned/removed,
     /// navigation. Cheap enough to be unconditional at this scale (tens of rows).</summary>
     public async System.Threading.Tasks.Task RefreshAsync()
     {
+        if (Volatile.Read(ref _shutdown) != 0) return;
+
+        // Cheapest possible short-circuit, and it has to come first. The render-signature guard
+        // further down avoids rebuilding the tree, but it is computed *from* the data — so a
+        // navigation that changed nothing still cost a full agent-table read, a full session-table
+        // read and a batch of preview queries before it could conclude there was nothing to do.
+        // This method runs on every navigation, so that was the common case, not the rare one.
+        //
+        // The comparison also carries the current page type, because row selection is
+        // page-dependent (see IsAgentSelected): moving between Home and an agent page changes what
+        // the tree should render without changing a byte of storage.
+        var revision = Data.StorageRevision.Current;
+        if (_lastLoadedRevision == revision
+            && _lastLoadedPageType == _currentPageType
+            && _lastRenderSignature is not null)
+        {
+            ProbeAgentPresence();
+            return;
+        }
+
         var agentsState = await AppServices.Agents.LoadAsync();
+        if (Volatile.Read(ref _shutdown) != 0) return;
         var sessionsState = await AppServices.Sessions.LoadAsync();
-        var newChatAgent = agentsState.Agents.FirstOrDefault(agent => agent.Id == agentsState.SelectedAgentId)
-            ?? agentsState.Agents.FirstOrDefault();
-        NewChatTargetText = newChatAgent is null
-            ? "Add an agent to start a new chat"
-            : $"Start a new chat with {newChatAgent.Name}";
+        if (Volatile.Read(ref _shutdown) != 0) return;
         await RefreshSessionPreviewCacheAsync(sessionsState.Sessions);
+        if (Volatile.Read(ref _shutdown) != 0) return;
+        _lastLoadedRevision = revision;
+        _lastLoadedPageType = _currentPageType;
 
         // Must run *before* the Clear below, while the old items still hold their expansion.
         RememberExpandedAgentsFromUi();
@@ -167,6 +233,15 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
             _loadedPersistedExpansionState = true;
         }
 
+        var renderSignature = ComputeRenderSignature(agentsState, sessionsState);
+        if (_lastRenderSignature == renderSignature)
+        {
+            foreach (var agent in agentsState.Agents) _ = _presence.EnsureCheckedAsync(agent);
+            return;
+        }
+        _lastRenderSignature = renderSignature;
+        _knownAgents = agentsState.Agents;
+
         PinnedSessions.Clear();
         ShellAgents.Clear();
         // A lookup, not a per-session scan: pinned rows show their owning agent's name, and the
@@ -179,8 +254,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
             PinnedSessions.Add(CreateShellSessionItem(
                 session,
                 sessionsState.ActiveSessionId,
-                agentNames,
-                isPinnedShortcut: true));
+                agentNames));
         }
 
         foreach (var agent in agentsState.Agents)
@@ -191,6 +265,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
                 Name = agent.Name,
                 Address = agent.Address,
                 DirectUrl = agent.DirectUrl,
+                IconPath = agent.IconPath,
                 IsSelected = IsAgentSelected(agent.Id, agentsState.SelectedAgentId),
                 // First build: open the selected agent so the app doesn't start fully collapsed.
                 // Afterwards the user's own expansion state is authoritative, including "all
@@ -225,8 +300,53 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         _hasExpansionState = true;
     }
 
-    /// <summary>Ctrl+N / "New chat". Returns false when there is no agent to chat with at all,
-    /// which is the caller's cue to send the user to the add-agent flow instead.</summary>
+    /// <summary>Keeps the reachability probes ticking on the path that skips the reload. They are
+    /// TTL-based and coalesced inside the service, so calling this on every navigation costs a
+    /// dictionary lookup per agent when nothing is due.</summary>
+    private void ProbeAgentPresence()
+    {
+        if (Volatile.Read(ref _shutdown) != 0) return;
+        foreach (var agent in _knownAgents) _ = _presence.EnsureCheckedAsync(agent);
+    }
+
+    private int ComputeRenderSignature(AgentsState agentsState, SessionsState sessionsState)
+    {
+        var hash = new HashCode();
+        // The page comes first because row selection is page-dependent, not purely storage-derived:
+        // IsAgentSelected/IsSessionSelected both gate on _currentPageType, so the *same* selected
+        // agent and active conversation must render differently on AgentDetailPage than on
+        // ChatPage. Leaving it out made the common "open an agent, then click the conversation you
+        // were already in" path skip the rebuild entirely — storage genuinely had not changed — so
+        // the tree kept the agent row lit and the conversation row unselected.
+        hash.Add(_currentPageType);
+        hash.Add(agentsState.SelectedAgentId, StringComparer.Ordinal);
+        hash.Add(sessionsState.ActiveSessionId, StringComparer.Ordinal);
+        hash.Add(IsPinnedExpanded);
+        foreach (var expanded in _expandedAgentIds.OrderBy(id => id, StringComparer.Ordinal))
+            hash.Add(expanded, StringComparer.Ordinal);
+        foreach (var agent in agentsState.Agents)
+        {
+            hash.Add(agent.Id, StringComparer.Ordinal);
+            hash.Add(agent.Name, StringComparer.Ordinal);
+            hash.Add(agent.Address, StringComparer.Ordinal);
+            hash.Add(agent.DirectUrl, StringComparer.Ordinal);
+            hash.Add(agent.IconPath, StringComparer.Ordinal);
+        }
+        foreach (var session in sessionsState.Sessions)
+        {
+            hash.Add(session.Id, StringComparer.Ordinal);
+            hash.Add(session.AgentId, StringComparer.Ordinal);
+            hash.Add(session.Title, StringComparer.Ordinal);
+            hash.Add(session.UpdatedAt, StringComparer.Ordinal);
+            hash.Add(session.IsPinned);
+            if (_sessionPreviewCache.TryGetValue(session.Id, out var preview))
+                hash.Add(preview.Preview, StringComparer.Ordinal);
+        }
+        return hash.ToHashCode();
+    }
+
+    /// <summary>Ctrl+N / "New chat". Returns false when there is no agent to chat with, which
+    /// lets the window surface the add-agent requirement.</summary>
     public async System.Threading.Tasks.Task<bool> StartNewChatAsync()
     {
         var agentsState = await AppServices.Agents.LoadAsync();
@@ -236,16 +356,14 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
             ?? agentsState.Agents.FirstOrDefault();
         if (agent is null) return false;
 
-        agentsState.SelectedAgentId = agent.Id;
-        await AppServices.Agents.SaveAsync(agentsState);
+        await AppServices.Agents.SetSelectedAgentAsync(agent.Id);
 
         // No session is created here. AgentDetailPage is the start-a-chat surface and creates one
         // when the user actually sends their first message, so a shortcut pressed by accident
         // leaves nothing behind — the sidebar used to collect an empty conversation per stray
-        // Ctrl+N. Same path the agent row's "+" takes (ShellSidebar.Events.AddChat_Click), so the
+        // Same path the agent row's "+" takes (ShellSidebar.Events.AddChat_Click), so the sidebar's
         // two entry points into "new chat" behave identically.
-        FocusAgentInSidebar(agent.Id);
-        await RefreshAsync();
+        RevealAgentInSidebar(agent.Id);
         // forceReload because the target may already be the current page: a plain Navigate to the
         // page you are on is a no-op, and the composer would keep whatever was on it.
         RequestNavigation(typeof(AgentDetailPage), forceReload: true);
@@ -254,6 +372,8 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
 
     private void OnPresenceChanged(string agentId)
     {
+        if (Volatile.Read(ref _shutdown) != 0) return;
+
         // Fired from the app-level presence service, possibly on a background thread and
         // possibly after this control left the visual tree. Guard the dispatcher: a null
         // one means there is no live UI to update, so there is nothing to do.
@@ -262,6 +382,8 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
 
         dispatcher.TryEnqueue(() =>
         {
+            // Shutdown may have started after TryEnqueue accepted this callback.
+            if (Volatile.Read(ref _shutdown) != 0) return;
             if (FindShellAgent(agentId) is { } agent)
             {
                 agent.Presence = _presence.GetPresence(agentId);
@@ -279,11 +401,13 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     private void RequestNavigation(Type page, bool forceReload = false)
         => NavigationRequested?.Invoke(page, forceReload);
 
+    private void RequestNavigationReset(Type page)
+        => NavigationResetRequested?.Invoke(page);
+
     private ShellSessionItem CreateShellSessionItem(
         SessionSummary session,
         string? activeSessionId,
-        IReadOnlyDictionary<string, string> agentNames,
-        bool isPinnedShortcut = false)
+        IReadOnlyDictionary<string, string> agentNames)
     {
         var updatedAt = ParseUpdatedAt(session.UpdatedAt);
         var preview = _sessionPreviewCache.TryGetValue(session.Id, out var cached)
@@ -295,14 +419,12 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
             Id = session.Id,
             Title = session.Title,
             Preview = preview,
-            UpdatedAt = session.UpdatedAt,
-            RelativeTime = FormatRelativeTime(updatedAt),
             TimeGroup = FormatTimeGroup(updatedAt),
             AgentName = agentNames.TryGetValue(session.AgentId, out var agentName) ? agentName : "",
             IsPinned = session.IsPinned,
-            // The pinned section is a shortcut to the same destination rendered in the agent
-            // tree. Only the canonical tree row carries the current-location accent.
-            IsSelected = !isPinnedShortcut && IsSessionSelected(session.Id, activeSessionId),
+            // Both the pinned shortcut and the canonical tree row represent the current
+            // conversation, so both carry the current-location accent.
+            IsSelected = IsSessionSelected(session.Id, activeSessionId),
         };
     }
 
@@ -315,15 +437,16 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
             _sessionPreviewCache.Remove(staleId);
         }
 
-        foreach (var session in sessions)
-        {
-            if (_sessionPreviewCache.TryGetValue(session.Id, out var cached)
-                && string.Equals(cached.UpdatedAt, session.UpdatedAt, StringComparison.Ordinal))
-            {
-                continue;
-            }
+        var refresh = sessions
+            .Where(session => !_sessionPreviewCache.TryGetValue(session.Id, out var cached)
+                              || !string.Equals(cached.UpdatedAt, session.UpdatedAt, StringComparison.Ordinal))
+            .ToArray();
+        var lastMessages = await AppServices.Conversations.LoadLastMessagesAsync(
+            refresh.Select(session => session.Id).ToArray());
 
-            var lastMessage = await AppServices.Conversations.LoadLastMessageAsync(session.Id);
+        foreach (var session in refresh)
+        {
+            lastMessages.TryGetValue(session.Id, out var lastMessage);
             _sessionPreviewCache[session.Id] = (session.UpdatedAt, BuildMessagePreview(lastMessage));
         }
     }
@@ -359,28 +482,12 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         return "Earlier";
     }
 
-    private static string FormatRelativeTime(DateTimeOffset? updatedAt)
-    {
-        if (updatedAt is null) return "";
-
-        var elapsed = DateTimeOffset.Now - updatedAt.Value;
-        if (elapsed < TimeSpan.Zero || elapsed < TimeSpan.FromMinutes(1)) return "Now";
-        if (elapsed < TimeSpan.FromHours(1)) return $"{Math.Max(1, (int)elapsed.TotalMinutes)} min ago";
-        if (elapsed < TimeSpan.FromDays(1)) return $"{Math.Max(1, (int)elapsed.TotalHours)} hr ago";
-        if (elapsed < TimeSpan.FromDays(7))
-            return updatedAt.Value.ToString("ddd", CultureInfo.CurrentCulture);
-        return updatedAt.Value.ToString("MMM d", CultureInfo.CurrentCulture);
-    }
-
     /// <summary>Whether an agent row renders as selected. Selection is page-dependent: an agent
     /// is only "current" while the user is on a page that is actually about an agent, so
     /// Settings or Home leaves the tree with nothing highlighted rather than pointing at
     /// whichever agent happened to be selected last.</summary>
     private bool IsAgentSelected(string agentId, string? selectedAgentId)
-        => _currentPageType == typeof(AgentDetailPage)
-            || _currentPageType == typeof(SessionsPage)
-            ? agentId == selectedAgentId
-            : false;
+        => _currentPageType == typeof(AgentDetailPage) && agentId == selectedAgentId;
 
     private bool IsSessionSelected(string sessionId, string? activeSessionId)
         => _currentPageType == typeof(ChatPage) && sessionId == activeSessionId;
@@ -389,7 +496,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     private void RememberExpandedAgentsFromUi()
     {
         // An empty tree carries no information — this is the pre-first-refresh case, and
-        // clearing here would wipe a focus another method just set (see FocusAgentInSidebar).
+        // clearing here would wipe an expansion another method just set (see RevealAgentInSidebar).
         if (ShellAgents.Count == 0) return;
 
         _expandedAgentIds.Clear();
@@ -400,18 +507,14 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         _hasExpansionState = true;
     }
 
-    /// <summary>Collapses everything except one agent. Used when navigating *to* an agent, so
-    /// the tree focuses on where the user just went instead of accumulating open branches.
-    /// Deliberately destructive — this is the one place expansion state is overridden rather
-    /// than preserved.</summary>
-    private void FocusAgentInSidebar(string agentId)
+    /// <summary>Reveals one agent without disturbing any other branches the user has open.
+    /// Every navigation path uses this additive behavior so selecting an agent, conversation,
+    /// or new-chat entry never discards expansion choices made elsewhere in the tree.</summary>
+    private void RevealAgentInSidebar(string agentId)
     {
-        _expandedAgentIds.Clear();
         _expandedAgentIds.Add(agentId);
-        foreach (var agent in ShellAgents)
-        {
-            agent.IsExpanded = agent.Id == agentId;
-        }
+        var agent = FindShellAgent(agentId);
+        if (agent is not null) agent.IsExpanded = true;
         _hasExpansionState = true;
         QueueSidebarStateSave();
     }
@@ -457,8 +560,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
             .FirstOrDefault();
         if (recent is not null)
         {
-            sessionsState.ActiveSessionId = recent.Id;
-            await AppServices.Sessions.SaveAsync(sessionsState);
+            await AppServices.Sessions.SetActiveSessionAsync(recent.Id);
             return recent.Id;
         }
 
@@ -470,48 +572,32 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     private static async System.Threading.Tasks.Task<string> CreateAndActivateSessionAsync(
         SessionsState sessionsState, string agentId)
     {
-        var session = SessionSummary.NewConversation(agentId, sessionsState.Sessions);
+        var session = SessionSummary.NewConversation(agentId, sessionsState.Sessions, Common.SessionTitles.PlaceholderFormat);
         sessionsState.Sessions.Add(session);
         sessionsState.ActiveSessionId = session.Id;
-        await AppServices.Sessions.SaveAsync(sessionsState);
+        // One INSERT plus the active pointer, not a whole-index reconcile — see AppendSessionAsync.
+        await AppServices.Sessions.AppendSessionAsync(session);
         return session.Id;
     }
 
     private async System.Threading.Tasks.Task SelectAgentAsync(string agentId)
     {
-        var agentsState = await AppServices.Agents.LoadAsync();
-        agentsState.SelectedAgentId = agentId;
-        await AppServices.Agents.SaveAsync(agentsState);
-        await RefreshAsync();
+        await AppServices.Agents.SetSelectedAgentAsync(agentId);
         RequestNavigation(typeof(ChatPage), forceReload: true);
     }
 
     /// <summary>Opens a conversation, moving agent selection with it (a pinned row can belong to
-    /// an agent other than the current one).</summary>
-    /// <param name="preserveSidebarState">True for clicks in the pinned section: the tree keeps
-    /// whatever was expanded instead of collapsing onto this conversation's agent. Pinned rows
-    /// are a jump-list, and reorganizing the tree below — possibly for a different agent
-    /// entirely — moves content out from under a user whose attention is at the top of the
-    /// sidebar. The tree is still rebuilt either way, so selection highlighting stays correct.</param>
-    private async System.Threading.Tasks.Task SelectSessionAsync(string sessionId, bool preserveSidebarState = false)
+    /// an agent other than the current one) while preserving every branch the user has open.</summary>
+    private async System.Threading.Tasks.Task SelectSessionAsync(string sessionId)
     {
         var sessionsState = await AppServices.Sessions.LoadAsync();
         var session = sessionsState.Sessions.FirstOrDefault(s => s.Id == sessionId);
         if (session is null) return;
 
-        sessionsState.ActiveSessionId = session.Id;
-        await AppServices.Sessions.SaveAsync(sessionsState);
+        await AppServices.Sessions.SetActiveSessionAsync(session.Id);
+        await AppServices.Agents.SetSelectedAgentAsync(session.AgentId);
 
-        var agentsState = await AppServices.Agents.LoadAsync();
-        agentsState.SelectedAgentId = session.AgentId;
-        await AppServices.Agents.SaveAsync(agentsState);
-
-        // Only the *focus* is conditional. RefreshAsync always runs, because it is what moves
-        // the selection highlight onto the newly-opened conversation; skipping it would leave
-        // the sidebar pointing at the previous one. RefreshAsync preserves whatever is expanded
-        // (RememberExpandedAgentsFromUi), so without the focus call the tree is left untouched.
-        if (!preserveSidebarState) FocusAgentInSidebar(session.AgentId);
-        await RefreshAsync();
+        RevealAgentInSidebar(session.AgentId);
         RequestNavigation(typeof(ChatPage), forceReload: true);
     }
 
@@ -526,17 +612,16 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         {
             Title = title,
             Content = content,
-            PrimaryButtonText = "Delete",
-            CloseButtonText = "Cancel",
+            PrimaryButtonText = LocalizedStrings.Get("CommonDelete", "Delete"),
+            CloseButtonText = LocalizedStrings.Get("CommonCancel", "Cancel"),
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = XamlRoot,
         };
-        return await dialog.ShowAsync() == ContentDialogResult.Primary;
+        return await dialog.ShowThemedAsync() == ContentDialogResult.Primary;
     }
 
-    private async void ChatHome_Click(object sender, RoutedEventArgs e)
+    private void ChatHome_Click(object sender, RoutedEventArgs e)
     {
-        await RefreshAsync();
         RequestNavigation(typeof(HomePage), forceReload: true);
     }
 
@@ -544,11 +629,8 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     {
         if ((sender as FrameworkElement)?.Tag is string agentId)
         {
-            var agentsState = await AppServices.Agents.LoadAsync();
-            agentsState.SelectedAgentId = agentId;
-            await AppServices.Agents.SaveAsync(agentsState);
-            FocusAgentInSidebar(agentId);
-            await RefreshAsync();
+            await AppServices.Agents.SetSelectedAgentAsync(agentId);
+            RevealAgentInSidebar(agentId);
             RequestNavigation(typeof(AgentDetailPage), forceReload: true);
         }
     }

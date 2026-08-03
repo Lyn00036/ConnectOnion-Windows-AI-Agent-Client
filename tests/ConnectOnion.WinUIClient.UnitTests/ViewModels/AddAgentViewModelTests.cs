@@ -23,7 +23,8 @@ public sealed class AddAgentViewModelTests
 
     [Theory]
     [InlineData("not-an-agent")]
-    [InlineData("https://example.com/agent")]
+    [InlineData("wss://example.com/agent")]
+    [InlineData("ws://example.com/agent")]
     [InlineData("ws://")]
     [InlineData("0x1234")]
     public void EditedInvalidInput_ShowsInlineValidation(string input)
@@ -39,9 +40,9 @@ public sealed class AddAgentViewModelTests
     }
 
     [Theory]
-    [InlineData("ws://example.com/agent")]
-    [InlineData("wss://example.com/agent")]
-    public void WebSocketUrl_IsValidAndEnablesTesting(string input)
+    [InlineData("http://example.com/agent")]
+    [InlineData("https://example.com/agent")]
+    public void HttpUrl_IsValidAndEnablesTesting(string input)
     {
         var vm = CreateViewModel();
 

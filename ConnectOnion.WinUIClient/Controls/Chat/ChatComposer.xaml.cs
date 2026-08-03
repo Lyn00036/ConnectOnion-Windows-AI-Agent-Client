@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -17,17 +18,51 @@ using Windows.ApplicationModel.DataTransfer;
 using Windows.System;
 using Windows.UI.Core;
 using ConnectOnion.Protocol;
+using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
 using ConnectOnion.WinUIClient.Services.Attachments;
+using Microsoft.Extensions.Logging;
 
 namespace ConnectOnion.WinUIClient.Controls;
 
 /// <summary>Text plus whatever attachments were ready to send at submit time.</summary>
 public sealed record ComposerSubmission(string Text, IReadOnlyList<PendingAttachment> Attachments);
 
+/// <summary>A quick prompt's visible chip label and the fuller draft inserted when selected.</summary>
+internal sealed class ComposerSuggestion
+{
+    public ComposerSuggestion(string label, string prompt)
+    {
+        Label = label;
+        Prompt = prompt;
+    }
+
+    public string Label { get; }
+    public string Prompt { get; }
+}
+
 public sealed partial class ChatComposer : UserControl, IDisposable
 {
+    private static readonly TimeSpan MinimumStopFeedbackDuration = TimeSpan.FromMilliseconds(500);
+    // The attachment pipeline swallows its failures so a bad file cannot take the composer down.
+    // These are what stops "I picked a file and nothing happened" from being untraceable; the
+    // successful steps are deliberately not logged, because a working attachment reports itself
+    // on screen. WinUI constructs this control, so the logger comes from AppServices rather than
+    // a constructor parameter.
+    private static readonly Action<ILogger, string, Exception?> LogAttachmentRestoreFailed =
+        LoggerMessage.Define<string>(LogLevel.Warning, new EventId(1, "AttachmentRestoreFailed"),
+            "Draft attachment {FileName} could not be restored and was dropped");
+
+    private static readonly Action<ILogger, string, Exception?> LogAttachmentPickFailed =
+        LoggerMessage.Define<string>(LogLevel.Warning, new EventId(2, "AttachmentPickFailed"),
+            "Picking a {Kind} attachment failed");
+
+    private static readonly Action<ILogger, Exception?> LogAttachmentDropFailed =
+        LoggerMessage.Define(LogLevel.Warning, new EventId(3, "AttachmentDropFailed"),
+            "A dropped attachment could not be accepted");
+
+    private static ILogger Log => AppServices.Logging.CreateLogger<ChatComposer>();
 
     public static readonly DependencyProperty CanSubmitProperty =
         DependencyProperty.Register(
@@ -86,7 +121,7 @@ public sealed partial class ChatComposer : UserControl, IDisposable
             new PropertyMetadata("", OnUsageTextChanged));
 
     /// <summary>
-    /// Ready-made prompts to offer above the input, replacing the generic starters. Separate from
+    /// Ready-made prompts to offer above the input before the generic starters. Separate from
     /// <see cref="Skills"/> because these are already-phrased sentences the caller chose (see
     /// <c>AgentSkills.BestOffers</c>), not names to complete.
     /// </summary>
@@ -111,16 +146,16 @@ public sealed partial class ChatComposer : UserControl, IDisposable
             typeof(ChatComposer),
             new PropertyMetadata(AgentModes.Safe, OnModeChanged));
 
-    public static readonly DependencyProperty IsStoppingProperty =
+    public static readonly DependencyProperty CanStopProperty =
         DependencyProperty.Register(
-            nameof(IsStopping),
+            nameof(CanStop),
             typeof(bool),
             typeof(ChatComposer),
             new PropertyMetadata(false, OnIsBusyChanged));
 
-    public static readonly DependencyProperty CanStopProperty =
+    public static readonly DependencyProperty IsStoppingProperty =
         DependencyProperty.Register(
-            nameof(CanStop),
+            nameof(IsStopping),
             typeof(bool),
             typeof(ChatComposer),
             new PropertyMetadata(false, OnIsBusyChanged));
@@ -130,7 +165,7 @@ public sealed partial class ChatComposer : UserControl, IDisposable
             nameof(PlaceholderText),
             typeof(string),
             typeof(ChatComposer),
-            new PropertyMetadata("Write a message..."));
+            new PropertyMetadata(LocalizedStrings.Get("ComposerWriteMessage", "Write a message...")));
 
     public static readonly DependencyProperty ShowConnectionStatusProperty =
         DependencyProperty.Register(
@@ -155,8 +190,9 @@ public sealed partial class ChatComposer : UserControl, IDisposable
 
     public event EventHandler<ComposerSubmission>? SubmitRequested;
 
-    /// <summary>The stop button was pressed. The host decides what that can achieve — the composer
-    /// only reports the press, and re-renders from <see cref="IsStopping"/> when told to.</summary>
+    /// <summary>The stop button was pressed. The host decides what that can achieve; the composer
+    /// reports the press and keeps a short local feedback latch so a fast terminal update cannot
+    /// erase the acknowledgement before the user sees it.</summary>
     public event EventHandler? StopRequested;
 
     /// <summary>The user picked an approval mode from the pill. Carries the wire value
@@ -167,6 +203,7 @@ public sealed partial class ChatComposer : UserControl, IDisposable
     public ObservableCollection<PendingAttachment> PendingAttachments { get; } = new();
 
     private CancellationTokenSource _lifetimeCts = new();
+    private bool _showStopFeedback;
     private int _disposed;
 
     public ChatComposer()
@@ -244,8 +281,8 @@ public sealed partial class ChatComposer : UserControl, IDisposable
         set => SetValue(SkillsProperty, value);
     }
 
-    /// <summary>Prompts shown as chips above the input in place of the generic starters. Empty or
-    /// null falls back to those starters.</summary>
+    /// <summary>Prompts shown first as chips above the input. The generic starters fill any slots
+    /// left in the three-chip row.</summary>
     public IReadOnlyList<string>? SuggestionPrompts
     {
         get => (IReadOnlyList<string>?)GetValue(SuggestionPromptsProperty);
@@ -293,18 +330,18 @@ public sealed partial class ChatComposer : UserControl, IDisposable
         set => SetValue(ModeProperty, value);
     }
 
-    /// <summary>A graceful stop was sent and the current iteration is still finishing.</summary>
-    public bool IsStopping
-    {
-        get => (bool)GetValue(IsStoppingProperty);
-        set => SetValue(IsStoppingProperty, value);
-    }
-
     /// <summary>INPUT has reached the socket and the turn has not reached OUTPUT/ERROR.</summary>
     public bool CanStop
     {
         get => (bool)GetValue(CanStopProperty);
         set => SetValue(CanStopProperty, value);
+    }
+
+    /// <summary>A stop request was sent and the active run has not settled yet.</summary>
+    public bool IsStopping
+    {
+        get => (bool)GetValue(IsStoppingProperty);
+        set => SetValue(IsStoppingProperty, value);
     }
 
     public string PlaceholderText
@@ -350,12 +387,9 @@ public sealed partial class ChatComposer : UserControl, IDisposable
     /// Puts a submitted message back on the composer after the send was cancelled before it
     /// reached the agent.
     ///
-    /// <para>Attachments are re-encoded rather than re-attached as they were: the send path nulls
-    /// each <see cref="PendingAttachment.DataUrl"/> the moment the payload is handed to the wire
-    /// lists (so a megabyte of base64 does not linger on a draft), which leaves the drafts holding
-    /// metadata and a local path only. Reading the file again is what makes them sendable a second
-    /// time. Anything whose file has since gone is dropped rather than restored as a chip that
-    /// would fail on submit.</para>
+    /// <para>Attachments retain metadata and a local path only. Wire encoding is deferred until
+    /// Send, so restoring a draft never allocates a Base64 copy. Anything whose file has since
+    /// gone is dropped rather than restored as a chip that would fail on submit.</para>
     ///
     /// <para>Appends to whatever is already there instead of replacing it — the user may well have
     /// started typing again in the moment between submitting and cancelling, and that text is
@@ -374,9 +408,6 @@ public sealed partial class ChatComposer : UserControl, IDisposable
             if (string.IsNullOrEmpty(attachment.LocalPath) || !File.Exists(attachment.LocalPath)) continue;
             try
             {
-                attachment.DataUrl = await AttachmentEncoder
-                    .EncodeToDataUrlAsync(attachment.LocalPath, attachment.MimeType, _lifetimeCts.Token)
-                    .ConfigureAwait(true);
                 attachment.Status = AttachmentStatus.Ready;
                 PendingAttachments.Add(attachment);
             }
@@ -384,7 +415,7 @@ public sealed partial class ChatComposer : UserControl, IDisposable
             {
                 // A file that has moved or become unreadable simply does not come back. Restoring
                 // it as a chip that cannot be sent would be worse than losing it quietly here.
-                Debug.WriteLine($"[composer] could not restore attachment {attachment.FileName}: {ex}");
+                LogAttachmentRestoreFailed(Log, attachment.FileName, ex);
             }
         }
 
@@ -414,6 +445,17 @@ public sealed partial class ChatComposer : UserControl, IDisposable
 
         var mode = Mode;
         ModeLabel.Text = AgentModes.DisplayName(mode);
+        var shortcut = AppServices.Shortcuts
+            .GetChord(KeyboardShortcutCatalog.Ids.CycleChatMode)
+            .ToBinding()
+            .DisplayText;
+        var modeHint = LocalizedStrings.Format(
+            "ComposerModeButtonName",
+            "Approval mode: {0}. Shortcut: {1}",
+            ModeLabel.Text,
+            shortcut);
+        AutomationProperties.SetName(ModeButton, modeHint);
+        ToolTipService.SetToolTip(ModeButton, modeHint);
         // Radio state is driven from the property, never from the click: the agent can change mode
         // on its own (enter_plan_mode), and when it does the pill has to follow it rather than keep
         // showing whatever the user last picked.
@@ -435,30 +477,99 @@ public sealed partial class ChatComposer : UserControl, IDisposable
         RefreshModeSelector();
     }
 
-    private void Stop_Click(object sender, RoutedEventArgs e)
+    private async void Stop_Click(object sender, RoutedEventArgs e)
     {
-        if (!CanStop || IsStopping) return;
-        StopRequested?.Invoke(this, EventArgs.Empty);
+        if (!CanStop || _showStopFeedback) return;
+
+        _showStopFeedback = true;
+        RefreshSendButtonState();
+        try
+        {
+            StopRequested?.Invoke(this, EventArgs.Empty);
+            await Task.Delay(MinimumStopFeedbackDuration, _lifetimeCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // Navigation/unload ends visual feedback; the run itself remains owned by the VM.
+        }
+        finally
+        {
+            _showStopFeedback = false;
+            if (Volatile.Read(ref _disposed) == 0) RefreshSendButtonState();
+        }
     }
 
-    /// <summary>
-    /// Picks which suggestion row is on screen: the agent's own skill offers when it has any,
-    /// otherwise the generic starters. Never both — they answer the same question, and two rows of
-    /// chips above an empty input reads as a menu rather than a nudge.
-    ///
-    /// <para>The 620px floor is unchanged: below it the chips wrap into a second row and push the
-    /// input down, which costs more than the suggestion is worth.</para>
-    /// </summary>
+    /// <summary>Keeps the agent's skill offers first, then fills the three-chip row with generic
+    /// starters. The containing horizontal rail keeps onboarding reachable at narrow widths.</summary>
     private void ApplySuggestionVisibility(double width)
     {
-        var room = ShowSuggestions && width >= 620;
-        var offers = SuggestionPrompts;
-        var hasOffers = offers is { Count: > 0 };
+        var offers = FilterSuggestionsForActiveLanguage(SuggestionPrompts);
+        var genericSuggestions = GenericSuggestions();
+        var labels = AgentSkills.CompleteOffers(
+            offers,
+            genericSuggestions.Select(suggestion => suggestion.Label).ToList());
+        var genericByLabel = genericSuggestions.ToDictionary(
+            suggestion => suggestion.Label,
+            StringComparer.OrdinalIgnoreCase);
+        var suggestions = labels
+            .Select(label => genericByLabel.TryGetValue(label, out var generic)
+                ? generic
+                : new ComposerSuggestion(label, label))
+            .ToList();
 
-        SkillSuggestionList.ItemsSource = hasOffers ? offers : null;
-        SkillSuggestionList.Visibility = room && hasOffers ? Visibility.Visible : Visibility.Collapsed;
-        SuggestionPanel.Visibility = room && !hasOffers ? Visibility.Visible : Visibility.Collapsed;
+        SuggestionList.ItemsSource = suggestions;
+        SuggestionList.Visibility = ShowSuggestions && suggestions.Count > 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        SuggestionScroller.Visibility = SuggestionList.Visibility;
     }
+
+    private static IReadOnlyList<ComposerSuggestion> GenericSuggestions()
+        =>
+        [
+            new(
+                LocalizedStrings.Get(
+                    "ComposerSuggestionCapabilitiesLabel",
+                    "Summarize your capabilities"),
+                LocalizedStrings.Get(
+                    "ComposerSuggestionCapabilitiesPrompt",
+                    "Summarize your capabilities and give me a few concrete examples.")),
+            new(
+                LocalizedStrings.Get(
+                    "ComposerSuggestionSystemLabel",
+                    "Help me get started"),
+                LocalizedStrings.Get(
+                    "ComposerSuggestionSystemPrompt",
+                    "Help me get started. What information do you need from me?")),
+            new(
+                LocalizedStrings.Get(
+                    "ComposerSuggestionFilesLabel",
+                    "Suggest three useful tasks"),
+                LocalizedStrings.Get(
+                    "ComposerSuggestionFilesPrompt",
+                    "Suggest three useful tasks you can help me complete.")),
+        ];
+
+    private static IReadOnlyList<string>? FilterSuggestionsForActiveLanguage(
+        IReadOnlyList<string>? offers)
+    {
+        if (offers is not { Count: > 0 } ||
+            !string.Equals(
+                CultureInfo.CurrentUICulture.Name,
+                Services.LanguagePreferenceStore.SimplifiedChinese,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return offers;
+        }
+
+        var localized = offers.Where(ContainsCjkCharacter).ToList();
+        return localized.Count > 0 ? localized : null;
+    }
+
+    private static bool ContainsCjkCharacter(string text)
+        => text.Any(character =>
+            character is >= '\u3400' and <= '\u4DBF' or
+            >= '\u4E00' and <= '\u9FFF');
 
     private async void Send_Click(object sender, RoutedEventArgs e)
     {
@@ -519,10 +630,16 @@ public sealed partial class ChatComposer : UserControl, IDisposable
     {
         if (_attachmentFlyout is null)
         {
-            _addImageItem = new MenuFlyoutItem { Text = "Add image..." };
+        _addImageItem = new MenuFlyoutItem
+        {
+            Text = Common.LocalizedStrings.Get("ComposerAddImage", "Add image...")
+        };
             _addImageItem.Click += async (_, _) => await AddAttachmentsAsync(AttachmentKind.Image);
 
-            _addFileItem = new MenuFlyoutItem { Text = "Add file..." };
+        _addFileItem = new MenuFlyoutItem
+        {
+            Text = Common.LocalizedStrings.Get("ComposerAddFile", "Add file...")
+        };
             _addFileItem.Click += async (_, _) => await AddAttachmentsAsync(AttachmentKind.File);
 
             _attachmentFlyout = new MenuFlyout();
@@ -556,16 +673,32 @@ public sealed partial class ChatComposer : UserControl, IDisposable
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[Attachment] pick failed kind={kind} error={ex.GetType().Name}");
+            LogAttachmentPickFailed(Log, kind.ToString(), ex);
+            // The user clicked "+", chose a file, and the picker threw. There is no attachment
+            // chip to hang this on, so without the bar the click would look like a no-op.
+            ShowComposerError(Common.LocalizedStrings.Get(
+                "ComposerAttachmentPickFailure",
+                "Could not add that attachment. Please try again."));
             return;
         }
 
         // Empty result means the user dismissed the picker — a normal outcome, not an error.
+        ClearComposerError();
         AddAttachments(picked);
     }
 
+    /// <summary>Shows a composer-level failure. Used only where no <see cref="PendingAttachment"/>
+    /// exists to carry the message on its own chip.</summary>
+    private void ShowComposerError(string message)
+    {
+        ComposerErrorBar.Message = message;
+        ComposerErrorBar.IsOpen = true;
+    }
+
+    private void ClearComposerError() => ComposerErrorBar.IsOpen = false;
+
     /// <summary>
-    /// Validates each candidate and kicks off encoding for the ones that pass. Shared by the
+    /// Validates each candidate and marks the ones that pass ready for send-time encoding. Shared by the
     /// file picker and drag-and-drop, so both routes get identical capability gating — the
     /// only difference between them is how the <see cref="PendingAttachment"/> list was
     /// produced. Rejected candidates are still added to the rail (as Failed) so the user sees
@@ -575,9 +708,6 @@ public sealed partial class ChatComposer : UserControl, IDisposable
     {
         foreach (var attachment in candidates)
         {
-            System.Diagnostics.Debug.WriteLine(
-                $"[Attachment] selected name={attachment.FileName} mime={attachment.MimeType} size={attachment.SizeBytes}");
-
             // Counted per-kind and re-read each iteration: a mixed drop of images and files
             // is checked against each kind's own count limit, including the ones just added.
             var existingCount = PendingAttachments.Count(p => p.Kind == attachment.Kind);
@@ -588,12 +718,12 @@ public sealed partial class ChatComposer : UserControl, IDisposable
             if (error is not null)
             {
                 attachment.Status = AttachmentStatus.Failed;
+                // Not logged: the rejection reason is already on the chip in front of the user.
                 attachment.Error = error;
-                System.Diagnostics.Debug.WriteLine($"[Attachment] rejected name={attachment.FileName} reason={error}");
                 continue;
             }
 
-            _ = EncodeAttachmentAsync(attachment);
+            attachment.Status = AttachmentStatus.Ready;
         }
     }
 
@@ -645,7 +775,7 @@ public sealed partial class ChatComposer : UserControl, IDisposable
     /// user can't interrogate.
     /// </summary>
     private bool CanAcceptDrop(DataPackageView data)
-        => CanSubmit && !IsBusy && !IsRecordingActive && AttachmentDropService.ContainsFiles(data);
+        => CanSubmit && !IsRecordingActive && AttachmentDropService.ContainsFiles(data);
 
     private async void Composer_Drop(object sender, DragEventArgs e)
     {
@@ -658,6 +788,7 @@ public sealed partial class ChatComposer : UserControl, IDisposable
         try
         {
             var dropped = await AttachmentDropService.ExtractAsync(e.DataView, _lifetimeCts.Token);
+            ClearComposerError();
             AddAttachments(dropped);
         }
         catch (OperationCanceledException)
@@ -666,37 +797,17 @@ public sealed partial class ChatComposer : UserControl, IDisposable
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[Attachment] drop failed error={ex.GetType().Name}");
+            LogAttachmentDropFailed(Log, ex);
+            // Nothing was extracted, so there is no chip to mark Failed. A drop that vanishes
+            // silently reads as the composer refusing the file for an unstated reason.
+            ShowComposerError(Common.LocalizedStrings.Get(
+                "ComposerAttachmentDropFailure",
+                "Could not read the dropped files."));
         }
         finally
         {
             deferral.Complete();
         }
-    }
-
-    private async Task EncodeAttachmentAsync(PendingAttachment attachment)
-    {
-        attachment.Status = AttachmentStatus.Encoding;
-        try
-        {
-            var dataUrl = await AttachmentEncoder
-                .EncodeToDataUrlAsync(attachment.LocalPath, attachment.MimeType, _lifetimeCts.Token)
-                .ConfigureAwait(true);
-            attachment.DataUrl = dataUrl;
-            attachment.Status = AttachmentStatus.Ready;
-            System.Diagnostics.Debug.WriteLine($"[Attachment] encoded name={attachment.FileName} bytes={attachment.SizeBytes}");
-        }
-        catch (OperationCanceledException)
-        {
-            // Control unloaded mid-encode; the attachment is being discarded anyway.
-        }
-        catch (Exception ex)
-        {
-            attachment.Status = AttachmentStatus.Failed;
-            attachment.Error = "Could not read this file.";
-            System.Diagnostics.Debug.WriteLine($"[Attachment] encode failed name={attachment.FileName} error={ex.GetType().Name}");
-        }
-        RefreshSendButtonState();
     }
 
     private void RemoveAttachment_Click(object sender, RoutedEventArgs e)
@@ -863,14 +974,18 @@ public sealed partial class ChatComposer : UserControl, IDisposable
 
         var isAttachmentsBusy = PendingAttachments.Any(a => a.IsBusy);
         var hasReadyAttachment = PendingAttachments.Any(a => a.Status == AttachmentStatus.Ready);
-        var canSend = CanSubmit && !IsBusy && !isAttachmentsBusy
+        var canSend = CanSubmit && !isAttachmentsBusy
             && (!string.IsNullOrWhiteSpace(InputBox.Text) || hasReadyAttachment);
-        InputBox.IsEnabled = CanSubmit && !IsBusy;
-        AddAttachmentButton.IsEnabled = CanSubmit && !IsBusy;
-        SpeechButton.IsEnabled = CanSubmit && !IsBusy && !isActive;
+        // Match the web composer: typing and Enter remain available during a turn.
+        // ChatViewModel routes that submission onto the existing socket as runtime INPUT.
+        InputBox.IsEnabled = CanSubmit;
+        AddAttachmentButton.IsEnabled = CanSubmit;
+        SpeechButton.IsEnabled = CanSubmit && !isActive;
 
         // Send and Stop share the slot: a turn is running or it isn't.
-        SendButton.Visibility = IsBusy ? Visibility.Collapsed : Visibility.Visible;
+        SendButton.Visibility = IsBusy || _showStopFeedback
+            ? Visibility.Collapsed
+            : Visibility.Visible;
         SendButton.IsEnabled = canSend || isActive;
         SendButton.Background = isActive || canSend
             ? Brush("ComposerPrimaryButtonBackgroundBrush")
@@ -879,15 +994,19 @@ public sealed partial class ChatComposer : UserControl, IDisposable
             ? Brush("ComposerPrimaryButtonForegroundBrush")
             : Brush("ComposerDisabledButtonForegroundBrush");
 
-        StopButton.Visibility = CanStop ? Visibility.Visible : Visibility.Collapsed;
-        StopButton.IsEnabled = CanStop && !IsStopping;
-        StopButton.Width = IsStopping ? 112 : 36;
-        StopRing.IsActive = IsStopping;
-        StopRing.Visibility = IsStopping ? Visibility.Visible : Visibility.Collapsed;
-        StopGlyph.Visibility = IsStopping ? Visibility.Collapsed : Visibility.Visible;
-        StopLabel.Visibility = IsStopping ? Visibility.Visible : Visibility.Collapsed;
-        StopRing.Foreground = Brush("AppBackgroundBrush");
-        var stopLabel = IsStopping ? "Stopping..." : "Stop";
+        var showStop = CanStop || IsStopping || _showStopFeedback;
+        StopButton.Visibility = showStop ? Visibility.Visible : Visibility.Collapsed;
+        StopButton.IsEnabled = CanStop && !IsStopping && !_showStopFeedback;
+        // Match the familiar ChatGPT stop affordance: the square remains a stable target and the
+        // ring rotates only while Stop is actionable. Clicking immediately freezes the motion,
+        // which acknowledges the request even before the host settles the run.
+        var animateStop = CanStop && !IsStopping && !_showStopFeedback;
+        StopGlyph.Visibility = showStop ? Visibility.Visible : Visibility.Collapsed;
+        StopRing.IsActive = animateStop;
+        StopRing.Visibility = animateStop ? Visibility.Visible : Visibility.Collapsed;
+        var stopLabel = IsStopping || _showStopFeedback
+            ? LocalizedStrings.Get("RuntimeComposerStopping", "Stopping...")
+            : LocalizedStrings.Get("RuntimeComposerStop", "Stop");
         ToolTipService.SetToolTip(StopButton, stopLabel);
         AutomationProperties.SetName(StopButton, stopLabel);
 
@@ -912,7 +1031,14 @@ public sealed partial class ChatComposer : UserControl, IDisposable
     private void Composer_SizeChanged(object sender, SizeChangedEventArgs e)
     {
         var composerWidth = (double)Application.Current.Resources["ChatComposerWidth"];
-        ComposerPanel.Width = Math.Max(280, Math.Min(composerWidth, e.NewSize.Width - 48));
+        var availableWidth = Math.Max(0, e.NewSize.Width - 48);
+        ComposerPanel.Width = Math.Min(composerWidth, availableWidth);
+
+        var isNarrow = availableWidth < 430;
+        ModeLabel.Visibility = isNarrow ? Visibility.Collapsed : Visibility.Visible;
+        ModeButton.Padding = isNarrow ? new Thickness(10, 0, 10, 0) : new Thickness(9, 0, 9, 0);
+        RecordingWaveformHost.MinWidth = isNarrow ? 48 : 72;
+        ComposerFooter.ColumnSpacing = isNarrow ? 2 : 6;
         ApplySuggestionVisibility(e.NewSize.Width);
     }
 

@@ -33,7 +33,7 @@ public sealed class ChatTurnProjectionTests
     }
 
     [Fact]
-    public void AppendCompletedTurn_PutsUsageAfterStreamedFinalReply()
+    public void AppendCompletedTurn_PutsUsageBeforeStreamedFinalReply()
     {
         var target = new FakeTarget();
         var projection = new ChatTurnProjection(target);
@@ -42,17 +42,41 @@ public sealed class ChatTurnProjectionTests
 
         projection.AppendCompletedTurn("final reply");
 
+        // The summary is process metadata, so it sits with the process records; the turn ends on
+        // the answer.
         Assert.Equal(2, target.Messages.Count);
-        Assert.True(target.Messages[0].IsAgent);
-        Assert.Equal("final reply", target.Messages[0].Content);
-        Assert.True(target.Messages[1].IsEvent);
-        Assert.Equal("turn_usage", target.Messages[1].EventKey);
-        Assert.Equal("model-a", target.Messages[1].EventTitle);
-        Assert.Contains("120→30 tok", target.Messages[1].EventMeta);
+        Assert.True(target.Messages[0].IsEvent);
+        Assert.Equal("turn_usage", target.Messages[0].EventKey);
+        Assert.Equal("model-a", target.Messages[0].EventTitle);
+        Assert.Contains("120→30 tok", target.Messages[0].EventMeta);
+        Assert.True(target.Messages[1].IsAgent);
+        Assert.Equal("final reply", target.Messages[1].Content);
+    }
+
+    /// <summary>
+    /// Persisted history is replayed with <c>ORDER BY id</c>, so list order and id order have to
+    /// agree — otherwise reopening a conversation shows the summary and the answer swapped
+    /// relative to the live view that produced them. The streamed bubble is created mid-turn and
+    /// therefore has to be renumbered when it is moved below the summary.
+    /// </summary>
+    [Fact]
+    public void AppendCompletedTurn_StreamedFinalReply_IsRenumberedToMatchItsNewPosition()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+        projection.Apply(Event("thinking", "{\"content\":\"working\"}"));
+        projection.Apply(Event("llm_result", "{\"model\":\"model-a\",\"duration_ms\":250}"));
+        projection.Apply(Event("assistant", "{\"content\":\"final reply\"}"));
+
+        projection.AppendCompletedTurn("final reply");
+
+        var ids = target.Messages.Select(message => message.Id).ToList();
+        Assert.Equal(ids.OrderBy(id => id), ids);
+        Assert.Equal("final reply", target.Messages[^1].Content);
     }
 
     [Fact]
-    public void AppendCompletedTurn_WithoutReportedUsage_StillAddsHonestSummaryLast()
+    public void AppendCompletedTurn_WithoutReportedUsage_StillAddsHonestSummary()
     {
         var target = new FakeTarget();
         var projection = new ChatTurnProjection(target);
@@ -60,9 +84,9 @@ public sealed class ChatTurnProjectionTests
         projection.AppendCompletedTurn("final reply");
 
         Assert.Equal(2, target.Messages.Count);
-        Assert.Equal("final reply", target.Messages[0].Content);
-        Assert.Equal("Turn usage", target.Messages[1].EventTitle);
-        Assert.Equal("Usage not reported", target.Messages[1].EventMeta);
+        Assert.Equal("Turn usage", target.Messages[0].EventTitle);
+        Assert.Equal("Usage not reported", target.Messages[0].EventMeta);
+        Assert.Equal("final reply", target.Messages[1].Content);
     }
 
     [Fact]
@@ -87,6 +111,28 @@ public sealed class ChatTurnProjectionTests
     }
 
     [Fact]
+    public void ApplyOptimisticStopVisuals_EndsRunningThinkingAndToolAnimations()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+        projection.Apply(Event("thinking", "{\"content\":\"Checking the request.\"}"));
+        projection.Apply(Event(
+            "tool_call",
+            "{\"tool_id\":\"1\",\"name\":\"search_web\",\"args\":{\"query\":\"test\"}}"));
+
+        ChatTurnProjection.ApplyOptimisticStopVisuals(target.Messages);
+
+        var thinking = Assert.Single(target.Messages, message => message.IsThinkingEvent);
+        Assert.Equal(EventStatus.Done, thinking.Status);
+        Assert.False(thinking.IsThinkingRunning);
+
+        var toolCard = Assert.Single(target.Messages, message => message.IsToolActivityEvent);
+        Assert.True(toolCard.ToolActivity!.IsTerminal);
+        Assert.Equal(ToolActivityStatus.Success, toolCard.ToolActivity.Status);
+        Assert.All(toolCard.ToolActivity.Steps, step => Assert.Equal(ToolStepStatus.Success, step.Status));
+    }
+
+    [Fact]
     public void Apply_ConsecutiveThinking_GroupsIntoOneFoldableCard()
     {
         var target = new FakeTarget();
@@ -102,6 +148,40 @@ public sealed class ChatTurnProjectionTests
         Assert.Equal(3, thinking.ThoughtSteps.Count);
         Assert.Equal("Thinking...", thinking.ActivityHeaderTitle);
         Assert.Equal("3 steps", thinking.ThoughtStepsSummary);
+    }
+
+    [Fact]
+    public void Apply_ThinkingSeparatedOnlyByInvisibleLifecycleFrames_StaysOneCard()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+
+        projection.Apply(Event("thinking", "{\"content\":\"The first attempt used the wrong type.\"}"));
+        projection.Apply(Event("llm_result", "{\"duration_ms\":8000}"));
+        projection.Apply(Event("llm_call", "{\"model\":\"test-model\",\"iteration\":2}"));
+        projection.Apply(Event("thinking", "{\"content\":\"Retry with an integer.\"}"));
+
+        var thinking = Assert.Single(target.Messages);
+        Assert.Equal(2, thinking.ThoughtSteps.Count);
+        Assert.Equal(
+            ["The first attempt used the wrong type.", "Retry with an integer."],
+            thinking.ThoughtSteps);
+    }
+
+    [Fact]
+    public void Apply_InvisibleUpdatesToExistingToolCard_DoNotSplitAdjacentThinking()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+
+        projection.Apply(Event("tool_call", "{\"tool_id\":\"one\",\"name\":\"dashboard\"}"));
+        projection.Apply(Event("thinking", "{\"content\":\"The dashboard call failed.\"}"));
+        projection.Apply(Event("tool_result", "{\"tool_id\":\"one\",\"status\":\"error\",\"error\":\"type mismatch\"}"));
+        projection.Apply(Event("llm_call", "{\"model\":\"test-model\",\"iteration\":2}"));
+        projection.Apply(Event("thinking", "{\"content\":\"Retry with the corrected value.\"}"));
+
+        var thinking = Assert.Single(target.Messages, message => message.IsThinkingEvent);
+        Assert.Equal(2, thinking.ThoughtSteps.Count);
     }
 
     [Fact]
@@ -174,6 +254,7 @@ public sealed class ChatTurnProjectionTests
         Assert.Single(target.Messages);
         Assert.Equal(EventStatus.Done, card.Status);
         Assert.False(card.IsInteractiveEditable);
+        Assert.False(card.IsInteractiveCardExpanded);
     }
 
     [Fact]
@@ -464,9 +545,10 @@ public sealed class ChatTurnProjectionTests
         projection.Apply(Event("assistant", "{\"content\":\"here you go\"}"));
         projection.AppendCompletedTurn("here you go");
 
-        // Order: final reply carrying the image, then its quiet usage summary.
+        // Order: the quiet usage summary, then the final reply carrying the image.
         Assert.Equal(2, target.Messages.Count);
-        var reply = target.Messages[0];
+        Assert.True(target.Messages[0].IsEvent);
+        var reply = target.Messages[1];
         Assert.True(reply.IsAgent);
         Assert.Equal("here you go", reply.Content);
         Assert.Single(reply.Attachments);
@@ -475,7 +557,7 @@ public sealed class ChatTurnProjectionTests
     }
 
     [Fact]
-    public void AgentImage_WithNoTextReply_GetsItsOwnBubbleBeforeTheSummary()
+    public void AgentImage_WithNoTextReply_GetsItsOwnBubbleAfterTheSummary()
     {
         var target = new FakeTarget();
         var projection = new ChatTurnProjection(target);
@@ -483,11 +565,15 @@ public sealed class ChatTurnProjectionTests
         projection.Apply(Event("agent_image", "{\"type\":\"agent_image\",\"image\":\"data:image/png;base64,AAAA\"}"));
         projection.AppendCompletedTurn("");
 
-        // The image bubble is the output, followed by the quiet usage summary.
+        // With no text reply the image bubble *is* the output, so it still ends the turn — the
+        // summary does not become the last thing on screen.
         Assert.Equal(2, target.Messages.Count);
-        Assert.True(target.Messages[0].IsAgent);
-        Assert.Single(target.Messages[0].Attachments);
-        Assert.True(target.Messages[1].IsEvent);
+        Assert.True(target.Messages[0].IsEvent);
+        Assert.True(target.Messages[1].IsAgent);
+        Assert.Single(target.Messages[1].Attachments);
+
+        var ids = target.Messages.Select(message => message.Id).ToList();
+        Assert.Equal(ids.OrderBy(id => id), ids);
     }
 
     [Fact]

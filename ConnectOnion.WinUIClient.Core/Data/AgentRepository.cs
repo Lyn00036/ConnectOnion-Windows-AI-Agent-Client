@@ -27,6 +27,21 @@ public sealed class AgentsState
 /// </summary>
 public sealed class AgentRepository
 {
+    private const string SelectedAgentMetaKey = "selected_agent_id";
+
+    /// <summary>Updates only the selected-agent pointer without reconciling every agent row.</summary>
+    public async Task SetSelectedAgentAsync(
+        string? agentId,
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = await AppDatabase.OpenAsync(cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(agentId))
+            await AppDatabase.DeleteMetaAsync(connection, null, SelectedAgentMetaKey).ConfigureAwait(false);
+        else
+            await AppDatabase.SetMetaAsync(connection, null, SelectedAgentMetaKey, agentId).ConfigureAwait(false);
+        StorageRevision.Bump();
+    }
+
     /// <summary>
     /// Loads the agent list and selected id. Invalid rows are dropped (name
     /// required, the reserved "local-agent" id excluded, address required) and a
@@ -38,7 +53,7 @@ public sealed class AgentRepository
         await using var connection = await AppDatabase.OpenAsync(cancellationToken).ConfigureAwait(false);
         var state = new AgentsState
         {
-            SelectedAgentId = await AppDatabase.GetMetaAsync(connection, "selected_agent_id").ConfigureAwait(false),
+            SelectedAgentId = await AppDatabase.GetMetaAsync(connection, SelectedAgentMetaKey).ConfigureAwait(false),
         };
 
         await using (var command = connection.CreateCommand())
@@ -49,7 +64,7 @@ public sealed class AgentRepository
             // default to 0) could shuffle between launches. COLLATE NOCASE so the fallback
             // ordering is alphabetical the way a human reads it.
             command.CommandText = """
-                SELECT id, name, address, direct_url, invite_code, info_json, info_updated_at
+                SELECT id, name, address, direct_url, icon_path, invite_code, info_json, info_updated_at
                 FROM agents
                 ORDER BY sort_order, name COLLATE NOCASE, id;
                 """;
@@ -62,9 +77,10 @@ public sealed class AgentRepository
                     Name = reader.GetString(1),
                     Address = reader.GetString(2),
                     DirectUrl = ReadNullableString(reader, 3),
-                    InviteCode = ReadNullableString(reader, 4),
-                    InfoJson = ReadNullableString(reader, 5),
-                    InfoUpdatedAt = ReadNullableString(reader, 6),
+                    IconPath = ReadNullableString(reader, 4),
+                    InviteCode = ReadNullableString(reader, 5),
+                    InfoJson = ReadNullableString(reader, 6),
+                    InfoUpdatedAt = ReadNullableString(reader, 7),
                 });
             }
         }
@@ -119,12 +135,13 @@ public sealed class AgentRepository
             await using var insert = connection.CreateCommand();
             insert.Transaction = transaction;
             insert.CommandText = """
-                INSERT INTO agents (id, name, address, direct_url, invite_code, info_json, info_updated_at, sort_order)
-                VALUES ($id, $name, $address, $direct_url, $invite_code, $info_json, $info_updated_at, $sort_order)
+                INSERT INTO agents (id, name, address, direct_url, icon_path, invite_code, info_json, info_updated_at, sort_order)
+                VALUES ($id, $name, $address, $direct_url, $icon_path, $invite_code, $info_json, $info_updated_at, $sort_order)
                 ON CONFLICT(id) DO UPDATE SET
                     name = excluded.name,
                     address = excluded.address,
                     direct_url = excluded.direct_url,
+                    icon_path = excluded.icon_path,
                     invite_code = excluded.invite_code,
                     info_json = excluded.info_json,
                     info_updated_at = excluded.info_updated_at,
@@ -134,6 +151,10 @@ public sealed class AgentRepository
             AppDatabase.Add(insert, "$name", agent.Name);
             AppDatabase.Add(insert, "$address", agent.Address);
             AppDatabase.Add(insert, "$direct_url", agent.DirectUrl);
+            // Blank and null both mean "no custom icon"; store the one representation so a
+            // caller that cleared the path can never leave an empty string the UI would resolve.
+            AppDatabase.Add(insert, "$icon_path",
+                string.IsNullOrWhiteSpace(agent.IconPath) ? null : agent.IconPath);
             AppDatabase.Add(insert, "$invite_code", agent.InviteCode);
             AppDatabase.Add(insert, "$info_json", agent.InfoJson);
             AppDatabase.Add(insert, "$info_updated_at", agent.InfoUpdatedAt);
@@ -154,16 +175,17 @@ public sealed class AgentRepository
         // representation (a missing key) for GetMetaAsync's null to mean.
         if (string.IsNullOrWhiteSpace(state.SelectedAgentId))
         {
-            await AppDatabase.DeleteMetaAsync(connection, transaction, "selected_agent_id")
+            await AppDatabase.DeleteMetaAsync(connection, transaction, SelectedAgentMetaKey)
                 .ConfigureAwait(false);
         }
         else
         {
-            await AppDatabase.SetMetaAsync(connection, transaction, "selected_agent_id", state.SelectedAgentId!)
+            await AppDatabase.SetMetaAsync(connection, transaction, SelectedAgentMetaKey, state.SelectedAgentId!)
                 .ConfigureAwait(false);
         }
 
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        StorageRevision.Bump();
     }
 
     private static async Task DeleteRemovedAgentGraphsAsync(

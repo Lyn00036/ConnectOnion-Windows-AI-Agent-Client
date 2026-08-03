@@ -1,4 +1,5 @@
 using ConnectOnion.WinUIClient.Data;
+using ConnectOnion.WinUIClient.Models;
 
 namespace ConnectOnion.IntegrationTests.Database;
 
@@ -27,6 +28,31 @@ public sealed class AppDatabaseSchemaTests(TempDatabaseFixture fixture)
         Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'usage_events';"));
         Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'mode';"));
         Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM pragma_table_info('identity_keys') WHERE name = 'mnemonic';"));
+        Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM pragma_table_info('agents') WHERE name = 'icon_path';"));
+    }
+
+    [Fact]
+    public async Task ApplyAsync_VersionFiveDatabase_AddsIconPathAndLeavesExistingAgentsWithoutOne()
+    {
+        await using var initialized = await AppDatabase.OpenAsync();
+        await using var connection = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await AppDatabase.CreateSchemaAsync(connection);
+        await ExecuteAsync(connection, """
+            ALTER TABLE identity_keys ADD COLUMN mnemonic TEXT NULL;
+            PRAGMA user_version = 5;
+
+            INSERT INTO agents (id, name, address, sort_order)
+            VALUES ('agent-existing', 'Existing agent', '0xabc', 0);
+            """);
+
+        await SchemaMigrator.ApplyAsync(connection);
+
+        Assert.Equal(SchemaMigrator.LatestVersion, (int)await ScalarLongAsync(connection, "PRAGMA user_version;"));
+        Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM pragma_table_info('agents') WHERE name = 'icon_path';"));
+        // "No custom icon" is the normal state for everyone who upgrades: the column is nullable
+        // precisely so an existing agent keeps working with its name-initial avatar.
+        Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM agents WHERE id = 'agent-existing' AND icon_path IS NULL;"));
     }
 
     [Fact]
@@ -82,6 +108,119 @@ public sealed class AppDatabaseSchemaTests(TempDatabaseFixture fixture)
         Assert.Equal("0xexisting", await ScalarStringAsync(connection, "SELECT address FROM identity_keys WHERE id = 1;"));
         Assert.Equal("protected-seed-blob", await ScalarStringAsync(connection, "SELECT private_seed FROM identity_keys WHERE id = 1;"));
         Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM identity_keys WHERE mnemonic IS NULL;"));
+    }
+
+    /// <summary>
+    /// v7 replaces the <c>^Conversation \d+$</c> title test with a stored flag. The backfill has to
+    /// reproduce that predicate exactly, because it decides which existing conversations may still
+    /// have their title overwritten by their next message — get it wrong in one direction and a
+    /// user's own title is destroyed, in the other and a conversation is stuck on "Conversation 4"
+    /// forever.
+    /// </summary>
+    [Theory]
+    // Still the placeholder: the next message may claim the title.
+    [InlineData("Conversation 1", false)]
+    [InlineData("Conversation 12", false)]
+    [InlineData("Conversation 987", false)]
+    // Settled titles, which must be left alone.
+    [InlineData("Conversation 1 draft", true)]
+    [InlineData("Conversation one", true)]
+    [InlineData("Conversation", true)]
+    [InlineData("My conversation 1", true)]
+    [InlineData("Ship the migration", true)]
+    [InlineData("对话 1", true)]
+    public async Task ApplyAsync_VersionSixDatabase_BackfillsHasCustomTitleFromTheOldTitlePattern(
+        string title,
+        bool expectedHasCustomTitle)
+    {
+        await using var initialized = await AppDatabase.OpenAsync();
+        await using var connection = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await AppDatabase.CreateSchemaAsync(connection);
+        await ExecuteAsync(connection, """
+            ALTER TABLE sessions ADD COLUMN mode TEXT NOT NULL DEFAULT 'safe';
+            PRAGMA user_version = 6;
+
+            INSERT INTO agents (id, name, address, sort_order)
+            VALUES ('agent-1', 'Agent', 'address', 0);
+            """);
+
+        await using (var insert = connection.CreateCommand())
+        {
+            insert.CommandText = """
+                INSERT INTO sessions (id, agent_id, title, created_at, updated_at, sort_order, mode)
+                VALUES ('session-1', 'agent-1', $title, 'now', 'now', 0, 'safe');
+                """;
+            insert.Parameters.AddWithValue("$title", title);
+            await insert.ExecuteNonQueryAsync();
+        }
+
+        await SchemaMigrator.ApplyAsync(connection);
+
+        Assert.Equal(SchemaMigrator.LatestVersion, (int)await ScalarLongAsync(connection, "PRAGMA user_version;"));
+        Assert.Equal(
+            expectedHasCustomTitle ? 1 : 0,
+            await ScalarLongAsync(connection, "SELECT has_custom_title FROM sessions WHERE id = 'session-1';"));
+        // The title text itself is never rewritten by the migration.
+        Assert.Equal(title, await ScalarStringAsync(connection, "SELECT title FROM sessions WHERE id = 'session-1';"));
+    }
+
+    /// <summary>A conversation created after v7 starts as a placeholder regardless of the wording,
+    /// which is what lets the placeholder be translated.</summary>
+    [Fact]
+    public void NewConversation_WithLocalizedPlaceholder_IsStillTreatedAsUntitled()
+    {
+        var session = SessionSummary.NewConversation("agent-1", [], "对话 {0}");
+
+        Assert.Equal("对话 1", session.Title);
+        Assert.False(session.HasCustomTitle);
+
+        Assert.True(session.TryApplyTitleFromPrompt("Ship the migration"));
+        Assert.Equal("Ship the migration", session.Title);
+        Assert.True(session.HasCustomTitle);
+
+        // A second message must not re-title a conversation whose title is already settled.
+        Assert.False(session.TryApplyTitleFromPrompt("Something else entirely"));
+        Assert.Equal("Ship the migration", session.Title);
+    }
+
+    /// <summary>
+    /// The flag has to survive the write path, or a renamed conversation would silently revert to
+    /// being overwritable by its next message after a restart.
+    ///
+    /// Rows are seeded directly and updated through <c>UpdateSessionAsync</c> rather than through
+    /// <c>SaveAsync</c>: that one reconciles the *whole* index and deletes every session not in the
+    /// list it is handed, which in this shared-database collection means deleting rows other tests
+    /// still own.
+    /// </summary>
+    [Fact]
+    public async Task SessionRepository_UpdateSession_RoundTripsHasCustomTitle()
+    {
+        await using (var connection = await AppDatabase.OpenAsync())
+        {
+            await ExecuteAsync(connection, """
+                INSERT OR IGNORE INTO agents (id, name, address) VALUES ('agent-title', 'Agent', '0x1');
+                INSERT OR REPLACE INTO sessions (id, agent_id, title, created_at, updated_at, sort_order, mode, has_custom_title)
+                VALUES
+                    ('session-placeholder', 'agent-title', 'Conversation 1', 'now', 'now', 0, 'safe', 0),
+                    ('session-renamed', 'agent-title', 'Conversation 2', 'now', 'now', 1, 'safe', 0);
+                """);
+        }
+
+        var repository = new SessionRepository();
+        var loadedBefore = (await repository.LoadAsync()).Sessions;
+        var renamed = loadedBefore.Single(s => s.Id == "session-renamed");
+        Assert.False(renamed.HasCustomTitle);
+
+        Assert.True(renamed.TryRename("Weekly report"));
+        await repository.UpdateSessionAsync(renamed);
+
+        var loadedAfter = (await repository.LoadAsync()).Sessions;
+        Assert.False(loadedAfter.Single(s => s.Id == "session-placeholder").HasCustomTitle);
+
+        var reloaded = loadedAfter.Single(s => s.Id == "session-renamed");
+        Assert.True(reloaded.HasCustomTitle);
+        Assert.Equal("Weekly report", reloaded.Title);
     }
 
     [Fact]

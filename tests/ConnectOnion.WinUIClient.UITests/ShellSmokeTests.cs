@@ -23,15 +23,14 @@ public sealed class ShellSmokeTests
         var window = launched.Window;
         Assert.Contains("ConnectOnion", window.Title, StringComparison.OrdinalIgnoreCase);
         Assert.True(window.IsEnabled);
-        Assert.NotNull(WaitForDescendant(window, "AccountMenuButton"));
+        Assert.NotNull(WaitForDescendant(window, "SettingsButton"));
     }
 
     /// <summary>
-    /// Opening the sidebar's account menu and clicking Settings shows the settings overlay. This
-    /// covers a real flyout interaction as well as the shell-to-overlay wiring.
+    /// Clicking the sidebar's fixed Settings row shows the settings overlay.
     /// </summary>
     [Fact]
-    public void AccountMenu_SettingsClick_ShowsSettingsOverlay()
+    public void SidebarSettingsClick_ShowsSettingsOverlay()
     {
         using var launched = LaunchApp();
         if (launched is null) return;
@@ -49,24 +48,16 @@ public sealed class ShellSmokeTests
     }
 
     [Fact]
-    public void AccountMenu_KeyboardShortcutsRow_HasRoomForBothLabels()
+    public void SidebarSettingsRow_IsAReachableFooterCommand()
     {
         using var launched = LaunchApp();
         if (launched is null) return;
 
         var window = launched.Window;
-        OpenAccountMenu(window);
-
-        var shortcuts = WaitForDescendant(window, "AccountKeyboardShortcutsMenuItem");
-        Assert.NotNull(shortcuts);
-        Assert.Equal("Keyboard Shortcuts", shortcuts.Properties.Name.ValueOrDefault);
-
-        // The previous 236 px flyout left only about 222 px for each row after its border and
-        // padding, clipping the end of the left label beside Ctrl+Shift+/. Keep the row's real
-        // rendered width under test so the visual regression is caught without screenshot OCR.
-        Assert.True(
-            shortcuts.BoundingRectangle.Width >= 250,
-            $"Keyboard Shortcuts row was only {shortcuts.BoundingRectangle.Width}px wide.");
+        var settings = WaitForDescendant(window, "SettingsButton");
+        Assert.NotNull(settings);
+        Assert.Equal("Settings", settings.Properties.Name.ValueOrDefault);
+        Assert.True(settings.IsEnabled);
     }
 
     [Fact]
@@ -87,6 +78,14 @@ public sealed class ShellSmokeTests
             Mouse.MoveTo(initialBounds.Right - 23, initialBounds.Top + 16);
             Thread.Sleep(150);
             Mouse.LeftClick();
+
+            // Closing no longer hides unconditionally: the first close asks whether to keep
+            // running or exit, and remembers the answer (MainWindow.Tray HandleWindowCloseAsync).
+            // So both outcomes are legitimate here and which one happens depends on whether this
+            // data root has been closed before — answer the prompt if it appears, and carry on if
+            // a stored preference already sent us straight to the tray.
+            AnswerKeepRunningIfPrompted(launched.Window);
+
             Assert.True(WaitUntil(() => !IsWindowVisible(windowHandle)), "window did not hide to tray");
 
             // Move while the HWND is hidden, so it receives no non-client mouse transition.
@@ -112,7 +111,7 @@ public sealed class ShellSmokeTests
                 }),
                 "redirected launch did not restore the tray window");
 
-            Assert.NotNull(WaitForDescendant(launched.Window, "AccountMenuButton"));
+            Assert.NotNull(WaitForDescendant(launched.Window, "SettingsButton"));
 
             // Give the queued low-priority non-client tracking request time to deliver its real
             // WM_NCMOUSELEAVE, then inspect the actual pixels of the caption Close button.
@@ -229,6 +228,50 @@ public sealed class ShellSmokeTests
         Assert.NotNull(addressLabel);
     }
 
+    /// <summary>
+    /// Answers the "Close ConnectOnion?" prompt with <b>Keep running</b> when it is showing.
+    ///
+    /// <para>Returns false — without failing — when it is not, because that is a legitimate state:
+    /// the choice is persisted, so a data root that has already been closed once goes straight to
+    /// the tray with no prompt at all. A test that insisted on the dialog would pass exactly once
+    /// per profile and then fail forever.</para>
+    ///
+    /// <para>Invoked through UIA rather than clicked with the mouse, and that is deliberate here
+    /// rather than merely convenient: the caller has just left the physical pointer parked on the
+    /// caption Close button, which is the whole precondition of the hover-state bug this test
+    /// exists for. Moving the mouse to press the dialog button would clear it and quietly turn the
+    /// test into a no-op.</para>
+    /// </summary>
+    private static bool AnswerKeepRunningIfPrompted(Window window)
+    {
+        // Short deadline: this is a "did a dialog appear" probe, not a wait for slow work, and the
+        // no-dialog path is the common one once a profile has been used.
+        var deadline = DateTime.UtcNow.AddSeconds(3);
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                var keepRunning = window
+                    .FindAllDescendants(query => query.ByControlType(FlaUI.Core.Definitions.ControlType.Button))
+                    .FirstOrDefault(element =>
+                        string.Equals(element.Properties.Name.ValueOrDefault, "Keep running", StringComparison.Ordinal));
+                if (keepRunning is not null)
+                {
+                    keepRunning.AsButton().Invoke();
+                    return true;
+                }
+            }
+            catch (System.Runtime.InteropServices.COMException)
+            {
+                // The dialog is being composed over the shell; retry below.
+            }
+
+            Thread.Sleep(150);
+        }
+
+        return false;
+    }
+
     /// <summary>Polls for a Text element with the given content, tolerating the COMException a
     /// mutating visual tree throws.</summary>
     private static AutomationElement? WaitForText(AutomationElement window, string text)
@@ -337,24 +380,14 @@ public sealed class ShellSmokeTests
         Assert.NotNull(square);
     }
 
-    /// <summary>Opens the account flyout, then follows its Settings command into the modal.</summary>
+    /// <summary>Invokes the sidebar's fixed Settings command and waits for the modal.</summary>
     internal static void OpenSettings(Window window)
     {
-        OpenAccountMenu(window);
-
-        // Flyout content does not exist in the UIA tree until its owner opens it.
         var settingsButton = WaitForDescendant(window, "SettingsButton");
         Assert.NotNull(settingsButton);
         settingsButton.AsButton().Invoke();
 
         Assert.NotNull(WaitForDescendant(window, "GeneralNav"));
-    }
-
-    private static void OpenAccountMenu(Window window)
-    {
-        var accountMenuButton = WaitForDescendant(window, "AccountMenuButton");
-        Assert.NotNull(accountMenuButton);
-        accountMenuButton.AsButton().Invoke();
     }
 
     /// <summary>Polls for a descendant, tolerating the transient UIA failures a mutating visual

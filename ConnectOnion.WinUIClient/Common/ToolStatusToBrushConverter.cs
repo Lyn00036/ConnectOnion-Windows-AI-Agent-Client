@@ -42,9 +42,9 @@ public sealed class ToolStatusToBrushConverter : IValueConverter
             ToolActivityStatus.WaitingForConfirmation or ToolActivityStatus.WaitingForPermission => "WarningBrush",
             _ => "TextSecondaryBrush",
         };
-        // Resolved from Application.Resources on every call (never cached — a cached brush would
-        // survive a light/dark flip), with a neutral-token fallback and, behind that, the shared
-        // palette-missing grey. See ThemeBrushResolver.
+        // Resolved through ThemeBrushResolver: cached by key, invalidated on ThemeApplied (so a
+        // light/dark flip repaints), with a neutral-token fallback and, behind that, the shared
+        // palette-missing grey.
         return ThemeBrushResolver.Resolve(key, "TextSecondaryBrush");
     }
 

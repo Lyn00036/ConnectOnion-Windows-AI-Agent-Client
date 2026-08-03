@@ -18,6 +18,7 @@ public sealed class PreferencesRepositoryTests
         Assert.Equal(ThemeMode.System, preferences.Theme);
         Assert.True(preferences.SidebarVisible);
         Assert.Equal(MessageFontSize.Md, preferences.MessageFontSize);
+        Assert.Equal(InterfaceTextSize.Medium, preferences.InterfaceTextSize);
         Assert.Empty(preferences.ShortcutOverrides);
         Assert.Equal("", preferences.MicrophoneDeviceId);
         Assert.True(preferences.EnterToSend);
@@ -37,6 +38,7 @@ public sealed class PreferencesRepositoryTests
                 ["composer.enterKey"] = "newline",
                 ["custom"] = "value",
             },
+            InterfaceTextSize = InterfaceTextSize.Large,
         };
 
         await _repository.SaveAsync(expected);
@@ -45,6 +47,7 @@ public sealed class PreferencesRepositoryTests
         Assert.Equal(expected.Theme, actual.Theme);
         Assert.Equal(expected.SidebarVisible, actual.SidebarVisible);
         Assert.Equal(expected.MessageFontSize, actual.MessageFontSize);
+        Assert.Equal(expected.InterfaceTextSize, actual.InterfaceTextSize);
         Assert.Equal(expected.MicrophoneDeviceId, actual.MicrophoneDeviceId);
         Assert.Equal(expected.ShortcutOverrides, actual.ShortcutOverrides);
         Assert.False(actual.EnterToSend);
@@ -89,6 +92,38 @@ public sealed class PreferencesRepositoryTests
         Assert.Equal(ThemeMode.System, preferences.Theme);
         Assert.Equal(MessageFontSize.Md, preferences.MessageFontSize);
         Assert.Empty(preferences.ShortcutOverrides);
+    }
+
+    [Fact]
+    public async Task StartupSnapshot_LoadsAllPreWindowStateThroughOneRepository()
+    {
+        await _repository.SaveAsync(new PreferencesSnapshot
+        {
+            Theme = ThemeMode.Dark,
+            SidebarVisible = false,
+            MessageFontSize = MessageFontSize.Lg,
+            ShortcutOverrides = new Dictionary<string, string> { ["file.newChat"] = "Ctrl+Shift+N" },
+            InterfaceTextSize = InterfaceTextSize.Small,
+            MicrophoneDeviceId = "microphone-startup",
+        });
+        await using (var connection = await AppDatabase.OpenAsync())
+        {
+            await AppDatabase.SetMetaAsync(connection, null, "notification_settings", "{\"enabled\":true}");
+            await AppDatabase.SetMetaAsync(connection, null, "application_language", "zh-CN");
+            await AppDatabase.SetMetaAsync(connection, null, "main_window_position", "1,2,800,600");
+        }
+
+        var snapshot = await new StartupSnapshotRepository().LoadAsync();
+
+        Assert.Equal(ThemeMode.Dark, snapshot.Preferences.Theme);
+        Assert.False(snapshot.Preferences.SidebarVisible);
+        Assert.Equal(MessageFontSize.Lg, snapshot.Preferences.MessageFontSize);
+        Assert.Equal(InterfaceTextSize.Small, snapshot.Preferences.InterfaceTextSize);
+        Assert.Equal("Ctrl+Shift+N", snapshot.Preferences.ShortcutOverrides["file.newChat"]);
+        Assert.Equal("microphone-startup", snapshot.Preferences.MicrophoneDeviceId);
+        Assert.Equal("{\"enabled\":true}", snapshot.NotificationSettingsJson);
+        Assert.Equal("zh-CN", snapshot.ApplicationLanguage);
+        Assert.Equal("1,2,800,600", snapshot.WindowPlacement);
     }
 
     private static async Task DeleteRowAsync()

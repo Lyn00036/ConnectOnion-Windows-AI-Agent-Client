@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
+using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Models;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Input;
 using System.IO;
 using Windows.Storage;
 using Windows.Storage.Pickers;
@@ -17,10 +17,7 @@ namespace ConnectOnion.WinUIClient.Views;
 /// </summary>
 public sealed partial class ChatPage
 {
-    private async void AttachmentImage_Tapped(object sender, TappedRoutedEventArgs e)
-        => await OpenAttachmentAsync((sender as FrameworkElement)?.Tag as ChatAttachment);
-
-    private async void AttachmentFile_Tapped(object sender, TappedRoutedEventArgs e)
+    private async void AttachmentOpen_Click(object sender, RoutedEventArgs e)
         => await OpenAttachmentAsync((sender as FrameworkElement)?.Tag as ChatAttachment);
 
     /// <summary>Opens a received/sent attachment in its default OS viewer. Best-effort: a
@@ -50,7 +47,9 @@ public sealed partial class ChatPage
         var picker = new FileSavePicker();
         WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindow));
         var ext = Path.GetExtension(attachment.FileName);
-        var extLabel = string.IsNullOrEmpty(ext) ? "File" : ext.TrimStart('.').ToUpperInvariant();
+        var extLabel = string.IsNullOrEmpty(ext)
+            ? LocalizedStrings.Get("AttachmentGenericFileType", "File")
+            : ext.TrimStart('.').ToUpperInvariant();
         picker.SuggestedFileName = attachment.FileName;
         picker.FileTypeChoices.Add(extLabel, new List<string> { string.IsNullOrEmpty(ext) ? "." : ext });
 

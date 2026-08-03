@@ -55,6 +55,7 @@ public static class ServiceRegistration
         services.AddSingleton<IUriLauncher, SystemUriLauncher>();
         services.AddSingleton<OpenOnionAccountService>();
         services.AddSingleton<ConnectionTester>();
+        services.AddSingleton<IAgentIconService, AgentIconService>();
 
         // ---- SQLite repositories ----
         services.AddSingleton<AgentRepository>();
@@ -63,12 +64,19 @@ public static class ServiceRegistration
         services.AddSingleton<PreferencesRepository>();
         services.AddSingleton<ConversationRepository>();
         services.AddSingleton<UsageRepository>();
+        services.AddSingleton<StartupSnapshotRepository>();
         services.AddSingleton<WindowPlacementStore>();
+        services.AddSingleton<LanguagePreferenceStore>();
 
         // ---- Keyboard ----
         // Singleton because it is the live binding table the window's key handlers consult on
         // every keystroke, and a rebind made in Settings has to be visible to them at once.
         services.AddSingleton<KeyboardShortcutService>();
+
+        // ---- Accessibility ----
+        // Singleton: it holds one OS event subscription, and the window reads it on every
+        // layout pass. See TextScaleService for why WinUI 3 needs this done by hand.
+        services.AddSingleton<TextScaleService>();
 
         // ---- Presence + runtime ----
         services.AddSingleton<AgentPresenceService>();
@@ -94,18 +102,19 @@ public static class ServiceRegistration
         services.AddSingleton<NotificationActivationRouter>();
 
         // ---- Startup wiring (runs when the host starts) ----
+        services.AddSingleton<StartupStateService>();
+        services.AddHostedService(sp => sp.GetRequiredService<StartupStateService>());
         services.AddHostedService<NotificationStartupService>();
-        services.AddHostedService<KeyboardShortcutStartupService>();
         services.AddHostedService<ImageCacheMaintenanceService>();
 
         // ---- View models (transient: one per page/dialog, resolved in each view's ctor) ----
         services.AddTransient<ChatViewModel>();
         services.AddTransient<AddAgentViewModel>();
-        services.AddTransient<SessionsViewModel>();
         services.AddTransient<AgentDetailViewModel>();
         services.AddTransient<SettingsViewModel>();
         services.AddTransient<UsageViewModel>();
         services.AddTransient<KeyboardShortcutsViewModel>();
+        services.AddTransient<SessionSearchViewModel>();
 
         return services;
     }

@@ -13,7 +13,7 @@ namespace ConnectOnion.WinUIClient.Services;
 /// rules are the part worth testing — a matcher that puts the wrong skill first is invisible in a
 /// screenshot and obvious in a table.</para>
 /// </summary>
-public static class AgentSkills
+public static partial class AgentSkills
 {
     /// <summary>How many chips a landing page offers. Three is what fits one row without wrapping,
     /// and past three the list stops reading as a handful of suggestions and starts reading as a
@@ -25,18 +25,24 @@ public static class AgentSkills
     /// available to the slash palette (a user who types their name means it); they are only kept
     /// off the chip row, which is a first-impression surface where "capture debug state" is noise.
     /// </summary>
-    private static readonly Regex InternalSkill = new(
+    private static readonly Regex InternalSkill = InternalSkillRegex();
+
+    [GeneratedRegex(
         @"debug|capture|not for direct|called by other skills|internal",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        RegexOptions.IgnoreCase)]
+    private static partial Regex InternalSkillRegex();
 
     /// <summary>
     /// Openers that name an outcome rather than a mechanism. A chip leading with one of these
     /// ("Publish a post…") sorts above one leading with a means ("Use the API to…") — the row has
     /// three slots and they should go to offers a user can say yes to.
     /// </summary>
-    private static readonly Regex GoalVerb = new(
+    private static readonly Regex GoalVerb = GoalVerbRegex();
+
+    [GeneratedRegex(
         @"^(publish|post|submit|send|create|write|draft|schedule|generate|search|find|reply|engage|react|comment|log|translate|summarize|analyze|review|build|make|plan|book)\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        RegexOptions.IgnoreCase)]
+    private static partial Regex GoalVerbRegex();
 
     /// <summary>Clause boundaries a description is cut at, so a chip is an offer rather than a
     /// paragraph. Ordered longest-first only for readability; the cut takes whichever appears
@@ -135,14 +141,14 @@ public static class AgentSkills
     // ---- Opening suggestions ------------------------------------------------
 
     /// <summary>
-    /// The agent's best few skills phrased as offers — the chips a landing page shows instead of
+    /// The agent's best few skills phrased as offers — the chips a landing page puts before its
     /// generic "What can you do?" prompts.
     ///
     /// <para>Best, not merely parseable: internal utilities are dropped, descriptions that will not
     /// cut into a clean short phrase are dropped rather than truncated, and what survives is
     /// ordered by whether it leads with an outcome. An agent whose descriptions are all unusable
-    /// yields nothing, and the caller falls back to its static prompts — a bad chip is worse than
-    /// no chip, because it is the first thing the user reads about the agent.</para>
+    /// yields nothing, and the caller fills the row from its static prompts. A bad chip is worse
+    /// than no chip, because it is the first thing the user reads about the agent.</para>
     /// </summary>
     public static IReadOnlyList<string> BestOffers(IReadOnlyList<SkillInfo>? skills, int max = MaxOffers)
     {
@@ -158,6 +164,43 @@ public static class AgentSkills
             .ThenBy(offer => offer.Length)
             .Take(max)
             .ToList();
+    }
+
+    /// <summary>
+    /// Keeps an agent's own opening offers first, then fills any empty slots with generic
+    /// starters. Duplicate or blank text never consumes a slot.
+    ///
+    /// <para>The landing row is designed as a set of three choices. Treating one usable skill as
+    /// a replacement for the whole generic set left the row looking accidentally incomplete;
+    /// this makes replacement happen per slot instead.</para>
+    /// </summary>
+    public static IReadOnlyList<string> CompleteOffers(
+        IReadOnlyList<string>? offers,
+        IReadOnlyList<string>? fallbacks,
+        int max = MaxOffers)
+    {
+        if (max <= 0) return [];
+
+        var completed = new List<string>(max);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        Append(offers);
+        Append(fallbacks);
+        return completed;
+
+        void Append(IReadOnlyList<string>? candidates)
+        {
+            if (candidates is null) return;
+
+            foreach (var candidate in candidates)
+            {
+                if (completed.Count == max) return;
+                if (string.IsNullOrWhiteSpace(candidate)) continue;
+
+                var normalized = candidate.Trim();
+                if (seen.Add(normalized)) completed.Add(normalized);
+            }
+        }
     }
 
     /// <summary>
@@ -203,11 +246,17 @@ public static class AgentSkills
     private static int WordCount(string text)
         => text.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
 
+    /// <summary>Normalizes the casing of a few brand names inside a generated offer.
+    /// <para>Ordinary case-insensitive string replacement, not <c>Regex.Replace</c>. Every
+    /// pattern in <see cref="BrandCasing"/> is a plain literal with no regex metacharacter in it,
+    /// so the regex engine was parsing three patterns per call to do what <c>string.Replace</c>
+    /// does directly — and these were the only runtime-constructed regexes left in the codebase
+    /// (everything else is <c>[GeneratedRegex]</c>).</para></summary>
     private static string FixBrandCase(string text)
     {
         foreach (var (pattern, replacement) in BrandCasing)
         {
-            text = Regex.Replace(text, pattern, replacement, RegexOptions.IgnoreCase);
+            text = text.Replace(pattern, replacement, StringComparison.OrdinalIgnoreCase);
         }
         return text;
     }

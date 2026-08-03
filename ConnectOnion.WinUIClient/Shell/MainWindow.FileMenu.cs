@@ -1,12 +1,13 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
+using ConnectOnion.WinUIClient.Common;
+using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Services;
 using ConnectOnion.WinUIClient.Views;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
-using Windows.Storage.Pickers;
 using Windows.System;
 
 namespace ConnectOnion.WinUIClient;
@@ -18,6 +19,7 @@ public sealed partial class MainWindow
         RegisterFileMenuAccelerators();
         RegisterEditMenuAccelerators();
         RegisterViewMenuAccelerators();
+        RegisterChatAccelerators();
         RegisterHelpMenuAccelerators();
         RegisterShortcutHints();
         RegisterDragDropHint();
@@ -26,11 +28,8 @@ public sealed partial class MainWindow
     private async void NewChat_Click(object sender, RoutedEventArgs e)
         => await StartNewChatAsync();
 
-    private async void Sidebar_NewChatRequested()
-        => await StartNewChatAsync();
-
     private async void OpenFolder_Click(object sender, RoutedEventArgs e)
-        => await PickAndOpenFolderAsync();
+        => await OpenDataFolderAsync();
 
     private void CloseWindow_Click(object sender, RoutedEventArgs e)
         => MinimizeToTray();
@@ -57,11 +56,11 @@ public sealed partial class MainWindow
                 e.Handled = true;
                 return;
             case KeyboardShortcutCatalog.Ids.OpenFolder:
-                await PickAndOpenFolderAsync();
+                await OpenDataFolderAsync();
                 e.Handled = true;
                 return;
             case KeyboardShortcutCatalog.Ids.CloseWindow:
-                MinimizeToTray();
+                RequestWindowClose();
                 e.Handled = true;
                 return;
             case KeyboardShortcutCatalog.Ids.OpenSettings:
@@ -100,23 +99,16 @@ public sealed partial class MainWindow
         if (!await ShellSidebar.StartNewChatAsync())
         {
             NavigateTo(typeof(HomePage), forceReload: true);
-            await ShowMenuNoticeAsync("No agents available", "Add an agent before starting a chat.");
+            await ShowMenuNoticeAsync(
+                LocalizedStrings.Get("NoAgentsTitle", "No agents available"),
+                LocalizedStrings.Get("NoAgentsBody", "Add an agent before starting a chat."));
         }
     }
 
-    private async Task PickAndOpenFolderAsync()
+    private async Task OpenDataFolderAsync()
     {
-        var picker = new FolderPicker();
-        WinRT.Interop.InitializeWithWindow.Initialize(
-            picker,
-            WinRT.Interop.WindowNative.GetWindowHandle(this));
-        picker.FileTypeFilter.Add("*");
-
-        var folder = await picker.PickSingleFolderAsync();
-        if (folder is not null)
-        {
-            await Launcher.LaunchFolderAsync(folder);
-        }
+        var folder = await Windows.Storage.StorageFolder.GetFolderFromPathAsync(AppStorage.RootDir);
+        await Launcher.LaunchFolderAsync(folder);
     }
 
     private async Task ShowMenuNoticeAsync(string title, string content)
@@ -125,9 +117,9 @@ public sealed partial class MainWindow
         {
             Title = title,
             Content = content,
-            CloseButtonText = "OK",
+            CloseButtonText = LocalizedStrings.Get("CommonOk", "OK"),
             XamlRoot = RootGrid.XamlRoot,
         };
-        await dialog.ShowAsync();
+        await dialog.ShowThemedAsync();
     }
 }

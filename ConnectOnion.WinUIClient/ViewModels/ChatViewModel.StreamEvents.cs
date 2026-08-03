@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using ConnectOnion.Protocol;
+using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services.Attachments;
@@ -51,7 +52,9 @@ public sealed partial class ChatViewModel
         if (inviteCode.Length == 0) return;
 
         message.IsOnboardingSubmitted = true;
-        message.Content = "Invite code submitted. Waiting for the agent to finish onboarding...";
+            message.Content = LocalizedStrings.Get(
+                "ChatInviteSubmitted",
+                "Invite code submitted. Waiting for the agent to finish onboarding...");
         OnPropertyChanged(nameof(Messages));
 
         try
@@ -62,7 +65,10 @@ public sealed partial class ChatViewModel
         {
             connection.InviteCode = null;
             message.IsOnboardingSubmitted = false;
-            message.Content = $"Invite code submission failed: {ex.Message}";
+            message.Content = LocalizedStrings.Format(
+                "ChatInviteFailed",
+                "Invite code submission failed: {0}",
+                ex.Message);
         }
     }
 
@@ -78,7 +84,9 @@ public sealed partial class ChatViewModel
         if (message.OnboardRequest?.PaymentAmount is not { } amount || amount <= 0) return;
 
         message.IsOnboardingSubmitted = true;
-        message.Content = "Payment reported. Waiting for the agent to verify it...";
+            message.Content = LocalizedStrings.Get(
+                "ChatPaymentReported",
+                "Payment reported. Waiting for the agent to verify it...");
         OnPropertyChanged(nameof(Messages));
 
         try
@@ -90,7 +98,10 @@ public sealed partial class ChatViewModel
             // Re-arms the whole card, not just the payment row: whichever method the user tries
             // next, the gate is still standing.
             message.IsOnboardingSubmitted = false;
-            message.Content = $"Could not report the payment: {ex.Message}";
+            message.Content = LocalizedStrings.Format(
+                "ChatPaymentFailed",
+                "Could not report the payment: {0}",
+                ex.Message);
         }
     }
 
@@ -106,7 +117,9 @@ public sealed partial class ChatViewModel
         {
             if (!message.IsOnboarding || !message.IsOnboardingSubmitted) continue;
             message.IsOnboardingSubmitted = false;
-            message.Content = "Onboarding did not complete. Check the invite code and try again.";
+            message.Content = LocalizedStrings.Get(
+                "ChatOnboardingIncomplete",
+                "Onboarding did not complete. Check the invite code and try again.");
             reopened = true;
         }
         if (reopened && CurrentConnection is { } connection) connection.InviteCode = null;
@@ -277,7 +290,7 @@ public sealed partial class ChatViewModel
                 Id = NextId(),
                 Role = ChatRole.Event,
                 EventKind = "activity",
-                EventTitle = "User stopped the task",
+                EventTitle = LocalizedStrings.Get("ChatUserStoppedTask", "User stopped the task"),
                 Status = EventStatus.Done,
             });
 
@@ -287,6 +300,7 @@ public sealed partial class ChatViewModel
             IsProcessing = false;
             CanStop = false;
             IsStopping = false;
+            _optimisticStopRunId = null;
             return;
         }
 
@@ -310,7 +324,9 @@ public sealed partial class ChatViewModel
             .BuildPlanReviewResponse(action, message.PlanFeedback);
         if (response is null)
         {
-            message.InteractiveErrorText = "Describe the changes you want the agent to make.";
+            message.InteractiveErrorText = LocalizedStrings.Get(
+                "ChatDescribePlanChanges",
+                "Describe the changes you want the agent to make.");
             return;
         }
         if (!message.TryBeginInteractiveSubmit()) return;
@@ -359,7 +375,9 @@ public sealed partial class ChatViewModel
             else
             {
                 attachment.Status = AttachmentStatus.Failed;
-                attachment.Error = "Image could not be loaded.";
+            attachment.Error = LocalizedStrings.Get(
+                "ChatImageCouldNotLoad",
+                "Image could not be loaded.");
             }
         });
     }

@@ -1,4 +1,5 @@
 using System;
+using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Models;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -18,8 +19,10 @@ public sealed partial class PlanReviewCard : UserControl
     private void Approve_Click(object sender, RoutedEventArgs e) => ApproveRequested?.Invoke(this, e);
     private async void ReviewSections_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new PlanSectionReviewDialog(Message.EventDetail ?? "") { XamlRoot = XamlRoot };
-        var result = await dialog.ShowAsync();
+        var isReadOnly = !Message.IsInteractiveEditable;
+        var dialog = new PlanSectionReviewDialog(Message.EventDetail ?? "", isReadOnly) { XamlRoot = XamlRoot };
+        var result = await dialog.ShowThemedAsync();
+        if (isReadOnly) return;
         if (result == ContentDialogResult.None) return;
 
         Message.PlanFeedback = dialog.BuildFeedback();
@@ -37,7 +40,7 @@ public sealed partial class PlanReviewCard : UserControl
         Services.ClipboardService.CopyText(Message.EventDetail ?? "");
         if (sender is not Button button) return;
         var original = button.Content;
-        button.Content = "Copied";
+        button.Content = Common.LocalizedStrings.Get("CommonCopied", "Copied");
         button.IsEnabled = false;
         await System.Threading.Tasks.Task.Delay(800);
         button.Content = original;

@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using ConnectOnion.Protocol;
 using ConnectOnion.Protocol.Runtime;
+using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services.Attachments;
@@ -57,8 +58,8 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
     // stream) has no way to record the chosen result — a reloaded card would show dead controls.
     private readonly InteractiveAnswerBuffer _interactiveAnswers = new();
 
-    // The interactive turn (if any) the agent is currently blocked on, per conversation. Stop
-    // reads this to pick its tier: only an "approval" can be turned into a real halt.
+    // The interactive turn (if any) the agent is currently blocked on, per conversation. This is
+    // lifecycle bookkeeping for interactive cards; the global Stop action always sends INTERRUPT.
     private readonly ConcurrentDictionary<string, string> _pendingInteractive = new();
 
     // Conversations whose connection already has its reconnect/divergence handlers attached.
@@ -142,14 +143,69 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         _interruptRequestedRuns.TryRemove(conversationId, out _);
         _wiredConnections.TryRemove(conversationId, out _);
 
-        List<string>? images = null;
-        List<OutgoingFileAttachment>? files = null;
+        var prepared = await PrepareAndPersistUserInputAsync(
+            conversationId, prompt, attachments).ConfigureAwait(false);
+
+        var runId = Guid.NewGuid().ToString();
+        var request = new TurnRequest(
+            RunId: runId,
+            ConversationId: conversationId,
+            AgentId: agent.Id,
+            UserMessageId: Guid.NewGuid().ToString(),
+            AssistantMessageId: Guid.NewGuid().ToString(),
+            Prompt: prompt,
+            SessionId: conversationId,
+            Mode: mode,
+            AttachmentSources: prepared.Sources);
+
+        await _conversations.InsertExecutionAsync(runId, conversationId, null, prompt, "running").ConfigureAwait(false);
+
+        var connection = _connections.GetOrCreate(conversationId, agent);
+        AttachConnectionHandlers(conversationId, agent, connection);
+        _runs.StartRun(request, NewExecutor(agent, conversationId, connection));
+
+        return new SendMessageResult(
+            runId, request.UserMessageId, request.AssistantMessageId, prepared.Message.Id);
+    }
+
+    public async Task SendRuntimeInputAsync(
+        AgentConfig agent,
+        string conversationId,
+        string prompt,
+        IReadOnlyList<PendingAttachment>? attachments = null)
+    {
+        var run = _runs.GetActiveRun(conversationId);
+        if (run is null || run.IsTerminal)
+            throw new InvalidOperationException("Cannot send runtime input: no agent turn is active.");
+
+        var connection = _connections.Get(conversationId);
+        if (connection is not { IsConnected: true })
+            throw new InvalidOperationException("Cannot send runtime input: the agent connection is not open.");
+
+        _agentsById[agent.Id] = agent;
+        var prepared = await PrepareAndPersistUserInputAsync(
+            conversationId, prompt, attachments).ConfigureAwait(false);
+        var encoded = await EncodeAttachmentSourcesAsync(prepared.Sources).ConfigureAwait(false);
+        await connection.SendRuntimeInputAsync(prompt, encoded.Images, encoded.Files).ConfigureAwait(false);
+    }
+
+    private sealed record PreparedUserInput(
+        ChatMessage Message,
+        IReadOnlyList<TurnAttachmentSource>? Sources);
+
+    /// <summary>Builds the wire attachments and appends the matching user bubble. Fresh turns and
+    /// runtime interjections share this path so their transcript/cache behavior cannot drift.</summary>
+    private async Task<PreparedUserInput> PrepareAndPersistUserInputAsync(
+        string conversationId,
+        string prompt,
+        IReadOnlyList<PendingAttachment>? attachments)
+    {
+        List<TurnAttachmentSource>? sources = null;
         var userAttachments = new List<ChatAttachment>();
 
         if (attachments is { Count: > 0 })
         {
-            images = new List<string>();
-            files = new List<OutgoingFileAttachment>();
+            sources = new List<TurnAttachmentSource>();
             foreach (var attachment in attachments)
             {
                 var localCachePath = attachment.LocalPath;
@@ -184,16 +240,16 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
                     Status = AttachmentStatus.Sent,
                 });
 
-                if (attachment.DataUrl is null) continue;
-                if (attachment.Kind == AttachmentKind.Image) images.Add(attachment.DataUrl);
-                else files.Add(new OutgoingFileAttachment(attachment.FileName, attachment.DataUrl));
+                sources.Add(new TurnAttachmentSource(
+                    attachment.FileName,
+                    localCachePath,
+                    attachment.MimeType,
+                    attachment.Kind == AttachmentKind.Image));
 
                 // Release the base64 payload immediately — the wire lists now hold it,
                 // and it must not linger on the composer's draft.
-                attachment.DataUrl = null;
             }
-            if (images.Count == 0) images = null;
-            if (files.Count == 0) files = null;
+            if (sources.Count == 0) sources = null;
         }
 
         // Persist the user message up front so a page opening this conversation mid-turn
@@ -207,29 +263,30 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
             Content = prompt,
         };
         foreach (var attachment in userAttachments) userMessage.Attachments.Add(attachment);
-        await _conversations.UpsertMessagesAsync(conversationId, new[] { userMessage }).ConfigureAwait(false);
+        await _conversations.UpsertMessagesAsync(
+            conversationId, new[] { userMessage }).ConfigureAwait(false);
 
-        var runId = Guid.NewGuid().ToString();
-        var request = new TurnRequest(
-            RunId: runId,
-            ConversationId: conversationId,
-            AgentId: agent.Id,
-            UserMessageId: Guid.NewGuid().ToString(),
-            AssistantMessageId: Guid.NewGuid().ToString(),
-            Prompt: prompt,
-            Images: images,
-            Files: files,
-            SessionId: conversationId,
-            Mode: mode);
+        return new PreparedUserInput(userMessage, sources);
+    }
 
-        await _conversations.InsertExecutionAsync(runId, conversationId, null, prompt, "running").ConfigureAwait(false);
-
-        var connection = _connections.GetOrCreate(conversationId, agent);
-        AttachConnectionHandlers(conversationId, agent, connection);
-        _runs.StartRun(request, NewExecutor(agent, conversationId, connection));
-
-        return new SendMessageResult(
-            runId, request.UserMessageId, request.AssistantMessageId, userMessage.Id);
+    internal static async Task<(IReadOnlyList<string>? Images, IReadOnlyList<OutgoingFileAttachment>? Files)>
+        EncodeAttachmentSourcesAsync(IReadOnlyList<TurnAttachmentSource>? sources)
+    {
+        if (sources is not { Count: > 0 }) return (null, null);
+        List<string>? images = null;
+        List<OutgoingFileAttachment>? files = null;
+        foreach (var source in sources)
+        {
+            var dataUrl = await AttachmentEncoder
+                .EncodeToDataUrlAsync(source.LocalPath, source.MimeType)
+                .ConfigureAwait(false);
+            if (source.IsImage)
+                (images ??= new List<string>()).Add(dataUrl);
+            else
+                (files ??= new List<OutgoingFileAttachment>()).Add(
+                    new OutgoingFileAttachment(source.Name, dataUrl));
+        }
+        return (images, files);
     }
 
     /// <summary>
@@ -921,7 +978,9 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
             else
             {
                 attachment.Status = AttachmentStatus.Failed;
-                attachment.Error = "Image could not be loaded.";
+                attachment.Error = LocalizedStrings.Get(
+                    "ImageLoadFailed",
+                    "Image could not be loaded.");
             }
         }
 

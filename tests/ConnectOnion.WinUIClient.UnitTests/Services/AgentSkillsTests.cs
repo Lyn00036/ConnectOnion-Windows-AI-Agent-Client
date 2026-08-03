@@ -213,6 +213,44 @@ public sealed class AgentSkillsTests
         Assert.Empty(AgentSkills.BestOffers(null));
         Assert.Empty(AgentSkills.BestOffers([]));
     }
+
+    [Fact]
+    public void CompleteOffers_FillsUnusedSlotsAfterAgentOffers()
+    {
+        var completed = AgentSkills.CompleteOffers(
+            ["Safely find Gmail friend-link requests"],
+            ["Summarize your capabilities", "Help me get started", "Suggest three useful tasks"]);
+
+        Assert.Equal(
+            [
+                "Safely find Gmail friend-link requests",
+                "Summarize your capabilities",
+                "Help me get started",
+            ],
+            completed);
+    }
+
+    [Fact]
+    public void CompleteOffers_DeduplicatesAndStillFillsThreeSlots()
+    {
+        var completed = AgentSkills.CompleteOffers(
+            ["Publish a post", "publish a post"],
+            ["Publish a post", "Help me get started", "Suggest three useful tasks"]);
+
+        Assert.Equal(
+            ["Publish a post", "Help me get started", "Suggest three useful tasks"],
+            completed);
+    }
+
+    [Fact]
+    public void CompleteOffers_UsesFallbacksWhenAgentHasNoOffers()
+    {
+        var completed = AgentSkills.CompleteOffers(
+            [],
+            ["One", "Two", "Three", "Four"]);
+
+        Assert.Equal(["One", "Two", "Three"], completed);
+    }
 }
 
 /// <summary>

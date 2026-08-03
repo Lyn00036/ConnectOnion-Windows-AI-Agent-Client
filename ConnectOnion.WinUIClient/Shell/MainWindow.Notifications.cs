@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
+using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Models.Notifications;
 using ConnectOnion.WinUIClient.Services;
@@ -86,7 +87,7 @@ public sealed partial class MainWindow : IChatWindow
             {
                 XamlRoot = xamlRoot,
             };
-            await dialog.ShowAsync();
+            await dialog.ShowThemedAsync();
         }
         catch (System.Exception ex)
         {
@@ -98,9 +99,11 @@ public sealed partial class MainWindow : IChatWindow
 
     private void ShowIdentityResetToast(string reason)
         => DispatcherQueue.TryEnqueue(() => ShowInAppToast(new InAppToastModel(
-            "New identity generated",
-            $"Your previous ConnectOnion identity could not be recovered — {reason}. "
-                + "Agents that authorized the old address will need to authorize this one again.",
+            LocalizedStrings.Get("IdentityResetTitle", "New identity generated"),
+            LocalizedStrings.Format(
+                "IdentityResetBody",
+                "Your previous ConnectOnion identity could not be recovered — {0}. Agents that authorized the old address will need to authorize this one again.",
+                reason),
             NotificationType.Error,
             AgentId: null,
             ConversationId: null,
@@ -129,16 +132,10 @@ public sealed partial class MainWindow : IChatWindow
 
         NotificationLog.Info($"ShowConversationAsync: matched session — opening chat for agentId={agentId} conversationId={conversationId}");
 
-        var agents = await AppServices.Agents.LoadAsync();
-        agents.SelectedAgentId = agentId;
-        await AppServices.Agents.SaveAsync(agents);
-
-        sessions.ActiveSessionId = conversationId;
-        await AppServices.Sessions.SaveAsync(sessions);
+        await AppServices.Agents.SetSelectedAgentAsync(agentId);
+        await AppServices.Sessions.SetActiveSessionAsync(conversationId);
 
         NavigateTo(typeof(ChatPage), forceReload: true);
-        try { await ShellSidebar.RefreshAsync(); }
-        catch { /* sidebar refresh is best-effort */ }
     }
 
     public void ShowInAppToast(InAppToastModel toast) => InAppNotifications.ShowToast(toast);

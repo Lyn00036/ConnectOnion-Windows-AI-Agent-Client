@@ -36,7 +36,7 @@ public sealed class PresenceToBrushConverter : IValueConverter
                 _ => "TextTertiaryBrush",
             }
             : "TextTertiaryBrush";
-        return (Brush)Application.Current.Resources[key];
+        return ThemeBrushResolver.Resolve(key);
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, string language)
@@ -61,7 +61,7 @@ public sealed class EventStatusToBrushConverter : IValueConverter
                 _ => "SuccessBrush",
             }
             : "TextTertiaryBrush";
-        return (Brush)Application.Current.Resources[key];
+        return ThemeBrushResolver.Resolve(key);
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, string language)
@@ -89,7 +89,7 @@ public sealed class InteractiveStatusToBrushConverter : IValueConverter
                 _ => surface ? "SuccessSubtleBrush" : "SuccessBrush",
             }
             : surface ? "SurfaceElevatedBrush" : "TextTertiaryBrush";
-        return (Brush)Application.Current.Resources[key];
+        return ThemeBrushResolver.Resolve(key);
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, string language)
@@ -111,7 +111,7 @@ public sealed class InteractiveToneToBrushConverter : IValueConverter
                 _ => surface ? "SurfaceSecondaryBrush" : "BorderDefaultBrush",
             }
             : surface ? "SurfaceSecondaryBrush" : "BorderDefaultBrush";
-        return (Brush)Application.Current.Resources[key];
+        return ThemeBrushResolver.Resolve(key);
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, string language)
@@ -122,7 +122,8 @@ public sealed class InteractiveToneToBrushConverter : IValueConverter
 /// Picks one of two theme brushes from a bool, named in the converter parameter as
 /// <c>"TrueKey|FalseKey"</c>. Exists so a selected ask_user option can carry an accent
 /// border and fill without each of its four elements needing a converter of its own.
-/// Resources are read fresh on every call (never cached), so a live theme flip repaints.
+/// Brushes come from ThemeBrushResolver, which caches by key and drops the cache on
+/// ThemeService.ThemeApplied — so a live theme flip still repaints.
 /// </summary>
 public sealed class BoolToResourceBrushConverter : IValueConverter
 {
@@ -131,10 +132,10 @@ public sealed class BoolToResourceBrushConverter : IValueConverter
         var keys = (parameter as string)?.Split('|');
         if (keys is not { Length: 2 })
         {
-            return (Brush)Application.Current.Resources["TextTertiaryBrush"];
+            return ThemeBrushResolver.Resolve("TextTertiaryBrush");
         }
 
-        return (Brush)Application.Current.Resources[value is true ? keys[0] : keys[1]];
+        return ThemeBrushResolver.Resolve(value is true ? keys[0] : keys[1]);
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, string language)
@@ -162,7 +163,7 @@ public sealed class ConnectionPhaseToBrushConverter : IValueConverter
                 _ => "ComposerStatusIdleBrush",
             }
             : "ComposerStatusIdleBrush";
-        return (Brush)Application.Current.Resources[key];
+        return ThemeBrushResolver.Resolve(key);
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, string language)

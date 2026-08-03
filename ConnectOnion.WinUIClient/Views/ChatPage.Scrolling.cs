@@ -120,10 +120,14 @@ public sealed partial class ChatPage
 
             // Restore scroll position FIRST (while overlay is still visible),
             // then hide the overlay — this way the scroll jump is invisible.
+            // The target is kept so the wait below can verify the view actually got there,
+            // rather than only listening for an event that may never arrive.
+            double? restoreTarget = null;
             if (Vm.SessionId is { } sid
                 && ScrollPositions.TryRemove(sid, out var offset)
                 && _messageScrollViewer is not null)
             {
+                restoreTarget = offset;
                 _messageScrollViewer.ChangeView(null, offset, null, disableAnimation: true);
             }
             else
@@ -137,7 +141,7 @@ public sealed partial class ChatPage
             // the re-virtualization it causes has begun. That is what lifted the overlay early
             // on longer conversations: the first frame was quiet simply because nothing had
             // started yet.
-            await WaitForScrollSettledAsync(cancellationToken);
+            await WaitForScrollSettledAsync(restoreTarget, budget, cancellationToken);
 
             // Third wait: the restore re-virtualizes a new set of bubbles at the landing point.
             // Hold the overlay until that churn goes quiet. Several consecutive quiet frames,
@@ -243,30 +247,33 @@ public sealed partial class ChatPage
     }
 
     /// <summary>
-    /// Waits for a programmatic <c>ChangeView</c> to actually take effect, bounded by
-    /// <paramref name="timeout"/>.
+    /// Waits for the pending scroll to actually take effect, bounded by <paramref name="timeout"/>.
     /// </summary>
     /// <remarks>
     /// <para><c>ChangeView</c> returns before the view has moved even with
-    /// <c>disableAnimation: true</c>; it queues the change. <c>ViewChanged</c> with
-    /// <c>IsIntermediate == false</c> is the signal that it has landed and that any
-    /// re-virtualization it triggers is now under way. Without this, the churn check that follows
-    /// samples the quiet frames before the work starts.</para>
-    /// <para>Bounded in <b>frames</b>, not by the overlay budget: a queued view change lands
-    /// within a frame or two, and when the view does not move at all — a short chat already at
-    /// the requested offset — no <c>ViewChanged</c> is ever raised. A time-based bound would sit
-    /// there for the whole budget in exactly the case that is supposed to be fastest.</para>
+    /// <c>disableAnimation: true</c>; it queues the change. Until it lands, the re-virtualization
+    /// it causes has not started, so the churn check that follows would sample quiet frames and
+    /// lift the overlay over a half-populated viewport.</para>
+    /// <para><b>Position is the signal, not just the event.</b> This used to listen only for
+    /// <c>ViewChanged</c> and give up after a fixed four frames — which meant that whenever the
+    /// queued change needed a fifth (a long history, a slow frame, a machine under load) the wait
+    /// returned reporting success while the view had not moved at all. That is the intermittency:
+    /// the same conversation settles in time on one open and not on the next. Checking the offset
+    /// directly also covers the case no event can: a view already at the requested position never
+    /// raises <c>ViewChanged</c>.</para>
+    /// <para>Bounded by the caller's overlay budget rather than a frame count, because the budget
+    /// is the real answer to "how long may this page withhold itself"; the position check keeps
+    /// the fast cases fast, so a larger bound costs nothing when there is nothing to wait for.</para>
     /// </remarks>
     private async System.Threading.Tasks.Task WaitForScrollSettledAsync(
-        CancellationToken cancellationToken, int maxFrames = 4)
+        double? targetOffset, TimeSpan timeout, CancellationToken cancellationToken)
     {
-        if (_messageScrollViewer is null)
-        {
-            // No ScrollViewer yet: still give the layout a frame, so the caller keeps a boundary
-            // between queueing the scroll and measuring churn.
-            await NextFrameAsync(cancellationToken);
-            return;
-        }
+        // One frame unconditionally. The scroll may still be sitting in the dispatcher queue —
+        // QueueScrollToEnd defers the ChangeView to a later tick — so on the current frame there
+        // is nothing to observe and the position check below would read the pre-scroll offset.
+        await NextFrameAsync(cancellationToken);
+
+        if (_messageScrollViewer is null) return;
 
         var settled = false;
         EventHandler<ScrollViewerViewChangedEventArgs> handler = (_, args) =>
@@ -275,14 +282,41 @@ public sealed partial class ChatPage
         };
 
         _messageScrollViewer.ViewChanged += handler;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
-            for (var frame = 0; frame < maxFrames && !settled; frame++)
+            while (!settled && sw.Elapsed < timeout && !IsAtScrollTarget(targetOffset))
             {
                 await NextFrameAsync(cancellationToken);
             }
         }
         finally { _messageScrollViewer.ViewChanged -= handler; }
+    }
+
+    /// <summary>
+    /// Whether the transcript is already where the restore asked it to be.
+    /// <paramref name="targetOffset"/> null means "the bottom", which is where a conversation
+    /// opens when it has no remembered position.
+    /// </summary>
+    private bool IsAtScrollTarget(double? targetOffset)
+    {
+        if (_messageScrollViewer is null) return true;
+
+        // Sub-pixel tolerance: ChangeView clamps the request to ScrollableHeight and the result
+        // is not bit-identical to what was asked for.
+        const double epsilon = 0.5;
+        var offset = _messageScrollViewer.VerticalOffset;
+        var scrollable = _messageScrollViewer.ScrollableHeight;
+
+        if (targetOffset is { } target)
+        {
+            // Clamped the same way ChangeView clamps it, so a remembered offset past the end of a
+            // now-shorter conversation still counts as reached instead of waiting out the budget.
+            return Math.Abs(offset - Math.Min(target, scrollable)) <= epsilon;
+        }
+
+        // A conversation short enough not to scroll is already at its bottom.
+        return scrollable <= epsilon || offset >= scrollable - epsilon;
     }
 
     /// <summary>Yields until the next low-priority dispatcher tick, i.e. after the current
@@ -330,13 +364,48 @@ public sealed partial class ChatPage
         MessageList.ScrollIntoView(Vm.Messages[^1]);
     }
 
-    private void MessageScrollViewer_ViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
+    private async void MessageScrollViewer_ViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
     {
         if (_messageScrollViewer is null) return;
 
         var distanceFromBottom = _messageScrollViewer.ScrollableHeight - _messageScrollViewer.VerticalOffset;
         _stickToBottom = distanceFromBottom < 96;
         ScrollToLatestButton.Visibility = _stickToBottom ? Visibility.Collapsed : Visibility.Visible;
+
+        // Keep the viewport anchored while an older page is prepended. Waiting until the user is
+        // near the top gives the database enough time to load before the boundary becomes visible,
+        // while the VM guard coalesces the several ViewChanged events one gesture produces.
+        if (_isLoadingConversation
+            || _olderHistoryUiLoadActive
+            || !Vm.HasMoreHistory
+            || _messageScrollViewer.VerticalOffset > 180)
+        {
+            return;
+        }
+
+        _olderHistoryUiLoadActive = true;
+        var previousOffset = _messageScrollViewer.VerticalOffset;
+        var previousScrollableHeight = _messageScrollViewer.ScrollableHeight;
+        try
+        {
+            var added = await Vm.LoadOlderMessagesAsync(_pageLifetimeCts.Token);
+            if (added == 0 || _messageScrollViewer is null) return;
+
+            await NextFrameAsync(_pageLifetimeCts.Token);
+            var addedExtent = Math.Max(0, _messageScrollViewer.ScrollableHeight - previousScrollableHeight);
+            _messageScrollViewer.ChangeView(
+                null,
+                previousOffset + addedExtent,
+                null,
+                disableAnimation: true);
+        }
+        catch (OperationCanceledException) when (_pageLifetimeCts.IsCancellationRequested)
+        {
+        }
+        finally
+        {
+            _olderHistoryUiLoadActive = false;
+        }
     }
 
     private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject

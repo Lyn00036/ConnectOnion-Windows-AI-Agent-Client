@@ -37,12 +37,6 @@ public sealed partial class ChatTurnProjection
                 ? v.ValueKind == JsonValueKind.True ? true
                     : v.ValueKind == JsonValueKind.False ? false : (bool?)null
                 : null;
-        // Consecutive thoughts fold into one card, and anything else ends that run. Grouping by
-        // adjacency rather than per turn is deliberate: thoughts either side of a tool call are
-        // reasoning about different things, and merging them would reorder the narrative into a
-        // single block that claims the agent thought it all up front.
-        if (e.Type != "thinking") _currentThinking = null;
-
         switch (e.Type)
         {
             // Local-only lifecycle markers. They intentionally render no separate bubble; the
@@ -448,11 +442,11 @@ public sealed partial class ChatTurnProjection
                 }
                 if (message.IsFileChangeApproval)
                 {
-                    message.RelatedDiffPreview = Messages.LastOrDefault(candidate =>
+                    message.AttachRelatedDiffPreview(Messages.LastOrDefault(candidate =>
                         candidate.IsDiffPreviewEvent
                         && candidate.DiffState is DiffChangeState.Pending or DiffChangeState.Preview
                         && string.Equals(candidate.EventTitle, message.AskUserTargetPath,
-                            StringComparison.OrdinalIgnoreCase));
+                            StringComparison.OrdinalIgnoreCase)));
                 }
                 Add(message);
                 // A QR/login image immediately before ask_user is part of the question. Waiting

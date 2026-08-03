@@ -29,6 +29,8 @@
 
             <Style x:Key="TitleIconButtonStyle" TargetType="Button" BasedOn="{StaticResource SmallIconButtonStyle}">
                 <Setter Property="CornerRadius" Value="6" />
+                <Setter Property="Width" Value="32" />
+                <Setter Property="Height" Value="32" />
             </Style>
 
             <Style x:Key="ZoomHudButtonStyle" TargetType="Button" BasedOn="{StaticResource SmallIconButtonStyle}">
@@ -48,7 +50,9 @@
         </Grid.Resources>
 
         <Grid.RowDefinitions>
-            <RowDefinition Height="32" />
+            <!-- Height is re-set from UpdateTitleBarScale when the OS text-size setting is above
+                 100%; 32 is the standard caption and the value it returns to. -->
+            <RowDefinition x:Name="TitleBarRow" Height="32" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -64,21 +68,13 @@
                             AreOpenCloseAnimationsEnabled="False"
                             Opening="TrayContextMenu_Opening">
                     <MenuFlyoutItem
+                        x:Uid="HistoryRecentChats"
                         x:Name="RecentChatsHeader"
                         Text="Recent chats"
                         IsEnabled="False" />
                     <MenuFlyoutSeparator x:Name="RecentChatsEndSeparator" />
                     <MenuFlyoutItem
-                        Text="New Chat"
-                        Command="{x:Bind NewChatFromTrayCommand}">
-                        <MenuFlyoutItem.Icon>
-                            <ic:FluentIcon Icon="Add"
-                                           IconVariant="Regular"
-                                           IconSize="Size16" />
-                        </MenuFlyoutItem.Icon>
-                    </MenuFlyoutItem>
-                    <MenuFlyoutSeparator />
-                    <MenuFlyoutItem
+                        x:Uid="HistoryExit"
                         Text="Exit"
                         Command="{x:Bind ExitFromTrayCommand}" />
                 </MenuFlyout>
@@ -89,13 +85,17 @@
               x:Name="TitleBarArea"
               Background="{ThemeResource SidebarBackgroundBrush}">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
+                <!-- Widened by UpdateTitleBarScale to match the render transform, which does not
+                     resize the layout slot on its own. -->
+                <ColumnDefinition x:Name="TitleBarContentColumn" Width="Auto" />
                 <ColumnDefinition Width="*" />
+                <!-- 144 is only the pre-measurement fallback (three buttons at 100%). The real
+                     width comes from AppWindowTitleBar's inset — see UpdateCaptionButtonsColumn. -->
                 <ColumnDefinition x:Name="CaptionButtonsColumn" Width="144" />
             </Grid.ColumnDefinitions>
 
-            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="2" Padding="10,0,0,0">
-                <Button x:Name="SidebarToggleButton"
+            <StackPanel x:Name="TitleBarContent" Grid.Column="0" Orientation="Horizontal" Spacing="2" Padding="10,0,0,0">
+                <Button x:Uid="MainToggleSidebar" x:Name="SidebarToggleButton"
                         Style="{StaticResource TitleIconButtonStyle}"
                         Click="SidebarToggle_Click"
                         AutomationProperties.Name="Toggle sidebar"
@@ -105,7 +105,7 @@
                                    IconSize="Size20"
                                    Foreground="{ThemeResource TextSecondaryBrush}" />
                 </Button>
-                <Button x:Name="BackButton"
+                <Button x:Uid="MainNavigateBack" x:Name="BackButton"
                         Style="{StaticResource TitleIconButtonStyle}"
                         Click="Back_Click"
                         AutomationProperties.Name="Back"
@@ -123,7 +123,7 @@
                                    IconSize="Size20"
                                    Foreground="{ThemeResource TextSecondaryBrush}" />
                 </Button>
-                <Button x:Name="ForwardButton"
+                <Button x:Uid="MainNavigateForward" x:Name="ForwardButton"
                         Style="{StaticResource TitleIconButtonStyle}"
                         Click="Forward_Click"
                         AutomationProperties.Name="Forward"
@@ -138,17 +138,18 @@
                                    IconSize="Size20"
                                    Foreground="{ThemeResource TextSecondaryBrush}" />
                 </Button>
-                <MenuBar Background="Transparent"
-                         BorderThickness="0"
-                         VerticalAlignment="Center">
-                    <MenuBarItem Title="File">
+            <MenuBar x:Name="TitleBarMenu"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     VerticalAlignment="Center">
+            <MenuBarItem x:Uid="MenuFile" Title="File">
                         <MenuFlyoutItem x:Uid="MenuNewChat" x:Name="NewChatMenuItem" Text="New Chat"
                                         KeyboardAcceleratorTextOverride="Ctrl+N"
                                         Click="NewChat_Click" />
-                        <MenuFlyoutItem x:Uid="MenuOpenFolder" x:Name="OpenFolderMenuItem" Text="Open Folder..."
+                        <MenuFlyoutItem x:Uid="MenuOpenFolder" x:Name="OpenFolderMenuItem" Text="Open Data Folder"
                                         KeyboardAcceleratorTextOverride="Ctrl+O"
                                         Click="OpenFolder_Click" />
-                        <MenuFlyoutItem x:Uid="MenuClose" x:Name="CloseWindowMenuItem" Text="Close"
+                        <MenuFlyoutItem x:Uid="MenuClose" x:Name="CloseWindowMenuItem" Text="Hide to Tray"
                                         KeyboardAcceleratorTextOverride="Ctrl+W"
                                         Click="CloseWindow_Click" />
                         <MenuFlyoutSeparator />
@@ -160,7 +161,7 @@
                                         KeyboardAcceleratorTextOverride="Ctrl+Q"
                                         Click="Exit_Click" />
                     </MenuBarItem>
-                    <MenuBarItem Title="Edit">
+            <MenuBarItem x:Uid="MenuEdit" x:Name="EditMenuBarItem" Title="Edit">
                         <MenuFlyoutItem x:Uid="MenuUndo" Text="Undo"
                                         KeyboardAcceleratorTextOverride="Ctrl+Z"
                                         Click="Undo_Click" />
@@ -184,11 +185,11 @@
                                         KeyboardAcceleratorTextOverride="Ctrl+A"
                                         Click="SelectAll_Click" />
                     </MenuBarItem>
-                    <MenuBarItem Title="View">
+            <MenuBarItem x:Uid="MenuView" x:Name="ViewMenuBarItem" Title="View">
                         <MenuFlyoutItem x:Uid="MenuToggleSidebar" x:Name="ToggleSidebarMenuItem" Text="Toggle Sidebar"
                                         KeyboardAcceleratorTextOverride="Ctrl+B"
                                         Click="ToggleSidebarMenu_Click" />
-                        <MenuFlyoutItem x:Uid="MenuOpenTerminal" x:Name="OpenTerminalMenuItem" Text="Open Terminal"
+                        <MenuFlyoutItem x:Uid="MenuOpenTerminal" x:Name="OpenTerminalMenuItem" Text="Open Terminal in Data Folder"
                                         KeyboardAcceleratorTextOverride="Ctrl+`"
                                         Click="OpenTerminal_Click" />
                         <MenuFlyoutItem x:Uid="MenuFind" x:Name="FindMenuItem" Text="Find"
@@ -215,7 +216,7 @@
                                         KeyboardAcceleratorTextOverride="F11"
                                         Click="ToggleFullScreen_Click" />
                     </MenuBarItem>
-                    <MenuBarItem x:Name="HelpMenuBarItem" Title="Help" AutomationProperties.AutomationId="HelpMenuButton">
+            <MenuBarItem x:Uid="MenuHelp" x:Name="HelpMenuBarItem" Title="Help" AutomationProperties.AutomationId="HelpMenuButton">
                         <MenuFlyoutItem x:Uid="MenuKeyboardShortcuts" x:Name="KeyboardShortcutsMenuItem" Text="Keyboard shortcuts" AutomationProperties.AutomationId="KeyboardShortcutsMenuItem"
                                         KeyboardAcceleratorTextOverride="Ctrl+Shift+/"
                                         Click="KeyboardShortcuts_Click" />
@@ -237,13 +238,46 @@
               Grid.Row="1"
               Background="{ThemeResource SidebarBackgroundBrush}">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition x:Name="ShellSidebarColumn" Width="264" />
+                <ColumnDefinition x:Name="ShellSidebarColumn" Width="288" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
+
+            <Rectangle x:Uid="SidebarDismissLayer" x:Name="SidebarDismissLayer"
+                       Grid.ColumnSpan="2"
+                       Canvas.ZIndex="9"
+                       Fill="{ThemeResource SettingsBackdropBrush}"
+                       Visibility="Collapsed"
+                       Tapped="SidebarDismissLayer_Tapped"
+                       AutomationProperties.Name="Close navigation drawer" />
 
             <controls:ShellSidebar x:Name="ShellSidebar"
                                    Grid.Column="0"
                                    Canvas.ZIndex="10" />
+
+            <controls:SidebarResizeHandle x:Uid="SidebarResizeHandle"
+                                          x:Name="SidebarResizeHandle"
+                                          Grid.Column="0"
+                                          Canvas.ZIndex="12"
+                                          Width="10"
+                                          HorizontalAlignment="Right"
+                                          VerticalAlignment="Stretch"
+                                          Background="Transparent"
+                                          IsTabStop="True"
+                                          PointerPressed="SidebarResizeHandle_PointerPressed"
+                                          PointerMoved="SidebarResizeHandle_PointerMoved"
+                                          PointerReleased="SidebarResizeHandle_PointerReleased"
+                                          PointerCanceled="SidebarResizeHandle_PointerCanceled"
+                                          PointerCaptureLost="SidebarResizeHandle_PointerCaptureLost"
+                                          KeyDown="SidebarResizeHandle_KeyDown"
+                                          AutomationProperties.AutomationId="SidebarResizeHandle"
+                                          AutomationProperties.Name="Resize sidebar"
+                                          AutomationProperties.HelpText="Drag horizontally to resize. Drag left past the minimum to collapse.">
+                <controls:SidebarResizeHandle.Template>
+                    <ControlTemplate TargetType="controls:SidebarResizeHandle">
+                        <controls:SidebarResizeCursorSurface Background="Transparent" />
+                    </ControlTemplate>
+                </controls:SidebarResizeHandle.Template>
+            </controls:SidebarResizeHandle>
 
             <!-- Both hairlines — title bar → content, and sidebar → content — are one continuous
                  stroke drawn by this Border, so they meet in a rounded corner instead of a square
@@ -254,7 +288,12 @@
                  background, matched to the sidebar and title bar so the curve reads as the content
                  panel's corner rather than a gap. Only the top-left is rounded; the other three
                  corners are the window frame. -->
-            <Border Grid.Column="1"
+            <!-- CornerRadius and BorderThickness are the two properties FlowDirection does NOT
+                 mirror (unlike Margin, Padding and HorizontalAlignment), so under a right-to-left
+                 language this rounded corner would stay on the left while everything around it
+                 moved. ApplyFlowDirection swaps both. -->
+            <Border x:Name="ContentPanelBorder"
+                    Grid.Column="1"
                     CornerRadius="12,0,0,0"
                     BorderThickness="1,1,0,0"
                     BorderBrush="{ThemeResource BorderDefaultBrush}">
@@ -267,12 +306,9 @@
               Grid.Row="0"
               Grid.RowSpan="2"
               Canvas.ZIndex="100">
-            <!-- Add Agent can also be opened from Settings → Agents, so it must sit above the
-                 settings modal and return focus to that page when it closes. -->
-            <controls:AddAgentForm x:Name="AddAgentOverlay" Canvas.ZIndex="1004" />
-            <controls:SettingsOverlay x:Name="SettingsOverlay" Canvas.ZIndex="1001" AutomationProperties.AutomationId="SettingsOverlay" />
-            <controls:KeyboardShortcutsDialog x:Name="KeyboardShortcutsDialog" Canvas.ZIndex="1002" AutomationProperties.AutomationId="KeyboardShortcutsOverlay" />
-            <controls:AboutOverlay x:Name="AboutOverlay" Canvas.ZIndex="1003" AutomationProperties.AutomationId="AboutOverlay" />
+            <!-- Full-window modals are created on first use by MainWindow.Overlays.cs. Keeping
+                 this host empty on startup avoids constructing every Settings page and running
+                 their Loaded I/O before the user opens Settings. -->
             <Border x:Name="FindOverlayPanel"
                     Width="380"
                     MinHeight="36"
@@ -318,12 +354,13 @@
 
                     <TextBlock x:Name="FindCounterText"
                                Grid.Column="2"
+                               x:Uid="FindCounter"
                                Text="0 / 0 results"
                                FontSize="11"
                                VerticalAlignment="Center"
                                Foreground="{ThemeResource TextTertiaryBrush}" />
 
-                    <Button x:Name="PreviousFindButton"
+                    <Button x:Uid="MainFindPrevious" x:Name="PreviousFindButton"
                             Grid.Column="3"
                             Style="{StaticResource FindHudButtonStyle}"
                             Click="PreviousFind_Click"
@@ -335,7 +372,7 @@
                                        Foreground="{ThemeResource TextSecondaryBrush}" />
                     </Button>
 
-                    <Button x:Name="NextFindButton"
+                    <Button x:Uid="MainFindNext" x:Name="NextFindButton"
                             Grid.Column="4"
                             Style="{StaticResource FindHudButtonStyle}"
                             Click="NextFind_Click"
@@ -347,7 +384,7 @@
                                        Foreground="{ThemeResource TextSecondaryBrush}" />
                     </Button>
 
-                    <Button Grid.Column="5"
+                    <Button x:Uid="MainFindClose" Grid.Column="5"
                             Style="{StaticResource FindHudButtonStyle}"
                             Click="CloseFind_Click"
                             AutomationProperties.Name="Close find"
@@ -396,7 +433,7 @@
                                Fill="{ThemeResource DividerBrush}"
                                Opacity="0.7"
                                VerticalAlignment="Center" />
-                    <Button Grid.Column="2"
+                    <Button x:Uid="MainZoomOut" Grid.Column="2"
                             Style="{StaticResource ZoomHudButtonStyle}"
                             Click="ActualSizeZoomOut_Click"
                             AutomationProperties.Name="Zoom out"
@@ -405,7 +442,7 @@
                                    FontSize="16"
                                    VerticalAlignment="Center" />
                     </Button>
-                    <Button Grid.Column="3"
+                    <Button x:Uid="MainZoomIn" Grid.Column="3"
                             Style="{StaticResource ZoomHudButtonStyle}"
                             Click="ActualSizeZoomIn_Click"
                             AutomationProperties.Name="Zoom in"
@@ -422,9 +459,7 @@
                                VerticalAlignment="Center" />
                     <Button x:Name="ResetZoomButton"
                             Grid.Column="5"
-                            Style="{StaticResource DefaultButtonStyle}"
-                            Background="Transparent"
-                            BorderThickness="0"
+                            Style="{StaticResource TextActionButtonStyle}"
                             IsEnabled="False"
                             Padding="10,0"
                             MinWidth="0"

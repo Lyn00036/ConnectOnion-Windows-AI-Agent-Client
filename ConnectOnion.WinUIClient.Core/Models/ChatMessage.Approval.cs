@@ -1,8 +1,10 @@
 using System;
+using System.Globalization;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using ConnectOnion.WinUIClient.Common;
 
 namespace ConnectOnion.WinUIClient.Models;
 
@@ -45,8 +47,9 @@ public sealed partial class ChatMessage
     public partial bool IsApprovalCommandExpanded { get; set; }
 
     [JsonIgnore] public int ApprovalCommandMaxLines => IsApprovalCommandExpanded ? 0 : 3;
-    [JsonIgnore] public string ApprovalCommandToggleLabel
-        => IsApprovalCommandExpanded ? "Collapse command" : "Show full command";
+    [JsonIgnore] public string ApprovalCommandToggleLabel => IsApprovalCommandExpanded
+        ? CoreStrings.Get("ApprovalCollapseCommand", "Collapse command")
+        : CoreStrings.Get("ApprovalShowFullCommand", "Show full command");
 
     [RelayCommand]
     private void ToggleApprovalCommand() => IsApprovalCommandExpanded = !IsApprovalCommandExpanded;
@@ -64,14 +67,18 @@ public sealed partial class ChatMessage
     public ToolActivityViewModel? OwnerToolActivity { get; set; }
 
     [JsonIgnore] public string ApprovalPromptTitle => IsApprovalCommand
-        ? "Approve command execution?"
+        ? CoreStrings.Get("ApprovalTitleCommand", "Approve command execution?")
         : ApprovalTargetKind == ApprovalTargetKind.File
-            ? "Approve file operation?"
-            : "Approve this operation?";
+            ? CoreStrings.Get("ApprovalTitleFile", "Approve file operation?")
+            : CoreStrings.Get("ApprovalTitleGeneric", "Approve this operation?");
 
     [JsonIgnore] public string ApprovalPromptSubtitle => IsApprovalCommand
-        ? "This command can modify or delete files on the remote server."
-        : "Review the operation and its risk before allowing it to continue.";
+        ? CoreStrings.Get(
+            "ApprovalSubtitleCommand",
+            "This command can modify or delete files on the remote server.")
+        : CoreStrings.Get(
+            "ApprovalSubtitleGeneric",
+            "Review the operation and its risk before allowing it to continue.");
 
     /// <summary>"This tool wants to modify:" — the operation line above the target chip. Empty when
     /// no target could be extracted, in which case <see cref="ShowApprovalFallback"/> is shown.</summary>
@@ -82,7 +89,9 @@ public sealed partial class ChatMessage
 
     /// <summary>The generic line shown when no concrete target is available.</summary>
     [JsonIgnore]
-    public string ApprovalFallbackLine => "This operation requires your approval before it can continue.";
+    public string ApprovalFallbackLine => CoreStrings.Get(
+        "ApprovalFallbackLine",
+        "This operation requires your approval before it can continue.");
 
     [JsonIgnore] public bool ShowApprovalFallback => !HasApprovalTarget;
 
@@ -106,8 +115,9 @@ public sealed partial class ChatMessage
         OnPropertyChanged(nameof(ApprovalDetailsLabel));
     }
 
-    [JsonIgnore] public string ApprovalDetailsLabel
-        => IsApprovalDetailsOpen ? "Hide operation details" : "Operation details";
+    [JsonIgnore] public string ApprovalDetailsLabel => IsApprovalDetailsOpen
+        ? CoreStrings.Get("ApprovalHideDetails", "Hide operation details")
+        : CoreStrings.Get("ApprovalShowDetails", "Operation details");
 
     /// <summary>"Explain this risk" reuses the same local disclosure as the risk description. It
     /// answers nothing — inspecting a request never costs the user their decision.</summary>
@@ -119,8 +129,10 @@ public sealed partial class ChatMessage
     /// carries no description, and a link that reveals nothing reads as broken).</summary>
     [JsonIgnore]
     public string ApprovalRiskText => IsApprovalCommand
-        ? "Risk: This command may delete or modify server data."
-        : "Risk: This operation may change remote server data.";
+        ? CoreStrings.Get(
+            "ApprovalRiskCommand", "Risk: This command may delete or modify server data.")
+        : CoreStrings.Get(
+            "ApprovalRiskGeneric", "Risk: This operation may change remote server data.");
 
     /// <summary>The panel is shown whenever explain is open — it always has text now (see
     /// <see cref="ApprovalRiskText"/>). <see cref="ToggleApprovalExplain"/> raises this so the panel
@@ -196,21 +208,24 @@ public sealed partial class ChatMessage
     [JsonIgnore]
     public string ApprovalResolvedText => ApprovalPhase switch
     {
-        ApprovalCardPhase.ApprovedOnce => "Approved once",
-        ApprovalCardPhase.TrustedSession => "Allowed for this session",
-        ApprovalCardPhase.Rejected => "Declined",
-        ApprovalCardPhase.Stopped => "Task stopped",
-        ApprovalCardPhase.ExplanationRequested => "Explanation requested",
+        ApprovalCardPhase.ApprovedOnce => CoreStrings.Get("ApprovalResolvedOnce", "Approved once"),
+        ApprovalCardPhase.TrustedSession
+            => CoreStrings.Get("ApprovalResolvedSession", "Allowed for this session"),
+        ApprovalCardPhase.Rejected => CoreStrings.Get("ApprovalResolvedDeclined", "Declined"),
+        ApprovalCardPhase.Stopped => CoreStrings.Get("ApprovalResolvedStopped", "Task stopped"),
+        ApprovalCardPhase.ExplanationRequested
+            => CoreStrings.Get("ApprovalResolvedExplain", "Explanation requested"),
         _ => "",
     };
 
     [JsonIgnore]
     public string ApprovalSubmittingVerb => ApprovalPendingAction switch
     {
-        ApprovalAction.Reject => "Rejecting…",
-        ApprovalAction.Stop => "Stopping…",
-        ApprovalAction.Explain => "Requesting explanation…",
-        _ => "Approving…",
+        ApprovalAction.Reject => CoreStrings.Get("ApprovalSubmittingReject", "Rejecting…"),
+        ApprovalAction.Stop => CoreStrings.Get("ApprovalSubmittingStop", "Stopping…"),
+        ApprovalAction.Explain
+            => CoreStrings.Get("ApprovalSubmittingExplain", "Requesting explanation…"),
+        _ => CoreStrings.Get("ApprovalSubmittingApprove", "Approving…"),
     };
 
     [ObservableProperty]
@@ -278,6 +293,9 @@ public sealed partial class ChatMessage
     [RelayCommand(CanExecute = nameof(CanRunApproval))]
     private Task Explain()
     {
+        // Deliberately NOT localized: this is the feedback field of the wire frame, read by the
+        // agent's model, not shown to the user. Translating it would ask a remote agent to
+        // reason in whatever language the client happens to be set to.
         ApprovalFeedback = "Explain why this operation is required, what it will do, and what risks it has.";
         return RespondApproval(ApprovalAction.Explain);
     }
@@ -321,11 +339,37 @@ public sealed partial class ChatMessage
 
     // ---- Accessibility (screen readers read the tool + scope, never an icon alone) ----
 
-    [JsonIgnore] public string ApprovalAllowOnceName => $"Allow {EventTitle} once";
-    [JsonIgnore] public string ApprovalTrustName => $"Trust {EventTitle} for this session";
-    [JsonIgnore] public string ApprovalRejectName => $"Decline {EventTitle}; the agent may continue";
-    [JsonIgnore] public string ApprovalStopName => "Stop the entire agent task, not only this command";
-    [JsonIgnore] public string ApprovalExplainName => "Explain approval risk";
-    [JsonIgnore] public string ApprovalRequestExplanationName => "Reject this operation and ask the agent to explain it";
-    [JsonIgnore] public string ApprovalDetailsName => "View operation details";
+    // These are AutomationProperties.Name values: user-visible text that a screen reader speaks,
+    // localized like any other string. They are also the only thing a screen-reader user has to
+    // tell the four decision buttons apart, so the tool name stays interpolated in — a
+    // translation may move the placeholder but must not drop it.
+    [JsonIgnore] public string ApprovalAllowOnceName
+        => FormatWithTool("ApprovalAllowOnceName", "Allow {0} once");
+    [JsonIgnore] public string ApprovalTrustName
+        => FormatWithTool("ApprovalTrustName", "Trust {0} for this session");
+    [JsonIgnore] public string ApprovalRejectName
+        => FormatWithTool("ApprovalRejectName", "Decline {0}; the agent may continue");
+    [JsonIgnore] public string ApprovalStopName => CoreStrings.Get(
+        "ApprovalStopName", "Stop the entire agent task, not only this command");
+    [JsonIgnore] public string ApprovalExplainName
+        => CoreStrings.Get("ApprovalExplainName", "Explain approval risk");
+    [JsonIgnore] public string ApprovalRequestExplanationName => CoreStrings.Get(
+        "ApprovalRequestExplanationName",
+        "Reject this operation and ask the agent to explain it");
+    [JsonIgnore] public string ApprovalDetailsName
+        => CoreStrings.Get("ApprovalDetailsName", "View operation details");
+
+    private string FormatWithTool(string key, string fallbackFormat)
+    {
+        var format = CoreStrings.Get(key, fallbackFormat);
+        try
+        {
+            return string.Format(CultureInfo.CurrentCulture, format, EventTitle);
+        }
+        catch (FormatException)
+        {
+            // A malformed translation must not leave a decision button unlabelled.
+            return string.Format(CultureInfo.InvariantCulture, fallbackFormat, EventTitle);
+        }
+    }
 }

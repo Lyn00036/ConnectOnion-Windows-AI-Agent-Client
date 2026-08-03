@@ -17,6 +17,7 @@ public sealed class AgentRepositoryTests
             Name = "CRUD Agent",
             Address = "0x1234",
             DirectUrl = "https://agent.example.test",
+            IconPath = "avatars/agent-crud.png",
             InviteCode = "invite-code",
             InfoJson = "{\"name\":\"remote\"}",
             InfoUpdatedAt = "2026-07-13T00:00:00Z",
@@ -33,6 +34,7 @@ public sealed class AgentRepositoryTests
         Assert.Equal(agent.Name, actual.Name);
         Assert.Equal(agent.Address, actual.Address);
         Assert.Equal(agent.DirectUrl, actual.DirectUrl);
+        Assert.Equal(agent.IconPath, actual.IconPath);
         Assert.Equal(agent.InviteCode, actual.InviteCode);
         Assert.Equal(agent.InfoJson, actual.InfoJson);
         Assert.Equal(agent.InfoUpdatedAt, actual.InfoUpdatedAt);

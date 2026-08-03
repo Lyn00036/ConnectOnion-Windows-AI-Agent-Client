@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
+using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Models;
 
@@ -39,7 +40,14 @@ public sealed partial class UsageViewModel : Common.ObservableObject
     [ObservableProperty]
     public partial UsageRange Range { get; set; }
 
-    partial void OnRangeChanged(UsageRange value) => _ = LoadAsync();
+    /// <summary>Changes the visible window and completes only after the replacement rows load, so
+    /// the view can surface repository failures instead of losing them from a fire-and-forget hook.</summary>
+    public async Task SetRangeAsync(UsageRange value)
+    {
+        if (Range == value) return;
+        Range = value;
+        await LoadAsync();
+    }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowEmptyState))]
@@ -112,7 +120,10 @@ public sealed partial class UsageViewModel : Common.ObservableObject
 
             FirstRecordedText = first is null
                 ? ""
-                : $"Recording since {first.Value.ToLocalTime():d MMM yyyy}";
+                : LocalizedStrings.Format(
+                    "UsageRecordingSince",
+                    "Recording since {0:d MMM yyyy}",
+                    first.Value.ToLocalTime());
         }
         finally
         {

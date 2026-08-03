@@ -4,15 +4,18 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:vm="using:ConnectOnion.WinUIClient.ViewModels"
     xmlns:controls="using:ConnectOnion.WinUIClient.Controls"
-    MinWidth="0" HorizontalAlignment="Stretch">
+    MinWidth="0" HorizontalAlignment="Stretch"
+    SizeChanged="UsageContent_SizeChanged">
 
+    <!-- The states are chosen from this control's own measured width (see the code-behind), not
+         from AdaptiveTrigger's window width. This content sits inside the settings modal, whose
+         body is roughly 850px at its widest no matter how large the window gets — so a
+         MinWindowWidth="1000" trigger put four totals columns into a box that never had room for
+         them. -->
     <StackPanel MinWidth="0" HorizontalAlignment="Stretch" Spacing="16">
         <VisualStateManager.VisualStateGroups>
             <VisualStateGroup x:Name="UsageWidthStates">
                 <VisualState x:Name="CompactUsage">
-                    <VisualState.StateTriggers>
-                        <AdaptiveTrigger MinWindowWidth="0" />
-                    </VisualState.StateTriggers>
                     <VisualState.Setters>
                         <Setter Target="TotalsGrid.RowSpacing" Value="12" />
                         <Setter Target="TotalColumn0.Width" Value="*" />
@@ -28,9 +31,6 @@
                     </VisualState.Setters>
                 </VisualState>
                 <VisualState x:Name="WideUsage">
-                    <VisualState.StateTriggers>
-                        <AdaptiveTrigger MinWindowWidth="1000" />
-                    </VisualState.StateTriggers>
                     <VisualState.Setters>
                         <Setter Target="TotalsGrid.RowSpacing" Value="0" />
                         <Setter Target="TotalColumn0.Width" Value="*" />
@@ -47,8 +47,17 @@
                 </VisualState>
             </VisualStateGroup>
         </VisualStateManager.VisualStateGroups>
-        <TextBlock Text="Token usage recorded on this device, grouped by model. Usage is kept even after you delete a conversation — the tokens were still spent — and never leaves your machine."
+        <TextBlock x:Uid="UsageDescription" Text="Token usage recorded on this device, grouped by model. Usage is kept even after you delete a conversation — the tokens were still spent — and never leaves your machine."
                    TextWrapping="Wrap" Foreground="{ThemeResource TextSecondaryBrush}" />
+
+        <InfoBar x:Name="UsageErrorBar"
+                 x:Uid="UsageLoadError"
+                 IsOpen="False"
+                 IsClosable="True"
+                 Severity="Error"
+                 Title="Usage unavailable"
+                 Message="ConnectOnion couldn't load usage history. Try opening this page again."
+                 AutomationProperties.LiveSetting="Assertive" />
 
         <!-- Activity heatmap.
              Placed ABOVE the time-window buttons on purpose: it always shows the trailing twelve
@@ -63,13 +72,13 @@
 
         <!-- Time window -->
         <StackPanel Orientation="Horizontal" Spacing="8">
-            <RadioButton x:Name="TodayRange" GroupName="UsageRange" Content="Today"
+                <RadioButton x:Uid="UsageToday" x:Name="TodayRange" GroupName="UsageRange" Content="Today"
                          Click="Range_Click" Tag="Today" />
-            <RadioButton x:Name="Week" GroupName="UsageRange" Content="Last 7 days" IsChecked="True"
+                <RadioButton x:Uid="UsageWeek" x:Name="Week" GroupName="UsageRange" Content="Last 7 days" IsChecked="True"
                          Click="Range_Click" Tag="Last7Days" />
-            <RadioButton x:Name="Month" GroupName="UsageRange" Content="Last 30 days"
+                <RadioButton x:Uid="UsageMonth" x:Name="Month" GroupName="UsageRange" Content="Last 30 days"
                          Click="Range_Click" Tag="Last30Days" />
-            <RadioButton x:Name="AllTime" GroupName="UsageRange" Content="All time"
+                <RadioButton x:Uid="UsageAllTime" x:Name="AllTime" GroupName="UsageRange" Content="All time"
                          Click="Range_Click" Tag="AllTime" />
         </StackPanel>
 
@@ -94,22 +103,22 @@
 
                 <StackPanel Grid.Column="0" Spacing="2">
                     <TextBlock Text="{x:Bind Vm.TotalTokensText, Mode=OneWay}" FontSize="20" FontWeight="SemiBold" />
-                    <TextBlock Text="Total tokens" Style="{StaticResource CaptionTextBlockStyle}"
+                        <TextBlock x:Uid="UsageTotalTokens" Text="Total tokens" Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextSecondaryBrush}" />
                 </StackPanel>
                 <StackPanel x:Name="InputTotal" Grid.Column="1" Spacing="2">
                     <TextBlock Text="{x:Bind Vm.TotalInputTokensText, Mode=OneWay}" FontSize="20" FontWeight="SemiBold" />
-                    <TextBlock Text="Input" Style="{StaticResource CaptionTextBlockStyle}"
+                        <TextBlock x:Uid="UsageInput" Text="Input" Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextSecondaryBrush}" />
                 </StackPanel>
                 <StackPanel x:Name="OutputTotal" Grid.Column="2" Spacing="2">
                     <TextBlock Text="{x:Bind Vm.TotalOutputTokensText, Mode=OneWay}" FontSize="20" FontWeight="SemiBold" />
-                    <TextBlock Text="Output" Style="{StaticResource CaptionTextBlockStyle}"
+                        <TextBlock x:Uid="UsageOutput" Text="Output" Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextSecondaryBrush}" />
                 </StackPanel>
                 <StackPanel x:Name="CallsTotal" Grid.Column="3" Spacing="2">
                     <TextBlock Text="{x:Bind Vm.TotalCallsText, Mode=OneWay}" FontSize="20" FontWeight="SemiBold" />
-                    <TextBlock Text="LLM calls" Style="{StaticResource CaptionTextBlockStyle}"
+                        <TextBlock x:Uid="UsageLlmCalls" Text="LLM calls" Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextSecondaryBrush}" />
                 </StackPanel>
             </Grid>
@@ -119,7 +128,7 @@
         <Border Style="{StaticResource SettingsSectionStyle}" HorizontalAlignment="Stretch"
                 Visibility="{x:Bind Vm.ShowContent, Mode=OneWay, Converter={StaticResource BoolToVis}}">
             <StackPanel Spacing="14">
-                <TextBlock Text="By model" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <TextBlock x:Uid="UsageByModel" Text="By model" Style="{StaticResource BodyStrongTextBlockStyle}" />
 
                 <ItemsControl ItemsSource="{x:Bind Vm.Rows, Mode=OneWay}">
                     <ItemsControl.ItemTemplate>
@@ -149,15 +158,15 @@
                                 <StackPanel Orientation="Horizontal" Spacing="14">
                                     <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
                                                Foreground="{ThemeResource TextSecondaryBrush}">
-                                        <Run Text="{x:Bind CallsText}" /><Run Text=" calls" />
+                                        <Run Text="{x:Bind CallsText}" /><Run x:Uid="UsageCallsSuffix" Text=" calls" />
                                     </TextBlock>
                                     <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
                                                Foreground="{ThemeResource TextSecondaryBrush}">
-                                        <Run Text="{x:Bind InputTokensText}" /><Run Text=" in" />
+                                        <Run Text="{x:Bind InputTokensText}" /><Run x:Uid="UsageInputSuffix" Text=" in" />
                                     </TextBlock>
                                     <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
                                                Foreground="{ThemeResource TextSecondaryBrush}">
-                                        <Run Text="{x:Bind OutputTokensText}" /><Run Text=" out" />
+                                        <Run Text="{x:Bind OutputTokensText}" /><Run x:Uid="UsageOutputSuffix" Text=" out" />
                                     </TextBlock>
                                     <TextBlock Text="{x:Bind CacheText}"
                                                Style="{StaticResource CaptionTextBlockStyle}"
@@ -174,9 +183,9 @@
         <!-- Empty state -->
         <StackPanel Spacing="6" Margin="0,36" HorizontalAlignment="Center"
                     Visibility="{x:Bind Vm.ShowEmptyState, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-            <TextBlock Text="No usage recorded yet" HorizontalAlignment="Center"
+                    <TextBlock x:Uid="UsageEmpty" Text="No usage recorded yet" HorizontalAlignment="Center"
                        Style="{StaticResource BodyStrongTextBlockStyle}" />
-            <TextBlock Text="Token usage appears here after an agent replies."
+                    <TextBlock x:Uid="UsageEmptyHint" Text="Token usage appears here after an agent replies."
                        HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"
                        Foreground="{ThemeResource TextSecondaryBrush}" />
         </StackPanel>
@@ -192,7 +201,7 @@
                        Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextTertiaryBrush}"
                        Visibility="{x:Bind Vm.HasFirstRecorded, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-            <Button x:Name="ClearButton" Grid.Column="1" Content="Clear usage history"
+            <Button x:Uid="UsageClear" x:Name="ClearButton" Grid.Column="1" Content="Clear usage history"
                     Click="Clear_Click"
                     AutomationProperties.Name="Clear all recorded token usage"
                     Visibility="{x:Bind Vm.ShowContent, Mode=OneWay, Converter={StaticResource BoolToVis}}" />

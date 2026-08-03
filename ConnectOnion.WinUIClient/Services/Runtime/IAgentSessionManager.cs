@@ -20,7 +20,7 @@ public enum StopOutcome
     /// <summary>Nothing was running.</summary>
     NotRunning,
 
-    /// <summary>INTERRUPT, or the approval-specific hard rejection, was sent successfully.</summary>
+    /// <summary>INTERRUPT was sent successfully on the active connection.</summary>
     StopRequested,
 }
 
@@ -42,6 +42,15 @@ public interface IAgentSessionManager
         string prompt,
         IReadOnlyList<PendingAttachment>? attachments = null,
         string? mode = null);
+
+    /// <summary>Persists and forwards a user interjection to the turn already running in this
+    /// conversation. No second local run or execution row is created; the existing run continues
+    /// to own stream events and the eventual OUTPUT.</summary>
+    Task SendRuntimeInputAsync(
+        AgentConfig agent,
+        string conversationId,
+        string prompt,
+        IReadOnlyList<PendingAttachment>? attachments = null);
 
     ConversationRunSnapshot? GetActiveRun(string conversationId);
 

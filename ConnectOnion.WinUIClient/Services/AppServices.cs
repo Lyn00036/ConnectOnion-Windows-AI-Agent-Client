@@ -4,6 +4,7 @@ using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Services.Notifications;
 using ConnectOnion.WinUIClient.Services.Runtime;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace ConnectOnion.WinUIClient.Services;
 
@@ -26,6 +27,10 @@ public static class AppServices
     public static PreferencesRepository Preferences => Provider.GetRequiredService<PreferencesRepository>();
     public static ConversationRepository Conversations => Provider.GetRequiredService<ConversationRepository>();
     public static WindowPlacementStore WindowPlacement => Provider.GetRequiredService<WindowPlacementStore>();
+    public static TextScaleService TextScale => Provider.GetRequiredService<TextScaleService>();
+    public static LanguagePreferenceStore Language => Provider.GetRequiredService<LanguagePreferenceStore>();
+    public static LanguagePreferenceStore LanguagePreference => Provider.GetRequiredService<LanguagePreferenceStore>();
+    public static StartupStateService StartupState => Provider.GetRequiredService<StartupStateService>();
 
     /// <summary>Token-usage ledger. Deliberately independent of conversation/agent lifetime —
     /// deleting a chat never erases the record that its tokens were spent.</summary>
@@ -33,6 +38,13 @@ public static class AppServices
 
     /// <summary>Session-lived cache of each agent's online status.</summary>
     public static AgentPresenceService Presence => Provider.GetRequiredService<AgentPresenceService>();
+
+    /// <summary>Picks, processes, commits and deletes the user's chosen agent icons.</summary>
+    public static IAgentIconService AgentIcons => Provider.GetRequiredService<IAgentIconService>();
+
+    /// <summary>Logger source for framework-created code-behind, which cannot be handed an
+    /// <c>ILogger&lt;T&gt;</c> through a constructor the way an injected type is.</summary>
+    public static ILoggerFactory Logging => Provider.GetRequiredService<ILoggerFactory>();
 
     /// <summary>The live shortcut bindings (catalog defaults overlaid with the user's rebinds).
     /// The window's key handlers ask this rather than testing hard-coded key codes.</summary>

@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
@@ -37,15 +38,19 @@ public static class WireJson
 
     /// <summary>Serializes one outgoing frame.</summary>
     public static string Serialize(IReadOnlyDictionary<string, object?> message)
+        => Encoding.UTF8.GetString(SerializeToUtf8Bytes(message));
+
+    /// <summary>Serializes directly to the UTF-8 bytes WebSocket requires.</summary>
+    public static byte[] SerializeToUtf8Bytes(IReadOnlyDictionary<string, object?> message)
     {
         ArgumentNullException.ThrowIfNull(message);
 
-        using var buffer = new MemoryStream();
+        var buffer = new ArrayBufferWriter<byte>();
         using (var writer = new Utf8JsonWriter(buffer, Options))
         {
             WriteObject(writer, message);
         }
-        return Encoding.UTF8.GetString(buffer.ToArray());
+        return buffer.WrittenSpan.ToArray();
     }
 
     /// <summary>
@@ -57,7 +62,7 @@ public static class WireJson
     {
         ArgumentNullException.ThrowIfNull(values);
 
-        using var buffer = new MemoryStream();
+        var buffer = new ArrayBufferWriter<byte>();
         using (var writer = new Utf8JsonWriter(buffer, Options))
         {
             writer.WriteStartObject();
@@ -68,7 +73,7 @@ public static class WireJson
             }
             writer.WriteEndObject();
         }
-        return Encoding.UTF8.GetString(buffer.ToArray());
+        return Encoding.UTF8.GetString(buffer.WrittenSpan);
     }
 
     private static void WriteObject(Utf8JsonWriter writer, IReadOnlyDictionary<string, object?> map)

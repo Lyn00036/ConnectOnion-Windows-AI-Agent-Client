@@ -19,16 +19,23 @@ public sealed partial class ShellAgentItem : RowStateItem
     public string Name { get; set; } = "";
     public string Address { get; set; } = "";
     public string? DirectUrl { get; set; }
+    /// <summary>The agent's chosen icon, relative to the data root. Null falls back to
+    /// <see cref="Initial"/>.</summary>
+    public string? IconPath { get; set; }
+    /// <summary>True when this agent has an icon the "remove custom icon" action can remove.</summary>
+    public bool HasCustomIcon => !string.IsNullOrWhiteSpace(IconPath);
     /// <summary>User-facing name derived from <see cref="Name"/> (e.g. <c>Remote Admin Agent</c>).
     /// Never persisted — the internal id is unchanged.</summary>
     public string DisplayName => FriendlyAgentName.From(Name);
     public string Initial => NameInitial.FromPair(DisplayName);
-    public int AvatarPaletteIndex => AvatarPalette.From(Name);
     public string ConnectionTarget
         => !string.IsNullOrWhiteSpace(Address) ? Address : DirectUrl ?? "";
     public string CopyAccessibilityName => $"Copy address for {DisplayName}";
     public string DeleteAccessibilityName => $"Delete {DisplayName}";
     public string OpenAccessibilityName => $"Open {DisplayName}";
+    public string ToggleAccessibilityName => IsExpanded
+        ? LocalizedStrings.Format("SidebarCollapseAgentChats", "Collapse chats for {0}", DisplayName)
+        : LocalizedStrings.Format("SidebarExpandAgentChats", "Expand chats for {0}", DisplayName);
     public int SessionCount => Sessions.Count;
     public ObservableCollection<ShellSessionItem> Sessions { get; } = new();
     public ObservableCollection<ShellSessionGroup> SessionGroups { get; } = new();
@@ -54,14 +61,15 @@ public sealed partial class ShellAgentItem : RowStateItem
     public bool IsOfflineIconVisible => Presence == AgentPresence.Offline || Presence == AgentPresence.Unknown;
     public string PresenceLabel => Presence switch
     {
-        AgentPresence.Online => "Online",
-        AgentPresence.Checking => "Connecting",
-        AgentPresence.Offline => "Offline",
-        _ => "Not connected",
+        AgentPresence.Online => Common.LocalizedStrings.Get("PresenceOnline", "Online"),
+        AgentPresence.Checking => Common.LocalizedStrings.Get("PresenceConnecting", "Connecting"),
+        AgentPresence.Offline => Common.LocalizedStrings.Get("PresenceOffline", "Offline"),
+        _ => Common.LocalizedStrings.Get("PresenceNotConnected", "Not connected"),
     };
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ChevronAngle))]
+    [NotifyPropertyChangedFor(nameof(ToggleAccessibilityName))]
     public partial bool IsExpanded { get; set; }
 
     [ObservableProperty]
@@ -76,13 +84,19 @@ public sealed class ShellSessionGroup
 {
     public ShellSessionGroup(string label, IReadOnlyList<ShellSessionItem> sessions)
     {
-        Label = label;
+        _label = label;
         foreach (var session in sessions)
         {
             Sessions.Add(session);
         }
     }
 
-    public string Label { get; }
+    public string Label => _label switch
+    {
+        "Today" => LocalizedStrings.Get("TimeGroupToday", "Today"),
+        "Yesterday" => LocalizedStrings.Get("TimeGroupYesterday", "Yesterday"),
+        _ => LocalizedStrings.Get("TimeGroupEarlier", "Earlier"),
+    };
+    private readonly string _label;
     public ObservableCollection<ShellSessionItem> Sessions { get; } = new();
 }

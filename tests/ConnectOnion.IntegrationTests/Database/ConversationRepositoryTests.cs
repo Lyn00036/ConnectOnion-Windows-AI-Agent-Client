@@ -108,6 +108,73 @@ public sealed class ConversationRepositoryTests
     }
 
     [Fact]
+    public async Task PagedReads_ReturnNewestThenOlderSlices_WithScopedAttachments()
+    {
+        await _fixture.CreateSessionAsync("paging");
+        await _repository.UpsertMessagesAsync(
+            "paging",
+            Enumerable.Range(1, 9)
+                .Select(id => Message(id, $"message-{id}", Attachment($"attachment-{id}")))
+                .ToArray());
+
+        var newest = await _repository.LoadRecentMessagesAsync("paging", pageSize: 4);
+        var older = await _repository.LoadMessagesBeforeAsync("paging", newest.Messages[0].Id, pageSize: 4);
+        var oldest = await _repository.LoadMessagesBeforeAsync("paging", older.Messages[0].Id, pageSize: 4);
+
+        Assert.True(newest.HasMoreBefore);
+        Assert.Equal(new long[] { 6, 7, 8, 9 }, newest.Messages.Select(message => message.Id));
+        Assert.All(newest.Messages, message => Assert.StartsWith("attachment-", Assert.Single(message.Attachments).Id));
+        Assert.True(older.HasMoreBefore);
+        Assert.Equal(new long[] { 2, 3, 4, 5 }, older.Messages.Select(message => message.Id));
+        Assert.False(oldest.HasMoreBefore);
+        Assert.Equal(new long[] { 1 }, oldest.Messages.Select(message => message.Id));
+    }
+
+    [Fact]
+    public async Task TranscriptSearch_UsesFtsIndex_AndTracksMessageChanges()
+    {
+        await _fixture.CreateSessionAsync("search-one");
+        await _fixture.CreateSessionAsync("search-two");
+        await _repository.UpsertMessagesAsync("search-one", new[] { Message(1, "alpha needle omega") });
+        await _repository.UpsertMessagesAsync("search-two", new[] { Message(1, "nothing here") });
+
+        var initial = await _repository.SearchMessageContentAsync("needle");
+        Assert.Equal("alpha needle omega", initial["search-one"]);
+        Assert.DoesNotContain("search-two", initial.Keys);
+        Assert.Empty(await _repository.SearchMessageContentAsync("ne"));
+
+        await _repository.UpsertMessagesAsync("search-one", new[] { Message(1, "replacement text") });
+        Assert.Empty(await _repository.SearchMessageContentAsync("needle"));
+        Assert.Equal("replacement text", (await _repository.SearchMessageContentAsync("place"))["search-one"]);
+
+        await using var connection = await AppDatabase.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "EXPLAIN QUERY PLAN SELECT rowid FROM message_search WHERE message_search MATCH 'needle';";
+        await using var reader = await command.ExecuteReaderAsync();
+        var plan = new List<string>();
+        while (await reader.ReadAsync()) plan.Add(reader.GetString(3));
+        Assert.Contains(plan, detail => detail.Contains("VIRTUAL TABLE INDEX", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task LoadLastMessagesAsync_ReturnsOneNewestVisibleMessagePerRequestedConversation()
+    {
+        await _fixture.CreateSessionAsync("preview-one");
+        await _fixture.CreateSessionAsync("preview-two");
+        await _fixture.CreateSessionAsync("preview-ignored");
+        await _repository.UpsertMessagesAsync("preview-one", new[] { Message(1, "old"), Message(2, "new") });
+        await _repository.UpsertMessagesAsync("preview-two", new[] { Message(1, "second") });
+        await _repository.UpsertMessagesAsync("preview-ignored", new[] { Message(1, "ignored") });
+
+        var messages = await _repository.LoadLastMessagesAsync(new[] { "preview-one", "preview-two" });
+
+        Assert.Equal(2, messages.Count);
+        Assert.Equal("new", messages["preview-one"].Content);
+        Assert.Equal("second", messages["preview-two"].Content);
+        Assert.DoesNotContain("preview-ignored", messages.Keys);
+    }
+
+    [Fact]
     public async Task GetNextMessageIdAsync_EmptyAndPopulatedConversation_ReturnsMaxPlusOne()
     {
         await _fixture.CreateSessionAsync("next-id");
@@ -206,6 +273,7 @@ public sealed class ConversationRepositoryTests
             Status = EventStatus.Done,
             IsOnboarding = true,
         };
+        Assert.True(expected.IsInteractiveCardExpanded);
         await _repository.UpsertMessagesAsync("event-roundtrip", new[] { expected });
 
         var actual = Assert.Single(await _repository.LoadMessagesAsync("event-roundtrip"));
@@ -224,6 +292,7 @@ public sealed class ConversationRepositoryTests
         Assert.Equal(expected.EventResult, actual.EventResult);
         Assert.Equal(expected.Status, actual.Status);
         Assert.Equal(expected.IsOnboarding, actual.IsOnboarding);
+        Assert.False(actual.IsInteractiveCardExpanded);
     }
 
     [Fact]

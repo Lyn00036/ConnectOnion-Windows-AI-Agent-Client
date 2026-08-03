@@ -50,6 +50,22 @@ public sealed class ToolActivityProjectorTests
     }
 
     [Fact]
+    public void CompleteOptimistically_FreezesRunningStepsAsSuccessful()
+    {
+        var activity = new ToolActivityViewModel();
+        var projector = new ToolActivityProjector(activity);
+        var step = projector.ApplyCall(
+            Event("tool_call", "{\"tool_id\":\"1\",\"name\":\"search_web\",\"args\":{}}"));
+
+        projector.CompleteOptimistically();
+
+        Assert.Equal(ToolStepStatus.Success, step.Status);
+        Assert.Equal(ToolActivityStatus.Success, activity.Status);
+        Assert.True(activity.IsTerminal);
+        Assert.Contains("Completed", activity.Summary, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ApplyCall_DuplicateCorrelationId_ReturnsExistingStep()
     {
         var activity = new ToolActivityViewModel();
@@ -161,6 +177,86 @@ public sealed class ToolActivityProjectorTests
 
         Assert.Equal("Page access denied", step!.Summary);
     }
+
+    /// <summary>
+    /// A tool that hands back content must never be judged by the words inside that content.
+    /// Reading a system prompt that explains error handling, a log file, or any source file with a
+    /// `catch` block used to paint the step red, and a file mentioning a 404 painted it amber —
+    /// the words belong to the document, not to the tool.
+    /// </summary>
+    [Theory]
+    [InlineData("read_file", "# System Prompt\\n\\nOn failure, retry once. Log any exception.")]
+    [InlineData("read", "try { x() } catch (Exception e) { log(\\\"request failed\\\") }")]
+    [InlineData("remote_read_file", "timeout = 30  # seconds before the request times out")]
+    [InlineData("cat", "HTTP status reference: 403 Forbidden, 404 Not Found")]
+    [InlineData("grep", "server.py:42:    raise RuntimeError(\\\"connection refused\\\")")]
+    [InlineData("load_guide", "## Troubleshooting\\n\\nIf the build failed, check the SDK version.")]
+    [InlineData("search_files", "notes.md: the deploy failed last Tuesday")]
+    public void ApplyResult_ContentReturningTool_IsSuccessRegardlessOfWordsInTheContent(
+        string toolName,
+        string content)
+    {
+        var activity = new ToolActivityViewModel();
+        var projector = new ToolActivityProjector(activity);
+        projector.ApplyCall(Event("tool_call", $"{{\"tool_id\":\"1\",\"name\":\"{toolName}\",\"args\":{{}}}}"));
+
+        var step = projector.ApplyResult(
+            Event("tool_result", $"{{\"tool_id\":\"1\",\"result\":\"{content}\"}}"));
+        projector.Complete();
+
+        Assert.Equal(ToolStepStatus.Success, step!.Status);
+        Assert.Equal(ToolActivityStatus.Success, activity.Status);
+    }
+
+    /// <summary>The exemption is about *inferring* failure from prose, not about ignoring the
+    /// host. A read the host itself reports as an error is still a failure.</summary>
+    [Fact]
+    public void ApplyResult_ContentReturningTool_StillFailsWhenTheHostSaysSo()
+    {
+        var activity = new ToolActivityViewModel();
+        var projector = new ToolActivityProjector(activity);
+        projector.ApplyCall(Event("tool_call", "{\"tool_id\":\"1\",\"name\":\"read_file\",\"args\":{}}"));
+
+        var step = projector.ApplyResult(
+            Event("tool_result", "{\"tool_id\":\"1\",\"status\":\"error\",\"error\":\"No such file or directory\"}"));
+
+        Assert.Equal(ToolStepStatus.Failed, step!.Status);
+    }
+
+    /// <summary>Action tools keep the prose heuristics — that is where a result really is the tool
+    /// describing what happened to it.</summary>
+    [Theory]
+    [InlineData("bash", "bash: ./deploy.sh: command failed")]
+    [InlineData("navigate", "navigation timeout after 30s")]
+    [InlineData("write_file", "write failed: disk full")]
+    public void ApplyResult_ActionTool_StillInfersFailureFromItsResultText(string toolName, string result)
+    {
+        var activity = new ToolActivityViewModel();
+        var projector = new ToolActivityProjector(activity);
+        projector.ApplyCall(Event("tool_call", $"{{\"tool_id\":\"1\",\"name\":\"{toolName}\",\"args\":{{}}}}"));
+
+        var step = projector.ApplyResult(
+            Event("tool_result", $"{{\"tool_id\":\"1\",\"result\":\"{result}\"}}"));
+
+        Assert.Equal(ToolStepStatus.Failed, step!.Status);
+    }
+
+    /// <summary>The keyword pass is boundary-anchored so it covers prefixed variants without
+    /// swallowing names that merely contain the letters — "thread" contains "read".</summary>
+    [Theory]
+    [InlineData("read", true)]
+    [InlineData("read_file", true)]
+    [InlineData("remote_read_file", true)]
+    [InlineData("fs.readFile", true)]
+    [InlineData("grep", true)]
+    [InlineData("load_guide", true)]
+    [InlineData("create_thread", false)]
+    [InlineData("spread_items", false)]
+    [InlineData("bash", false)]
+    [InlineData("write_file", false)]
+    [InlineData("delete_file", false)]
+    public void ReturnsContent_MatchesOnTokenBoundaries(string toolName, bool expected)
+        => Assert.Equal(expected, ToolInvocations.ReturnsContent(toolName));
 
     private static AgentStreamEvent Event(string type, string json) => new(type, type, null, json);
 }

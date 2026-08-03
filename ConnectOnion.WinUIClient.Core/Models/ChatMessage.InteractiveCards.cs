@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using CommunityToolkit.Mvvm.ComponentModel;
+using ConnectOnion.WinUIClient.Common;
 
 namespace ConnectOnion.WinUIClient.Models;
 
@@ -34,6 +35,20 @@ public sealed partial class ChatMessage
 
     [JsonIgnore] public bool HasPlayedInteractiveEntrance { get; set; }
 
+    /// <summary>Whether the surrounding <c>InteractiveCard</c> is unfolded.
+    ///
+    /// <para>Lives on the message, not on the control, for the same reason
+    /// <c>ToolActivityViewModel.IsExpanded</c> does: the card sits in a virtualized
+    /// <c>ListView</c>, so its container is recycled onto a different message as the user
+    /// scrolls. Held as control state, folding one card would silently fold whichever card
+    /// later reused that container.</para>
+    ///
+    /// <para><c>[JsonIgnore]</c> — this is a view preference for the current session, not part
+    /// of what a conversation replays as. Defaults to true (see the constructor).</para></summary>
+    [ObservableProperty]
+    [JsonIgnore]
+    public partial bool IsInteractiveCardExpanded { get; set; }
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(DiffViewportHeight))]
     [NotifyPropertyChangedFor(nameof(DiffExpandLabel))]
@@ -53,6 +68,8 @@ public sealed partial class ChatMessage
     [JsonIgnore] public bool IsInteractiveReadOnly => !IsInteractiveEditable && !IsInteractiveSubmitting;
     [JsonIgnore] public bool ShowInteractiveResult => Status != EventStatus.Running;
     [JsonIgnore] public bool ShowInteractiveActions => Status == EventStatus.Running;
+    [JsonIgnore] public bool ShowAskUserSkipAction
+        => ShowInteractiveActions && !IsFileChangeApproval;
     [JsonIgnore] public bool ShowAskUserFields => Status == EventStatus.Running && HasAskUserFields;
     [JsonIgnore] public bool ShowAskUserPendingContent => Status == EventStatus.Running;
     [JsonIgnore] public bool ShowAskUserStatusBadge => Status == EventStatus.Running;
@@ -64,39 +81,120 @@ public sealed partial class ChatMessage
         : IsRejectedAskUserResult ? InteractiveVisualTone.Danger : InteractiveVisualTone.Success;
     [JsonIgnore] public string AskUserIconGlyph => Status == EventStatus.Running
         ? "\uE897" : IsRejectedAskUserResult ? "\uE711" : "\uE73E";
+
+    // ---- plan_review chrome -------------------------------------------------
+    // The plan card passed no tone at all, so every state rendered Neutral: an approved plan, a
+    // rejected one and one still blocking the agent were visually identical, and the only signal
+    // was a low-contrast grey badge. These mirror the ask_user tones above.
+
+    /// <summary>Amber rail while the plan still blocks the agent; nothing once it is settled \u2014 a
+    /// Neutral tone draws no rail at all (see <c>InteractiveCard.ShowChromeRail</c>).</summary>
+    [JsonIgnore] public InteractiveVisualTone PlanChromeTone
+        => Status == EventStatus.Running ? InteractiveVisualTone.Warning : InteractiveVisualTone.Neutral;
+
+    /// <summary>Colours the icon and the status badge: amber while pending, red once rejected,
+    /// green once approved. <see cref="EventStatus.Error"/> is how a rejected plan is stored \u2014
+    /// the same fact <see cref="HistoricalInteractiveStateLabel"/> reads for its label.</summary>
+    [JsonIgnore] public InteractiveVisualTone PlanIconTone => Status switch
+    {
+        EventStatus.Running => InteractiveVisualTone.Warning,
+        EventStatus.Error => InteractiveVisualTone.Danger,
+        _ => InteractiveVisualTone.Success,
+    };
+
+    /// <summary>Filled-checkmark / blocked / clock, matching the tone.</summary>
+    [JsonIgnore] public string PlanIconGlyph => Status switch
+    {
+        EventStatus.Running => "\uE9D5",
+        EventStatus.Error => "\uE711",
+        _ => "\uE73E",
+    };
+
+    /// <summary>The header subtitle. Only meaningful while the agent is actually waiting \u2014 once
+    /// the plan is settled it becomes empty and the row collapses, leaving the footer's state
+    /// description as the single place the outcome is stated. It previously stayed on
+    /// "The agent will not execute until you respond" forever, which a rejected card still
+    /// claimed hours later.</summary>
+    [JsonIgnore] public string PlanReviewSubtitle => Status == EventStatus.Running
+        ? CoreStrings.Get("PlanReviewSubtitle", "The agent will not execute until you respond.")
+        : "";
+
+    private const int PlanPreviewMaxLines = 24;
+    private const int PlanPreviewMaxCharacters = 6_000;
+
+    /// <summary>A bounded transcript preview. The complete plan remains available in the section
+    /// review dialog, so the conversation can own vertical scrolling without realizing an
+    /// arbitrarily tall markdown document inside one list item.</summary>
+    [JsonIgnore] public string PlanReviewPreview
+    {
+        get
+        {
+            var detail = EventDetail ?? string.Empty;
+            if (detail.Length == 0) return string.Empty;
+            var lines = detail.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
+            var preview = string.Join('\n', lines.Take(PlanPreviewMaxLines));
+            if (preview.Length > PlanPreviewMaxCharacters)
+                preview = preview[..PlanPreviewMaxCharacters];
+            return preview.TrimEnd();
+        }
+    }
+
+    [JsonIgnore] public bool IsPlanReviewPreviewTruncated
+        => !string.Equals(PlanReviewPreview, (EventDetail ?? string.Empty).TrimEnd(), StringComparison.Ordinal);
     [JsonIgnore] public bool IsFileChangeApproval => TryGetAskUserTargetPath(out _);
     [JsonIgnore] public string AskUserTargetPath => TryGetAskUserTargetPath(out var path) ? path : "";
     [JsonIgnore] public string AskUserTargetFileName => DiffPathFormatter.FileName(AskUserTargetPath);
     [JsonIgnore] public string AskUserContextPath => DiffPathFormatter.ContextPath(AskUserTargetPath);
     [JsonIgnore] public string AskUserDisplayQuestion => IsFileChangeApproval
-        ? $"Apply this change to {AskUserTargetFileName}?" : EventTitle;
+        ? CoreStrings.Format(
+            "AskUserApplyChangeQuestion", "Apply this change to {0}?", AskUserTargetFileName)
+        : EventTitle;
     [JsonIgnore] public string AskUserCardTitle => Status == EventStatus.Running
-        ? IsFileChangeApproval ? "Approval required" : "Agent needs your input"
+        ? IsFileChangeApproval
+            ? CoreStrings.Get("AskUserTitleApprovalRequired", "Approval required")
+            : CoreStrings.Get("AskUserTitleNeedsInput", "Agent needs your input")
         : AskUserResolvedTitle;
     [JsonIgnore] public string AskUserCardSubtitle => Status == EventStatus.Running
-        ? IsFileChangeApproval ? "Review how the agent should continue." : "Choose how the agent should continue."
+        ? IsFileChangeApproval
+            ? CoreStrings.Get(
+                "AskUserSubtitleReview", "Review how the agent should continue.")
+            : CoreStrings.Get(
+                "AskUserSubtitleChoose", "Choose how the agent should continue.")
         : AskUserResolvedSubtitle;
     [JsonIgnore] public string AskUserSubmitLabel
     {
         get
         {
-            if (IsInteractiveSubmitting) return "Submitting…";
+            if (IsInteractiveSubmitting)
+                return CoreStrings.Get("InteractiveSubmitting", "Submitting…");
+
+            // Match arms are the host's literal option text, so they stay English (see
+            // AskUserOptionEntry.DisplayText); only the button wording is localized.
             return AskUserOptionEntries.FirstOrDefault(option => option.IsChecked)?.Text switch
             {
-                "Yes, apply this change" => "Apply once",
-                "Yes to all (auto-approve)" => "Apply all",
-                "No, reject and give feedback" => "Reject",
-                _ => "Submit",
+                "Yes, apply this change"
+                    => CoreStrings.Get("AskUserSubmitApplyOnce", "Apply once"),
+                "Yes to all (auto-approve)"
+                    => CoreStrings.Get("AskUserSubmitApplyAll", "Apply all"),
+                "No, reject and give feedback"
+                    => CoreStrings.Get("AskUserSubmitReject", "Reject"),
+                _ => CoreStrings.Get("AskUserSubmitDefault", "Submit"),
             };
         }
     }
-    [JsonIgnore] public string PlanReviewSubmitLabel => IsInteractiveSubmitting ? "Submitting…" : "Approve plan";
+    [JsonIgnore] public string PlanReviewSubmitLabel => IsInteractiveSubmitting
+        ? CoreStrings.Get("InteractiveSubmitting", "Submitting…")
+        : CoreStrings.Get("PlanReviewApprove", "Approve plan");
+
+    // InteractiveOutcome is a stored marker ("Skipped"/"Rejected"), not display text — it is
+    // written to event_meta and read back. Match on it in English; localize only the result.
     [JsonIgnore] public string AskUserResultTitle => InteractiveOutcome switch
     {
-        "Skipped" => "Question skipped",
-        "Rejected" => "Question rejected",
-        _ when HasInteractiveAnswer => "Response submitted",
-        _ => "Request completed",
+        "Skipped" => CoreStrings.Get("AskUserResultSkipped", "Question skipped"),
+        "Rejected" => CoreStrings.Get("AskUserResultRejected", "Question rejected"),
+        _ when HasInteractiveAnswer
+            => CoreStrings.Get("AskUserResultSubmitted", "Response submitted"),
+        _ => CoreStrings.Get("AskUserResultCompleted", "Request completed"),
     };
 
     [JsonIgnore]
@@ -105,26 +203,40 @@ public sealed partial class ChatMessage
             ? HistoricalInteractiveStateLabel
             : EffectiveInteractivePhase switch
     {
-        InteractiveCardPhase.Pending => "Waiting",
-        InteractiveCardPhase.Submitting => "Submitting",
-        InteractiveCardPhase.Submitted => "Submitted",
-        InteractiveCardPhase.Completed => "Completed",
-        InteractiveCardPhase.Cancelled => "Cancelled",
-        InteractiveCardPhase.Rejected => "Rejected",
-        InteractiveCardPhase.Expired => "Expired",
-        InteractiveCardPhase.ConnectionLost => "Connection lost",
-        InteractiveCardPhase.Error => "Try again",
-        _ => "Waiting",
+        InteractiveCardPhase.Pending => CoreStrings.Get("InteractiveStateWaiting", "Waiting"),
+        InteractiveCardPhase.Submitting
+            => CoreStrings.Get("InteractiveStateSubmitting", "Submitting"),
+        InteractiveCardPhase.Submitted
+            => CoreStrings.Get("InteractiveStateSubmitted", "Submitted"),
+        InteractiveCardPhase.Completed
+            => CoreStrings.Get("InteractiveStateCompleted", "Completed"),
+        InteractiveCardPhase.Cancelled
+            => CoreStrings.Get("InteractiveStateCancelled", "Cancelled"),
+        InteractiveCardPhase.Rejected
+            => CoreStrings.Get("InteractiveStateRejected", "Rejected"),
+        InteractiveCardPhase.Expired => CoreStrings.Get("InteractiveStateExpired", "Expired"),
+        InteractiveCardPhase.ConnectionLost
+            => CoreStrings.Get("InteractiveStateConnectionLost", "Connection lost"),
+        InteractiveCardPhase.Error => CoreStrings.Get("InteractiveStateError", "Try again"),
+        _ => CoreStrings.Get("InteractiveStateWaiting", "Waiting"),
     };
 
+    /// <summary>State label for a card reloaded from history, derived from the stored
+    /// <c>event_meta</c>. Every match arm reads a persisted English marker — <c>"Skipped"</c>,
+    /// <c>"Rejected"</c>, the <c>"Answered:"</c> prefix the persist path writes — so the left
+    /// side must never be localized or a translated build stops recognising its own rows.</summary>
     private string HistoricalInteractiveStateLabel
         => EventMeta switch
         {
-            "Skipped" => "Skipped",
-            "Rejected" => "Rejected",
-            { } value when value.StartsWith("Answered:", StringComparison.Ordinal) => "Submitted",
-            { } value when value.Contains("approved", StringComparison.OrdinalIgnoreCase) => "Approved",
-            _ => Status == EventStatus.Error ? "Rejected" : "Completed",
+            "Skipped" => CoreStrings.Get("InteractiveStateSkipped", "Skipped"),
+            "Rejected" => CoreStrings.Get("InteractiveStateRejected", "Rejected"),
+            { } value when value.StartsWith("Answered:", StringComparison.Ordinal)
+                => CoreStrings.Get("InteractiveStateSubmitted", "Submitted"),
+            { } value when value.Contains("approved", StringComparison.OrdinalIgnoreCase)
+                => CoreStrings.Get("InteractiveStateApproved", "Approved"),
+            _ => Status == EventStatus.Error
+                ? CoreStrings.Get("InteractiveStateRejected", "Rejected")
+                : CoreStrings.Get("InteractiveStateCompleted", "Completed"),
         };
 
     [JsonIgnore]
@@ -133,25 +245,48 @@ public sealed partial class ChatMessage
             ? HistoricalInteractiveStateDescription
             : EffectiveInteractivePhase switch
     {
-        InteractiveCardPhase.Pending => "The agent is paused until you respond.",
-        InteractiveCardPhase.Submitting => "Sending your response…",
-        InteractiveCardPhase.Submitted => "Your response was sent.",
-        InteractiveCardPhase.Completed => "This request has been completed.",
-        InteractiveCardPhase.Cancelled => "This request was cancelled.",
-        InteractiveCardPhase.Rejected => "The request was rejected.",
-        InteractiveCardPhase.Expired => "This request is no longer active.",
-        InteractiveCardPhase.ConnectionLost => "Your input is preserved. Reconnect before responding.",
-        InteractiveCardPhase.Error => "The response was not sent. Your input is preserved.",
+        InteractiveCardPhase.Pending => CoreStrings.Get(
+            "InteractiveDescPending", "The agent is paused until you respond."),
+        InteractiveCardPhase.Submitting
+            => CoreStrings.Get("InteractiveDescSubmitting", "Sending your response…"),
+        InteractiveCardPhase.Submitted
+            => CoreStrings.Get("InteractiveDescSubmitted", "Your response was sent."),
+        InteractiveCardPhase.Completed
+            => CoreStrings.Get("InteractiveDescCompleted", "This request has been completed."),
+        InteractiveCardPhase.Cancelled
+            => CoreStrings.Get("InteractiveDescCancelled", "This request was cancelled."),
+        InteractiveCardPhase.Rejected
+            => CoreStrings.Get("InteractiveDescRejected", "The request was rejected."),
+        InteractiveCardPhase.Expired
+            => CoreStrings.Get("InteractiveDescExpired", "This request is no longer active."),
+        InteractiveCardPhase.ConnectionLost => CoreStrings.Get(
+            "InteractiveDescConnectionLost",
+            "Your input is preserved. Reconnect before responding."),
+        InteractiveCardPhase.Error => CoreStrings.Get(
+            "InteractiveDescError", "The response was not sent. Your input is preserved."),
         _ => "",
     };
 
+    /// <summary>See <see cref="HistoricalInteractiveStateLabel"/>: match arms are stored
+    /// markers, only the descriptions are localized.
+    ///
+    /// <para>The fallback arm checks <see cref="Status"/> for the same reason the label's does.
+    /// It used to return "completed" unconditionally, so a rejected card whose
+    /// <c>event_meta</c> did not literally read <c>"Rejected"</c> showed a <b>Rejected</b> badge
+    /// above the line "This request has been completed." — the two halves of one card
+    /// disagreeing, from the same row, because only one of them looked at the status.</para></summary>
     private string HistoricalInteractiveStateDescription
         => EventMeta switch
         {
-            "Skipped" => "No response was submitted.",
-            "Rejected" => "This request was rejected.",
-            { } value when value.StartsWith("Answered:", StringComparison.Ordinal) => "Your response was submitted.",
-            _ => "This request has been completed.",
+            "Skipped"
+                => CoreStrings.Get("InteractiveDescSkipped", "No response was submitted."),
+            "Rejected"
+                => CoreStrings.Get("InteractiveDescWasRejected", "This request was rejected."),
+            { } value when value.StartsWith("Answered:", StringComparison.Ordinal)
+                => CoreStrings.Get("InteractiveDescWasSubmitted", "Your response was submitted."),
+            _ => Status == EventStatus.Error
+                ? CoreStrings.Get("InteractiveDescWasRejected", "This request was rejected.")
+                : CoreStrings.Get("InteractiveDescCompleted", "This request has been completed."),
         };
 
     private InteractiveCardPhase EffectiveInteractivePhase
@@ -161,13 +296,15 @@ public sealed partial class ChatMessage
 
     [JsonIgnore] public int AskUserSelectedCount => AskUserOptionEntries.Count(option => option.IsChecked);
     [JsonIgnore] public string AskUserSelectionSummary => AskUserMultiSelect
-        ? $"{AskUserSelectedCount} selected"
-        : "Select one option";
+        ? CoreStrings.Format("AskUserSelectedCount", "{0} selected", AskUserSelectedCount)
+        : CoreStrings.Get("AskUserSelectOne", "Select one option");
     [JsonIgnore] public string AskUserRequirementText => HasAskUserFields
-        ? "Complete the requested fields."
+        ? CoreStrings.Get("AskUserCompleteFields", "Complete the requested fields.")
         : HasAskUserOptions
-            ? AskUserMultiSelect ? "Choose one or more options." : "Choose one option."
-            : "Enter your response.";
+            ? AskUserMultiSelect
+                ? CoreStrings.Get("AskUserChooseMany", "Choose one or more options.")
+                : CoreStrings.Get("AskUserChooseOne", "Choose one option.")
+            : CoreStrings.Get("AskUserEnterResponse", "Enter your response.");
     [JsonIgnore] public bool ShowAskUserSelectionSummary
         => ShowAskUserOptions && AskUserMultiSelect;
 
@@ -196,8 +333,12 @@ public sealed partial class ChatMessage
     [JsonIgnore] public bool CanWrapDiff => DiffPreview.Files
         .SelectMany(file => file.Lines)
         .Any(line => line.Content.Length > 100);
-    [JsonIgnore] public string DiffExpandLabel => IsDiffExpanded ? "Collapse" : "Expand";
-    [JsonIgnore] public string DiffWrapLabel => IsDiffWrapped ? "No wrap" : "Wrap";
+    [JsonIgnore] public string DiffExpandLabel => IsDiffExpanded
+        ? CoreStrings.Get("DiffCollapse", "Collapse")
+        : CoreStrings.Get("DiffExpand", "Expand");
+    [JsonIgnore] public string DiffWrapLabel => IsDiffWrapped
+        ? CoreStrings.Get("DiffNoWrap", "No wrap")
+        : CoreStrings.Get("DiffWrap", "Wrap");
     [JsonIgnore] public DiffChangeState DiffState => ParseDiffState(EventResult);
     [JsonIgnore] public bool ShowDiffBody => IsDiffExpanded;
     [JsonIgnore] public bool CanToggleDiffVisibility => DiffState != DiffChangeState.Pending;
@@ -205,15 +346,22 @@ public sealed partial class ChatMessage
         or DiffChangeState.PartiallyApplied or DiffChangeState.Disconnected or DiffChangeState.Unconfirmed;
     [JsonIgnore] public string DiffCardTitle => DiffState switch
     {
-        DiffChangeState.Applied => $"Changes applied to {DiffFileName}",
-        DiffChangeState.Rejected => "Proposed changes rejected",
-        DiffChangeState.Failed => "Changes could not be applied",
-        DiffChangeState.PartiallyApplied => "Changes may be partially applied",
-        DiffChangeState.Disconnected => "Connection lost while applying changes",
-        DiffChangeState.Unconfirmed => "Change result could not be confirmed",
-        DiffChangeState.Applying => "Applying file changes",
-        DiffChangeState.Preview => "Review file changes",
-        _ => "Review file changes",
+        DiffChangeState.Applied
+            => CoreStrings.Format("DiffTitleApplied", "Changes applied to {0}", DiffFileName),
+        DiffChangeState.Rejected
+            => CoreStrings.Get("DiffTitleRejected", "Proposed changes rejected"),
+        DiffChangeState.Failed
+            => CoreStrings.Get("DiffTitleFailed", "Changes could not be applied"),
+        DiffChangeState.PartiallyApplied
+            => CoreStrings.Get("DiffTitlePartial", "Changes may be partially applied"),
+        DiffChangeState.Disconnected
+            => CoreStrings.Get("DiffTitleDisconnected", "Connection lost while applying changes"),
+        DiffChangeState.Unconfirmed
+            => CoreStrings.Get("DiffTitleUnconfirmed", "Change result could not be confirmed"),
+        DiffChangeState.Applying
+            => CoreStrings.Get("DiffTitleApplying", "Applying file changes"),
+        DiffChangeState.Preview => CoreStrings.Get("DiffTitleReview", "Review file changes"),
+        _ => CoreStrings.Get("DiffTitleReview", "Review file changes"),
     };
     [JsonIgnore] public string DiffCardSubtitle => DiffState == DiffChangeState.Applied
         ? ""
@@ -239,17 +387,28 @@ public sealed partial class ChatMessage
     [JsonIgnore] public InteractiveVisualTone DiffChromeTone
         => DiffState == DiffChangeState.Pending ? InteractiveVisualTone.Warning : InteractiveVisualTone.Neutral;
     [JsonIgnore] public string DiffToggleLabel => IsDiffExpanded
-        ? "Hide changes"
-        : DiffState == DiffChangeState.Rejected ? "View proposed changes" : "View changes";
+        ? CoreStrings.Get("DiffHideChanges", "Hide changes")
+        : DiffState == DiffChangeState.Rejected
+            ? CoreStrings.Get("DiffViewProposed", "View proposed changes")
+            : CoreStrings.Get("DiffViewChanges", "View changes");
     [JsonIgnore] public string DiffProblemText => DiffState switch
     {
-        DiffChangeState.Failed => "The file tool reported an error. Review the proposed changes and tool details.",
-        DiffChangeState.PartiallyApplied => "The tool reported a partial result. Verify the file before continuing.",
-        DiffChangeState.Disconnected => "The connection ended before the file result was confirmed.",
-        _ => "The turn ended without a successful file result. The proposed changes are shown below.",
+        DiffChangeState.Failed => CoreStrings.Get(
+            "DiffProblemFailed",
+            "The file tool reported an error. Review the proposed changes and tool details."),
+        DiffChangeState.PartiallyApplied => CoreStrings.Get(
+            "DiffProblemPartial",
+            "The tool reported a partial result. Verify the file before continuing."),
+        DiffChangeState.Disconnected => CoreStrings.Get(
+            "DiffProblemDisconnected",
+            "The connection ended before the file result was confirmed."),
+        _ => CoreStrings.Get(
+            "DiffProblemUnconfirmed",
+            "The turn ended without a successful file result. The proposed changes are shown below."),
     };
     [JsonIgnore] public string DiffAccessibilityName
-        => $"{DiffCardTitle}. {DiffFileName}. {DiffPreview.ChangeSummary}. {(IsDiffExpanded ? "Changes visible" : DiffToggleLabel)}.";
+        => $"{DiffCardTitle}. {DiffFileName}. {DiffPreview.ChangeSummary}. " +
+           $"{(IsDiffExpanded ? CoreStrings.Get("DiffChangesVisible", "Changes visible") : DiffToggleLabel)}.";
     [JsonIgnore] public bool CanSendPlanFeedback => IsInteractiveEditable && !string.IsNullOrWhiteSpace(PlanFeedback);
 
     public bool ValidateAskUser()
@@ -288,6 +447,7 @@ public sealed partial class ChatMessage
         EventMeta = outcome;
         InteractivePhase = rejected ? InteractiveCardPhase.Rejected : InteractiveCardPhase.Submitted;
         Status = rejected ? EventStatus.Error : EventStatus.Done;
+        if (IsPlanReviewEvent) IsInteractiveCardExpanded = false;
     }
 
     public void FailInteractiveSubmit(string message, bool connectionLost)
@@ -348,6 +508,7 @@ public sealed partial class ChatMessage
     partial void OnEventKindChanged(string value)
     {
         if (value == "diff_preview") SynchronizeDiffPresentation();
+        OnPropertyChanged(nameof(IsTranscriptRowVisible));
     }
     partial void OnEventResultChanged(string? value)
     {
@@ -371,32 +532,47 @@ public sealed partial class ChatMessage
         OnPropertyChanged(nameof(AskUserCardTitle));
         OnPropertyChanged(nameof(AskUserCardSubtitle));
         OnPropertyChanged(nameof(AskUserSubmitLabel));
+        OnPropertyChanged(nameof(ShowAskUserSkipAction));
+        RelatedDiffPreview?.NotifyRelatedDiffApprovalChanged();
     }
 
     private bool IsRejectedAskUserResult
         => string.Equals(InteractiveOutcome, "Rejected", StringComparison.OrdinalIgnoreCase)
             || InteractiveAnswerText.StartsWith("No, reject", StringComparison.OrdinalIgnoreCase);
 
+    // InteractiveAnswerText is the answer as it went on the wire and InteractiveOutcome is the
+    // stored marker; both stay English on the match side. Only the resolved wording is localized.
     private string AskUserResolvedTitle
         => InteractiveAnswerText switch
         {
-            "Yes, apply this change" => "Change approved",
-            "Yes to all (auto-approve)" => "Similar changes approved",
-            { } answer when answer.StartsWith("No, reject", StringComparison.OrdinalIgnoreCase) => "Change rejected",
-            _ when string.Equals(InteractiveOutcome, "Rejected", StringComparison.OrdinalIgnoreCase) => "Request rejected",
-            _ when string.Equals(InteractiveOutcome, "Skipped", StringComparison.OrdinalIgnoreCase) => "Request closed",
-            _ => "Response submitted",
+            "Yes, apply this change"
+                => CoreStrings.Get("AskUserResolvedApproved", "Change approved"),
+            "Yes to all (auto-approve)"
+                => CoreStrings.Get("AskUserResolvedApprovedAll", "Similar changes approved"),
+            { } answer when answer.StartsWith("No, reject", StringComparison.OrdinalIgnoreCase)
+                => CoreStrings.Get("AskUserResolvedChangeRejected", "Change rejected"),
+            _ when string.Equals(InteractiveOutcome, "Rejected", StringComparison.OrdinalIgnoreCase)
+                => CoreStrings.Get("AskUserResolvedRequestRejected", "Request rejected"),
+            _ when string.Equals(InteractiveOutcome, "Skipped", StringComparison.OrdinalIgnoreCase)
+                => CoreStrings.Get("AskUserResolvedRequestClosed", "Request closed"),
+            _ => CoreStrings.Get("AskUserResultSubmitted", "Response submitted"),
         };
 
     private string AskUserResolvedSubtitle
         => InteractiveAnswerText switch
         {
-            "Yes, apply this change" when IsFileChangeApproval => $"Applied once to {AskUserTargetFileName}",
-            "Yes to all (auto-approve)" => "Auto-approval enabled for this session",
-            { } answer when answer.StartsWith("No, reject", StringComparison.OrdinalIgnoreCase) => "Feedback requested from the agent",
+            "Yes, apply this change" when IsFileChangeApproval => CoreStrings.Format(
+                "AskUserResolvedAppliedOnce", "Applied once to {0}", AskUserTargetFileName),
+            "Yes to all (auto-approve)" => CoreStrings.Get(
+                "AskUserResolvedAutoApproval", "Auto-approval enabled for this session"),
+            { } answer when answer.StartsWith("No, reject", StringComparison.OrdinalIgnoreCase)
+                => CoreStrings.Get(
+                    "AskUserResolvedFeedbackRequested", "Feedback requested from the agent"),
+            // The user's own answer, echoed back verbatim — never translated.
             { Length: > 0 } answer => answer,
-            _ when string.Equals(InteractiveOutcome, "Skipped", StringComparison.OrdinalIgnoreCase) => "No response was submitted",
-            _ => "Response sent to the agent",
+            _ when string.Equals(InteractiveOutcome, "Skipped", StringComparison.OrdinalIgnoreCase)
+                => CoreStrings.Get("AskUserResolvedNoResponse", "No response was submitted"),
+            _ => CoreStrings.Get("AskUserResolvedSent", "Response sent to the agent"),
         };
 
     private bool TryGetAskUserTargetPath(out string path)
@@ -412,9 +588,45 @@ public sealed partial class ChatMessage
         return path.Length > 0;
     }
 
-    /// <summary>The ask_user card paired with this diff. Transient by design: replay reconstructs
+    /// <summary>The diff paired with this ask_user card. Transient by design: replay reconstructs
     /// the relation from event order, while the durable outcome lives on the diff itself.</summary>
-    [JsonIgnore] public ChatMessage? RelatedDiffPreview { get; set; }
+    [JsonIgnore] public ChatMessage? RelatedDiffPreview { get; private set; }
+
+    /// <summary>The ask_user decision surface rendered directly beneath this diff while pending.</summary>
+    [JsonIgnore] public ChatMessage? RelatedDiffApproval { get; private set; }
+
+    [JsonIgnore] public bool ShowRelatedDiffApprovalCard
+        => RelatedDiffApproval is { Status: EventStatus.Running };
+
+    /// <summary>Messages remain in the projection for answer and persistence alignment even when
+    /// another card owns their UI. Collapsing the container as well as selecting an empty template
+    /// prevents those implementation-only rows from leaving a six-pixel transcript gap.</summary>
+    [JsonIgnore] public bool IsTranscriptRowVisible
+        => !IsApprovalEvent && !(IsAskUserEvent && RelatedDiffPreview is not null);
+
+    public void AttachRelatedDiffPreview(ChatMessage? diff)
+    {
+        if (ReferenceEquals(RelatedDiffPreview, diff)) return;
+
+        if (RelatedDiffPreview is { } previous && ReferenceEquals(previous.RelatedDiffApproval, this))
+        {
+            previous.RelatedDiffApproval = null;
+            previous.NotifyRelatedDiffApprovalChanged();
+        }
+
+        RelatedDiffPreview = diff;
+        OnPropertyChanged(nameof(RelatedDiffPreview));
+        OnPropertyChanged(nameof(IsTranscriptRowVisible));
+
+        if (diff is null) return;
+        diff.RelatedDiffApproval = this;
+        diff.OnPropertyChanged(nameof(RelatedDiffApproval));
+        diff.NotifyRelatedDiffApprovalChanged();
+        diff.ApplyDiffApprovalAnswer(EventMeta);
+    }
+
+    internal void NotifyRelatedDiffApprovalChanged()
+        => OnPropertyChanged(nameof(ShowRelatedDiffApprovalCard));
 
     public void ToggleDiffExpanded()
     {

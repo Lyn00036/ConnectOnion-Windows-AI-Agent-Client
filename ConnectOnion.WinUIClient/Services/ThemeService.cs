@@ -1,5 +1,7 @@
+using System.Collections.Concurrent;
 using ConnectOnion.WinUIClient.Models;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media;
 using Windows.UI;
 
 namespace ConnectOnion.WinUIClient.Services;
@@ -13,8 +15,16 @@ public static class ThemeService
 {
     private static FrameworkElement? _root;
     private static ThemeMode _theme = ThemeMode.System;
+    private static ElementTheme _currentTheme = ElementTheme.Light;
 
     public static event System.Action<ElementTheme>? ThemeApplied;
+
+    /// <summary>
+    /// The concrete Light/Dark theme currently rendered by the window root. Popup-backed
+    /// controls live in a separate element tree, so callers use this value when opening them
+    /// instead of allowing those controls to fall back to the system theme.
+    /// </summary>
+    public static ElementTheme CurrentTheme => _currentTheme;
 
     public static void RegisterRoot(FrameworkElement root)
     {
@@ -25,6 +35,7 @@ public static class ThemeService
 
         _root = root;
         _root.ActualThemeChanged += Root_ActualThemeChanged;
+        _currentTheme = ResolveActualTheme();
     }
 
     public static void UnregisterRoot(FrameworkElement root)
@@ -38,17 +49,32 @@ public static class ThemeService
     {
         _theme = theme;
         if (_root is null) return;
-        _root.RequestedTheme = theme switch
+        var requestedTheme = theme switch
         {
             ThemeMode.Dark => ElementTheme.Dark,
             ThemeMode.Light => ElementTheme.Light,
             _ => ElementTheme.Default,
         };
-        ThemeApplied?.Invoke(EffectiveTheme);
+        _root.RequestedTheme = requestedTheme;
+
+        // ActualTheme is updated asynchronously after RequestedTheme changes. Publishing it here
+        // used to broadcast the previous theme, leaving popup trees and the title bar one change
+        // behind the window. Explicit Light/Dark choices are already concrete; System publishes
+        // the root's current value now and ActualThemeChanged corrects it if Windows resolves to
+        // the other theme on the next layout pass.
+        PublishTheme(requestedTheme == ElementTheme.Default
+            ? ResolveActualTheme()
+            : requestedTheme);
     }
 
-    private static ElementTheme EffectiveTheme
+    private static ElementTheme ResolveActualTheme()
         => _root?.ActualTheme == ElementTheme.Dark ? ElementTheme.Dark : ElementTheme.Light;
+
+    private static void PublishTheme(ElementTheme theme)
+    {
+        _currentTheme = theme;
+        ThemeApplied?.Invoke(theme);
+    }
 
     /// <summary>
     /// Resolves a <see cref="Color"/> token straight from the app's Light/Dark
@@ -64,6 +90,31 @@ public static class ThemeService
     /// (<c>Colors.xaml</c>) that actually declares <paramref name="key"/>.
     /// </summary>
     public static Color GetColor(string key, bool isDark)
+        => ColorCache.GetOrAdd((key, isDark), static token => Lookup(token.Key, token.IsDark));
+
+    /// <summary>
+    /// The shared <see cref="SolidColorBrush"/> for a color token, for the call sites that build
+    /// XAML elements in code and would otherwise mint a brush per element.
+    ///
+    /// <para>Sharing one instance across many elements is exactly what <c>{ThemeResource}</c> does
+    /// — a resource-dictionary brush is referenced, not copied — so this is safe as long as
+    /// nobody mutates the returned brush. Don't: set <see cref="SolidColorBrush.Color"/> on one of
+    /// these and every element in the app using that token changes with it. A call site that needs
+    /// a *mutable* brush (the composer's waveform, which recolors one instance in place) must keep
+    /// building its own from <see cref="GetColor"/>.</para>
+    ///
+    /// <para>Keyed by theme as well as token, so a live theme flip resolves to a different brush
+    /// rather than needing invalidation. Both dictionaries are permanent by design: the token
+    /// tables are compiled into <c>Colors.xaml</c> and cannot change at runtime, so an entry is
+    /// valid for the life of the process and the set of keys is bounded by the palette.</para>
+    /// </summary>
+    public static SolidColorBrush GetBrush(string key, bool isDark)
+        => BrushCache.GetOrAdd((key, isDark), static token => new SolidColorBrush(GetColor(token.Key, token.IsDark)));
+
+    private static readonly ConcurrentDictionary<(string Key, bool IsDark), Color> ColorCache = new();
+    private static readonly ConcurrentDictionary<(string Key, bool IsDark), SolidColorBrush> BrushCache = new();
+
+    private static Color Lookup(string key, bool isDark)
     {
         var themeKey = isDark ? "Dark" : "Light";
         foreach (var merged in Application.Current.Resources.MergedDictionaries)
@@ -81,9 +132,8 @@ public static class ThemeService
 
     private static void Root_ActualThemeChanged(FrameworkElement sender, object args)
     {
-        if (_theme == ThemeMode.System)
-        {
-            ThemeApplied?.Invoke(EffectiveTheme);
-        }
+        var actualTheme = ResolveActualTheme();
+        if (_currentTheme != actualTheme || _theme == ThemeMode.System)
+            PublishTheme(actualTheme);
     }
 }

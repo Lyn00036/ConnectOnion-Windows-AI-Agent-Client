@@ -7,6 +7,8 @@ using ConnectOnion.WinUIClient.Views;
 using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Input;
+using Windows.System;
 
 namespace ConnectOnion.WinUIClient;
 
@@ -18,25 +20,36 @@ public sealed partial class MainWindow : Window
     private readonly AppWindow _appWindow;
     private readonly IntPtr _hwnd;
     private readonly SessionRepository _sessionRepository;
+    private readonly PreferencesRepository _preferencesRepository;
     private readonly WindowPlacementStore _windowPlacementStore;
+    private readonly TextScaleService _textScale;
     private int _windowServicesDetached;
     private int _windowPlacementSaved;
+    private int _exitStarted;
     private bool _isSidebarVisible = true;
+    private bool _wasCompactLayout;
+    private double _sidebarWidth = SidebarLayoutPolicy.DefaultWidth;
+    private double _sidebarResizeStartWidth;
+    private double _sidebarResizeStartPointerX;
+    private uint _sidebarResizePointerId;
+    private bool _isSidebarResizing;
+    private bool _skipNextNavigationSidebarRefresh;
 
     public IRelayCommand OpenWindowCommand { get; }
-    public IRelayCommand NewChatFromTrayCommand { get; }
     public IRelayCommand ExitFromTrayCommand { get; }
 
     public MainWindow()
     {
         OpenWindowCommand = new RelayCommand(RestoreFromTray);
-        NewChatFromTrayCommand = new RelayCommand(OpenNewChatFromTray);
         ExitFromTrayCommand = new RelayCommand(ExitApplication);
         InitializeComponent();
         _sessionRepository = AppServices.Sessions;
+        _preferencesRepository = AppServices.Preferences;
         // Capture DI-owned services while the host is alive. Closed can run after App.Exit has
         // already disposed the provider, so teardown code must never resolve a fresh service.
         _windowPlacementStore = AppServices.WindowPlacement;
+        _textScale = AppServices.TextScale;
+        _textScale.Changed += OnTextScaleChanged;
         TrackWindowLifetime();
         InitializeNotificationPresence();
         _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
@@ -46,16 +59,10 @@ public sealed partial class MainWindow : Window
         InitializeTrayBehavior();
         Diagnostics.StartupTelemetry.ArmPerformanceExit(DispatcherQueue, ExitApplication);
         ShellSidebar.NavigationRequested += NavigateTo;
-        ShellSidebar.NewChatRequested += Sidebar_NewChatRequested;
+        ShellSidebar.NavigationResetRequested += ResetNavigationTo;
         ShellSidebar.SettingsRequested += ShowSettingsOverlay;
-        ShellSidebar.KeyboardShortcutsRequested += ShowKeyboardShortcutsOverlay;
-        ShellSidebar.AboutRequested += ShowAboutOverlay;
-        ShellSidebar.ExitRequested += ExitApplication;
+        ShellSidebar.SessionSearchRequested += ShowSessionSearchOverlay;
         ShellSidebar.AddAgentRequested += ShowAddAgentOverlay;
-        AddAgentOverlay.AgentAdded += AddAgentOverlay_AgentAdded;
-        SettingsOverlay.CloseRequested += (_, _) => CloseSettingsOverlay();
-        KeyboardShortcutsDialog.CloseRequested += (_, _) => CloseKeyboardShortcutsOverlay();
-        AboutOverlay.CloseRequested += (_, _) => CloseAboutOverlay();
         ContentFrame.Navigated += async (_, _) =>
         {
             try
@@ -63,14 +70,20 @@ public sealed partial class MainWindow : Window
                 ShellSidebar.SetCurrentPage(ContentFrame.CurrentSourcePageType);
                 UpdateNavigationButtons();
                 CloseFindOverlay();
-                await ShellSidebar.RefreshAsync();
-                if (RootGrid.ActualWidth < 720 && _isSidebarVisible)
+                if (_skipNextNavigationSidebarRefresh)
                 {
-                    _isSidebarVisible = false;
-                    ShellSidebar.Visibility = Visibility.Collapsed;
-                    ApplySidebarWidth(RootGrid.ActualWidth);
-                    SidebarToggleButton.Opacity = 0.65;
+                    _skipNextNavigationSidebarRefresh = false;
                 }
+                else
+                {
+                    await ShellSidebar.RefreshAsync();
+                }
+                // Navigating does NOT close the sidebar, by request. Picking a conversation used
+                // to auto-collapse it at the compact width; the sidebar now stays exactly as the
+                // user left it, and the ways to close it are all explicit — the title-bar toggle,
+                // Ctrl+B, or tapping the dimmed backdrop (SidebarDismissLayer_Tapped). Note that
+                // at the compact width the sidebar is an overlay, so leaving it open does cover
+                // the conversation that was just opened.
             }
             catch
             {
@@ -90,6 +103,14 @@ public sealed partial class MainWindow : Window
         // handler below shows the shell and the first page in the default theme before flipping
         // them, and a throwing sidebar refresh would leave the theme unapplied entirely.
         _ = ApplyStartupThemeAsync();
+        // Same reasoning as the theme: the saved zoom is a view preference the user set once and
+        // expects back, so it must not wait on the sidebar load. It measures RootGrid, so it runs
+        // once the layout exists rather than from the constructor.
+        RootGrid.Loaded += async (_, _) => await RestoreZoomAsync();
+        // XamlRoot only exists once the tree is loaded. This is what makes moving the window to a
+        // monitor with a different scale re-measure the caption inset — the metrics are otherwise
+        // computed once and cached, deliberately, to keep them off the resize path.
+        RootGrid.Loaded += (_, _) => TrackDisplayScaleChanges();
         RootGrid.GotFocus += (_, _) =>
             Diagnostics.StartupTelemetry.Mark(Diagnostics.StartupPhases.FirstInteractive);
         RootGrid.Loaded += async (_, _) =>
@@ -102,6 +123,7 @@ public sealed partial class MainWindow : Window
                 var benchmarkConversation =
                     Environment.GetEnvironmentVariable(
                         Diagnostics.StartupProfiler.OpenConversationEnvironmentVariable) == "1";
+                _skipNextNavigationSidebarRefresh = true;
                 NavigateTo(benchmarkConversation ? typeof(ChatPage) : typeof(HomePage));
                 UpdateNavigationButtons();
                 EnsureInitialFocus();
@@ -137,14 +159,20 @@ public sealed partial class MainWindow : Window
         ThemeService.ThemeApplied -= ApplyTitleBarTheme;
         ThemeService.UnregisterRoot(RootGrid);
         _sessionRepository.SessionsChanged -= OnSessionsChanged;
+        ShellSidebar.NavigationRequested -= NavigateTo;
+        ShellSidebar.NavigationResetRequested -= ResetNavigationTo;
+        ShellSidebar.SettingsRequested -= ShowSettingsOverlay;
+        ShellSidebar.SessionSearchRequested -= ShowSessionSearchOverlay;
+        ShellSidebar.AddAgentRequested -= ShowAddAgentOverlay;
+        ShellSidebar.Shutdown();
         DetachNotificationPresence();
         DetachShortcutHints();
         DetachViewMenu();
+        // XamlRoot outlives this handler's usefulness, and XamlRoot_Changed re-lays out the tree.
+        DetachDisplayScaleTracking();
         Diagnostics.StartupTelemetry.DisarmPerformanceExit();
-        AddAgentOverlay.AgentAdded -= AddAgentOverlay_AgentAdded;
-        AddAgentOverlay.Shutdown();
+        ShutdownOverlays();
         InAppNotifications.Shutdown();
-        SettingsOverlay.Shutdown();
 
         // Pages disarm their own timers in Unloaded, which is not guaranteed to fire on window
         // close — so the page currently on screen is asked directly. Wrapped because a page that
@@ -196,37 +224,57 @@ public sealed partial class MainWindow : Window
 
     private void RootGrid_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        ApplySidebarWidth(e.NewSize.Width);
+        // EffectiveContentScale, not _zoomFactor. These two must agree with EffectiveContentWidth
+        // below, because both feed SidebarLayoutPolicy.IsCompactWindow: with the OS text scale
+        // above 100% the two definitions disagreed, so a resize and a navigation could reach
+        // opposite conclusions about whether the sidebar should be an overlay.
+        var windowWidth = e.NewSize.Width / EffectiveContentScale;
+        var isCompact = SidebarLayoutPolicy.IsCompactWindow(windowWidth);
+        if (isCompact && !_wasCompactLayout && _isSidebarVisible)
+            SetSidebarVisible(false);
+        _wasCompactLayout = isCompact;
+
+        ApplySidebarWidth(windowWidth);
+        UpdateTitleBarLayout(windowWidth);
+        UpdateZoomLayout();
         UpdateZoomPopupPosition();
         UpdateFindOverlayPosition();
     }
+
+    // Divided by the *effective* scale (zoom × OS text size), not the zoom alone: this is what
+    // the compact-layout breakpoint is measured against, and at 150% system text the content
+    // area really does have a third less room even though the zoom is still 100%.
+    private double EffectiveContentWidth => RootGrid.ActualWidth / EffectiveContentScale;
 
     private void ApplySidebarWidth(double windowWidth)
     {
         if (!_isSidebarVisible)
         {
             ShellSidebarColumn.Width = new GridLength(0);
+            SidebarResizeHandle.Visibility = Visibility.Collapsed;
+            SidebarDismissLayer.Visibility = Visibility.Collapsed;
             return;
         }
 
         // Below the compact breakpoint the sidebar becomes an overlay. Keeping a fixed rail in
         // the layout at this width squeezed blocking approval controls and the reading column.
         // The existing title-bar toggle remains the single show/hide interaction.
-        if (windowWidth < 720)
+        if (SidebarLayoutPolicy.IsCompactWindow(windowWidth))
         {
             ShellSidebarColumn.Width = new GridLength(0);
-            ShellSidebar.Width = Math.Max(208, Math.Min(264, windowWidth - 48));
+            ShellSidebar.Width = SidebarLayoutPolicy.ClampOverlayWidth(_sidebarWidth, windowWidth);
             ShellSidebar.HorizontalAlignment = HorizontalAlignment.Left;
+            SidebarResizeHandle.Visibility = Visibility.Collapsed;
+            SidebarDismissLayer.Visibility = Visibility.Visible;
             return;
         }
 
+        SidebarDismissLayer.Visibility = Visibility.Collapsed;
         ShellSidebar.ClearValue(FrameworkElement.WidthProperty);
         ShellSidebar.HorizontalAlignment = HorizontalAlignment.Stretch;
-        ShellSidebarColumn.Width = windowWidth switch
-        {
-            < 980 => new GridLength(232),
-            _ => new GridLength(264),
-        };
+        ShellSidebarColumn.Width = new GridLength(
+            SidebarLayoutPolicy.ClampDockedWidth(_sidebarWidth, windowWidth));
+        SidebarResizeHandle.Visibility = Visibility.Visible;
     }
 
     private void SidebarToggle_Click(object sender, RoutedEventArgs e)
@@ -234,10 +282,117 @@ public sealed partial class MainWindow : Window
 
     private void ToggleSidebarCommand()
     {
-        _isSidebarVisible = !_isSidebarVisible;
-        ShellSidebar.Visibility = _isSidebarVisible ? Visibility.Visible : Visibility.Collapsed;
-        ApplySidebarWidth(RootGrid.ActualWidth);
-        SidebarToggleButton.Opacity = _isSidebarVisible ? 1 : 0.65;
+        SetSidebarVisible(!_isSidebarVisible);
+        if (_isSidebarVisible && SidebarLayoutPolicy.IsCompactWindow(EffectiveContentWidth))
+            ShellSidebar.FocusFirstNavigation();
+    }
+
+    private void SetSidebarVisible(bool visible)
+    {
+        _isSidebarVisible = visible;
+        ShellSidebar.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        SidebarToggleButton.Opacity = visible ? 1 : 0.65;
+        ApplySidebarWidth(EffectiveContentWidth);
+    }
+
+    private void SidebarDismissLayer_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (!_isSidebarVisible || !SidebarLayoutPolicy.IsCompactWindow(EffectiveContentWidth))
+            return;
+
+        SetSidebarVisible(false);
+        ContentFrame.Focus(FocusState.Programmatic);
+    }
+
+    private void SidebarResizeHandle_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        var point = e.GetCurrentPoint(MainContentArea);
+        if (!point.Properties.IsLeftButtonPressed) return;
+
+        _sidebarResizeStartWidth = ShellSidebarColumn.ActualWidth > 0
+            ? ShellSidebarColumn.ActualWidth
+            : _sidebarWidth;
+        _sidebarResizeStartPointerX = point.Position.X;
+        _sidebarResizePointerId = e.Pointer.PointerId;
+        _isSidebarResizing = SidebarResizeHandle.CapturePointer(e.Pointer);
+        e.Handled = _isSidebarResizing;
+    }
+
+    private void SidebarResizeHandle_PointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_isSidebarResizing
+            || e.Pointer.PointerId != _sidebarResizePointerId
+            || !_isSidebarVisible
+            || SidebarLayoutPolicy.IsCompactWindow(EffectiveContentWidth))
+            return;
+
+        var pointerX = e.GetCurrentPoint(MainContentArea).Position.X;
+        var requestedWidth = _sidebarResizeStartWidth + pointerX - _sidebarResizeStartPointerX;
+        if (SidebarLayoutPolicy.ShouldCollapseFromDrag(requestedWidth))
+        {
+            _isSidebarResizing = false;
+            SidebarResizeHandle.ReleasePointerCaptures();
+            SetSidebarVisible(false);
+            ContentFrame.Focus(FocusState.Programmatic);
+            e.Handled = true;
+            return;
+        }
+
+        _sidebarWidth = SidebarLayoutPolicy.ClampDockedWidth(requestedWidth, EffectiveContentWidth);
+        ApplySidebarWidth(EffectiveContentWidth);
+        e.Handled = true;
+    }
+
+    private void SidebarResizeHandle_PointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        if (e.Pointer.PointerId != _sidebarResizePointerId) return;
+        EndSidebarResize();
+        e.Handled = true;
+    }
+
+    private void SidebarResizeHandle_PointerCanceled(object sender, PointerRoutedEventArgs e)
+        => EndSidebarResize();
+
+    private void SidebarResizeHandle_PointerCaptureLost(object sender, PointerRoutedEventArgs e)
+        => _isSidebarResizing = false;
+
+    private void EndSidebarResize()
+    {
+        _isSidebarResizing = false;
+        SidebarResizeHandle.ReleasePointerCaptures();
+        if (_isSidebarVisible)
+            ApplySidebarWidth(EffectiveContentWidth);
+    }
+
+    private void SidebarResizeHandle_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        const double keyboardStep = 16;
+        if (e.Key == VirtualKey.Left)
+        {
+            if (_sidebarWidth <= SidebarLayoutPolicy.MinimumWidth + 0.5)
+            {
+                SetSidebarVisible(false);
+                ContentFrame.Focus(FocusState.Programmatic);
+            }
+            else
+            {
+                _sidebarWidth = SidebarLayoutPolicy.ClampDockedWidth(
+                    _sidebarWidth - keyboardStep,
+                    EffectiveContentWidth);
+                ApplySidebarWidth(EffectiveContentWidth);
+            }
+
+            e.Handled = true;
+        }
+        else if (e.Key == VirtualKey.Right)
+        {
+            _sidebarWidth = SidebarLayoutPolicy.ClampDockedWidth(
+                _sidebarWidth + keyboardStep,
+                EffectiveContentWidth);
+            ApplySidebarWidth(EffectiveContentWidth);
+            e.Handled = true;
+        }
     }
 
     private void Back_Click(object sender, RoutedEventArgs e)
@@ -262,20 +417,22 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    /// <summary>True while any full-window modal (settings, keyboard shortcuts, or About) is
+    /// <summary>True while any full-window modal is
     /// showing. The dimmed backdrop already blocks the mouse; the global menu accelerators bubble
     /// up through RootGrid regardless of hit-testing, so they must additionally bail on this to
     /// keep a modal from acting on the content behind it.</summary>
     private bool IsModalOverlayOpen
-        => AddAgentOverlay.IsOpen
-            || SettingsOverlay.IsOpen
-            || KeyboardShortcutsDialog.IsOpen
-            || AboutOverlay.IsOpen;
+        => _addAgentOverlay?.IsOpen == true
+            || _settingsOverlay?.IsOpen == true
+            || _keyboardShortcutsDialog?.IsOpen == true
+            || _aboutOverlay?.IsOpen == true
+            || _sessionSearchOverlay?.IsOpen == true;
 
     private void UpdateNavigationButtons()
     {
         BackButton.IsEnabled = ContentFrame.CanGoBack;
         ForwardButton.IsEnabled = ContentFrame.CanGoForward;
+        FindMenuItem.IsEnabled = ContentFrame.Content is Views.IFindHost;
 
         // Disabled Back/Forward keep the title bar's own (transparent) background — see
         // their inline ButtonBackgroundDisabled override in XAML — so the muted arrow color
@@ -319,10 +476,21 @@ public sealed partial class MainWindow : Window
         titleBar.ButtonPressedForegroundColor = textPrimary;
     }
 
-    private async System.Threading.Tasks.Task ApplyStartupThemeAsync()
+    private System.Threading.Tasks.Task ApplyStartupThemeAsync()
     {
-        var prefs = await AppServices.Preferences.LoadAsync();
-        ThemeService.Apply(prefs.Theme);
+        ThemeService.Apply(AppServices.StartupState.Preferences.Theme);
+        return System.Threading.Tasks.Task.CompletedTask;
+    }
+
+    /// <summary>Reduces secondary title-bar chrome before it can collide with the caption buttons.
+    /// Edit/View remain available through their live shortcuts and the keyboard-shortcuts panel;
+    /// File and Help stay visible because they contain app lifecycle and discovery actions.</summary>
+    private void UpdateTitleBarLayout(double windowWidth)
+    {
+        var compact = windowWidth < 720;
+        EditMenuBarItem.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        ViewMenuBarItem.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        ForwardButton.Visibility = windowWidth < 560 ? Visibility.Collapsed : Visibility.Visible;
     }
 
     /// <summary>
@@ -382,16 +550,32 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// Establishes a fresh navigation root after destructive changes such as deleting the agent
+    /// represented by the current page. Entity-backed entries are deliberately removed from both
+    /// history stacks so Back/Forward cannot resurrect a page whose storage graph no longer exists.
+    /// </summary>
+    private void ResetNavigationTo(Type page)
+    {
+        CloseFindOverlay();
+        if (ContentFrame.CurrentSourcePageType != page)
+            ContentFrame.Navigate(page);
+
+        ContentFrame.BackStack.Clear();
+        ContentFrame.ForwardStack.Clear();
+        UpdateNavigationButtons();
+    }
+
     /// <summary>Opens the shell-owned modal without changing the current page.</summary>
     internal void ShowAddAgentOverlay(FrameworkElement? opener = null)
-        => AddAgentOverlay.Show(opener);
+        => EnsureAddAgentOverlay().Show(opener);
 
     private async void AddAgentOverlay_AgentAdded(Models.AgentConfig agent)
     {
         try
         {
             await ShellSidebar.RefreshAsync();
-            await SettingsOverlay.RefreshAgentsAsync();
+            if (_settingsOverlay is not null) await _settingsOverlay.RefreshAgentsAsync();
             if (ContentFrame.Content is HomePage homePage)
                 await homePage.RefreshAfterAgentAddedAsync(agent.Id);
         }
@@ -405,8 +589,8 @@ public sealed partial class MainWindow : Window
         => ShellSidebar.DeleteAgentAsync(agentId);
 
     private void ShowSettingsOverlay(FrameworkElement? opener = null)
-        => SettingsOverlay.Show(opener);
+        => EnsureSettingsOverlay().Show(opener);
 
     private void CloseSettingsOverlay()
-        => SettingsOverlay.Hide();
+        => _settingsOverlay?.Hide();
 }

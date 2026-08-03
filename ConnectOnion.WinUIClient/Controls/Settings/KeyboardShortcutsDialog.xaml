@@ -6,6 +6,7 @@
     xmlns:models="using:ConnectOnion.WinUIClient.Models"
     HorizontalAlignment="Stretch"
     VerticalAlignment="Stretch"
+    AutomationProperties.AutomationId="KeyboardShortcutsOverlay"
     Visibility="Collapsed"
     IsHitTestVisible="False"
     IsTabStop="False">
@@ -38,9 +39,9 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Text="Keyboard shortcuts" Style="{StaticResource TitleTextBlockStyle}"
+                <TextBlock x:Uid="ShortcutsDialogTitle" AutomationProperties.HeadingLevel="Level1" Text="Keyboard shortcuts" Style="{StaticResource TitleTextBlockStyle}"
                                Foreground="{ThemeResource TextPrimaryBrush}" VerticalAlignment="Center" />
-                    <Button Grid.Column="1" TabIndex="1" Style="{StaticResource ShortcutsCloseButtonStyle}" Click="CloseButton_Click"
+                    <Button x:Uid="KeyboardShortcutsClose" Grid.Column="1" TabIndex="1" Style="{StaticResource ShortcutsCloseButtonStyle}" Click="CloseButton_Click"
                             AutomationProperties.Name="Close keyboard shortcuts" ToolTipService.ToolTip="Close (Esc)">
                         <ic:FluentIcon Icon="Dismiss" IconVariant="Regular" IconSize="Size20"
                                        Foreground="{ThemeResource TextSecondaryBrush}" />
@@ -58,7 +59,7 @@
                         </Grid.ColumnDefinitions>
                         <ic:FluentIcon Icon="Search" IconVariant="Regular" IconSize="Size16"
                                        VerticalAlignment="Center" Foreground="{ThemeResource TextSecondaryBrush}" />
-                        <TextBox x:Name="SearchBox" Grid.Column="1" TabIndex="0" BorderThickness="0" Background="Transparent"
+                        <TextBox x:Uid="ShortcutsDialogSearch" x:Name="SearchBox" Grid.Column="1" TabIndex="0" BorderThickness="0" Background="Transparent"
                                  AutomationProperties.AutomationId="ShortcutsSearchBox"
                                  PlaceholderText="Search shortcuts" TextChanged="SearchBox_TextChanged"
                                  AutomationProperties.Name="Search shortcuts" />
@@ -142,9 +143,9 @@
                         <!-- Empty state -->
                         <StackPanel Visibility="{x:Bind Vm.IsEmpty, Mode=OneWay, Converter={StaticResource BoolToVis}}"
                                     HorizontalAlignment="Center" Margin="0,52" Spacing="6">
-                            <TextBlock Text="No shortcuts found" Style="{StaticResource BodyStrongTextBlockStyle}"
+                        <TextBlock x:Uid="ShortcutsDialogEmpty" Text="No shortcuts found" Style="{StaticResource BodyStrongTextBlockStyle}"
                                        HorizontalAlignment="Center" Foreground="{ThemeResource TextPrimaryBrush}" />
-                            <TextBlock Text="Try a different search term." HorizontalAlignment="Center"
+                        <TextBlock x:Uid="ShortcutsDialogEmptyHint" Text="Try a different search term." HorizontalAlignment="Center"
                                        Foreground="{ThemeResource TextSecondaryBrush}" />
                         </StackPanel>
                     </StackPanel>

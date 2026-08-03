@@ -58,7 +58,7 @@
             <!-- Text — neutral, no hue cast. -->
             <Color x:Key="TextPrimaryColor">#FF1A1A1A</Color>
             <Color x:Key="TextSecondaryColor">#FF5C5C5B</Color>
-            <Color x:Key="TextTertiaryColor">#FF8A8A88</Color>
+            <Color x:Key="TextTertiaryColor">#FF6F6F6D</Color>
             <Color x:Key="TextDisabledColor">#FFB5B5B3</Color>
             <Color x:Key="TextOnBrandColor">#FFFFFFFF</Color>
             <Color x:Key="TextLinkColor">#FF333333</Color>
@@ -191,30 +191,6 @@
             <Color x:Key="AvatarBackgroundColor">#FF1A1A1A</Color>
             <Color x:Key="AvatarForegroundColor">#FFFFFFFF</Color>
             <Color x:Key="AvatarBorderColor">#FF1A1A1A</Color>
-            <Color x:Key="AvatarPaletteBlueBackgroundColor">#FFEAF2FF</Color>
-            <Color x:Key="AvatarPaletteBlueForegroundColor">#FF2D5F9A</Color>
-            <Color x:Key="AvatarPaletteVioletBackgroundColor">#FFF1ECFA</Color>
-            <Color x:Key="AvatarPaletteVioletForegroundColor">#FF6E4B9E</Color>
-            <Color x:Key="AvatarPaletteTealBackgroundColor">#FFE6F3F1</Color>
-            <Color x:Key="AvatarPaletteTealForegroundColor">#FF286F68</Color>
-            <Color x:Key="AvatarPaletteCoralBackgroundColor">#FFF8ECE8</Color>
-            <Color x:Key="AvatarPaletteCoralForegroundColor">#FF9A5545</Color>
-            <Color x:Key="AvatarPaletteIndigoBackgroundColor">#FFECEFFC</Color>
-            <Color x:Key="AvatarPaletteIndigoForegroundColor">#FF4B5E9B</Color>
-            <Color x:Key="AvatarPaletteCyanBackgroundColor">#FFE6F3F6</Color>
-            <Color x:Key="AvatarPaletteCyanForegroundColor">#FF2D6F7A</Color>
-            <Color x:Key="AvatarPaletteEmeraldBackgroundColor">#FFE8F3EA</Color>
-            <Color x:Key="AvatarPaletteEmeraldForegroundColor">#FF39724A</Color>
-            <Color x:Key="AvatarPaletteAmberBackgroundColor">#FFF7F0DF</Color>
-            <Color x:Key="AvatarPaletteAmberForegroundColor">#FF8A641F</Color>
-            <Color x:Key="AvatarPaletteRoseBackgroundColor">#FFF7E9ED</Color>
-            <Color x:Key="AvatarPaletteRoseForegroundColor">#FF985568</Color>
-            <Color x:Key="AvatarPalettePlumBackgroundColor">#FFF2EAF3</Color>
-            <Color x:Key="AvatarPalettePlumForegroundColor">#FF7D527F</Color>
-            <Color x:Key="AvatarPaletteSlateBackgroundColor">#FFEBEEF0</Color>
-            <Color x:Key="AvatarPaletteSlateForegroundColor">#FF52626F</Color>
-            <Color x:Key="AvatarPaletteOliveBackgroundColor">#FFEFF1E3</Color>
-            <Color x:Key="AvatarPaletteOliveForegroundColor">#FF68713C</Color>
 
             <!-- Usage heatmap — a five-step ramp, level 0 = no usage.
 
@@ -368,30 +344,6 @@
             <Color x:Key="AvatarBackgroundColor">#FFF0F0EE</Color>
             <Color x:Key="AvatarForegroundColor">#FF1A1A1A</Color>
             <Color x:Key="AvatarBorderColor">#FF4D4D4D</Color>
-            <Color x:Key="AvatarPaletteBlueBackgroundColor">#FF18263A</Color>
-            <Color x:Key="AvatarPaletteBlueForegroundColor">#FF7FADE3</Color>
-            <Color x:Key="AvatarPaletteVioletBackgroundColor">#FF261F35</Color>
-            <Color x:Key="AvatarPaletteVioletForegroundColor">#FFB79BE3</Color>
-            <Color x:Key="AvatarPaletteTealBackgroundColor">#FF172D2A</Color>
-            <Color x:Key="AvatarPaletteTealForegroundColor">#FF74B7AE</Color>
-            <Color x:Key="AvatarPaletteCoralBackgroundColor">#FF34231F</Color>
-            <Color x:Key="AvatarPaletteCoralForegroundColor">#FFD69A88</Color>
-            <Color x:Key="AvatarPaletteIndigoBackgroundColor">#FF20263B</Color>
-            <Color x:Key="AvatarPaletteIndigoForegroundColor">#FF9BAAE0</Color>
-            <Color x:Key="AvatarPaletteCyanBackgroundColor">#FF173038</Color>
-            <Color x:Key="AvatarPaletteCyanForegroundColor">#FF77B8C4</Color>
-            <Color x:Key="AvatarPaletteEmeraldBackgroundColor">#FF1A2D20</Color>
-            <Color x:Key="AvatarPaletteEmeraldForegroundColor">#FF82BE91</Color>
-            <Color x:Key="AvatarPaletteAmberBackgroundColor">#FF342B18</Color>
-            <Color x:Key="AvatarPaletteAmberForegroundColor">#FFD2AD58</Color>
-            <Color x:Key="AvatarPaletteRoseBackgroundColor">#FF342128</Color>
-            <Color x:Key="AvatarPaletteRoseForegroundColor">#FFD69AAA</Color>
-            <Color x:Key="AvatarPalettePlumBackgroundColor">#FF302234</Color>
-            <Color x:Key="AvatarPalettePlumForegroundColor">#FFC19AC3</Color>
-            <Color x:Key="AvatarPaletteSlateBackgroundColor">#FF242A2E</Color>
-            <Color x:Key="AvatarPaletteSlateForegroundColor">#FF9EACB5</Color>
-            <Color x:Key="AvatarPaletteOliveBackgroundColor">#FF292D1C</Color>
-            <Color x:Key="AvatarPaletteOliveForegroundColor">#FFAFB978</Color>
 
             <!-- Usage heatmap (see the light dictionary for why this is not green).
 

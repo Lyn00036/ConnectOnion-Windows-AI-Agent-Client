@@ -1,23 +1,59 @@
 using System;
 using System.Linq;
+using System.Threading;
+using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Models;
+using ConnectOnion.WinUIClient.Models.Notifications;
 using ConnectOnion.WinUIClient.Services;
 using ConnectOnion.WinUIClient.Views;
+using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
 
 namespace ConnectOnion.WinUIClient.Controls;
 
 // User-interaction entry points for the sidebar: row hover/focus handlers and the
-// routed Click handlers for add-chat / add-agent / pin / delete / settings. Each
+// routed Click handlers for add-chat / add-agent / icon / pin / delete / settings. Each
 // delegates to the state/refresh logic in ShellSidebar.xaml.cs (RefreshAsync,
 // SelectSessionAsync, ConfirmDeleteAsync, RequestNavigation);
 // split out so the main file holds the data/presence model, not the wiring.
 public sealed partial class ShellSidebar
 {
+    /// <summary>Guards the icon menu items against re-entry. Both are <c>async void</c> handlers
+    /// that await a file picker, so without this a second click while the picker is open would
+    /// commit a second file and leave the first orphaned on disk.</summary>
+    private int _iconOperationInProgress;
+
+    // Pre-compiled message delegates rather than the ILogger extension methods, which is what
+    // CA1848 asks for and what NotificationLog already does.
+    private static readonly Action<ILogger, string, Exception?> LogIconCleanupFailed =
+        LoggerMessage.Define<string>(
+            LogLevel.Warning,
+            new EventId(1, nameof(LogIconCleanupFailed)),
+            "Could not delete agent icon {IconPath}.");
+
+    private static readonly Action<ILogger, string, Exception?> LogIconOperationFailed =
+        LoggerMessage.Define<string>(
+            LogLevel.Warning,
+            new EventId(2, nameof(LogIconOperationFailed)),
+            "Agent icon operation failed for {AgentId}.");
+
+    private static readonly Action<ILogger, string, Exception?> LogRenameFailed =
+        LoggerMessage.Define<string>(
+            LogLevel.Warning,
+            new EventId(3, nameof(LogRenameFailed)),
+            "Renaming conversation {SessionId} failed.");
+
     // Agent and session rows share one interaction model (see RowStateItem):
     // pointer hover and keyboard focus both reveal the row's action buttons and
     // paint its hover background. Both row kinds bind to these same handlers.
+    //
+    // The row is resolved through DataContext, and every row root in ShellSidebar.xaml therefore
+    // carries an explicit DataContext="{x:Bind}". That is not redundant: ItemsRepeater only assigns
+    // DataContext to a realized element when its DataTemplate has *no* compiled bindings — a
+    // template carrying x:Bind gets ProcessBindings instead, and its DataContext stays null. So the
+    // moment these templates moved from {Binding} to {x:Bind}, SetRowInteractive stopped matching,
+    // which silently cost the whole sidebar its hover wash and its per-row action buttons.
     private void Row_PointerEntered(object sender, PointerRoutedEventArgs e) => SetRowInteractive(sender, true);
     private void Row_PointerExited(object sender, PointerRoutedEventArgs e) => SetRowInteractive(sender, false);
     private void Row_GotFocus(object sender, RoutedEventArgs e) => SetRowInteractive(sender, true);
@@ -31,8 +67,11 @@ public sealed partial class ShellSidebar
         }
     }
 
-    private void NewChatButton_Click(object sender, RoutedEventArgs e)
-        => NewChatRequested?.Invoke();
+    private void SearchSessions_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement opener)
+            SessionSearchRequested?.Invoke(opener);
+    }
 
     /// <summary>
     /// Opens the agent's start-a-chat surface instead of creating a conversation outright.
@@ -49,9 +88,175 @@ public sealed partial class ShellSidebar
         var agentsState = await AppServices.Agents.LoadAsync();
         agentsState.SelectedAgentId = agentId;
         await AppServices.Agents.SaveAsync(agentsState);
-        FocusAgentInSidebar(agentId);
+        RevealAgentInSidebar(agentId);
         await RefreshAsync();
         RequestNavigation(typeof(Views.AgentDetailPage), forceReload: true);
+    }
+
+    /// <summary>
+    /// Replaces the agent's avatar with an image the user picks.
+    ///
+    /// The order — commit the file, then save the row, then delete the old file — is what keeps
+    /// the two stores consistent under a failure: a committed file with no row is an orphan the
+    /// next sweep can remove, whereas a row pointing at a file that was deleted first is a
+    /// permanently broken avatar. Committed names carry a GUID, so the file just written can
+    /// never be the one being deleted.
+    /// </summary>
+    private async void ChangeAgentIcon_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not string agentId) return;
+        if (Interlocked.Exchange(ref _iconOperationInProgress, 1) != 0) return;
+
+        string? temporaryPath = null;
+        try
+        {
+            temporaryPath = await AppServices.AgentIcons.PickTemporaryIconAsync();
+            // Dismissing the picker is not a failure and gets no toast.
+            if (temporaryPath is null) return;
+
+            // Loaded after the picker closes, not before: the agent can be deleted from another
+            // surface while a modal file dialog is open, and the stale copy would resurrect it.
+            var agentsState = await AppServices.Agents.LoadAsync();
+            var agent = agentsState.Agents.FirstOrDefault(entry => entry.Id == agentId);
+            if (agent is null) return;
+
+            var previousIconPath = agent.IconPath;
+            var committedPath = await AppServices.AgentIcons.CommitTemporaryIconAsync(agentId, temporaryPath);
+            // The commit moved the file, so the finally block below has nothing left to clean up.
+            temporaryPath = null;
+
+            agent.IconPath = committedPath;
+            try
+            {
+                await AppServices.Agents.SaveAsync(agentsState);
+            }
+            catch
+            {
+                await DeleteIconQuietlyAsync(committedPath);
+                throw;
+            }
+
+            await DeleteIconQuietlyAsync(previousIconPath);
+            await RefreshAsync();
+            RefreshCurrentAgentSurface();
+        }
+        catch (Exception exception)
+        {
+            ReportIconFailure(
+                agentId,
+                exception,
+                "AgentIconChangeFailed",
+                "The agent icon could not be changed.");
+        }
+        finally
+        {
+            await DeleteTemporaryIconQuietlyAsync(temporaryPath);
+            Volatile.Write(ref _iconOperationInProgress, 0);
+        }
+    }
+
+    /// <summary>Drops the custom icon and restores the name-initial avatar.</summary>
+    private async void RemoveAgentIcon_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not string agentId) return;
+        if (Interlocked.Exchange(ref _iconOperationInProgress, 1) != 0) return;
+
+        try
+        {
+            var agentsState = await AppServices.Agents.LoadAsync();
+            var agent = agentsState.Agents.FirstOrDefault(entry => entry.Id == agentId);
+            if (agent is null || string.IsNullOrWhiteSpace(agent.IconPath)) return;
+
+            // Clear the reference before touching the file, for the same reason the change path
+            // commits before saving: an orphaned file is recoverable, a dangling row is not.
+            var previousIconPath = agent.IconPath;
+            agent.IconPath = null;
+            await AppServices.Agents.SaveAsync(agentsState);
+
+            await DeleteIconQuietlyAsync(previousIconPath);
+            await RefreshAsync();
+            RefreshCurrentAgentSurface();
+        }
+        catch (Exception exception)
+        {
+            ReportIconFailure(
+                agentId,
+                exception,
+                "AgentIconRemoveFailed",
+                "The agent icon could not be removed.");
+        }
+        finally
+        {
+            Volatile.Write(ref _iconOperationInProgress, 0);
+        }
+    }
+
+    /// <summary>Deletes a committed icon, swallowing failure. Every caller has already put the
+    /// database in the state it wants; a file that outlives its row is untidy, not broken.</summary>
+    private static async System.Threading.Tasks.Task DeleteIconQuietlyAsync(string? relativePath)
+    {
+        if (string.IsNullOrWhiteSpace(relativePath)) return;
+
+        try
+        {
+            await AppServices.AgentIcons.DeleteIconAsync(relativePath);
+        }
+        catch (Exception exception)
+        {
+            LogIconCleanupFailed(
+                AppServices.Logging.CreateLogger<ShellSidebar>(), relativePath, exception);
+        }
+    }
+
+    /// <summary>
+    /// Keeps the currently visible agent surface in sync with the sidebar after an icon change.
+    ///
+    /// Both pages already implement <see cref="IReloadablePage"/>, and <see cref="MainWindow"/>
+    /// handles a forced same-page navigation by reloading that live instance in place. Reusing
+    /// that path avoids a second icon-specific notification system and preserves the detail
+    /// page's cached composer.
+    /// </summary>
+    private void RefreshCurrentAgentSurface()
+    {
+        if (_currentPageType == typeof(HomePage)
+            || _currentPageType == typeof(AgentDetailPage))
+        {
+            RequestNavigation(_currentPageType, forceReload: true);
+        }
+    }
+
+    private static async System.Threading.Tasks.Task DeleteTemporaryIconQuietlyAsync(string? temporaryPath)
+    {
+        if (string.IsNullOrWhiteSpace(temporaryPath)) return;
+
+        try
+        {
+            await AppServices.AgentIcons.DeleteTemporaryIconAsync(temporaryPath);
+        }
+        catch (Exception exception)
+        {
+            LogIconCleanupFailed(
+                AppServices.Logging.CreateLogger<ShellSidebar>(), temporaryPath, exception);
+        }
+    }
+
+    /// <summary>
+    /// Surfaces an icon failure as a toast rather than a dialog. The icon is decoration: a modal
+    /// would interrupt whatever conversation is on screen to announce that an avatar stayed the
+    /// way it already was.
+    /// </summary>
+    private void ReportIconFailure(string agentId, Exception exception, string resourceKey, string fallback)
+    {
+        LogIconOperationFailed(
+            AppServices.Logging.CreateLogger<ShellSidebar>(), agentId, exception);
+
+        MainWindow.FromXamlRoot(XamlRoot)?.ShowInAppToast(new InAppToastModel(
+            LocalizedStrings.Get("AgentIconToastTitle", "Agent icon"),
+            LocalizedStrings.Get(resourceKey, fallback),
+            NotificationType.Error,
+            AgentId: agentId,
+            ConversationId: null,
+            ActionId: null));
     }
 
     private async void DeleteAgent_Click(object sender, RoutedEventArgs e)
@@ -68,9 +273,24 @@ public sealed partial class ShellSidebar
         var agent = agentsState.Agents.FirstOrDefault(entry => entry.Id == agentId);
         if (agent is null) return false;
 
-        if (!await ConfirmDeleteAsync($"Delete {agent.DisplayName}?", "This agent and all of its local sessions will be removed.")) return false;
+        if (!await ConfirmDeleteAsync(
+                LocalizedStrings.Format("DeleteAgentTitle", "Delete {0}?", agent.DisplayName),
+                LocalizedStrings.Get(
+                    "DeleteAgentWarning",
+                    "This agent and all of its local sessions will be removed."))) return false;
+
+        // Read before the row goes: once the agent is removed from storage nothing points at its
+        // icon file any more, and the path would be unrecoverable.
+        var iconPath = agent.IconPath;
 
         var sessionsState = await AppServices.Sessions.LoadAsync();
+        var deletingCurrentSurface =
+            (_currentPageType == typeof(AgentDetailPage)
+                && agentsState.SelectedAgentId == agentId)
+            || (_currentPageType == typeof(ChatPage)
+                && sessionsState.Sessions.Any(session =>
+                    session.Id == sessionsState.ActiveSessionId
+                    && session.AgentId == agentId));
         // Tear each of this agent's conversations down completely before its sessions rows go,
         // and remove the agent only after that transaction succeeds. Deleting the agent first
         // used to leave invisible orphan sessions whenever a later child cleanup failed.
@@ -91,33 +311,54 @@ public sealed partial class ShellSidebar
         sessionsState.Sessions = sessionsState.Sessions
             .Where(session => session.AgentId != agentId)
             .ToList();
-        if (sessionsState.ActiveSessionId is not null &&
-            sessionsState.Sessions.All(session => session.Id != sessionsState.ActiveSessionId))
+        var activeSession = sessionsState.ActiveSessionId is null
+            ? null
+            : sessionsState.Sessions.FirstOrDefault(
+                session => session.Id == sessionsState.ActiveSessionId);
+        if (sessionsState.ActiveSessionId is not null && activeSession is null)
         {
-            sessionsState.ActiveSessionId = sessionsState.Sessions.FirstOrDefault()?.Id;
+            activeSession = sessionsState.Sessions
+                .OrderByDescending(session => session.UpdatedAt, StringComparer.Ordinal)
+                .FirstOrDefault();
+            sessionsState.ActiveSessionId = activeSession?.Id;
         }
         await AppServices.Sessions.SaveAsync(sessionsState);
 
         agentsState.Agents.Remove(agent);
         if (agentsState.SelectedAgentId == agentId)
         {
-            agentsState.SelectedAgentId = agentsState.Agents.FirstOrDefault()?.Id;
+            // Keep the two persisted selections coherent. If another conversation was already
+            // active, that conversation's agent is the natural fallback; otherwise retain a
+            // valid agent selection for New chat without fabricating a session.
+            agentsState.SelectedAgentId = activeSession?.AgentId
+                ?? agentsState.Agents.FirstOrDefault()?.Id;
         }
         await AppServices.Agents.SaveAsync(agentsState);
+
+        // Only now: the row is gone, so deleting the file cannot leave a live agent pointing at
+        // one that no longer exists.
+        await DeleteIconQuietlyAsync(iconPath);
 
         AppServices.RunManager.ForgetAgent(agentId);
         AppServices.Presence.Forget(agentId);
         AppServices.Notifications.NotifyConnectionRestored(agentId);
 
         await RefreshAsync();
-        RequestNavigation(typeof(ChatPage), forceReload: true);
+        if (deletingCurrentSurface)
+        {
+            // Agent Detail has no valid content once its agent is gone, and ChatPage is likewise
+            // invalid after its active conversation graph is removed. Return to the stable
+            // library root instead of manufacturing an empty chat page, and discard history that
+            // could navigate back to the deleted entity.
+            RequestNavigationReset(typeof(HomePage));
+        }
         return true;
         }
         catch { return false; }
     }
 
-    /// <summary>A conversation row inside an agent's branch. Focuses that agent, since the user
-    /// clicked within its subtree and expects the tree to follow.</summary>
+    /// <summary>A conversation row inside an agent's branch. Its owning branch remains visible
+    /// without collapsing any other agents the user has expanded.</summary>
     private async void Session_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.Tag is string sessionId)
@@ -126,15 +367,13 @@ public sealed partial class ShellSidebar
         }
     }
 
-    /// <summary>A conversation row in the pinned section. Same navigation, but the tree below is
-    /// left as the user arranged it — see <see cref="SelectSessionAsync"/>. Separate handler
-    /// rather than a flag on the row, because the two call sites are already distinct elements
-    /// in the XAML and this keeps the difference visible where the click is wired.</summary>
+    /// <summary>A conversation row in the pinned section. Its owning agent is revealed without
+    /// collapsing any other branches the user has open.</summary>
     private async void PinnedSession_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.Tag is string sessionId)
         {
-            await SelectSessionAsync(sessionId, preserveSidebarState: true);
+            await SelectSessionAsync(sessionId);
         }
     }
 
@@ -147,9 +386,84 @@ public sealed partial class ShellSidebar
         if (session is null) return;
 
         session.IsPinned = !session.IsPinned;
-        await AppServices.Sessions.SaveAsync(sessionsState);
+        // Targeted write: pinned state lives in one app_meta row, so this never touches the
+        // sessions table. SaveAsync would have upserted every conversation the user has.
+        await AppServices.Sessions.SetPinnedAsync(session.Id, session.IsPinned);
         await RefreshAsync();
     }
+
+    /// <summary>
+    /// Renames a conversation from the sidebar's context menu. The title is otherwise derived
+    /// once from the conversation's opening message and then frozen, so before this there was no
+    /// way at all to tell two conversations apart beyond whatever their first message happened to
+    /// say.
+    ///
+    /// <see cref="SessionSummary.TryRename"/> is what sets <c>HasCustomTitle</c>, which is what
+    /// stops the *next* message from overwriting the name the user just chose.
+    /// </summary>
+    private async void RenameSession_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not string sessionId) return;
+
+        try
+        {
+            var sessionsState = await AppServices.Sessions.LoadAsync();
+            var session = sessionsState.Sessions.FirstOrDefault(entry => entry.Id == sessionId);
+            if (session is null) return;
+
+            var input = new Microsoft.UI.Xaml.Controls.TextBox
+            {
+                Text = session.Title,
+                SelectionStart = 0,
+                SelectionLength = session.Title.Length,
+                MaxLength = SessionSummary.MaxTitleLength,
+                AcceptsReturn = false,
+                TextWrapping = TextWrapping.NoWrap,
+            };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
+                input,
+                LocalizedStrings.Get("RenameConversationFieldName", "Conversation name"));
+
+            var dialog = new Microsoft.UI.Xaml.Controls.ContentDialog
+            {
+                Title = LocalizedStrings.Get("RenameConversationTitle", "Rename conversation"),
+                Content = input,
+                PrimaryButtonText = LocalizedStrings.Get("CommonSave", "Save"),
+                CloseButtonText = LocalizedStrings.Get("CommonCancel", "Cancel"),
+                DefaultButton = Microsoft.UI.Xaml.Controls.ContentDialogButton.Primary,
+                XamlRoot = XamlRoot,
+            };
+
+            // Enter commits, matching every other single-field rename dialog on Windows. Without
+            // this the TextBox swallows it and the only way to confirm is the mouse.
+            input.KeyDown += (_, args) =>
+            {
+                if (args.Key != Windows.System.VirtualKey.Enter) return;
+                args.Handled = true;
+                dialog.Hide();
+                _renameCommitted = true;
+            };
+
+            _renameCommitted = false;
+            var result = await dialog.ShowThemedAsync();
+            if (result != Microsoft.UI.Xaml.Controls.ContentDialogResult.Primary && !_renameCommitted) return;
+
+            if (!session.TryRename(input.Text)) return;
+
+            // UpdateSessionAsync touches this one row rather than reconciling the whole index —
+            // the same call the per-message title stamp uses.
+            await AppServices.Sessions.UpdateSessionAsync(session);
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            LogRenameFailed(AppServices.Logging.CreateLogger<ShellSidebar>(), sessionId, ex);
+        }
+    }
+
+    /// <summary>Set when Enter committed the rename dialog, because <see cref="ContentDialog.Hide"/>
+    /// reports <see cref="ContentDialogResult.None"/> rather than the primary result.</summary>
+    private bool _renameCommitted;
 
     private async void DeleteSession_Click(object sender, RoutedEventArgs e)
     {
@@ -161,7 +475,11 @@ public sealed partial class ShellSidebar
         var session = sessionsState.Sessions.FirstOrDefault(entry => entry.Id == sessionId);
         if (session is null) return;
 
-        if (!await ConfirmDeleteAsync($"Delete {session.Title}?", "This local conversation will be removed.")) return;
+        if (!await ConfirmDeleteAsync(
+                LocalizedStrings.Format("DeleteConversationTitle", "Delete {0}?", session.Title),
+                LocalizedStrings.Get(
+                    "DeleteConversationWarning",
+                    "This local conversation will be removed."))) return;
 
         sessionsState.Sessions.Remove(session);
         ConversationCache.Invalidate(sessionId);
@@ -212,59 +530,10 @@ public sealed partial class ShellSidebar
             AddAgentRequested?.Invoke(opener);
     }
 
-    private async void Settings_Click(object sender, RoutedEventArgs e)
+    private async void BottomSettings_Click(object sender, RoutedEventArgs e)
     {
         await RefreshAsync();
         if (sender is FrameworkElement opener)
             SettingsRequested?.Invoke(opener);
     }
-
-    private async void BottomAddAgent_Click(object sender, RoutedEventArgs e)
-    {
-        await RefreshAsync();
-        AddAgentRequested?.Invoke(BottomAccountButton);
-    }
-
-    private async void BottomSettings_Click(object sender, RoutedEventArgs e)
-    {
-        CloseAccountFlyout();
-        await RefreshAsync();
-        SettingsRequested?.Invoke(BottomAccountButton);
-    }
-
-    private void BottomKeyboardShortcuts_Click(object sender, RoutedEventArgs e)
-    {
-        CloseAccountFlyout();
-        KeyboardShortcutsRequested?.Invoke(BottomAccountButton);
-    }
-
-    private void BottomAbout_Click(object sender, RoutedEventArgs e)
-    {
-        CloseAccountFlyout();
-        AboutRequested?.Invoke(BottomAccountButton);
-    }
-
-    private void BottomExit_Click(object sender, RoutedEventArgs e)
-    {
-        CloseAccountFlyout();
-        ExitRequested?.Invoke();
-    }
-
-    private async void BottomTheme_Click(object sender, RoutedEventArgs e)
-    {
-        if ((sender as FrameworkElement)?.Tag is not string value
-            || !Enum.TryParse<ThemeMode>(value, ignoreCase: true, out var theme))
-        {
-            return;
-        }
-
-        CloseAccountFlyout();
-        var preferences = await AppServices.Preferences.LoadAsync();
-        preferences.Theme = theme;
-        await AppServices.Preferences.SaveAsync(preferences);
-        ThemeService.Apply(theme);
-    }
-
-    private void CloseAccountFlyout()
-        => BottomAccountButton.Flyout?.Hide();
 }

@@ -1,4 +1,5 @@
 using System;
+using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Controls;
 using ConnectOnion.WinUIClient.ViewModels;
 using Microsoft.UI.Xaml;
@@ -28,6 +29,17 @@ public sealed partial class AgentDetailPage : Page, IReloadablePage, IShutdownDi
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
         => await LoadPageAsync();
+
+    /// <summary>Width at which the page uses its roomier padding and larger agent name. Measured
+    /// against the page, not the window: the sidebar takes up to 288px that an
+    /// <c>AdaptiveTrigger MinWindowWidth</c> would have counted as available here.</summary>
+    private const double WidePageMinWidth = 720;
+
+    private void AgentRoot_SizeChanged(object sender, SizeChangedEventArgs e)
+        => VisualStateManager.GoToState(
+            this,
+            e.NewSize.Width >= WidePageMinWidth ? "Wide" : "Narrow",
+            useTransitions: false);
 
     /// <summary>Re-points this page at whichever agent is now selected, without rebuilding it —
     /// this page carries a <see cref="ChatComposer"/> (Win2D canvas and all), so clicking through
@@ -69,17 +81,11 @@ public sealed partial class AgentDetailPage : Page, IReloadablePage, IShutdownDi
     private async void OfflineNotice_RecheckRequested(object? sender, EventArgs e)
         => await Vm.RecheckPresenceAsync();
 
-    private void Suggestion_Click(object sender, RoutedEventArgs e)
-    {
-        if ((sender as FrameworkElement)?.Tag is string prompt)
-            Composer.SetDraft(prompt);
-    }
-
     private async void Share_Click(object sender, RoutedEventArgs e)
     {
         if (!Vm.CanShareAgent || string.IsNullOrWhiteSpace(Vm.AgentAddress)) return;
         var dialog = new AgentShareDialog(Vm.AgentAddress) { XamlRoot = XamlRoot };
-        await dialog.ShowAsync();
+        await dialog.ShowThemedAsync();
     }
 
     private async System.Threading.Tasks.Task RefreshBalanceAsync()
@@ -88,7 +94,10 @@ public sealed partial class AgentDetailPage : Page, IReloadablePage, IShutdownDi
         {
             var profile = await Services.AppServices.OpenOnionAccount.RefreshAsync();
             if (!IsLoaded) return;
-            BalanceButton.Content = $"Balance ${profile.BalanceUsd:0.00} · Top up";
+            BalanceButton.Content = LocalizedStrings.Format(
+                "AgentBalanceTopUp",
+                "Balance {0:C2} · Top up",
+                profile.BalanceUsd);
             BalanceButton.Visibility = Visibility.Visible;
         }
         catch

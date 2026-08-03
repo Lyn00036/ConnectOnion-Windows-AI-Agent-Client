@@ -1,5 +1,6 @@
 using System;
 using ConnectOnion.WinUIClient.Models;
+using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -15,26 +16,62 @@ public sealed partial class UsageSettingsContent : UserControl
 {
     public UsageViewModel Vm { get; } = App.GetService<UsageViewModel>();
 
+    /// <summary>Width at which the four totals fit on one row. Measured against this control,
+    /// which is the settings modal's body — never the window, whose width says nothing about how
+    /// much room the modal actually gives this panel.</summary>
+    private const double WideTotalsMinWidth = 640;
+
     public UsageSettingsContent()
     {
         InitializeComponent();
-        Loaded += async (_, _) => await Vm.LoadAsync();
+        Loaded += (_, _) => Refresh();
     }
+
+    private void UsageContent_SizeChanged(object sender, SizeChangedEventArgs e)
+        => VisualStateManager.GoToState(
+            this,
+            e.NewSize.Width >= WideTotalsMinWidth ? "WideUsage" : "CompactUsage",
+            useTransitions: false);
 
     /// <summary>Re-reads the ledger. Called by <see cref="SettingsOverlay"/> when the user navigates
     /// to this section, so the panel reflects turns that finished while Settings sat open.</summary>
     public async void Refresh()
     {
-        try { await Vm.LoadAsync(); }
-        catch { /* the panel is informational; a failed refresh must not take Settings down */ }
+        ResetUsageLoadError();
+        try
+        {
+            await Vm.LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Usage history could not be loaded");
+            UsageErrorBar.IsOpen = true;
+        }
     }
 
-    private void Range_Click(object sender, RoutedEventArgs e)
+    private async void Range_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.Tag is not string tag) return;
         if (!Enum.TryParse<UsageRange>(tag, out var range)) return;
 
-        Vm.Range = range;   // the setter kicks off the reload
+        ResetUsageLoadError();
+        try
+        {
+            await Vm.SetRangeAsync(range);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Usage range could not be loaded");
+            UsageErrorBar.IsOpen = true;
+        }
+    }
+
+    private void ResetUsageLoadError()
+    {
+        UsageErrorBar.Message = LocalizedStrings.Get(
+            "UsageLoadErrorMessage",
+            "ConnectOnion couldn't load usage history. Try opening this page again.");
+        UsageErrorBar.IsOpen = false;
     }
 
     /// <summary>
@@ -47,16 +84,29 @@ public sealed partial class UsageSettingsContent : UserControl
         var dialog = new ContentDialog
         {
             XamlRoot = XamlRoot,
-            Title = "Clear usage history?",
-            Content = "This permanently deletes all recorded token usage on this device. "
-                    + "Your conversations are not affected.",
-            PrimaryButtonText = "Clear",
-            CloseButtonText = "Cancel",
+            Title = LocalizedStrings.Get("UsageClearTitle", "Clear usage history?"),
+            Content = LocalizedStrings.Get(
+                "UsageClearWarning",
+                "This permanently deletes all recorded token usage on this device. Your conversations are not affected."),
+            PrimaryButtonText = LocalizedStrings.Get("UsageClearConfirm", "Clear"),
+            CloseButtonText = LocalizedStrings.Get("CommonCancel", "Cancel"),
             DefaultButton = ContentDialogButton.Close,
         };
 
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        if (await dialog.ShowThemedAsync() != ContentDialogResult.Primary) return;
 
-        await Vm.ClearAllAsync();
+        try
+        {
+            UsageErrorBar.IsOpen = false;
+            await Vm.ClearAllAsync();
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Usage history could not be cleared");
+            UsageErrorBar.Message = LocalizedStrings.Get(
+                "UsageClearErrorMessage",
+                "ConnectOnion couldn't clear usage history. Try again.");
+            UsageErrorBar.IsOpen = true;
+        }
     }
 }

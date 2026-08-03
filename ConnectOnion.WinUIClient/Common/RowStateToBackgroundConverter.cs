@@ -23,7 +23,7 @@ public sealed class RowStateToBackgroundConverter : IValueConverter
     {
         var isSelected = value is bool b && b;
         var key = isSelected ? "SidebarItemSelectedBrush" : "SidebarItemHoverBrush";
-        return (Brush)Application.Current.Resources[key];
+        return ThemeBrushResolver.Resolve(key);
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, string language)

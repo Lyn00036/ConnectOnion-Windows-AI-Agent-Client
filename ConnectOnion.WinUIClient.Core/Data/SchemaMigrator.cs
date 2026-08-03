@@ -29,7 +29,7 @@ internal static class SchemaMigrator
     private const int BaselineVersion = 1;
 
     /// <summary>The schema version this build expects. Bump when you append to <see cref="Migrations"/>.</summary>
-    internal const int LatestVersion = 5;
+    internal const int LatestVersion = 8;
 
     /// <summary>
     /// Ordered forward migrations. Each runs exactly once, in its own transaction, on databases
@@ -173,6 +173,81 @@ internal static class SchemaMigrator
         // seed while writing the phrase in the clear right beside it would defeat the point.
         new(5, """
             ALTER TABLE identity_keys ADD COLUMN mnemonic TEXT NULL;
+            """),
+
+        // v6 — the user's chosen icon for a saved agent.
+        //
+        // Holds a path relative to the data root (avatars/agent-….png), never the image bytes and
+        // never an absolute path: a BLOB would put a 256×256 PNG on every agent read, and an
+        // absolute path breaks the moment a portable install is moved. Nullable on purpose —
+        // "no custom icon" is the normal state, and those agents keep the name-initial avatar.
+        new(6, """
+            ALTER TABLE agents ADD COLUMN icon_path TEXT NULL;
+            """),
+
+        // v7 — "has this conversation's title been settled yet?" as a column instead of a regex.
+        //
+        // A new conversation is created as "Conversation N" and the first thing the user sends
+        // replaces that with the message's opening words. Deciding *whether* a title is still the
+        // placeholder used to be a `^Conversation \d+$` match against the title text, which meant
+        // the placeholder could never be translated: the moment a Chinese install wrote "对话 1",
+        // the pattern stopped matching and that conversation kept its placeholder name forever.
+        // The same trap blocked letting the user rename a chat — a rename that happened to look
+        // like "Conversation 4" would have been silently overwritten by the next message.
+        //
+        // The backfill reproduces the old predicate exactly so existing rows keep their current
+        // behaviour: generic ⇔ "Conversation " followed by digits and nothing else. The first GLOB
+        // requires a digit after the space; the second rejects anything with a non-digit anywhere
+        // after it (so "Conversation 12" stays generic and "Conversation 1 draft" does not).
+        new(7, """
+            ALTER TABLE sessions ADD COLUMN has_custom_title INTEGER NOT NULL DEFAULT 0;
+
+            UPDATE sessions
+            SET has_custom_title = 1
+            WHERE NOT (title GLOB 'Conversation [0-9]*'
+                       AND title NOT GLOB 'Conversation *[^0-9]*');
+            """),
+
+        // v8 - trigram full-text index for global transcript search. The Windows winsqlite3
+        // provider includes FTS5; trigram tokenization preserves the product's substring-search
+        // behaviour while avoiding a leading-wildcard scan over the messages table.
+        new(8, """
+            CREATE VIRTUAL TABLE IF NOT EXISTS message_search
+            USING fts5(conversation_id UNINDEXED, message_id UNINDEXED, content, tokenize='trigram');
+
+            INSERT INTO message_search(conversation_id, message_id, content)
+            SELECT conversation_id, id, content
+            FROM messages
+            WHERE role IN ('user', 'agent')
+              AND content IS NOT NULL
+              AND content <> '';
+
+            CREATE TRIGGER IF NOT EXISTS message_search_insert
+            AFTER INSERT ON messages
+            WHEN NEW.role IN ('user', 'agent') AND NEW.content IS NOT NULL AND NEW.content <> ''
+            BEGIN
+                INSERT INTO message_search(conversation_id, message_id, content)
+                VALUES (NEW.conversation_id, NEW.id, NEW.content);
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS message_search_delete
+            AFTER DELETE ON messages
+            BEGIN
+                DELETE FROM message_search
+                WHERE conversation_id = OLD.conversation_id AND message_id = OLD.id;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS message_search_update
+            AFTER UPDATE OF id, conversation_id, role, content ON messages
+            BEGIN
+                DELETE FROM message_search
+                WHERE conversation_id = OLD.conversation_id AND message_id = OLD.id;
+                INSERT INTO message_search(conversation_id, message_id, content)
+                SELECT NEW.conversation_id, NEW.id, NEW.content
+                WHERE NEW.role IN ('user', 'agent')
+                  AND NEW.content IS NOT NULL
+                  AND NEW.content <> '';
+            END;
             """),
     };
 
