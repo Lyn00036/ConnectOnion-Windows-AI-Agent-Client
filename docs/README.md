@@ -3,7 +3,7 @@
 | Document | What it is | Status |
 |---|---|---|
 | [PROJECT_BRIEF.md](./PROJECT_BRIEF.md) | The original client-supplied requirements (verbatim), plus a requirement → implementation traceability table and the current known limitations | Living — update the table, never the brief |
-| [TEST_PLAN.md](./TEST_PLAN.md) | Layered test strategy, ~48 P0 cases, 15 E2E flows, UI-automation standards, and the phased testing backlog | Living |
+| [TEST_PLAN.md](./TEST_PLAN.md) | Layered test strategy, coverage thresholds, current test-count snapshot, 15 target E2E flows, UI-automation standards, and the owned backlog | Living |
 | [SESSION_MESSAGE_STRUCTURE.md](./SESSION_MESSAGE_STRUCTURE.md) | The ConnectOnion wire protocol: `CONNECT` / `INPUT` / `OUTPUT`, streaming events, `session_id`, reconnect, `last_msg_id` | Authoritative for §1–31; §32–39 are superseded design notes (see its header) |
 | [WINUI3_NATIVE_MIGRATION.md](./WINUI3_NATIVE_MIGRATION.md) | How the Electron/React client was replaced by the native WinUI 3 app | **Historical** — the migration is complete; read `CLAUDE.md` for the current architecture |
 | [GIT_COMMIT_CONVENTION.md](./GIT_COMMIT_CONVENTION.md) | Conventional Commits types and scopes used in this repo | Living |

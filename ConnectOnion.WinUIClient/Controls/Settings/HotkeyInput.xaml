@@ -7,7 +7,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <Button x:Name="CaptureButton"
+    <Button x:Name="CaptureButton" AutomationProperties.AutomationId="CaptureButton"
             MinWidth="150"
             HorizontalContentAlignment="Center"
             Click="CaptureButton_Click"
@@ -15,7 +15,7 @@
             LostFocus="CaptureButton_LostFocus">
         <TextBlock x:Name="ChordText"
                    FontFamily="{StaticResource JetBrainsMonoFontFamily}"
-                   FontSize="12"
+                   FontSize="{StaticResource ProductCaptionFontSize}"
                    TextAlignment="Center" />
     </Button>
 </UserControl>

@@ -77,6 +77,51 @@ public sealed class PreferencesSnapshotTests
     }
 
     [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("not-a-number")]
+    public void ZoomFactor_MissingOrInvalidValueDefaultsToActualSize(string? storedValue)
+    {
+        var preferences = new PreferencesSnapshot();
+        if (storedValue is not null)
+            preferences.ShortcutOverrides["window.zoomFactor"] = storedValue;
+
+        Assert.Equal(1.0, preferences.ZoomFactor);
+    }
+
+    [Theory]
+    [InlineData(0.67, "0.67")]
+    [InlineData(1.4, "1.4")]
+    [InlineData(2.0, "2")]
+    public void ZoomFactor_RoundTripsUsingInvariantStorage(double zoom, string storedValue)
+    {
+        var preferences = new PreferencesSnapshot();
+
+        preferences.ZoomFactor = zoom;
+
+        Assert.Equal(storedValue, preferences.ShortcutOverrides["window.zoomFactor"]);
+        Assert.Equal(zoom, preferences.ZoomFactor, precision: 2);
+    }
+
+    [Fact]
+    public void ZoomFactor_ActualSizeRemovesOnlyZoomOverride()
+    {
+        var preferences = new PreferencesSnapshot
+        {
+            ShortcutOverrides = new Dictionary<string, string>
+            {
+                ["window.zoomFactor"] = "1.4",
+                ["other"] = "keep",
+            },
+        };
+
+        preferences.ZoomFactor = 1.0005;
+
+        Assert.False(preferences.ShortcutOverrides.ContainsKey("window.zoomFactor"));
+        Assert.Equal("keep", preferences.ShortcutOverrides["other"]);
+    }
+
+    [Theory]
     [InlineData(WindowCloseBehavior.Ask, null)]
     [InlineData(WindowCloseBehavior.HideToTray, "tray")]
     [InlineData(WindowCloseBehavior.Exit, "exit")]

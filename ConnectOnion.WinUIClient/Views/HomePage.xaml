@@ -19,7 +19,7 @@
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="CornerRadius" Value="8" />
             <Setter Property="Padding" Value="16,12" />
-            <Setter Property="MinHeight" Value="92" />
+            <Setter Property="MinHeight" Value="96" />
             <Setter Property="HorizontalAlignment" Value="Stretch" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="VerticalContentAlignment" Value="Stretch" />
@@ -64,7 +64,7 @@
         </Style>
 
         <Style x:Key="HomeMetadataLabelStyle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="10" />
+            <Setter Property="FontSize" Value="{StaticResource ProductMicroFontSize}" />
             <Setter Property="Foreground" Value="{ThemeResource TextTertiaryBrush}" />
         </Style>
     </Page.Resources>
@@ -76,25 +76,25 @@
             <VisualStateGroup x:Name="WindowWidthStates">
                 <VisualState x:Name="Narrow">
                     <VisualState.Setters>
-                        <Setter Target="ContentRoot.Margin" Value="16,16,16,28" />
+                        <Setter Target="ContentRoot.Margin" Value="{StaticResource PageMarginNarrow}" />
                         <Setter Target="AgentHeader.MinHeight" Value="0" />
                         <Setter Target="AddAgentHeaderButton.(Grid.Row)" Value="1" />
                         <Setter Target="AddAgentHeaderButton.(Grid.Column)" Value="0" />
                         <Setter Target="AddAgentHeaderButton.HorizontalAlignment" Value="Left" />
-                        <Setter Target="AddAgentHeaderButton.Margin" Value="0,14,0,0" />
+                        <Setter Target="AddAgentHeaderButton.Margin" Value="0,16,0,0" />
                         <Setter Target="AutomaticStatusText.Visibility" Value="Collapsed" />
                     </VisualState.Setters>
                 </VisualState>
                 <VisualState x:Name="Adaptive">
                     <VisualState.Setters>
-                        <Setter Target="ContentRoot.Margin" Value="32,24,32,36" />
+                        <Setter Target="ContentRoot.Margin" Value="{StaticResource PageMarginDefault}" />
                     </VisualState.Setters>
                 </VisualState>
                 <VisualState x:Name="Wide">
                     <VisualState.Setters>
-                        <Setter Target="ContentRoot.Width" Value="960" />
+                        <Setter Target="ContentRoot.Width" Value="{StaticResource AgentLibraryWidth}" />
                         <Setter Target="ContentRoot.HorizontalAlignment" Value="Center" />
-                        <Setter Target="ContentRoot.Margin" Value="48,28,48,40" />
+                        <Setter Target="ContentRoot.Margin" Value="{StaticResource PageMarginWide}" />
                     </VisualState.Setters>
                 </VisualState>
             </VisualStateGroup>
@@ -108,7 +108,7 @@
                       VerticalScrollMode="Enabled"
                       VerticalScrollBarVisibility="Auto">
             <Grid x:Name="ContentRoot"
-                  Margin="32,24,32,36"
+                  Margin="{StaticResource PageMarginDefault}"
                   HorizontalAlignment="Stretch">
                 <Grid.ChildrenTransitions>
                     <TransitionCollection>
@@ -131,13 +131,13 @@
                         </Grid.RowDefinitions>
 
                         <StackPanel VerticalAlignment="Center"
-                                    Spacing="4">
+                                    Spacing="{StaticResource Spacing4}">
                     <TextBlock x:Uid="HomeAgentsTitle" Text="Agent library"
-                                       FontSize="28"
+                                       FontSize="{StaticResource ProductHeroFontSize}"
                                        FontWeight="SemiBold"
                                        Foreground="{ThemeResource TextPrimaryBrush}" />
                     <TextBlock x:Uid="HomeAgentsDescription" Text="Manage agents here. Use the sidebar to move between conversations."
-                                       FontSize="14"
+                                       FontSize="{StaticResource ProductBodyFontSize}"
                                        Foreground="{ThemeResource TextSecondaryBrush}"
                                        TextWrapping="Wrap" />
                         </StackPanel>
@@ -154,13 +154,13 @@
                                 AutomationProperties.Name="Add another agent"
                                 Click="AddAnotherAgent_Click">
                             <StackPanel Orientation="Horizontal"
-                                        Spacing="8">
+                                        Spacing="{StaticResource Spacing8}">
                                 <ic:FluentIcon Icon="Add"
                                                IconVariant="Regular"
                                                IconSize="Size16"
                                                VerticalAlignment="Center" />
                     <TextBlock x:Uid="HomeAddAgent" Text="Add Agent"
-                                           FontSize="13"
+                                           FontSize="{StaticResource ProductBodyFontSize}"
                                            VerticalAlignment="Center" />
                             </StackPanel>
                         </Button>
@@ -173,20 +173,20 @@
                              Title="Couldn’t open the agent"
                              AutomationProperties.LiveSetting="Assertive" />
 
-                    <Grid Margin="0,24,0,10">
+                    <Grid Margin="0,24,0,12">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBlock x:Uid="HomeAvailableAgents" Text="Available agents"
-                                   FontSize="14"
+                                   FontSize="{StaticResource ProductBodyFontSize}"
                                    FontWeight="SemiBold"
                                    Foreground="{ThemeResource TextPrimaryBrush}" />
                         <TextBlock x:Uid="HomeStatusAuto"
                                    x:Name="AutomaticStatusText"
                                    Grid.Column="1"
                                    Text="Status updates automatically"
-                                   FontSize="11"
+                                   FontSize="{StaticResource ProductCaptionFontSize}"
                                    Foreground="{ThemeResource TextTertiaryBrush}"
                                    VerticalAlignment="Center" />
                     </Grid>
@@ -213,7 +213,7 @@
                                             AutomationProperties.Name="{x:Bind AutomationName}"
                                             AutomationProperties.HelpText="{x:Bind FullAddress}"
                                             Click="AgentCard_Click">
-                                        <Grid ColumnSpacing="14">
+                                        <Grid ColumnSpacing="16">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="Auto" />
                                                 <ColumnDefinition Width="*" />
@@ -264,27 +264,27 @@
 
                                             <controls:AgentAvatar Size="42"
                                                                   CornerRadius="21"
-                                                                  FontSize="12"
+                                                                  FontSize="{StaticResource ProductCaptionFontSize}"
                                                                   Initial="{x:Bind Initial}"
                                                                   ImagePath="{x:Bind IconPath}"
                                                                   IsHitTestVisible="False"
                                                                   VerticalAlignment="Center" />
 
                                             <StackPanel Grid.Column="1"
-                                                        Spacing="3"
+                                                        Spacing="{StaticResource Spacing4}"
                                                         VerticalAlignment="Center">
                                                 <TextBlock Text="{x:Bind DisplayName}"
-                                                           FontSize="15"
+                                                           FontSize="{StaticResource ProductSubtitleFontSize}"
                                                            FontWeight="SemiBold"
                                                            Foreground="{ThemeResource TextPrimaryBrush}"
                                                            TextTrimming="CharacterEllipsis" />
                                                 <TextBlock Text="{x:Bind ConnectionSummary}"
-                                                           FontSize="12"
+                                                           FontSize="{StaticResource ProductCaptionFontSize}"
                                                            Foreground="{ThemeResource TextSecondaryBrush}"
                                                            TextTrimming="CharacterEllipsis" />
                                                 <TextBlock x:Name="EndpointText"
                                                            Text="{x:Bind ShortAddress}"
-                                                           FontSize="11"
+                                                           FontSize="{StaticResource ProductCaptionFontSize}"
                                                            Foreground="{ThemeResource TextTertiaryBrush}"
                                                            TextTrimming="CharacterEllipsis"
                                                            ToolTipService.ToolTip="{x:Bind FullAddress}"
@@ -299,13 +299,13 @@
                                             <StackPanel x:Name="LastUsedPanel"
                                                         Grid.Column="2"
                                                         Width="116"
-                                                        Spacing="3"
+                                                        Spacing="{StaticResource Spacing4}"
                                                         VerticalAlignment="Center"
                                                         Visibility="{x:Bind ShowLastUsed, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                                         <TextBlock x:Uid="HomeLastUsed" Text="Last used"
                                                            Style="{StaticResource HomeMetadataLabelStyle}" />
                                                 <TextBlock Text="{x:Bind LastUsedLabel}"
-                                                           FontSize="12"
+                                                           FontSize="{StaticResource ProductCaptionFontSize}"
                                                            Foreground="{ThemeResource TextSecondaryBrush}"
                                                            TextTrimming="CharacterEllipsis" />
                                             </StackPanel>
@@ -313,7 +313,7 @@
                                             <Grid Grid.Column="3"
                                                   VerticalAlignment="Center">
                                                 <StackPanel Orientation="Horizontal"
-                                                            Spacing="7"
+                                                            Spacing="{StaticResource Spacing8}"
                                                             HorizontalAlignment="Right"
                                                             AutomationProperties.Name="{x:Bind StatusAutomationName}"
                                                             Visibility="{x:Bind IsOpening, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}">
@@ -347,7 +347,7 @@
                                                     <TextBlock x:Name="StatusLabelText"
                                                                Width="76"
                                                                Text="{x:Bind StatusLabel, Mode=OneWay}"
-                                                               FontSize="12"
+                                                               FontSize="{StaticResource ProductCaptionFontSize}"
                                                                Foreground="{ThemeResource TextSecondaryBrush}"
                                                                TextTrimming="CharacterEllipsis"
                                                                TextWrapping="NoWrap"
@@ -361,7 +361,7 @@
                                                      moment a row is clicked, and a different width
                                                      would make the whole row twitch on click. -->
                                                 <StackPanel x:Uid="HomeOpeningAgent" Orientation="Horizontal"
-                                                            Spacing="7"
+                                                            Spacing="{StaticResource Spacing8}"
                                                             HorizontalAlignment="Right"
                                                             AutomationProperties.Name="Opening agent"
                                                             Visibility="{x:Bind IsOpening, Mode=OneWay, Converter={StaticResource BoolToVis}}">
@@ -373,7 +373,7 @@
                                                                x:Name="OpeningLabelText"
                                                                Width="76"
                                                                Text="Opening"
-                                                               FontSize="12"
+                                                               FontSize="{StaticResource ProductCaptionFontSize}"
                                                                TextTrimming="CharacterEllipsis"
                                                                TextWrapping="NoWrap"
                                                                VerticalAlignment="Center"
@@ -420,26 +420,26 @@
                         <StackPanel HorizontalAlignment="Center"
                                     VerticalAlignment="Center"
                                     MaxWidth="420"
-                                    Spacing="10">
+                                    Spacing="{StaticResource Spacing12}">
                             <ic:FluentIcon Icon="Bot"
                                            IconVariant="Regular"
                                            IconSize="Size24"
                                            Foreground="{ThemeResource TextSecondaryBrush}"
                                            HorizontalAlignment="Center" />
                             <TextBlock x:Uid="HomeNoAgents" Text="No agents yet"
-                                       FontSize="15"
+                                       FontSize="{StaticResource ProductSubtitleFontSize}"
                                        FontWeight="SemiBold"
                                        HorizontalAlignment="Center" />
                             <TextBlock x:Uid="HomeNoAgentsHint"
                                        Text="An agent is a ConnectOnion-compatible assistant you connect to. You need its 0x address or its HTTP URL — whoever runs the agent can give you one from its Share screen."
-                                       FontSize="12"
+                                       FontSize="{StaticResource ProductCaptionFontSize}"
                                        Foreground="{ThemeResource TextSecondaryBrush}"
                                        TextAlignment="Center"
                                        TextWrapping="Wrap"
                                        HorizontalAlignment="Center" />
                             <StackPanel Orientation="Horizontal"
                                         HorizontalAlignment="Center"
-                                        Spacing="8"
+                                        Spacing="{StaticResource Spacing8}"
                                         Margin="0,4,0,0">
                                 <Button x:Uid="HomeEmptyAddAgent"
                                         Content="Add your first agent"

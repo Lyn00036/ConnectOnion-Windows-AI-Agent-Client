@@ -66,7 +66,7 @@
                 BorderBrush="{ThemeResource BorderDefaultBrush}"
                 BorderThickness="1">
             <StackPanel>
-                <ListView x:Uid="ComposerSkillList" x:Name="SkillList"
+                <ListView x:Uid="ComposerSkillList" x:Name="SkillList" AutomationProperties.AutomationId="SkillList"
                           MaxHeight="240"
                           SelectionMode="Single"
                           IsItemClickEnabled="True"
@@ -92,13 +92,13 @@
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock FontSize="13"
+                                <TextBlock FontSize="{StaticResource ProductBodyFontSize}"
                                            FontWeight="SemiBold"
                                            FontFamily="{StaticResource JetBrainsMonoFontFamily}"
                                            VerticalAlignment="Center"><Run Text="/" /><Run Text="{Binding Name}" /></TextBlock>
                                 <TextBlock Grid.Column="1"
                                            Text="{Binding Description}"
-                                           FontSize="12"
+                                           FontSize="{StaticResource ProductCaptionFontSize}"
                                            VerticalAlignment="Center"
                                            Foreground="{ThemeResource TextSecondaryBrush}"
                                            TextTrimming="CharacterEllipsis"
@@ -114,7 +114,7 @@
                         BorderThickness="0,1,0,0"
                         Padding="14,5">
                             <TextBlock x:Uid="ComposerCommandNavigation" Text="↑↓ navigate · Tab or Enter to complete · Esc to dismiss"
-                               FontSize="11"
+                               FontSize="{StaticResource ProductCaptionFontSize}"
                                Foreground="{ThemeResource TextTertiaryBrush}" />
                 </Border>
             </StackPanel>
@@ -235,19 +235,19 @@
                                                         VerticalAlignment="Center"
                                                         Spacing="2">
                                                 <TextBlock Text="{x:Bind FileName}"
-                                                           FontSize="12"
+                                                           FontSize="{StaticResource ProductCaptionFontSize}"
                                                            FontWeight="SemiBold"
                                                            Foreground="{ThemeResource TextPrimaryBrush}"
                                                            TextTrimming="CharacterEllipsis"
                                                            TextWrapping="NoWrap" />
                                                 <TextBlock Text="{x:Bind MetadataLabel}"
-                                                           FontSize="10"
+                                                           FontSize="{StaticResource ProductMicroFontSize}"
                                                            Foreground="{ThemeResource TextSecondaryBrush}"
                                                            TextTrimming="CharacterEllipsis"
                                                            TextWrapping="NoWrap"
                                                            Visibility="{x:Bind IsFailed, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
                                                 <TextBlock Text="{x:Bind Error, Mode=OneWay}"
-                                                           FontSize="10"
+                                                           FontSize="{StaticResource ProductMicroFontSize}"
                                                            Foreground="{ThemeResource DangerBrush}"
                                                            TextTrimming="CharacterEllipsis"
                                                            TextWrapping="NoWrap"
@@ -307,7 +307,7 @@
                          PlaceholderText="{x:Bind PlaceholderText, Mode=OneWay}"
                          PlaceholderForeground="{ThemeResource ComposerPlaceholderBrush}"
                          Foreground="{ThemeResource ComposerTextBrush}"
-                         FontSize="15"
+                         FontSize="{StaticResource ProductSubtitleFontSize}"
                          FontWeight="Normal"
                          AcceptsReturn="True"
                          TextWrapping="Wrap"
@@ -345,7 +345,7 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
-                    <Button x:Uid="ComposerAddAttachment" x:Name="AddAttachmentButton"
+                    <Button x:Uid="ComposerAddAttachment" x:Name="AddAttachmentButton" AutomationProperties.AutomationId="AddAttachmentButton"
                             AutomationProperties.Name="Add attachment"
                             Grid.Column="0"
                             Width="40"
@@ -377,7 +377,7 @@
                                      Fill="{x:Bind ConnectionPhase, Mode=OneWay, Converter={StaticResource ConnectionPhaseToBrush}}" />
                             <TextBlock Text="{x:Bind ConnectionStatusText, Mode=OneWay}"
                                        AutomationProperties.AutomationId="ConnectionStatus"
-                                       FontSize="12"
+                                       FontSize="{StaticResource ProductCaptionFontSize}"
                                        VerticalAlignment="Center"
                                        Foreground="{x:Bind ConnectionPhase, Mode=OneWay, Converter={StaticResource ConnectionPhaseToBrush}}" />
                         </StackPanel>
@@ -386,7 +386,7 @@
                              presents connection progress in the transcript. -->
                         <TextBlock Text="{x:Bind UsageText, Mode=OneWay}"
                                    AutomationProperties.AutomationId="LiveUsage"
-                                   FontSize="12"
+                                   FontSize="{StaticResource ProductCaptionFontSize}"
                                    Margin="4,0,0,0"
                                    VerticalAlignment="Center"
                                    Foreground="{ThemeResource TextTertiaryBrush}"
@@ -413,7 +413,7 @@
                                             Foreground="{ThemeResource TextSecondaryBrush}" />
                             <TextBlock x:Name="ModeLabel"
                                        x:Uid="ComposerSafeMode" Text="Safe"
-                                        FontSize="12"
+                                        FontSize="{StaticResource ProductCaptionFontSize}"
                                         VerticalAlignment="Center"
                                         Foreground="{ThemeResource TextSecondaryBrush}" />
                         </StackPanel>
@@ -467,14 +467,14 @@
                                       Foreground="{ThemeResource ComposerMutedControlBrush}" />
                         <TextBlock x:Name="WaveformTimerText"
                                    Text="0:00"
-                                   FontSize="11"
+                                   FontSize="{StaticResource ProductCaptionFontSize}"
                                    Foreground="{ThemeResource TextTertiaryBrush}"
                                    VerticalAlignment="Bottom"
                                    HorizontalAlignment="Right"
                                    Margin="0,0,8,3" />
                     </Grid>
 
-                    <Button x:Uid="ComposerVoiceInput" x:Name="SpeechButton"
+                    <Button x:Uid="ComposerVoiceInput" x:Name="SpeechButton" AutomationProperties.AutomationId="SpeechButton"
                             AutomationProperties.Name="Voice input"
                             Grid.Column="3"
                             Width="40"
@@ -640,7 +640,7 @@
                                        Foreground="{ThemeResource BrandPrimaryBrush}"
                                        VerticalAlignment="Center" />
                         <TextBlock x:Uid="ComposerDropHint" Text="Drop files to attach"
-                                   FontSize="14"
+                                   FontSize="{StaticResource ProductBodyFontSize}"
                                    FontWeight="SemiBold"
                                    Foreground="{ThemeResource BrandPrimaryBrush}"
                                    VerticalAlignment="Center" />

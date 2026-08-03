@@ -33,12 +33,12 @@
                             Background="{ThemeResource SurfaceSecondaryBrush}">
                         <StackPanel Spacing="9">
                             <TextBlock Text="{x:Bind Heading}"
-                                       FontSize="15"
+                                       FontSize="{StaticResource ProductSubtitleFontSize}"
                                        FontWeight="SemiBold"
                                        TextWrapping="Wrap"
                                        IsTextSelectionEnabled="True" />
                             <local:MarkdownTextBlock Markdown="{x:Bind Markdown}"
-                                                     FontSize="13"
+                                                     FontSize="{StaticResource ProductBodyFontSize}"
                                                      AutomationProperties.Name="{x:Bind Heading}" />
                             <Grid ColumnSpacing="8"
                                   Visibility="{x:Bind IsReadOnly, Converter={StaticResource BoolToVis}, ConverterParameter=invert}">

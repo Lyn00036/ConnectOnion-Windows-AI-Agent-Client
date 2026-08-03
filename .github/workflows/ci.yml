@@ -14,6 +14,10 @@ on:
       - main
       - master
       - developSprint3
+  # The real-window suite is too expensive and desktop-sensitive for every PR, but it must not
+  # depend on someone remembering a checkbox forever. Run it weekly on the default branch too.
+  schedule:
+    - cron: '0 16 * * 1'
   workflow_dispatch:
     inputs:
       run_ui_smoke:
@@ -96,15 +100,15 @@ jobs:
 
       - name: Run protocol unit tests
         shell: pwsh
-        run: dotnet test tests/ConnectOnion.Protocol.Tests/ConnectOnion.Protocol.Tests.csproj --configuration $env:CONFIGURATION --collect:"XPlat Code Coverage" --results-directory TestResults/protocol
+        run: dotnet test tests/ConnectOnion.Protocol.Tests/ConnectOnion.Protocol.Tests.csproj --configuration $env:CONFIGURATION --collect:"XPlat Code Coverage" --settings coverage.runsettings --results-directory TestResults/protocol
 
       - name: Run WinUI client headless unit tests
         shell: pwsh
-        run: dotnet test tests/ConnectOnion.WinUIClient.UnitTests/ConnectOnion.WinUIClient.UnitTests.csproj --configuration $env:CONFIGURATION --collect:"XPlat Code Coverage" --results-directory TestResults/client
+        run: dotnet test tests/ConnectOnion.WinUIClient.UnitTests/ConnectOnion.WinUIClient.UnitTests.csproj --configuration $env:CONFIGURATION --collect:"XPlat Code Coverage" --settings coverage.runsettings --results-directory TestResults/client
 
       - name: Run database integration tests
         shell: pwsh
-        run: dotnet test tests/ConnectOnion.IntegrationTests/ConnectOnion.IntegrationTests.csproj --configuration $env:CONFIGURATION --collect:"XPlat Code Coverage" --results-directory TestResults/integration
+        run: dotnet test tests/ConnectOnion.IntegrationTests/ConnectOnion.IntegrationTests.csproj --configuration $env:CONFIGURATION --collect:"XPlat Code Coverage" --settings coverage.runsettings --results-directory TestResults/integration
 
       - name: Compile UI smoke tests
         shell: pwsh
@@ -124,11 +128,30 @@ jobs:
           -p:AppxPackageSigningEnabled=false
 
       - name: Run interactive UI smoke test
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_ui_smoke }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_ui_smoke) || github.event_name == 'schedule' }}
+        timeout-minutes: 10
         shell: pwsh
         env:
           CONNECTONION_UI_TEST_EXE: ${{ github.workspace }}\ConnectOnion.WinUIClient\bin\Release\net10.0-windows10.0.19041.0\win-x64\publish\ConnectOnion.WinUIClient.exe
-        run: dotnet test tests/ConnectOnion.WinUIClient.UITests/ConnectOnion.WinUIClient.UITests.csproj --configuration $env:CONFIGURATION --no-build
+          CONNECTONION_DATA_ROOT: ${{ runner.temp }}\ConnectOnionUiSmoke-${{ github.run_id }}-${{ github.run_attempt }}
+          CONNECTONION_UI_CAPTURE_DIR: ${{ github.workspace }}\artifacts\ui-smoke
+        run: >
+          dotnet test tests/ConnectOnion.WinUIClient.UITests/ConnectOnion.WinUIClient.UITests.csproj
+          --configuration $env:CONFIGURATION
+          --no-build
+          --filter "Category=UiSmoke"
+          --results-directory TestResults/ui-smoke
+          --logger "trx;LogFileName=ui-smoke.trx"
+
+      - name: Upload UI smoke evidence
+        if: ${{ always() && ((github.event_name == 'workflow_dispatch' && inputs.run_ui_smoke) || github.event_name == 'schedule') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-smoke
+          path: |
+            TestResults/ui-smoke/*.trx
+            artifacts/ui-smoke/*.png
+          if-no-files-found: warn
 
       # The cheap half of the trimming gate, on every run: it publishes only the small console
       # harness (not the app), and it is the check that fails the moment a reflection-based
@@ -161,6 +184,10 @@ jobs:
           name: coverage
           path: TestResults/**/coverage.cobertura.xml
           if-no-files-found: warn
+
+      - name: Enforce coverage thresholds
+        shell: pwsh
+        run: ./scripts/Test-Coverage.ps1 -ResultsDirectory TestResults
 
       - name: Run protocol conformance gate
         shell: pwsh

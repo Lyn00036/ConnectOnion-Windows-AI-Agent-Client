@@ -12,10 +12,10 @@ namespace ConnectOnion.WinUIClient.Services;
 /// <para><b>Why this exists at all.</b> In WPF and UWP, <c>IsTextScaleFactorEnabled</c> defaults
 /// to true and the framework scales text for you. WinUI 3 does not implement it — the property
 /// is present and inert — so an app built on WinUI 3 ignores the setting entirely no matter how
-/// its font sizes are declared. Collapsing this app's ~156 literal <c>FontSize</c> values into a
-/// type ramp would be a maintainability win but would <i>not</i> fix this: there is nothing in
-/// the framework to re-resolve them against. Reading the factor and applying it ourselves is the
-/// only route.</para>
+/// its font sizes are declared. The shared product type ramp solves the separate maintainability
+/// problem, but it does <i>not</i> fix OS text scaling: there is nothing in the framework to
+/// re-resolve those resources against. Reading the factor and applying it ourselves is the only
+/// route.</para>
 ///
 /// <para>The value is a multiplier in the range 1.0–2.25 (100%–225% in the Settings slider). It
 /// is read once at construction and then kept current: the OS raises

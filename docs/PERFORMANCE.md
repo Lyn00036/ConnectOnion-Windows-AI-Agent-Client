@@ -257,7 +257,8 @@ objects — allocation tuning cannot move it.
 - Steady-state memory is sampled at idle with no conversation loaded. Restoring a large
   conversation, scrolling, and searching are **not** covered — those still want an ETW capture
   (see `docs/OPTIMIZATION.md`) and remain on the backlog as budgets.
-- Not run in CI: it needs a real desktop session, like the FlaUI smoke test.
+- Not run in CI: unlike the bounded weekly FlaUI shell suite, this benchmark performs extended
+  sampling and optional standby-list manipulation, so it remains a controlled local/release audit.
 
 ## Repeated-navigation memory leak gate
 

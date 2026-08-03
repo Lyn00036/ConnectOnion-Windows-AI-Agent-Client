@@ -183,7 +183,7 @@
     <!-- Section header ("Pinned Chats", "Agents"): one weight/size/color for both,
          aligned to the row content's left edge by the caller's Margin. -->
     <Style x:Key="SidebarSectionHeaderStyle" TargetType="TextBlock">
-        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontSize" Value="{StaticResource ProductCaptionFontSize}" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Foreground" Value="{ThemeResource TextTertiaryBrush}" />
         <Setter Property="VerticalAlignment" Value="Center" />

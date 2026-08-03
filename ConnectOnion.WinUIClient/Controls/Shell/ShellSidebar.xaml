@@ -51,7 +51,7 @@
                        Source="/Assets/icon.png"
                        AutomationProperties.Name="ConnectOnion logo" />
                 <TextBlock Text="ConnectOnion"
-                           FontSize="15"
+                           FontSize="{StaticResource ProductSubtitleFontSize}"
                            FontWeight="SemiBold"
                            Foreground="{ThemeResource TextPrimaryBrush}"
                            VerticalAlignment="Center"
@@ -62,7 +62,7 @@
                         VerticalAlignment="Center">
                     <TextBlock Text="{x:Bind AppVersionBadgeText}"
                                FontFamily="{StaticResource JetBrainsMonoFontFamily}"
-                               FontSize="9"
+                               FontSize="{StaticResource ProductMicroFontSize}"
                                Foreground="{ThemeResource TextTertiaryBrush}" />
                 </Border>
             </StackPanel>
@@ -84,7 +84,7 @@
                          Visibility="{x:Bind HasOnlineAgents, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
                 <TextBlock Text="{x:Bind OnlineAgentStatusText, Mode=OneWay}"
                            FontFamily="{StaticResource JetBrainsMonoFontFamily}"
-                           FontSize="10"
+                           FontSize="{StaticResource ProductMicroFontSize}"
                            CharacterSpacing="70"
                            Foreground="{ThemeResource TextSecondaryBrush}"
                            VerticalAlignment="Center" />
@@ -115,8 +115,8 @@
                         Background="{ThemeResource AccentFillColorDefaultBrush}"
                         Visibility="{x:Bind IsAgentLibrarySelected, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                 <Button x:Uid="SidebarAgentsNavigation"
-                        x:Name="AgentsNavigationButton"
-                        MinHeight="36"
+                        x:Name="AgentsNavigationButton" AutomationProperties.AutomationId="AgentsNavigationButton"
+                        MinHeight="{StaticResource SidebarPrimaryRowHeight}"
                         Style="{StaticResource SidebarNavButtonStyle}"
                         Padding="12,0"
                         Click="ChatHome_Click"
@@ -134,7 +134,7 @@
                         <TextBlock x:Uid="SidebarAgentsNavigationLabel"
                                    Grid.Column="1"
                                    Text="Agent library"
-                                   FontSize="13"
+                                   FontSize="{StaticResource ProductBodyFontSize}"
                                    FontWeight="SemiBold"
                                    VerticalAlignment="Center" />
                     </Grid>
@@ -149,7 +149,7 @@
             </Grid.RowDefinitions>
 
             <!-- Keep the section command visible while only the conversation tree scrolls. -->
-            <Grid MinHeight="28"
+            <Grid MinHeight="{StaticResource SidebarSecondaryRowHeight}"
                   Margin="10,0,2,4">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -190,7 +190,7 @@
                             Visibility="{x:Bind HasPinnedSessions, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                     <Button Style="{StaticResource SidebarNavButtonStyle}"
                             Click="TogglePinned_Click"
-                            MinHeight="32"
+                            MinHeight="{StaticResource SidebarSecondaryRowHeight}"
                             Padding="6,0"
                             Margin="0,4,0,2"
                             ToolTipService.ToolTip="{x:Bind PinnedToggleAccessibilityName, Mode=OneWay}"
@@ -229,7 +229,7 @@
                                    Visibility="{x:Bind IsPinnedExpanded, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                         <ItemsRepeater.ItemTemplate>
                             <DataTemplate x:DataType="models:ShellSessionItem">
-                                <Grid MinHeight="32"
+                                <Grid MinHeight="{StaticResource SidebarSecondaryRowHeight}"
                                       Margin="0,1"
                                       Padding="10,4,4,4"
                                       DataContext="{x:Bind}"
@@ -289,7 +289,7 @@
                                              announces it even though nothing draws it. -->
                                         <TextBlock Text="{x:Bind Title}"
                                                    Margin="10,0,8,0"
-                                                   FontSize="13"
+                                                   FontSize="{StaticResource ProductBodyFontSize}"
                                                    FontWeight="{x:Bind IsSelected, Mode=OneWay, Converter={StaticResource BoolToFontWeight}}"
                                                    Foreground="{ThemeResource TextPrimaryBrush}"
                                                    TextTrimming="CharacterEllipsis" />
@@ -413,7 +413,7 @@
                                                 AutomationProperties.AccessibilityView="Raw">
                                             <local:AgentAvatar Size="28"
                                                                CornerRadius="14"
-                                                               FontSize="10"
+                                                               FontSize="{StaticResource ProductMicroFontSize}"
                                                                Margin="4,0,10,0"
                                                                Initial="{x:Bind Initial}"
                                                                ImagePath="{x:Bind IconPath}"
@@ -424,7 +424,7 @@
                                                    Text="{x:Bind DisplayName}"
                                                    Margin="0,0,8,0"
                                                    VerticalAlignment="Center"
-                                                   FontSize="13"
+                                                   FontSize="{StaticResource ProductBodyFontSize}"
                                                    FontWeight="{x:Bind IsSelected, Mode=OneWay, Converter={StaticResource BoolToFontWeight}}"
                                                    TextTrimming="CharacterEllipsis"
                                                    TextWrapping="NoWrap"
@@ -482,14 +482,14 @@
                                                      group reads as one indented column under its
                                                      agent instead of two ragged ones. -->
                                                 <TextBlock Text="{x:Bind Label}"
-                                                           FontSize="10"
+                                                           FontSize="{StaticResource ProductMicroFontSize}"
                                                            FontWeight="SemiBold"
                                                            Foreground="{ThemeResource TextTertiaryBrush}"
                                                            Margin="54,10,8,4" />
                                                 <ItemsRepeater ItemsSource="{x:Bind Sessions}">
                                                     <ItemsRepeater.ItemTemplate>
                                                         <DataTemplate x:DataType="models:ShellSessionItem">
-                                                            <Grid MinHeight="32"
+                                                            <Grid MinHeight="{StaticResource SidebarSecondaryRowHeight}"
                                                                   Margin="34,1,0,0"
                                                                   Padding="10,4,4,4"
                                                                   DataContext="{x:Bind}"
@@ -542,7 +542,7 @@
                                                                         VerticalContentAlignment="Center">
                                                                     <TextBlock Text="{x:Bind Title}"
                                                                                Margin="10,0,6,0"
-                                                                               FontSize="13"
+                                                                               FontSize="{StaticResource ProductBodyFontSize}"
                                                                                FontWeight="{x:Bind IsSelected, Mode=OneWay, Converter={StaticResource BoolToFontWeight}}"
                                                                                Foreground="{ThemeResource TextPrimaryBrush}"
                                                                                TextTrimming="CharacterEllipsis" />
@@ -571,21 +571,21 @@
                     Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
 
             <Button x:Uid="SidebarAddAgentButton" Style="{StaticResource SidebarNavButtonStyle}"
-                    MinHeight="36"
+                    MinHeight="{StaticResource SidebarPrimaryRowHeight}"
                     Click="AddAgent_Click"
                     AutomationProperties.AutomationId="AddAgentButton"
                     AutomationProperties.Name="Add agent">
                 <local:IconText x:Uid="SidebarAddAgent" Glyph="Add"
                                 IconSize="Size16"
                                 Spacing="10"
-                                FontSize="13"
+                                FontSize="{StaticResource ProductBodyFontSize}"
                                 Text="Add Agent"
                                 Foreground="{ThemeResource TextSecondaryBrush}" />
             </Button>
 
             <Button x:Uid="SidebarSettingsButton"
                     x:Name="SidebarSettingsButton"
-                    MinHeight="36"
+                    MinHeight="{StaticResource SidebarPrimaryRowHeight}"
                     Style="{StaticResource SidebarNavButtonStyle}"
                     Padding="12,0"
                     Click="BottomSettings_Click"
@@ -604,7 +604,7 @@
                     <TextBlock x:Uid="SidebarSettings"
                                Grid.Column="1"
                                Text="Settings"
-                               FontSize="13"
+                               FontSize="{StaticResource ProductBodyFontSize}"
                                FontWeight="SemiBold"
                                VerticalAlignment="Center"
                                TextTrimming="CharacterEllipsis" />

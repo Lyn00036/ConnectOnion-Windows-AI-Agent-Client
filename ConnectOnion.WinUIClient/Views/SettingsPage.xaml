@@ -14,8 +14,8 @@
                   HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
                   HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled"
                   VerticalScrollMode="Enabled" VerticalScrollBarVisibility="Auto">
-        <StackPanel x:Name="ContentStack" MinWidth="0" Margin="28,6,28,28"
-                    HorizontalAlignment="Stretch" Spacing="20">
+        <StackPanel x:Name="ContentStack" MinWidth="0" Margin="{StaticResource SettingsContentMargin}"
+                    HorizontalAlignment="Stretch" Spacing="{StaticResource Spacing20}">
             <TextBlock x:Uid="SettingsDescription" Text="Desktop preferences for this app."
                        Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextSecondaryBrush}" />
 
@@ -133,7 +133,7 @@
 
                 <ctk:SettingsCard x:Uid="SettingsEnterToSend" Header="Enter to send"
                                   Description="When enabled, Enter sends and Shift+Enter inserts a new line.">
-                    <ToggleSwitch x:Name="EnterToSendSwitch"
+                    <ToggleSwitch x:Name="EnterToSendSwitch" AutomationProperties.AutomationId="EnterToSendSwitch"
                                   x:Uid="SettingsEnterToSendSwitch"
                                   OnContent="On"
                                   OffContent="Off"
@@ -147,7 +147,7 @@
 
                 <ctk:SettingsCard x:Uid="SettingsNotificationsEnable" Header="Enable notifications"
                                   Description="Master switch for all in-app and Windows notifications.">
-                    <ToggleSwitch x:Uid="SettingsNotificationsSwitch" x:Name="EnableNotificationsSwitch"
+                    <ToggleSwitch x:Uid="SettingsNotificationsSwitch" x:Name="EnableNotificationsSwitch" AutomationProperties.AutomationId="EnableNotificationsSwitch"
                                   AutomationProperties.Name="Enable notifications"
                                   Toggled="EnableNotificationsSwitch_Toggled" />
                 </ctk:SettingsCard>
@@ -158,42 +158,42 @@
                     <StackPanel Spacing="4">
                         <ctk:SettingsCard x:Uid="SettingsAgentReplies" Header="Agent replies"
                                           Description="Notify when an agent finishes replying in a conversation you're not viewing.">
-                            <ToggleSwitch x:Uid="SettingsNotifyReplies" x:Name="NotifyAgentRepliesSwitch"
+                            <ToggleSwitch x:Uid="SettingsNotifyReplies" x:Name="NotifyAgentRepliesSwitch" AutomationProperties.AutomationId="NotifyAgentRepliesSwitch"
                                           AutomationProperties.Name="Notify for agent replies"
                                           Toggled="NotificationDetail_Toggled" />
                         </ctk:SettingsCard>
 
                         <ctk:SettingsCard x:Uid="SettingsTaskCompletion" Header="Task completion"
                                           Description="Notify when a longer, multi-step task finishes.">
-                            <ToggleSwitch x:Uid="SettingsNotifyTasks" x:Name="NotifyTaskCompletionSwitch"
+                            <ToggleSwitch x:Uid="SettingsNotifyTasks" x:Name="NotifyTaskCompletionSwitch" AutomationProperties.AutomationId="NotifyTaskCompletionSwitch"
                                           AutomationProperties.Name="Notify for task completion"
                                           Toggled="NotificationDetail_Toggled" />
                         </ctk:SettingsCard>
 
                         <ctk:SettingsCard x:Uid="SettingsApprovalRequests" Header="Approval requests"
                                           Description="Notify when an agent needs your approval to continue.">
-                            <ToggleSwitch x:Uid="SettingsNotifyApprovals" x:Name="NotifyApprovalRequestsSwitch"
+                            <ToggleSwitch x:Uid="SettingsNotifyApprovals" x:Name="NotifyApprovalRequestsSwitch" AutomationProperties.AutomationId="NotifyApprovalRequestsSwitch"
                                           AutomationProperties.Name="Notify for approval requests"
                                           Toggled="NotificationDetail_Toggled" />
                         </ctk:SettingsCard>
 
                         <ctk:SettingsCard x:Uid="SettingsConnectionProblems" Header="Connection problems"
                                           Description="Notify when an agent stays disconnected for a while.">
-                            <ToggleSwitch x:Uid="SettingsNotifyConnection" x:Name="NotifyConnectionProblemsSwitch"
+                            <ToggleSwitch x:Uid="SettingsNotifyConnection" x:Name="NotifyConnectionProblemsSwitch" AutomationProperties.AutomationId="NotifyConnectionProblemsSwitch"
                                           AutomationProperties.Name="Notify for connection problems"
                                           Toggled="NotificationDetail_Toggled" />
                         </ctk:SettingsCard>
 
                         <ctk:SettingsCard x:Uid="SettingsPlaySound" Header="Play sound"
                                           Description="Play a sound with Windows notifications.">
-                            <ToggleSwitch x:Uid="SettingsNotifySound" x:Name="PlayNotificationSoundSwitch"
+                            <ToggleSwitch x:Uid="SettingsNotifySound" x:Name="PlayNotificationSoundSwitch" AutomationProperties.AutomationId="PlayNotificationSoundSwitch"
                                           AutomationProperties.Name="Play notification sound"
                                           Toggled="NotificationDetail_Toggled" />
                         </ctk:SettingsCard>
 
                         <ctk:SettingsCard x:Uid="SettingsMessagePreview" Header="Show message preview"
                                           Description="Include a snippet of the reply. When off, notifications only say you have a new response.">
-                            <ToggleSwitch x:Uid="SettingsNotifyPreview" x:Name="ShowMessagePreviewSwitch"
+                            <ToggleSwitch x:Uid="SettingsNotifyPreview" x:Name="ShowMessagePreviewSwitch" AutomationProperties.AutomationId="ShowMessagePreviewSwitch"
                                           AutomationProperties.Name="Show message preview"
                                           Toggled="NotificationDetail_Toggled" />
                         </ctk:SettingsCard>
@@ -206,7 +206,7 @@
 
                 <ctk:SettingsCard x:Uid="SettingsMicrophone" Header="Microphone"
                                   Description="Choose the microphone for voice input.">
-                    <ComboBox x:Uid="SettingsMicChoice" x:Name="MicChoice"
+                    <ComboBox x:Uid="SettingsMicChoice" x:Name="MicChoice" AutomationProperties.AutomationId="MicChoice"
                               MinWidth="0" MaxWidth="260"
                               HorizontalAlignment="Stretch"
                               AutomationProperties.Name="Microphone"

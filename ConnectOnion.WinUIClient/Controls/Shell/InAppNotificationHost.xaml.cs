@@ -111,14 +111,14 @@ public sealed partial class InAppNotificationHost : UserControl
         text.Children.Add(new TextBlock
         {
             Text = toast.Title,
-            FontSize = 13,
+            Style = Application.Current.Resources["ProductBodyStrongTextStyle"] as Style,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             TextTrimming = TextTrimming.CharacterEllipsis,
         });
         text.Children.Add(new TextBlock
         {
             Text = toast.Body,
-            FontSize = 12,
+            Style = Application.Current.Resources["ProductCaptionTextStyle"] as Style,
             Foreground = Brush("TextSecondaryBrush"),
             TextWrapping = TextWrapping.Wrap,
             MaxLines = 2,

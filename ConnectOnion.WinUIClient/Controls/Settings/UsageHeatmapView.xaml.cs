@@ -108,7 +108,7 @@ public sealed partial class UsageHeatmapView : UserControl
             var label = new TextBlock
             {
                 Text = month.Label,
-                FontSize = 11,
+                Style = Application.Current.Resources["ProductCaptionTextStyle"] as Style,
                 Foreground = Brush("TextSecondaryBrush"),
             };
             Canvas.SetLeft(label, month.WeekIndex * CellStride);
@@ -124,11 +124,11 @@ public sealed partial class UsageHeatmapView : UserControl
             var label = new TextBlock
             {
                 Text = text,
-                FontSize = 11,
+                Style = Application.Current.Resources["ProductCaptionTextStyle"] as Style,
                 Foreground = Brush("TextSecondaryBrush"),
             };
             Canvas.SetLeft(label, 0);
-            // Nudged up by a pixel so the cap height of an 11px label optically centres against
+            // Nudged up by a pixel so the caption's cap height optically centres against
             // an 11px square rather than sitting a touch low.
             Canvas.SetTop(label, (row * CellStride) - 1);
             WeekdayGutter.Children.Add(label);

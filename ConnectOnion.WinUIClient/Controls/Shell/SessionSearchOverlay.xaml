@@ -72,7 +72,7 @@
                            Grid.Row="1"
                            Text="Chats"
                            Margin="6,2,6,4"
-                           FontSize="12"
+                           FontSize="{StaticResource ProductCaptionFontSize}"
                            Foreground="{ThemeResource TextTertiaryBrush}" />
 
                 <Grid Grid.Row="2" MinHeight="80">
@@ -105,14 +105,14 @@
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Spacing="2" VerticalAlignment="Center">
                                         <TextBlock Text="{x:Bind Title}"
-                                                   FontSize="13"
+                                                   FontSize="{StaticResource ProductBodyFontSize}"
                                                    Foreground="{ThemeResource TextPrimaryBrush}"
                                                    TextTrimming="CharacterEllipsis" />
                                         <!-- Present only when the transcript, not the title, is
                                              what matched — so the row can show why it came back.
                                              A title match needs no explanation. -->
                                         <TextBlock Text="{x:Bind Snippet, Mode=OneWay}"
-                                                   FontSize="11"
+                                                   FontSize="{StaticResource ProductCaptionFontSize}"
                                                    Foreground="{ThemeResource TextTertiaryBrush}"
                                                    TextTrimming="CharacterEllipsis"
                                                    TextWrapping="NoWrap"
@@ -122,7 +122,7 @@
                                     <TextBlock Grid.Column="1"
                                                MaxWidth="160"
                                                Text="{x:Bind AgentDisplayName}"
-                                               FontSize="12"
+                                               FontSize="{StaticResource ProductCaptionFontSize}"
                                                Foreground="{ThemeResource TextTertiaryBrush}"
                                                TextTrimming="CharacterEllipsis"
                                                VerticalAlignment="Center" />

@@ -31,7 +31,7 @@
         <!-- Offered here rather than left to the user to remember: this dialog is the last moment
              the current identity still exists, and "back it up first" is advice nobody can act on
              once they have pressed the button. -->
-        <Button x:Name="BackupCurrentButton" Click="BackupCurrent_Click" HorizontalAlignment="Left">
+        <Button x:Name="BackupCurrentButton" AutomationProperties.AutomationId="BackupCurrentButton" Click="BackupCurrent_Click" HorizontalAlignment="Left">
             <StackPanel Orientation="Horizontal" Spacing="8">
                 <ic:FluentIcon Icon="Key" IconVariant="Regular" IconSize="Size16" />
                 <TextBlock x:Uid="RestoreIdentityBackupFirst" Text="Back up the current identity first" />
@@ -40,7 +40,7 @@
 
         <StackPanel Spacing="6">
         <TextBlock x:Uid="RestoreIdentityPhrase" Text="Recovery phrase" Style="{StaticResource BodyStrongTextBlockStyle}" />
-            <TextBox x:Uid="RestoreIdentityInput" x:Name="PhraseBox" AcceptsReturn="True" TextWrapping="Wrap"
+            <TextBox x:Uid="RestoreIdentityInput" x:Name="PhraseBox" AutomationProperties.AutomationId="PhraseBox" AcceptsReturn="True" TextWrapping="Wrap"
                      Height="96" MinWidth="0"
                      FontFamily="{StaticResource JetBrainsMonoFontFamily}"
                      PlaceholderText="Enter your 12-word recovery phrase"

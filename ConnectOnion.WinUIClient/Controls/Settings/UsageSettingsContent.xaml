@@ -12,11 +12,24 @@
          body is roughly 850px at its widest no matter how large the window gets — so a
          MinWindowWidth="1000" trigger put four totals columns into a box that never had room for
          them. -->
-    <StackPanel MinWidth="0" HorizontalAlignment="Stretch" Spacing="16">
+    <StackPanel MinWidth="0" HorizontalAlignment="Stretch" Spacing="{StaticResource Spacing16}">
         <VisualStateManager.VisualStateGroups>
             <VisualStateGroup x:Name="UsageWidthStates">
                 <VisualState x:Name="CompactUsage">
                     <VisualState.Setters>
+                        <Setter Target="RangeGrid.RowSpacing" Value="8" />
+                        <Setter Target="RangeColumn0.Width" Value="Auto" />
+                        <Setter Target="RangeColumn1.Width" Value="Auto" />
+                        <Setter Target="RangeColumn2.Width" Value="0" />
+                        <Setter Target="RangeColumn3.Width" Value="0" />
+                        <Setter Target="TodayRange.(Grid.Row)" Value="0" />
+                        <Setter Target="TodayRange.(Grid.Column)" Value="0" />
+                        <Setter Target="Week.(Grid.Row)" Value="0" />
+                        <Setter Target="Week.(Grid.Column)" Value="1" />
+                        <Setter Target="Month.(Grid.Row)" Value="1" />
+                        <Setter Target="Month.(Grid.Column)" Value="0" />
+                        <Setter Target="AllTime.(Grid.Row)" Value="1" />
+                        <Setter Target="AllTime.(Grid.Column)" Value="1" />
                         <Setter Target="TotalsGrid.RowSpacing" Value="12" />
                         <Setter Target="TotalColumn0.Width" Value="*" />
                         <Setter Target="TotalColumn1.Width" Value="*" />
@@ -32,6 +45,19 @@
                 </VisualState>
                 <VisualState x:Name="WideUsage">
                     <VisualState.Setters>
+                        <Setter Target="RangeGrid.RowSpacing" Value="0" />
+                        <Setter Target="RangeColumn0.Width" Value="Auto" />
+                        <Setter Target="RangeColumn1.Width" Value="Auto" />
+                        <Setter Target="RangeColumn2.Width" Value="Auto" />
+                        <Setter Target="RangeColumn3.Width" Value="Auto" />
+                        <Setter Target="TodayRange.(Grid.Row)" Value="0" />
+                        <Setter Target="TodayRange.(Grid.Column)" Value="0" />
+                        <Setter Target="Week.(Grid.Row)" Value="0" />
+                        <Setter Target="Week.(Grid.Column)" Value="1" />
+                        <Setter Target="Month.(Grid.Row)" Value="0" />
+                        <Setter Target="Month.(Grid.Column)" Value="2" />
+                        <Setter Target="AllTime.(Grid.Row)" Value="0" />
+                        <Setter Target="AllTime.(Grid.Column)" Value="3" />
                         <Setter Target="TotalsGrid.RowSpacing" Value="0" />
                         <Setter Target="TotalColumn0.Width" Value="*" />
                         <Setter Target="TotalColumn1.Width" Value="*" />
@@ -71,16 +97,26 @@
         </Border>
 
         <!-- Time window -->
-        <StackPanel Orientation="Horizontal" Spacing="8">
-                <RadioButton x:Uid="UsageToday" x:Name="TodayRange" GroupName="UsageRange" Content="Today"
+        <Grid x:Name="RangeGrid" ColumnSpacing="{StaticResource Spacing12}" HorizontalAlignment="Left">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="RangeColumn0" Width="Auto" />
+                <ColumnDefinition x:Name="RangeColumn1" Width="Auto" />
+                <ColumnDefinition x:Name="RangeColumn2" Width="Auto" />
+                <ColumnDefinition x:Name="RangeColumn3" Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <RadioButton x:Uid="UsageToday" x:Name="TodayRange" AutomationProperties.AutomationId="TodayRange" GroupName="UsageRange" Content="Today"
                          Click="Range_Click" Tag="Today" />
-                <RadioButton x:Uid="UsageWeek" x:Name="Week" GroupName="UsageRange" Content="Last 7 days" IsChecked="True"
+            <RadioButton x:Uid="UsageWeek" x:Name="Week" Grid.Column="1" AutomationProperties.AutomationId="Week" GroupName="UsageRange" Content="Last 7 days" IsChecked="True"
                          Click="Range_Click" Tag="Last7Days" />
-                <RadioButton x:Uid="UsageMonth" x:Name="Month" GroupName="UsageRange" Content="Last 30 days"
+            <RadioButton x:Uid="UsageMonth" x:Name="Month" Grid.Column="2" AutomationProperties.AutomationId="Month" GroupName="UsageRange" Content="Last 30 days"
                          Click="Range_Click" Tag="Last30Days" />
-                <RadioButton x:Uid="UsageAllTime" x:Name="AllTime" GroupName="UsageRange" Content="All time"
+            <RadioButton x:Uid="UsageAllTime" x:Name="AllTime" Grid.Column="3" AutomationProperties.AutomationId="AllTime" GroupName="UsageRange" Content="All time"
                          Click="Range_Click" Tag="AllTime" />
-        </StackPanel>
+        </Grid>
 
         <ProgressRing IsActive="{x:Bind Vm.IsLoading, Mode=OneWay}"
                       Visibility="{x:Bind Vm.IsLoading, Mode=OneWay, Converter={StaticResource BoolToVis}}"
@@ -89,7 +125,7 @@
         <!-- Totals for the window -->
         <Border Style="{StaticResource SettingsSectionStyle}" HorizontalAlignment="Stretch"
                 Visibility="{x:Bind Vm.ShowContent, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-            <Grid x:Name="TotalsGrid" ColumnSpacing="12">
+            <Grid x:Name="TotalsGrid" ColumnSpacing="{StaticResource Spacing12}">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
@@ -102,22 +138,22 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0" Spacing="2">
-                    <TextBlock Text="{x:Bind Vm.TotalTokensText, Mode=OneWay}" FontSize="20" FontWeight="SemiBold" />
+                    <TextBlock Text="{x:Bind Vm.TotalTokensText, Mode=OneWay}" FontSize="{StaticResource ProductSectionTitleFontSize}" FontWeight="SemiBold" />
                         <TextBlock x:Uid="UsageTotalTokens" Text="Total tokens" Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextSecondaryBrush}" />
                 </StackPanel>
                 <StackPanel x:Name="InputTotal" Grid.Column="1" Spacing="2">
-                    <TextBlock Text="{x:Bind Vm.TotalInputTokensText, Mode=OneWay}" FontSize="20" FontWeight="SemiBold" />
+                    <TextBlock Text="{x:Bind Vm.TotalInputTokensText, Mode=OneWay}" FontSize="{StaticResource ProductSectionTitleFontSize}" FontWeight="SemiBold" />
                         <TextBlock x:Uid="UsageInput" Text="Input" Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextSecondaryBrush}" />
                 </StackPanel>
                 <StackPanel x:Name="OutputTotal" Grid.Column="2" Spacing="2">
-                    <TextBlock Text="{x:Bind Vm.TotalOutputTokensText, Mode=OneWay}" FontSize="20" FontWeight="SemiBold" />
+                    <TextBlock Text="{x:Bind Vm.TotalOutputTokensText, Mode=OneWay}" FontSize="{StaticResource ProductSectionTitleFontSize}" FontWeight="SemiBold" />
                         <TextBlock x:Uid="UsageOutput" Text="Output" Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextSecondaryBrush}" />
                 </StackPanel>
                 <StackPanel x:Name="CallsTotal" Grid.Column="3" Spacing="2">
-                    <TextBlock Text="{x:Bind Vm.TotalCallsText, Mode=OneWay}" FontSize="20" FontWeight="SemiBold" />
+                    <TextBlock Text="{x:Bind Vm.TotalCallsText, Mode=OneWay}" FontSize="{StaticResource ProductSectionTitleFontSize}" FontWeight="SemiBold" />
                         <TextBlock x:Uid="UsageLlmCalls" Text="LLM calls" Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextSecondaryBrush}" />
                 </StackPanel>
@@ -127,20 +163,20 @@
         <!-- Per-model breakdown -->
         <Border Style="{StaticResource SettingsSectionStyle}" HorizontalAlignment="Stretch"
                 Visibility="{x:Bind Vm.ShowContent, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-            <StackPanel Spacing="14">
+            <StackPanel Spacing="{StaticResource Spacing16}">
                 <TextBlock x:Uid="UsageByModel" Text="By model" Style="{StaticResource BodyStrongTextBlockStyle}" />
 
                 <ItemsControl ItemsSource="{x:Bind Vm.Rows, Mode=OneWay}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:UsageRowViewModel">
-                            <StackPanel Spacing="5" Margin="0,0,0,14"
+                            <StackPanel Spacing="{StaticResource Spacing4}" Margin="0,0,0,16"
                                         AutomationProperties.Name="{x:Bind AccessibilityName}">
                                 <Grid ColumnSpacing="12">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Text="{x:Bind Model}" FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="13"
+                                    <TextBlock Text="{x:Bind Model}" FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="{StaticResource ProductBodyFontSize}"
                                                TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                                     <TextBlock Grid.Column="1" Text="{x:Bind TotalTokensText}"
                                                FontWeight="SemiBold" VerticalAlignment="Center" />
@@ -155,7 +191,7 @@
                                              Foreground="{ThemeResource BrandPrimaryBrush}"
                                              AutomationProperties.AccessibilityView="Raw" />
 
-                                <StackPanel Orientation="Horizontal" Spacing="14">
+                                <StackPanel Orientation="Horizontal" Spacing="{StaticResource Spacing16}">
                                     <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
                                                Foreground="{ThemeResource TextSecondaryBrush}">
                                         <Run Text="{x:Bind CallsText}" /><Run x:Uid="UsageCallsSuffix" Text=" calls" />
@@ -201,7 +237,7 @@
                        Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextTertiaryBrush}"
                        Visibility="{x:Bind Vm.HasFirstRecorded, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-            <Button x:Uid="UsageClear" x:Name="ClearButton" Grid.Column="1" Content="Clear usage history"
+            <Button x:Uid="UsageClear" x:Name="ClearButton" AutomationProperties.AutomationId="ClearButton" Grid.Column="1" Content="Clear usage history"
                     Click="Clear_Click"
                     AutomationProperties.Name="Clear all recorded token usage"
                     Visibility="{x:Bind Vm.ShowContent, Mode=OneWay, Converter={StaticResource BoolToVis}}" />

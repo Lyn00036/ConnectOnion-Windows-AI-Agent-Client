@@ -35,12 +35,12 @@
             <StackPanel Padding="24"
                         Spacing="0">
                 <TextBlock x:Uid="AddAgentTitle" Text="Add an agent"
-                           FontSize="24"
+                           FontSize="{StaticResource ProductTitleFontSize}"
                            FontWeight="SemiBold" />
                 <TextBlock x:Uid="AddAgentIntro"
                            Margin="0,6,0,0"
                            Text="Paste the connection details from the agent's Share screen."
-                           FontSize="13"
+                           FontSize="{StaticResource ProductBodyFontSize}"
                            Foreground="{ThemeResource TextSecondaryBrush}"
                            TextWrapping="Wrap" />
 
@@ -59,7 +59,7 @@
                              KeyDown="InputBox_KeyDown" />
                     <TextBlock x:Uid="AddAgentAddressHint"
                                Text="Use a 0x address for a shared relay agent, or an HTTP URL for a direct connection."
-                               FontSize="12"
+                               FontSize="{StaticResource ProductCaptionFontSize}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                TextWrapping="Wrap" />
                     <!-- The form above assumes the user already holds an address. On a first run
@@ -68,11 +68,11 @@
                     <HyperlinkButton x:Uid="AddAgentWhereToGetOne"
                                      Content="Where do I get an agent address?"
                                      Padding="0,2"
-                                     FontSize="12"
+                                     FontSize="{StaticResource ProductCaptionFontSize}"
                                      AutomationProperties.AutomationId="AddAgentDocsLink"
                                      Click="AddAgentDocs_Click" />
                     <TextBlock x:Uid="AddAgentAddressError" Text="Enter a valid agent address or HTTP URL."
-                               FontSize="12"
+                               FontSize="{StaticResource ProductCaptionFontSize}"
                                Foreground="{ThemeResource DangerBrush}"
                                TextWrapping="Wrap"
                                AutomationProperties.LiveSetting="Polite"
@@ -99,7 +99,7 @@
                                               Grid.Column="0"
                                               Size="72"
                                               CornerRadius="36"
-                                              FontSize="26"
+                                              FontSize="{StaticResource ProductHeroFontSize}"
                                               VerticalAlignment="Top"
                                               Initial="?"
                                               AutomationProperties.Name="Agent icon preview" />
@@ -109,7 +109,7 @@
                                     Spacing="8">
                             <StackPanel Orientation="Horizontal"
                                         Spacing="8">
-                                <Button x:Name="ChooseIconButton"
+                                <Button x:Name="ChooseIconButton" AutomationProperties.AutomationId="ChooseIconButton"
                                         x:Uid="AddAgentChooseIcon"
                                         MinWidth="112"
                                         Height="36"
@@ -117,7 +117,7 @@
                                         Click="ChooseIcon_Click"
                                         AutomationProperties.Name="Choose an agent icon" />
 
-                                <Button x:Name="RemoveIconButton"
+                                <Button x:Name="RemoveIconButton" AutomationProperties.AutomationId="RemoveIconButton"
                                         x:Uid="AddAgentRemoveIcon"
                                         Height="36"
                                         Content="Remove"
@@ -136,12 +136,12 @@
 
                             <TextBlock x:Uid="AddAgentIconHint"
                                        Text="Optional. PNG, JPG, JPEG or WebP, up to 5 MB."
-                                       FontSize="12"
+                                       FontSize="{StaticResource ProductCaptionFontSize}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        TextWrapping="Wrap" />
 
                             <TextBlock x:Name="IconErrorText"
-                                       FontSize="12"
+                                       FontSize="{StaticResource ProductCaptionFontSize}"
                                        Foreground="{ThemeResource DangerBrush}"
                                        TextWrapping="Wrap"
                                        Visibility="Collapsed"
@@ -159,7 +159,7 @@
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
 
-                    <Button x:Name="TestButton"
+                    <Button x:Name="TestButton" AutomationProperties.AutomationId="TestButton"
                             MinWidth="130"
                             Height="40"
                             HorizontalAlignment="Left"
@@ -188,7 +188,7 @@
                                           Height="14"
                                           IsActive="{x:Bind Vm.IsTesting, Mode=OneWay}" />
                             <TextBlock Text="{x:Bind LocalizedStatusText(Vm.StatusText), Mode=OneWay}"
-                                       FontSize="12"
+                                       FontSize="{StaticResource ProductCaptionFontSize}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        TextWrapping="Wrap"
                                        VerticalAlignment="Center" />
@@ -204,7 +204,7 @@
                                            Foreground="{ThemeResource SuccessBrush}"
                                            AutomationProperties.Name="Connection successful" />
                             <TextBlock Text="{x:Bind LocalizedStatusText(Vm.StatusText), Mode=OneWay}"
-                                       FontSize="12"
+                                       FontSize="{StaticResource ProductCaptionFontSize}"
                                        Foreground="{ThemeResource SuccessBrush}"
                                        TextWrapping="Wrap"
                                        VerticalAlignment="Center" />
@@ -220,7 +220,7 @@
                                            Foreground="{ThemeResource DangerBrush}"
                                            AutomationProperties.Name="Connection failed" />
                             <TextBlock Text="{x:Bind LocalizedStatusText(Vm.StatusText), Mode=OneWay}"
-                                       FontSize="12"
+                                       FontSize="{StaticResource ProductCaptionFontSize}"
                                        Foreground="{ThemeResource DangerBrush}"
                                        TextWrapping="Wrap"
                                        VerticalAlignment="Center"

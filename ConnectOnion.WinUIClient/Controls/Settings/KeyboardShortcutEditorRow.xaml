@@ -25,12 +25,12 @@
                 <!-- A fixed row says why it is fixed; a customizable one shows a conflict here
                      when the last capture was refused. Only ever one of the two. -->
                 <TextBlock x:Name="ReasonText"
-                           FontSize="12"
+                           FontSize="{StaticResource ProductCaptionFontSize}"
                            Foreground="{ThemeResource TextSecondaryBrush}"
                            Visibility="Collapsed"
                            TextWrapping="Wrap" />
                 <TextBlock x:Name="ConflictText"
-                           FontSize="12"
+                           FontSize="{StaticResource ProductCaptionFontSize}"
                            Foreground="{ThemeResource StatusErrorTextBrush}"
                            Visibility="Collapsed"
                            TextWrapping="Wrap" />
@@ -53,12 +53,12 @@
                     Padding="10,5">
                 <TextBlock x:Name="FixedKeysText"
                            FontFamily="{StaticResource JetBrainsMonoFontFamily}"
-                           FontSize="12"
+                           FontSize="{StaticResource ProductCaptionFontSize}"
                            TextAlignment="Center"
                            Foreground="{ThemeResource TextSecondaryBrush}" />
             </Border>
 
-            <Button x:Uid="KeyboardReset" x:Name="ResetButton"
+            <Button x:Uid="KeyboardReset" x:Name="ResetButton" AutomationProperties.AutomationId="ResetButton"
                     Grid.Column="2"
                     VerticalAlignment="Center"
                     Visibility="Collapsed"

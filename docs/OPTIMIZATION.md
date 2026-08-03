@@ -1,6 +1,6 @@
 # Engineering optimization notes
 
-Last updated: 2026-07-16
+Last updated: 2026-08-03
 
 ## Implemented
 
@@ -13,27 +13,35 @@ Last updated: 2026-07-16
 - **Resource lifecycle:** `ChatComposer` implements deterministic cleanup for speech recognition, AudioGraph nodes, Win2D stroke resources, timers, cancellation sources, and event subscriptions. Audio-meter startup observes cancellation after each asynchronous acquisition so page unload cannot leave a microphone graph behind.
 - **Publish assets and exit:** unpackaged Release publish explicitly carries the `Assets` tree, and window icons resolve from an absolute application-base path. WebSocket shutdown has a 1.5-second hard budget, connections close concurrently, and structured logs record shutdown phase timings.
 - **Shutdown ordering:** window activation, presence, and session callbacks detach before the Generic Host service provider is disposed. Closed callbacks are idempotent and use cached service references, preventing late WinUI events from resolving a disposed container.
-- **Localization:** WinUI `.resw` resources and `x:Uid` are established under `Strings/en-US`; settings, shell menus, search/drop hints, chat approvals, composer suggestions/modes, offline state, the agent-icon menu items and Add Agent icon picker, and primary entry/empty states are migrated. Keep fallback XAML text when adding resources so development builds remain diagnosable. Strings assembled at runtime cannot carry an `x:Uid`, so they go through `Common/LocalizedStrings.Get(key, fallback)`, which takes the English text as a parameter for the same reason.
+- **Localization:** WinUI `.resw` resources cover English and Simplified Chinese under `Strings/en-US` and `Strings/zh-CN`; architecture tests enforce key-for-key parity, non-empty translations, XAML `x:Uid` coverage, and Core resource lookups. Keep fallback XAML text when adding resources so development builds remain diagnosable. Strings assembled at runtime cannot carry an `x:Uid`, so they go through `Common/LocalizedStrings.Get(key, fallback)`, which takes the English text as a parameter for the same reason.
 - **Analyzer hygiene:** a clean unpackaged x64 application build completes with zero compiler/analyzer warnings. CA1848 is enforced, so *every* logging call site uses a cached `LoggerMessage` delegate, and persisted values use explicit culture semantics.
 - **Logging reaches the file three ways and no fourth:** constructor-injected `ILogger<T>` for container-created types, a `Configure(ILoggerFactory)` facade for the two `static` entry points in `Core` (`NotificationLog`, `IdentityStore`), and `AppServices.Logging` for framework-created code-behind. `Debug.WriteLine` is `[Conditional("DEBUG")]` and therefore never a failure path's only record — it appears only alongside a real logger call, or for development tracing (per-run-phase lines) that would be noise in a shipped log.
-- **Testing:** the protocol fake server uses an in-process Kestrel WebSocket endpoint on an OS-assigned port, eliminating `HttpListener` ACL and port-reservation races. FlaUI provides an opt-in real-window shell smoke test.
-- **CI:** restore audits vulnerable packages, test runs emit Cobertura coverage, Release publishes use ReadyToRun with trimming disabled pending trim-safe JSON coverage, and `workflow_dispatch` can opt into the interactive shell smoke test.
+- **Testing:** the protocol fake server uses an in-process Kestrel WebSocket endpoint on an OS-assigned port, eliminating `HttpListener` ACL and port-reservation races. The FlaUI project discovers 14 tests: 12 shell/settings/search/help tests plus opt-in memory and large-history performance audits.
+- **CI:** restore audits vulnerable packages; test runs emit Cobertura coverage and enforce 86.0% Protocol / 88.5% Core line thresholds; Release publishes use ReadyToRun with trimming disabled; and the isolated-profile 12-test FlaUI shell suite runs weekly or through `workflow_dispatch`, uploading TRX and screenshot evidence.
 
 ## Operational checks
 
 ```powershell
 dotnet restore ConnectOnion.WinUIClient/ConnectOnion.WinUIClient.sln -p:Platform=x64
 dotnet build ConnectOnion.WinUIClient/ConnectOnion.WinUIClient.sln -c Release --no-restore -p:Platform=x64
-dotnet test tests/ConnectOnion.Protocol.Tests/ConnectOnion.Protocol.Tests.csproj
-dotnet test tests/ConnectOnion.WinUIClient.UnitTests/ConnectOnion.WinUIClient.UnitTests.csproj
-dotnet test tests/ConnectOnion.IntegrationTests/ConnectOnion.IntegrationTests.csproj
+dotnet test tests/ConnectOnion.Protocol.Tests/ConnectOnion.Protocol.Tests.csproj --collect:"XPlat Code Coverage" --settings coverage.runsettings --results-directory TestResults/protocol
+dotnet test tests/ConnectOnion.WinUIClient.UnitTests/ConnectOnion.WinUIClient.UnitTests.csproj --collect:"XPlat Code Coverage" --settings coverage.runsettings --results-directory TestResults/client
+dotnet test tests/ConnectOnion.IntegrationTests/ConnectOnion.IntegrationTests.csproj --collect:"XPlat Code Coverage" --settings coverage.runsettings --results-directory TestResults/integration
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Test-Coverage.ps1 -ResultsDirectory TestResults
 ```
 
-For a local real-window smoke test, build unpackaged and point the test at the executable:
+For a local real-window smoke test, publish the same unpackaged ReadyToRun shape as CI and point
+the test at that executable. A normal build output does not carry the unpackaged Windows App SDK
+bootstrapper reliably enough for this gate.
 
 ```powershell
-$env:CONNECTONION_UI_TEST_EXE = (Resolve-Path 'ConnectOnion.WinUIClient/bin/x64/Debug/net10.0-windows10.0.19041.0/win-x64/ConnectOnion.WinUIClient.exe')
-dotnet test tests/ConnectOnion.WinUIClient.UITests/ConnectOnion.WinUIClient.UITests.csproj
+dotnet publish ConnectOnion.WinUIClient/ConnectOnion.WinUIClient.csproj `
+  --configuration Release --runtime win-x64 -p:Platform=x64 `
+  -p:RunUnpackaged=true -p:PublishTrimmed=false -p:PublishReadyToRun=true
+$env:CONNECTONION_UI_TEST_EXE = (Resolve-Path 'ConnectOnion.WinUIClient/bin/Release/net10.0-windows10.0.19041.0/win-x64/publish/ConnectOnion.WinUIClient.exe')
+$env:CONNECTONION_DATA_ROOT = Join-Path $env:TEMP 'ConnectOnionUiSmoke'
+dotnet test tests/ConnectOnion.WinUIClient.UITests/ConnectOnion.WinUIClient.UITests.csproj `
+  --configuration Release --filter 'Category=UiSmoke'
 ```
 
 For launch time and steady-state memory, run `scripts/Measure-Performance.ps1` — see
@@ -43,7 +51,7 @@ For deeper performance investigations, capture an ETW trace with Windows Perform
 
 ## Follow-up backlog
 
-- Migrate remaining secondary settings/help/identity labels and runtime-generated strings into `.resw`, then add a second locale as a localization validation build.
-- Add focused WinUI-host tests for converters, template selection, Markdown visual output, focus, drag/drop, tray, and notification activation.
+- Keep en-US/zh-CN resource parity green and complete manual zh-CN layout, text-scaling, and Narrator validation.
+- Expand real-window tests from the shell surfaces into chat send/reconnect, template selection, Markdown visual output, drag/drop, in-chat find, tray-icon interaction, and notification activation.
 - Add reconnect, shutdown-drain, and cold-activation race integration coverage.
 - Establish measured budgets for 1,000-message restore, search latency, and scrolling frame time. Cold start and steady-state memory are done — `scripts/Measure-Performance.ps1` measures them and `docs/PERFORMANCE.md` records the budgets and the current baseline.

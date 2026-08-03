@@ -3,13 +3,20 @@ using FlaUI.Core;
 using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Capturing;
 using FlaUI.Core.Input;
+using FlaUI.Core.WindowsAPI;
 using FlaUI.UIA3;
+using Microsoft.Data.Sqlite;
 
 namespace ConnectOnion.WinUIClient.UITests;
 
+[Trait("Category", "UiSmoke")]
 public sealed class ShellSmokeTests
 {
     public const string ExecutableEnvironmentVariable = "CONNECTONION_UI_TEST_EXE";
+    private const string DataRootEnvironmentVariable = "CONNECTONION_DATA_ROOT";
+    private static readonly Lazy<string> DefaultDataRoot = new(CreateDefaultDataRoot);
+    private static int _profileLaunchHandled;
+    private static int _sqliteProviderConfigured;
 
     [DllImport("user32.dll")]
     private static extern bool IsWindowVisible(IntPtr windowHandle);
@@ -45,6 +52,30 @@ public sealed class ShellSmokeTests
         Assert.Null(window.FindFirstDescendant(query => query.ByAutomationId(settingsContentId)));
 
         OpenSettings(window);
+
+        var search = WaitForDescendant(window, "SettingsSearchBox");
+        Assert.NotNull(search);
+        Assert.True(
+            WaitUntil(() =>
+                search.Properties.HasKeyboardFocus.ValueOrDefault
+                || window.FindFirstDescendant(query =>
+                    query.ByAutomationId("SettingsCategoryPicker"))?
+                    .Properties.HasKeyboardFocus.ValueOrDefault == true),
+            "settings overlay did not move focus into its wide or compact navigation");
+
+        var close = WaitForDescendant(window, "SettingsCloseButton");
+        Assert.NotNull(close);
+        close.AsButton().Invoke();
+        Assert.True(
+            WaitUntil(() => window.FindFirstDescendant(
+                query => query.ByAutomationId(settingsContentId)) is null),
+            "settings overlay did not close");
+
+        var settingsButton = WaitForDescendant(window, "SettingsButton");
+        Assert.NotNull(settingsButton);
+        Assert.True(
+            WaitUntil(() => settingsButton.Properties.HasKeyboardFocus.ValueOrDefault),
+            "settings opener did not regain focus after close");
     }
 
     [Fact]
@@ -94,11 +125,7 @@ public sealed class ShellSmokeTests
 
             var executable = Environment.GetEnvironmentVariable(ExecutableEnvironmentVariable);
             Assert.False(string.IsNullOrWhiteSpace(executable));
-            using var redirected = System.Diagnostics.Process.Start(
-                new System.Diagnostics.ProcessStartInfo(executable!)
-                {
-                    UseShellExecute = true,
-                });
+            using var redirected = launched.StartAnotherInstance();
             Assert.NotNull(redirected);
 
             Assert.True(
@@ -274,9 +301,12 @@ public sealed class ShellSmokeTests
 
     /// <summary>Polls for a Text element with the given content, tolerating the COMException a
     /// mutating visual tree throws.</summary>
-    private static AutomationElement? WaitForText(AutomationElement window, string text)
+    private static AutomationElement? WaitForText(
+        AutomationElement window,
+        string text,
+        TimeSpan? timeout = null)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(10);
+        var deadline = DateTime.UtcNow.Add(timeout ?? TimeSpan.FromSeconds(10));
         while (DateTime.UtcNow < deadline)
         {
             try
@@ -380,6 +410,110 @@ public sealed class ShellSmokeTests
         Assert.NotNull(square);
     }
 
+    [Fact]
+    public void FirstRunHome_ShowsEmptyStateAndReachableAddAgentAction()
+    {
+        using var launched = LaunchApp();
+        if (launched is null) return;
+
+        var window = launched.Window;
+        var addFirstAgent = WaitForDescendant(window, "EmptyStateAddAgentButton");
+        var docs = WaitForDescendant(window, "EmptyStateDocsLink");
+
+        Assert.NotNull(addFirstAgent);
+        Assert.True(addFirstAgent.IsEnabled);
+        Assert.NotNull(docs);
+        Assert.True(docs.IsEnabled);
+
+        addFirstAgent.AsButton().Invoke();
+        var input = WaitForDescendant(window, "AgentAddressInput");
+        Assert.NotNull(input);
+        Assert.True(WaitUntil(() => input.Properties.HasKeyboardFocus.ValueOrDefault));
+    }
+
+    [Fact]
+    public void SessionSearch_OpensFocusedAndClosesWithEscape()
+    {
+        var dataRoot = ResolveDataRoot();
+        using (var bootstrap = LaunchApp())
+        {
+            if (bootstrap is null) return;
+        }
+        SeedSearchFixture(dataRoot);
+
+        try
+        {
+            using var launched = LaunchApp(handleFirstRunDialog: false);
+            if (launched is null) return;
+
+            var window = launched.Window;
+            var opener = WaitForDescendant(window, "SessionSearchButton");
+            Assert.NotNull(opener);
+
+            opener.AsButton().Invoke();
+
+            var search = WaitForDescendant(window, "SessionSearchBox");
+            Assert.NotNull(search);
+            Assert.True(WaitUntil(() => search.Properties.HasKeyboardFocus.ValueOrDefault));
+            Assert.NotNull(WaitForDescendant(window, "SessionSearchResults"));
+
+            search.AsTextBox().Text = "Automation Search";
+            Assert.NotNull(WaitForText(window, "Automation Search Session"));
+
+            Keyboard.Press(VirtualKeyShort.ESCAPE);
+            Assert.True(
+                WaitUntil(() => window.FindFirstDescendant(
+                    query => query.ByAutomationId("SessionSearchBox")) is null),
+                "session-search overlay did not close on Escape");
+        }
+        finally
+        {
+            RemoveSearchFixture(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void HelpKeyboardShortcuts_OpensFocusedAndClosesWithEscape()
+    {
+        using var launched = LaunchApp();
+        if (launched is null) return;
+
+        var window = launched.Window;
+        OpenHelpMenuItem(window, "KeyboardShortcutsMenuItem");
+
+        var search = WaitForDescendant(window, "ShortcutsSearchBox");
+        Assert.NotNull(search);
+        Assert.True(WaitUntil(() => search.Properties.HasKeyboardFocus.ValueOrDefault));
+        Assert.NotNull(WaitForDescendant(window, "KeyboardShortcutsCloseButton"));
+
+        Keyboard.Press(VirtualKeyShort.ESCAPE);
+        Assert.True(
+            WaitUntil(() => window.FindFirstDescendant(
+                query => query.ByAutomationId("ShortcutsSearchBox")) is null),
+            "keyboard-shortcuts overlay did not close on Escape");
+    }
+
+    [Fact]
+    public void HelpAbout_OpensFocusedAndOkClosesIt()
+    {
+        using var launched = LaunchApp();
+        if (launched is null) return;
+
+        var window = launched.Window;
+        OpenHelpMenuItem(window, "AboutMenuItem");
+
+        var ok = WaitForDescendant(window, "AboutOkButton");
+        Assert.NotNull(ok);
+        Assert.True(WaitUntil(() => ok.Properties.HasKeyboardFocus.ValueOrDefault));
+        Assert.NotNull(WaitForDescendant(window, "AboutCloseButton"));
+
+        ok.AsButton().Invoke();
+        Assert.True(
+            WaitUntil(() => window.FindFirstDescendant(
+                query => query.ByAutomationId("AboutOkButton")) is null),
+            "About overlay did not close after OK");
+    }
+
     /// <summary>Invokes the sidebar's fixed Settings command and waits for the modal.</summary>
     internal static void OpenSettings(Window window)
     {
@@ -390,12 +524,26 @@ public sealed class ShellSmokeTests
         Assert.NotNull(WaitForDescendant(window, "GeneralNav"));
     }
 
+    private static void OpenHelpMenuItem(Window window, string automationId)
+    {
+        var help = WaitForDescendant(window, "HelpMenuButton");
+        Assert.NotNull(help);
+        help.AsMenuItem().Click();
+
+        var item = WaitForDescendant(window, automationId);
+        Assert.NotNull(item);
+        item.AsMenuItem().Click();
+    }
+
     /// <summary>Polls for a descendant, tolerating the transient UIA failures a mutating visual
     /// tree produces.</summary>
-    private static AutomationElement? WaitForDescendant(Window window, string automationId)
+    private static AutomationElement? WaitForDescendant(
+        Window window,
+        string automationId,
+        TimeSpan? timeout = null)
     {
         AutomationElement? found = null;
-        var deadline = DateTime.UtcNow.AddSeconds(10);
+        var deadline = DateTime.UtcNow.Add(timeout ?? TimeSpan.FromSeconds(10));
         while (DateTime.UtcNow < deadline && found is null)
         {
             try
@@ -426,6 +574,10 @@ public sealed class ShellSmokeTests
             {
                 // The process/window can be between hidden and visible states; retry below.
             }
+            catch (COMException)
+            {
+                // UIA can lose an element while an overlay is opening or closing; retry below.
+            }
 
             Thread.Sleep(100);
         }
@@ -439,24 +591,20 @@ public sealed class ShellSmokeTests
     /// desktop; the documented UI-smoke workflow sets the path after publishing an unpackaged
     /// x64 build.
     /// </summary>
-    internal static LaunchedApp? LaunchApp()
+    internal static LaunchedApp? LaunchApp(bool handleFirstRunDialog = true)
     {
         var executable = Environment.GetEnvironmentVariable(ExecutableEnvironmentVariable);
         if (string.IsNullOrWhiteSpace(executable)) return null;
 
         Assert.True(File.Exists(executable), $"UI test executable not found: {executable}");
+        var dataRoot = ResolveDataRoot();
 
         var existingProcessIds = System.Diagnostics.Process
             .GetProcessesByName("ConnectOnion.WinUIClient")
             .Select(process => process.Id)
             .ToHashSet();
 
-        using var launchedProcess = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(executable)
-        {
-            // Shell activation is required for the unpackaged Windows App SDK bootstrapper.
-            // The launched process inherits the test host's process-level data-root override.
-            UseShellExecute = true,
-        });
+        using var launchedProcess = StartProcess(executable);
         Assert.NotNull(launchedProcess);
 
         // An unpackaged WinUI executable can hand off to the Windows App SDK host, so the
@@ -483,7 +631,137 @@ public sealed class ShellSmokeTests
         var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(20));
         Assert.NotNull(window);
 
-        return new LaunchedApp(windowProcess, app, automation, window);
+        if (handleFirstRunDialog
+            && Interlocked.Exchange(ref _profileLaunchHandled, 1) == 0)
+        {
+            DismissFirstRunRecoveryDialog(window);
+        }
+
+        return new LaunchedApp(windowProcess, app, automation, window, executable);
+    }
+
+    private static string ResolveDataRoot()
+    {
+        var configured = Environment.GetEnvironmentVariable(DataRootEnvironmentVariable);
+        var dataRoot = string.IsNullOrWhiteSpace(configured)
+            ? DefaultDataRoot.Value
+            : Path.GetFullPath(configured);
+        Directory.CreateDirectory(dataRoot);
+        if (string.IsNullOrWhiteSpace(configured))
+            Environment.SetEnvironmentVariable(DataRootEnvironmentVariable, dataRoot);
+        return dataRoot;
+    }
+
+    private static string CreateDefaultDataRoot()
+        => Path.Combine(Path.GetTempPath(), "ConnectOnion.UiTests", Guid.NewGuid().ToString("N"));
+
+    private static void SeedSearchFixture(string dataRoot)
+    {
+        if (Interlocked.Exchange(ref _sqliteProviderConfigured, 1) == 0)
+            SQLitePCL.raw.SetProvider(new SQLitePCL.SQLite3Provider_winsqlite3());
+
+        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = Path.Combine(dataRoot, "connectonion.db"),
+            Mode = SqliteOpenMode.ReadWrite,
+        }.ToString());
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT OR REPLACE INTO agents
+                (id, name, address, direct_url, sort_order)
+            VALUES
+                ('ui-agent', 'Automation Agent', 'uiautomation', NULL, 0);
+
+            INSERT OR REPLACE INTO sessions
+                (id, agent_id, title, remote_session_id, last_processed_event_id,
+                 created_at, updated_at, sort_order, mode, has_custom_title)
+            VALUES
+                ('ui-session', 'ui-agent', 'Automation Search Session', NULL, NULL,
+                 '2026-01-01T00:00:00.0000000Z', '2026-01-01T00:00:00.0000000Z',
+                 0, 'safe', 1);
+            """;
+        command.ExecuteNonQuery();
+    }
+
+    private static void RemoveSearchFixture(string dataRoot)
+    {
+        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = Path.Combine(dataRoot, "connectonion.db"),
+            Mode = SqliteOpenMode.ReadWrite,
+        }.ToString());
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            DELETE FROM sessions WHERE id = 'ui-session';
+            DELETE FROM agents WHERE id = 'ui-agent';
+            """;
+        command.ExecuteNonQuery();
+    }
+
+    private static System.Diagnostics.Process? StartProcess(string executable)
+    {
+        var escapedExecutable = executable.Replace("'", "''", StringComparison.Ordinal);
+        var startInfo = new System.Diagnostics.ProcessStartInfo("powershell.exe")
+        {
+            // The unpackaged Windows App SDK executable needs shell activation. Launch it through
+            // a short-lived PowerShell child: the helper receives an explicit environment block,
+            // and Start-Process carries that block into the shell-activated app. Calling
+            // ShellExecute from the test host directly can route through Explorer and lose the
+            // isolated CONNECTONION_DATA_ROOT value.
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden,
+        };
+        startInfo.ArgumentList.Add("-NoProfile");
+        startInfo.ArgumentList.Add("-NonInteractive");
+        startInfo.ArgumentList.Add("-Command");
+        startInfo.ArgumentList.Add($"Start-Process -FilePath '{escapedExecutable}'");
+        startInfo.Environment[DataRootEnvironmentVariable] = ResolveDataRoot();
+        return System.Diagnostics.Process.Start(startInfo);
+    }
+
+    private static void DismissFirstRunRecoveryDialog(Window window)
+    {
+        var dialog = WaitForDescendant(
+            window, "RecoveryPhraseDialog", TimeSpan.FromSeconds(2));
+        if (dialog is null
+            && WaitForText(window, "Save your recovery phrase", TimeSpan.FromSeconds(6)) is null)
+        {
+            return; // An explicitly supplied profile may already have an identity.
+        }
+
+        AutomationElement? close = null;
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (DateTime.UtcNow < deadline && close is null)
+        {
+            try
+            {
+                close = (dialog ?? window)
+                    .FindAllDescendants(query => query.ByControlType(
+                        FlaUI.Core.Definitions.ControlType.Button))
+                    .FirstOrDefault(element => string.Equals(
+                        element.Properties.Name.ValueOrDefault,
+                        "Close",
+                        StringComparison.Ordinal));
+            }
+            catch (COMException)
+            {
+                // The ContentDialog is still constructing its generated close button.
+            }
+
+            if (close is null) Thread.Sleep(100);
+        }
+
+        Assert.NotNull(close);
+        close.AsButton().Invoke();
+        Assert.True(
+            WaitUntil(() => window.FindFirstDescendant(
+                query => query.ByAutomationId("RecoveryPhraseDialog")) is null),
+            "first-run recovery dialog did not close");
     }
 
     /// <summary>Owns one launched app instance for the duration of a test.</summary>
@@ -491,10 +769,14 @@ public sealed class ShellSmokeTests
         System.Diagnostics.Process process,
         Application app,
         UIA3Automation automation,
-        Window window) : IDisposable
+        Window window,
+        string executable) : IDisposable
     {
         public Window Window { get; } = window;
         public System.Diagnostics.Process Process => process;
+
+        public System.Diagnostics.Process? StartAnotherInstance()
+            => StartProcess(executable);
 
         public void Dispose()
         {

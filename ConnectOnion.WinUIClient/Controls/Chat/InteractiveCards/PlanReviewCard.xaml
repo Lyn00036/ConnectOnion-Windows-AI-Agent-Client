@@ -57,10 +57,10 @@
                                VerticalAlignment="Center" />
                 </StackPanel>
                 <StackPanel x:Name="PlanUtilityActions" Orientation="Horizontal" Spacing="8">
-                    <Button x:Name="ReviewSectionsButton" x:Uid="PlanReviewSections" Content="Review sections…"
+                    <Button x:Name="ReviewSectionsButton" AutomationProperties.AutomationId="ReviewSectionsButton" x:Uid="PlanReviewSections" Content="Review sections…"
                             Click="ReviewSections_Click"
                             AutomationProperties.Name="Open full plan and review each section" />
-                    <Button x:Name="CopyPlanButton" x:Uid="PlanReviewCopy" Content="Copy plan"
+                    <Button x:Name="CopyPlanButton" AutomationProperties.AutomationId="CopyPlanButton" x:Uid="PlanReviewCopy" Content="Copy plan"
                             Click="CopyPlan_Click"
                             AutomationProperties.Name="Copy execution plan" />
                 </StackPanel>
@@ -130,15 +130,15 @@
                             Spacing="8"
                             HorizontalAlignment="Right"
                             Visibility="{x:Bind Message.ShowInteractiveActions, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                    <Button x:Name="PlanRejectButton" x:Uid="PlanReviewReject" Content="Reject"
+                    <Button x:Name="PlanRejectButton" AutomationProperties.AutomationId="PlanRejectButton" x:Uid="PlanReviewReject" Content="Reject"
                             Style="{StaticResource InteractiveCardTertiaryButtonStyle}"
                             IsEnabled="{x:Bind Message.IsInteractiveEditable, Mode=OneWay}"
                             Click="Reject_Click" />
-                    <Button x:Name="PlanChangesButton" x:Uid="PlanReviewRequestChanges" Content="Request changes"
+                    <Button x:Name="PlanChangesButton" AutomationProperties.AutomationId="PlanChangesButton" x:Uid="PlanReviewRequestChanges" Content="Request changes"
                             Style="{StaticResource InteractiveCardButtonStyle}"
                             IsEnabled="{x:Bind Message.IsInteractiveEditable, Mode=OneWay}"
                             Click="RequestChanges_Click" />
-                    <Button x:Name="PlanApproveButton" Style="{StaticResource InteractiveCardPrimaryButtonStyle}"
+                    <Button x:Name="PlanApproveButton" AutomationProperties.AutomationId="PlanApproveButton" Style="{StaticResource InteractiveCardPrimaryButtonStyle}"
                             IsEnabled="{x:Bind Message.IsInteractiveEditable, Mode=OneWay}"
                             Click="Approve_Click">
                         <StackPanel Orientation="Horizontal" Spacing="7">

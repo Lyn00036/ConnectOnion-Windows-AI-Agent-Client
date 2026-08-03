@@ -35,7 +35,7 @@
                                       VerticalAlignment="Center">
                                     <controls:AgentAvatar Size="38"
                                                           CornerRadius="19"
-                                                          FontSize="14"
+                                                          FontSize="{StaticResource ProductBodyFontSize}"
                                                           Initial="{x:Bind Initial}"
                                                           ImagePath="{x:Bind IconPath}" />
                                     <Ellipse Width="9"
@@ -58,7 +58,7 @@
                                                TextTrimming="CharacterEllipsis" />
                                     <TextBlock Text="{x:Bind ConnectionTarget}"
                                                FontFamily="{StaticResource JetBrainsMonoFontFamily}"
-                                               FontSize="12"
+                                               FontSize="{StaticResource ProductCaptionFontSize}"
                                                Foreground="{ThemeResource TextSecondaryBrush}"
                                                TextTrimming="CharacterEllipsis"
                                                ToolTipService.ToolTip="{x:Bind ConnectionTarget}" />

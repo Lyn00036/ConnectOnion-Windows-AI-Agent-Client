@@ -13,7 +13,7 @@ The client connects to agents via **Direct URL** or **relay-based address resolu
 | UI Pattern | MVVM via CommunityToolkit.Mvvm source generators (`[ObservableProperty]`/`[RelayCommand]`); `Common/ObservableObject` bridges the toolkit base |
 | Application Core | `ConnectOnion.WinUIClient.Core` (WinUI-free models, persistence, policies, projections) |
 | Local Storage | SQLite (`Microsoft.Data.Sqlite`) |
-| HTTP | `HttpClient` |
+| HTTP | Named resilient `HttpClient` (`Microsoft.Extensions.Http.Resilience`: retry + per-attempt timeout) |
 | WebSocket | `ClientWebSocket` (via `ConnectOnion.Protocol`) |
 | Serialization | `System.Text.Json` (source-generated) |
 | Icons | `FluentIcons.WinUI` |
@@ -114,6 +114,10 @@ ConnectOnion.WinUIClient/
 │   ├── ThemeService                     Light/dark theme apply, raw Color lookup
 │   ├── UriLauncher / ClipboardService   Mockable OS wrappers
 │   ├── LayoutKeys                       Keyboard-layout translation (P/Invokes MapVirtualKeyW)
+│   ├── StartupStateService               Batched preference/language/placement/shortcut startup load
+│   ├── LanguagePreferenceStore           Persisted en-US / zh-CN selection
+│   ├── TextScaleService                  Applies the OS text-scale factor
+│   ├── WindowPlacementStore              Restored-state position, size, and maximized state
 │   ├── Runtime/                         App-level turn lifecycle (owns sockets and runs)
 │   │   ├── AgentSessionManager          Send → run → project → persist, page-independent
 │   │   ├── AgentTurnExecutor            Drives one turn over a connection
@@ -134,7 +138,8 @@ ConnectOnion.WinUIClient/
 ├── Rendering/                          WinUiMarkdownRenderer (Markdown → WinUI inlines)
 ├── Common/                             Template selector + XAML value converters
 ├── Styles/                             Colors.xaml + Brushes.xaml (single color source of truth)
-├── Strings/en-US/                      .resw resources (localization scaffolded, not finished)
+├── Strings/en-US/                      English .resw resources
+├── Strings/zh-CN/                      Simplified Chinese .resw resources (key-parity gated)
 └── Assets/                             App icons & splash images
 
 ConnectOnion.WinUIClient.Core/          Referenced by the app and by every test project
@@ -145,7 +150,7 @@ ConnectOnion.WinUIClient.Core/          Referenced by the app and by every test 
 │   ├── ConversationRepository           Message/attachment rows, incremental upsert
 │   │   └── ConversationRepository.Mapping.cs  Row↔object SQL plumbing
 │   ├── PreferencesRepository / UsageRepository
-│   ├── IdentityStore                    Ed25519 key pair (private seed DPAPI-protected)
+│   ├── IdentityStore                    Ed25519 identity + DPAPI-protected seed/recovery material
 │   └── AppJsonContext                   System.Text.Json source-gen context
 ├── Models/                             AgentConfig, ChatMessage, ChatAttachment, ToolActivity,
 │                                        SessionSummary, PreferencesSnapshot, KeyChord, …
@@ -174,7 +179,8 @@ User
        ├─ System tray icon (minimize to tray, restore, exit)
        ├─ ShellSidebar (agent list → session list → content)
        ├─ Find overlay (Ctrl+F, driven against whatever page implements IFindHost)
-       ├─ SettingsOverlay (theme, font, shortcuts, local identity)
+       ├─ SettingsOverlay (theme, language, font, shortcuts, usage, local identity)
+       ├─ SessionSearchOverlay (global metadata + transcript search)
        └─ Frame navigation
             ├─ HomePage      Select an agent to start
             ├─ ChatPage      WebSocket-powered chat with streaming events
@@ -202,29 +208,33 @@ ChatPage → ChatViewModel ─send─→ AgentSessionManager (app-level)
 
 ## Local Data
 
-All local data is stored in a single SQLite database:
+Structured local data is stored in one SQLite database. The root depends on deployment:
 
-```
-%AppData%\ConnectOnion\connectonion.db
-```
+| Launch mode | Database path |
+| --- | --- |
+| Unpackaged / portable | `%AppData%\ConnectOnion\connectonion.db` |
+| Packaged / Visual Studio deployed | package `LocalState\ConnectOnion\connectonion.db` |
+| Isolated automation | `%CONNECTONION_DATA_ROOT%\connectonion.db` |
 
 Schema tables:
 
 | Table | Purpose |
 | --- | --- |
 | `agents` | Saved agent connections (name, address, Direct URL, invite code) |
-| `sessions` | Per-agent conversation sessions (id, title, timestamps, approval `mode`) |
+| `sessions` | Per-agent conversation sessions (id, title/custom-title flag, timestamps, approval `mode`) |
 | `messages` | One row per rendered chat bubble, keyed `(conversation_id, id)` |
 | `message_attachments` | Attachment metadata only (kind, name, mime, size, cache path) — never base64 |
 | `executions` | One row per turn (prompt, result, status, duration) |
 | `trace_events` | Raw stream events of a turn, for diagnostics |
 | `preferences` | Theme, sidebar, font size, shortcut overrides |
 | `usage_events` | Token-usage ledger (per `llm_result`); no FK, never cascaded on delete |
-| `identity_keys` | Local Ed25519 key pair (private seed DPAPI-encrypted at rest) |
+| `identity_keys` | Local Ed25519 identity (private seed and optional recovery phrase DPAPI-protected at rest) |
 | `app_meta` | Key-value application metadata |
+| `message_search` | FTS5 trigram index for global user/agent transcript search |
 
-Received `agent_image` attachments are cached under `%AppData%\ConnectOnion\cache\images\`,
-named by the content's SHA-256 — the database holds the path, never the payload.
+Received `agent_image` attachments are cached under `<data root>\cache\images\`, named by the
+content's SHA-256 — the database holds the path, never the payload. Saved agent icons live under
+`<data root>\avatars\`; unsaved picker files live under `temp\avatars\` and are purged at startup.
 
 ## Connecting to an Agent
 
@@ -258,7 +268,9 @@ Agent hosts must expose:
 - **Notifications** — turn-completed / approval-required toasts (Windows + in-app), deduped
 - **Token-usage ledger** — per-model usage panel in Settings, independent of chat/agent deletion
 - **Find in chat** — Ctrl+F overlay with match highlighting
+- **Global chat search** — searches session/agent metadata and indexed transcript content
 - **Light/dark theme** — persisted preference with shell-aware title bar colors
+- **Localization** — English and Simplified Chinese resources with a persisted language selector
 - **Custom title bar** — Mica backdrop, back/forward navigation, sidebar toggle
 - **Responsive sidebar** — width adapts to window size
 - **Message copy** — copy any chat bubble content
@@ -275,9 +287,12 @@ Agent hosts must expose:
 | `tests/ConnectOnion.Protocol.Tests` | xunit tests for the wire protocol |
 | `tests/ConnectOnion.WinUIClient.UnitTests` | Headless xunit tests for this app's WinUI-free surfaces |
 | `tests/ConnectOnion.IntegrationTests` | SQLite schema/repository tests against a real database file |
-| `agent/` | Python agent implementations (email-agent, browser-agent) |
-| `frontend/` | Legacy Electron + React client (reference only) |
+| `tests/ConnectOnion.WinUIClient.UITests` | 12 FlaUI shell smoke tests plus opt-in memory/performance audits |
+| `tests/ConnectOnion.TrimSmoke` | Trim-safe serialization, persistence, and identity restart harness |
 
 ## Repository
 
-Part of the [ConnectOnion Desktop](https://github.com/openonion/connectonion) monorepo. See the [root README](../README.md) for build instructions, CI details, and migration history.
+This is the WinUI application project inside the ConnectOnion Desktop repository. The deleted
+Electron `frontend/` and Python `agent/` example trees are available only through git history.
+See the [root README](../README.md) for build instructions, CI details, releases, and migration
+history.

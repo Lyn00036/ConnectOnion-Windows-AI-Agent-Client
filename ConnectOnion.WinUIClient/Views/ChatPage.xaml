@@ -20,14 +20,14 @@
 
 
             <Style x:Key="InteractiveCollapsedTitleStyle" TargetType="TextBlock">
-                <Setter Property="FontSize" Value="12" />
+                <Setter Property="FontSize" Value="{StaticResource ProductCaptionFontSize}" />
                 <Setter Property="VerticalAlignment" Value="Center" />
                 <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                 <Setter Property="Foreground" Value="{ThemeResource TextSecondaryBrush}" />
             </Style>
 
             <Style x:Key="InteractiveOutcomeStyle" TargetType="TextBlock">
-                <Setter Property="FontSize" Value="11" />
+                <Setter Property="FontSize" Value="{StaticResource ProductMicroFontSize}" />
                 <Setter Property="FontWeight" Value="SemiBold" />
                 <Setter Property="VerticalAlignment" Value="Center" />
                 <Setter Property="TextTrimming" Value="CharacterEllipsis" />
@@ -66,7 +66,7 @@
                                    MaxHeight="280" />
                         </Button>
                         <TextBlock x:Uid="ChatImageLoadFailure" Text="Image could not be loaded."
-                                   FontSize="11"
+                                   FontSize="{StaticResource ProductCaptionFontSize}"
                                    FontStyle="Italic"
                                    Foreground="{ThemeResource TextSecondaryBrush}"
                                    Visibility="{Binding IsFailed, Converter={StaticResource BoolToVis}}" />
@@ -111,11 +111,11 @@
                                                    Foreground="{ThemeResource TextSecondaryBrush}" />
                                     <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
                                         <TextBlock Text="{Binding FileName}"
-                                                   FontSize="12"
+                                                   FontSize="{StaticResource ProductCaptionFontSize}"
                                                    FontWeight="SemiBold"
                                                    TextTrimming="CharacterEllipsis" />
                                         <TextBlock Text="{Binding SizeLabel}"
-                                                   FontSize="10"
+                                                   FontSize="{StaticResource ProductMicroFontSize}"
                                                    Foreground="{ThemeResource TextSecondaryBrush}" />
                                     </StackPanel>
                                 </Grid>
@@ -154,9 +154,9 @@
                      conversation turns (a user message always starts a new turn); intra-turn rows
                      keep the tighter item spacing. -->
                 <StackPanel MaxWidth="{StaticResource ChatColumnWidth}"
-                            Margin="0,24,0,2"
+                            Margin="0,16,0,4"
                             HorizontalAlignment="Stretch"
-                            Spacing="6"
+                            Spacing="{StaticResource Spacing8}"
                             Background="Transparent"
                             PointerEntered="MessageActions_PointerEntered"
                             PointerExited="MessageActions_PointerExited"
@@ -207,7 +207,7 @@
                             </Grid.ColumnDefinitions>
                             <TextBlock VerticalAlignment="Center"
                                        Text="{x:Bind TimeLabel, Mode=OneWay}"
-                                       FontSize="11"
+                                       FontSize="{StaticResource ProductCaptionFontSize}"
                                        Foreground="{ThemeResource TextTertiaryBrush}" />
                             <!-- Only the icon panel is softened at rest. The timestamp stays fully
                                  opaque because it is small text and therefore needs the 4.5:1 text
@@ -312,7 +312,7 @@
                                     <TextBlock x:Uid="ChatEditBranchDescription" Text="Editing creates a new conversation from this point. The original remains in the sidebar."
                                                TextWrapping="Wrap"
                                                VerticalAlignment="Center"
-                                               FontSize="12"
+                                               FontSize="{StaticResource ProductCaptionFontSize}"
                                                Foreground="{ThemeResource TextSecondaryBrush}" />
                                 </StackPanel>
                                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"
@@ -335,7 +335,7 @@
             <DataTemplate x:Key="ChatAgentTemplate" x:DataType="models:ChatMessage">
                 <StackPanel MaxWidth="{StaticResource ChatColumnWidth}"
                             HorizontalAlignment="Stretch"
-                            Spacing="6"
+                            Spacing="{StaticResource Spacing8}"
                             Background="Transparent"
                             PointerEntered="MessageActions_PointerEntered"
                             PointerExited="MessageActions_PointerExited"
@@ -365,7 +365,7 @@
                             </ic:FluentIcon.RenderTransform>
                         </ic:FluentIcon>
                         <TextBlock Text="{x:Bind EventMeta, Mode=OneWay}"
-                                   FontSize="11"
+                                   FontSize="{StaticResource ProductCaptionFontSize}"
                                    VerticalAlignment="Center"
                                    Foreground="{ThemeResource DangerBrush}" />
                     </StackPanel>
@@ -455,7 +455,7 @@
                         </Grid.ColumnDefinitions>
                         <TextBlock VerticalAlignment="Center"
                                    Text="{x:Bind TimeLabel, Mode=OneWay}"
-                                   FontSize="11"
+                                   FontSize="{StaticResource ProductCaptionFontSize}"
                                    Foreground="{ThemeResource TextTertiaryBrush}" />
                         <!-- See the user-message row above: no second opacity multiplier. -->
                         <StackPanel Grid.Column="1"
@@ -543,7 +543,7 @@
                                                         IsActive="{x:Bind IsRunningProgressActivity, Mode=OneWay}"
                                                         VerticalAlignment="Center" />
                             <TextBlock Text="{x:Bind ActivityHeaderTitle, Mode=OneWay}"
-                                       FontSize="14"
+                                       FontSize="{StaticResource ProductBodyFontSize}"
                                        VerticalAlignment="Center"
                                        Foreground="{ThemeResource TextSecondaryBrush}" />
                             <!-- Live seconds, ticked by ChatViewModel while the call is out. It
@@ -551,7 +551,7 @@
                                  away entirely, so there is no "thought for" epitaph to leave
                                  behind — the turn's total time is on the usage line. -->
                             <TextBlock Text="{x:Bind ThinkingElapsedLabel, Mode=OneWay}"
-                                       FontSize="12"
+                                       FontSize="{StaticResource ProductCaptionFontSize}"
                                        VerticalAlignment="Center"
                                        Foreground="{ThemeResource TextTertiaryBrush}"
                                        Visibility="{x:Bind HasThinkingElapsed, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
@@ -574,14 +574,14 @@
                                     Background="{ThemeResource BorderDefaultBrush}" />
                             <TextBlock Grid.Column="1"
                                        Text="{x:Bind ActivityTimelineText, Mode=OneWay}"
-                                       FontSize="13"
+                                       FontSize="{StaticResource ProductBodyFontSize}"
                                        FontStyle="Italic"
                                        Foreground="{ThemeResource TextSecondaryBrush}"
                                        TextWrapping="WrapWholeWords"
                                        IsTextSelectionEnabled="True" />
                         </Grid>
                         <TextBlock Text="{x:Bind ActivityTimelineText, Mode=OneWay}"
-                                   FontSize="13"
+                                   FontSize="{StaticResource ProductBodyFontSize}"
                                    Foreground="{ThemeResource TextSecondaryBrush}"
                                    TextWrapping="WrapWholeWords"
                                    IsTextSelectionEnabled="True"
@@ -610,7 +610,7 @@
                                     </Grid.ColumnDefinitions>
 
                                     <TextBlock Text="{x:Bind ActivityHeaderTitle, Mode=OneWay}"
-                                               FontSize="14"
+                                               FontSize="{StaticResource ProductBodyFontSize}"
                                                Foreground="{ThemeResource TextSecondaryBrush}"
                                                VerticalAlignment="Center" />
 
@@ -620,7 +620,7 @@
                                                 VerticalAlignment="Center">
                                         <TextBlock Text="{x:Bind ThoughtStepsSummary, Mode=OneWay}"
                                                    MaxWidth="560"
-                                                   FontSize="11"
+                                                   FontSize="{StaticResource ProductCaptionFontSize}"
                                                    Foreground="{ThemeResource TextTertiaryBrush}"
                                                    TextTrimming="CharacterEllipsis"
                                                    VerticalAlignment="Center" />
@@ -662,7 +662,7 @@
                                         <DataTemplate x:DataType="x:String">
                                             <TextBlock Text="{x:Bind}"
                                                        Margin="31,2,0,10"
-                                                       FontSize="13"
+                                                       FontSize="{StaticResource ProductBodyFontSize}"
                                                        FontStyle="Italic"
                                                        Foreground="{ThemeResource TextSecondaryBrush}"
                                                        TextWrapping="WrapWholeWords"
@@ -678,7 +678,7 @@
                              ChatTurnProjection.StampThinkingDuration. -->
                         <TextBlock Text="{x:Bind EventMeta, Mode=OneWay}"
                                    Margin="0,3,0,0"
-                                   FontSize="11"
+                                   FontSize="{StaticResource ProductCaptionFontSize}"
                                    Foreground="{ThemeResource TextTertiaryBrush}"
                                    TextWrapping="WrapWholeWords"
                                    Visibility="{x:Bind HasActivityTimelineMeta, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
@@ -686,7 +686,7 @@
                         <TextBlock x:Uid="ChatActivityFailed"
                                    Text="Failed"
                                    Margin="0,3,0,0"
-                                   FontSize="11"
+                                   FontSize="{StaticResource ProductCaptionFontSize}"
                                    FontWeight="SemiBold"
                                    Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource EventStatusToBrush}}"
                                    Visibility="{x:Bind IsActivityFailed, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
@@ -730,12 +730,12 @@
                     </ic:FluentIcon>
                     <StackPanel Grid.Column="1" Spacing="1">
                         <TextBlock Text="{x:Bind TurnUsagePrimary, Mode=OneWay}"
-                                   FontSize="12"
+                                   FontSize="{StaticResource ProductCaptionFontSize}"
                                    Foreground="{ThemeResource TextSecondaryBrush}"
                                    TextTrimming="CharacterEllipsis"
                                    IsTextSelectionEnabled="True" />
                         <TextBlock Text="{x:Bind TurnUsageSecondary, Mode=OneWay}"
-                                   FontSize="11"
+                                   FontSize="{StaticResource ProductCaptionFontSize}"
                                    Foreground="{ThemeResource TextTertiaryBrush}"
                                    TextTrimming="CharacterEllipsis"
                                    IsTextSelectionEnabled="True"
@@ -829,7 +829,7 @@
                 </Grid.ColumnDefinitions>
                 <controls:AgentAvatar Size="32"
                                       CornerRadius="16"
-                                      FontSize="11"
+                                      FontSize="{StaticResource ProductCaptionFontSize}"
                                       VerticalAlignment="Center"
                                       Initial="{x:Bind Vm.SelectedAgentInitial, Mode=OneWay}"
                                       ImagePath="{x:Bind Vm.SelectedAgentIconPath, Mode=OneWay}" />
@@ -837,7 +837,7 @@
                             VerticalAlignment="Center"
                             Spacing="1">
                     <TextBlock Text="{x:Bind Vm.SelectedAgentDisplayName, Mode=OneWay}"
-                               FontSize="14"
+                               FontSize="{StaticResource ProductBodyFontSize}"
                                FontWeight="SemiBold"
                                Foreground="{ThemeResource TextPrimaryBrush}"
                                TextTrimming="CharacterEllipsis" />
@@ -849,16 +849,16 @@
                                  VerticalAlignment="Center"
                                  Fill="{x:Bind Vm.Presence, Mode=OneWay, Converter={StaticResource PresenceToBrush}}" />
                         <TextBlock Text="{x:Bind Vm.PresenceLabel, Mode=OneWay}"
-                                   FontSize="11"
+                                   FontSize="{StaticResource ProductCaptionFontSize}"
                                    VerticalAlignment="Center"
                                    Foreground="{ThemeResource TextSecondaryBrush}" />
                         <TextBlock Text="·"
-                                   FontSize="11"
+                                   FontSize="{StaticResource ProductCaptionFontSize}"
                                    VerticalAlignment="Center"
                                    Foreground="{ThemeResource TextTertiaryBrush}"
                                    Visibility="{x:Bind Vm.PresenceDetail, Mode=OneWay, Converter={StaticResource StringToVis}}" />
                         <TextBlock Text="{x:Bind Vm.PresenceDetail, Mode=OneWay}"
-                                   FontSize="11"
+                                   FontSize="{StaticResource ProductCaptionFontSize}"
                                    VerticalAlignment="Center"
                                    TextTrimming="CharacterEllipsis"
                                    Foreground="{ThemeResource TextTertiaryBrush}"
@@ -870,7 +870,7 @@
                            MaxWidth="180"
                            VerticalAlignment="Center"
                            Text="{x:Bind Vm.SessionUpdatedTimeText, Mode=OneWay}"
-                           FontSize="11"
+                           FontSize="{StaticResource ProductCaptionFontSize}"
                            Foreground="{ThemeResource TextTertiaryBrush}"
                            TextTrimming="CharacterEllipsis"
                            TextWrapping="NoWrap"
@@ -937,13 +937,13 @@
                         Visibility="{x:Bind Vm.ShowRetryBar, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                     <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
                         <TextBlock x:Uid="ChatConnectionFailure" Text="Couldn't reach the agent."
-                                   FontSize="12"
+                                   FontSize="{StaticResource ProductCaptionFontSize}"
                                    VerticalAlignment="Center"
                                    Foreground="{ThemeResource TextSecondaryBrush}" />
                         <Button Command="{x:Bind Vm.RetryCommand}"
                                 Padding="12,5"
                                 CornerRadius="8">
-                            <controls:IconText x:Uid="ChatRetry" Glyph="ArrowClockwise" IconSize="Size16" Spacing="6" FontSize="12" Text="Retry" />
+                            <controls:IconText x:Uid="ChatRetry" Glyph="ArrowClockwise" IconSize="Size16" Spacing="6" FontSize="{StaticResource ProductCaptionFontSize}" Text="Retry" />
                         </Button>
                     </StackPanel>
                 </Border>
@@ -996,7 +996,7 @@
              dropping the ThemeShadow is what keeps it from looking like a raised card. A truly
              transparent fill was tried and is wrong: body text bleeds through the ring and the
              glyph collides with whatever line it happens to land on. -->
-        <Button x:Uid="ChatJumpToLatest" x:Name="ScrollToLatestButton"
+        <Button x:Uid="ChatJumpToLatest" x:Name="ScrollToLatestButton" AutomationProperties.AutomationId="ScrollToLatestButton"
                 Grid.Row="1"
                 Width="40"
                 Height="40"

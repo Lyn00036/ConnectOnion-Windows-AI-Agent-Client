@@ -35,15 +35,15 @@
                         VerticalAlignment="Center"
                         Spacing="2">
                 <TextBlock x:Uid="OfflineTitle" Text="Agent is offline"
-                           FontSize="13"
+                           FontSize="{StaticResource ProductBodyFontSize}"
                            FontWeight="SemiBold" />
                 <TextBlock Text="{x:Bind Detail, Mode=OneWay}"
-                           FontSize="11"
+                           FontSize="{StaticResource ProductCaptionFontSize}"
                            Foreground="{ThemeResource TextSecondaryBrush}"
                            TextTrimming="CharacterEllipsis"
                            Visibility="{x:Bind Detail, Mode=OneWay, Converter={StaticResource StringToVis}}" />
                 <TextBlock Text="{x:Bind StatusMessage, Mode=OneWay}"
-                           FontSize="11"
+                           FontSize="{StaticResource ProductCaptionFontSize}"
                            FontWeight="SemiBold"
                            Foreground="{ThemeResource DangerBrush}"
                            TextWrapping="Wrap"

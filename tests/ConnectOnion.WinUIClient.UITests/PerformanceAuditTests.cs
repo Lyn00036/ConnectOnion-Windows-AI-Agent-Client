@@ -71,7 +71,7 @@ public sealed class PerformanceAuditTests(ITestOutputHelper output)
 
     private void MeasureShellOperations(AuditResult result)
     {
-        using var launched = ShellSmokeTests.LaunchApp();
+        using var launched = ShellSmokeTests.LaunchApp(handleFirstRunDialog: false);
         Assert.NotNull(launched);
         var window = launched.Window;
 
@@ -161,7 +161,7 @@ public sealed class PerformanceAuditTests(ITestOutputHelper output)
 
     private void MeasureConversation(AuditResult result, PerformanceConversation conversation)
     {
-        using var launched = ShellSmokeTests.LaunchApp();
+        using var launched = ShellSmokeTests.LaunchApp(handleFirstRunDialog: false);
         Assert.NotNull(launched);
         var window = launched.Window;
 

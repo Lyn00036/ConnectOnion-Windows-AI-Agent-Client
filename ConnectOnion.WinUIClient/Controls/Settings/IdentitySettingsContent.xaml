@@ -85,7 +85,7 @@
                         </Grid.ColumnDefinitions>
                         <StackPanel Spacing="2">
                             <TextBlock x:Uid="IdentityBalance" Text="Balance" Style="{StaticResource CaptionTextBlockStyle}" />
-                            <TextBlock x:Name="BalanceText" FontSize="20" FontWeight="SemiBold" />
+                            <TextBlock x:Name="BalanceText" FontSize="{StaticResource ProductSectionTitleFontSize}" FontWeight="SemiBold" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" Spacing="2">
                             <TextBlock x:Uid="IdentityPurchased" Text="Purchased" Style="{StaticResource CaptionTextBlockStyle}" />
@@ -111,7 +111,7 @@
                                        FontFamily="{StaticResource JetBrainsMonoFontFamily}"
                                        AutomationProperties.Name="Masked OpenOnion API key" />
                         </StackPanel>
-                        <Button x:Uid="IdentityReveal" x:Name="RevealApiKeyButton"
+                        <Button x:Uid="IdentityReveal" x:Name="RevealApiKeyButton" AutomationProperties.AutomationId="RevealApiKeyButton"
                                 Grid.Column="1"
                                 Content="Reveal"
                                 Click="RevealApiKey_Click"

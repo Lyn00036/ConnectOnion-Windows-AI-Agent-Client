@@ -25,14 +25,26 @@ public sealed partial class AutomationContractTests
         "KeyboardShortcutsMenuItem",
         "SidebarResizeHandle",
         "SettingsOverlay",
+        "SettingsSearchBox",
+        "SettingsCategoryPicker",
+        "SettingsCloseButton",
         "AgentsNav",
         "SettingsAgentList",
         "SettingsAddAgentButton",
         "AboutOverlay",
         "KeyboardShortcutsOverlay",
+        "KeyboardShortcutsCloseButton",
         "AboutOkButton",
+        "AboutCloseButton",
         "ShortcutsSearchBox",
         "ApprovalModeButton",
+        "SessionSearchButton",
+        "SessionSearchOverlay",
+        "SessionSearchBox",
+        "SessionSearchResults",
+        "EmptyStateAddAgentButton",
+        "EmptyStateDocsLink",
+        "RecoveryPhraseDialog",
     };
 
     [Fact]
@@ -56,6 +68,31 @@ public sealed partial class AutomationContractTests
         Assert.Empty(duplicates);
     }
 
+    [Fact]
+    public void Xaml_NamedInteractiveControls_HaveAutomationIds()
+    {
+        var root = FindRepositoryRoot();
+        var failures = new List<string>();
+
+        foreach (var path in Directory.GetFiles(
+                     Path.Combine(root, "ConnectOnion.WinUIClient"), "*.xaml", SearchOption.AllDirectories)
+                 .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)
+                                && !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)))
+        {
+            var relativePath = Path.GetRelativePath(root, path);
+            var text = File.ReadAllText(path);
+            foreach (Match element in NamedInteractiveElementRegex().Matches(text))
+            {
+                var name = element.Groups[2].Value;
+                if (!AutomationIdRegex().IsMatch(element.Value))
+                    failures.Add($"{relativePath}: {element.Groups[1].Value} x:Name=\"{name}\"");
+            }
+        }
+
+        Assert.True(failures.Count == 0,
+            "Named interactive XAML elements must expose a stable AutomationId:\n" + string.Join("\n", failures));
+    }
+
     private static string FindRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
@@ -70,4 +107,7 @@ public sealed partial class AutomationContractTests
 
     [GeneratedRegex("(?:AutomationProperties\\.AutomationId=\"|Property=\"AutomationProperties\\.AutomationId\" Value=\")([^\"]+)\"")]
     private static partial Regex AutomationIdRegex();
+
+    [GeneratedRegex("<(Button|ToggleButton|CheckBox|RadioButton|TextBox|PasswordBox|ComboBox|Slider|ListView|GridView|NavigationViewItem|MenuFlyoutItem|HyperlinkButton|AutoSuggestBox|AppBarButton|ToggleSwitch)\\b(?!\\.)[^>]*?x:Name=\"([^\"]+)\"[^>]*?/?>", RegexOptions.Singleline)]
+    private static partial Regex NamedInteractiveElementRegex();
 }

@@ -38,7 +38,7 @@ questions. The runtime still does.
 | No unexplained app-owned `IL2026`/`IL3050` in the experimental trimmed publish | **Met** — 0 app-owned sites (was 16) |
 | Protocol and interactive serialization paths have direct unit or integration coverage | **Met** — see "Coverage" below |
 | Tool Activity and every interactive card survive persist/restart in the trimmed publish | **Partially met** — proved for `Core` + `Protocol` in a trimmed binary across a real process restart; **not** proved in the trimmed *WinUI app* binary |
-| Fake Agent and real-window smoke tests pass against the trimmed executable | **Not met** — needs a desktop session; `CONNECTONION_UI_TEST_EXE` can already be pointed at the trimmed publish |
+| Fake Agent and real-window smoke tests pass against the trimmed executable | **Not met** — the weekly FlaUI job exercises the untrimmed production-shaped publish only; `CONNECTONION_UI_TEST_EXE` can be pointed at an experimental trimmed publish for this criterion |
 | Signed MSIX functional matrix passes with trimming enabled experimentally | **Not met** — the current release pipeline publishes only the self-contained portable ZIP (`docs/RELEASE.md`); no signed package has been produced or installed, so there is nothing to run the matrix against |
 | No key operation regresses >10% against the same-machine untrimmed baseline | **Not met** — `scripts/Measure-Performance.ps1 -Exe <trimmed>` is the mechanism; no run yet |
 | Package-size savings and compatibility risks documented | **Met** — this document |

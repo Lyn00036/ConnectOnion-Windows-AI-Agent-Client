@@ -47,6 +47,7 @@
                                TextTrimming="CharacterEllipsis"
                                Foreground="{ThemeResource TextPrimaryBrush}" VerticalAlignment="Center" />
                     <Button x:Uid="AboutClose" Grid.Column="2" TabIndex="1" Style="{StaticResource AboutCloseButtonStyle}" Click="CloseButton_Click"
+                            AutomationProperties.AutomationId="AboutCloseButton"
                             AutomationProperties.Name="Close About ConnectOnion" ToolTipService.ToolTip="Close (Esc)">
                         <ic:FluentIcon Icon="Dismiss" IconVariant="Regular" IconSize="Size20"
                                        Foreground="{ThemeResource TextSecondaryBrush}" />
@@ -63,7 +64,7 @@
                                Margin="0,16,0,10" HorizontalAlignment="Center"
                                AutomationProperties.Name="ConnectOnion logo" />
 
-                        <TextBlock Text="ConnectOnion" FontSize="21" FontWeight="SemiBold"
+                        <TextBlock Text="ConnectOnion" FontSize="{StaticResource ProductSectionTitleFontSize}" FontWeight="SemiBold"
                                    HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"
                                    Foreground="{ThemeResource TextPrimaryBrush}" />
 

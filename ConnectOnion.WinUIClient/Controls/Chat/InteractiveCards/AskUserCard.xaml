@@ -213,11 +213,11 @@
                             Orientation="Horizontal"
                             HorizontalAlignment="Right"
                             Spacing="8">
-                    <Button x:Name="AskSkip" x:Uid="AskUserSkip" Content="Skip" Style="{StaticResource InteractiveCardTertiaryButtonStyle}"
+                    <Button x:Name="AskSkip" AutomationProperties.AutomationId="AskSkip" x:Uid="AskUserSkip" Content="Skip" Style="{StaticResource InteractiveCardTertiaryButtonStyle}"
                             Visibility="{x:Bind Message.ShowAskUserSkipAction, Mode=OneWay, Converter={StaticResource BoolToVis}}"
                             IsEnabled="{x:Bind Message.IsInteractiveEditable, Mode=OneWay}"
                             Click="Skip_Click" AutomationProperties.Name="Skip this question" />
-                    <Button x:Name="AskSubmit" x:Uid="AskUserSubmit" Style="{StaticResource InteractiveCardPrimaryButtonStyle}"
+                    <Button x:Name="AskSubmit" AutomationProperties.AutomationId="AskSubmit" x:Uid="AskUserSubmit" Style="{StaticResource InteractiveCardPrimaryButtonStyle}"
                             Visibility="{x:Bind Message.ShowInteractiveActions, Mode=OneWay, Converter={StaticResource BoolToVis}}"
                             IsEnabled="{x:Bind Message.CanSubmitAskUser, Mode=OneWay}"
                             Click="Submit_Click" AutomationProperties.Name="Submit answer">

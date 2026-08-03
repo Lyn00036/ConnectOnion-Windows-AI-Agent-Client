@@ -123,7 +123,7 @@ public sealed class MemoryLeakTests(ITestOutputHelper output)
 
     private void RunScenarioInFreshProcess(string scenario, int cycles, int warmupCycles, int settleMs)
     {
-        using var launched = ShellSmokeTests.LaunchApp();
+        using var launched = ShellSmokeTests.LaunchApp(handleFirstRunDialog: false);
         Assert.NotNull(launched);
         var window = launched.Window;
 

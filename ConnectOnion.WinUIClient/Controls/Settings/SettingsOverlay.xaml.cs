@@ -12,12 +12,15 @@ public sealed partial class SettingsOverlay : UserControl
 {
     private FrameworkElement? _focusReturnTarget;
     private string _selectedCategory = "General";
+    private bool _syncingCategorySelection;
     private bool _syncingSearch;
+    private bool _initialFocusPending;
     public event EventHandler? CloseRequested;
 
     public SettingsOverlay()
     {
         InitializeComponent();
+        Loaded += SettingsOverlay_Loaded;
         SizeChanged += (_, e) => UpdateModalSize(e.NewSize.Width, e.NewSize.Height);
     }
 
@@ -34,10 +37,8 @@ public sealed partial class SettingsOverlay : UserControl
     public void Show(FrameworkElement? focusReturnTarget)
     {
         _focusReturnTarget = focusReturnTarget;
-        GeneralNav.IsChecked = true;
         SearchBox.Text = string.Empty;
         CompactSearchBox.Text = string.Empty;
-        CompactCategoryPicker.SelectedIndex = 0;
 
         // Go through SelectCategory rather than setting the title by hand: it is what resets the
         // pane visibility too. Setting only the title left the previously shown standalone pane
@@ -47,13 +48,7 @@ public sealed partial class SettingsOverlay : UserControl
         Visibility = Visibility.Visible;
         IsHitTestVisible = true;
         UpdateModalSize(ActualWidth, ActualHeight);
-        DispatcherQueue.TryEnqueue(() =>
-        {
-            var focusTarget = ActualWidth < 640
-                ? (Control)CompactCategoryPicker
-                : SearchBox;
-            focusTarget.Focus(FocusState.Programmatic);
-        });
+        QueueInitialFocus();
     }
 
     public void Hide()
@@ -74,6 +69,60 @@ public sealed partial class SettingsOverlay : UserControl
         var safeMargin = width >= 860 && height >= 640 ? 64d : width >= 640 ? 48d : 16d;
         ModalContainer.Width = Math.Max(0, Math.Min(1100, width - safeMargin));
         ModalContainer.Height = Math.Max(0, Math.Min(760, height - safeMargin));
+    }
+
+    private void SettingsOverlay_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (_initialFocusPending)
+        {
+            QueueInitialFocus();
+        }
+    }
+
+    private void QueueInitialFocus()
+    {
+        _initialFocusPending = true;
+        if (!IsLoaded)
+        {
+            return;
+        }
+
+        // Showing the lazily-created overlay and resolving its adaptive visual state happen in
+        // separate layout passes. Focus only after those passes, and select the target from the
+        // resolved state rather than from the previous frame's ActualWidth.
+        DispatcherQueue.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            () =>
+            {
+                if (!IsOpen)
+                {
+                    _initialFocusPending = false;
+                    return;
+                }
+
+                var focusTarget = CompactNavigation.Visibility == Visibility.Visible
+                    ? (Control)CompactCategoryPicker
+                    : SearchBox;
+                _initialFocusPending = !focusTarget.Focus(FocusState.Programmatic);
+
+                if (_initialFocusPending)
+                {
+                    DispatcherQueue.TryEnqueue(
+                        Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+                        () =>
+                        {
+                            if (IsOpen)
+                            {
+                                var retryTarget = CompactNavigation.Visibility == Visibility.Visible
+                                    ? (Control)CompactCategoryPicker
+                                    : SearchBox;
+                                retryTarget.Focus(FocusState.Programmatic);
+                            }
+
+                            _initialFocusPending = false;
+                        });
+                }
+            });
     }
 
     private void RequestClose() => CloseRequested?.Invoke(this, EventArgs.Empty);
@@ -106,6 +155,7 @@ public sealed partial class SettingsOverlay : UserControl
             ClearSearch();
         }
         _selectedCategory = category;
+        SyncCategorySelection(category);
         CategoryTitle.Text = LocalizedCategoryName(category);
 
         var isIdentity = category == "Identity";
@@ -182,8 +232,41 @@ public sealed partial class SettingsOverlay : UserControl
 
     private void CompactCategoryPicker_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        if (_syncingCategorySelection) return;
+
         if (CompactCategoryPicker.SelectedItem is ComboBoxItem { Tag: string category })
             SelectCategory(category);
+    }
+
+    private void SyncCategorySelection(string category)
+    {
+        _syncingCategorySelection = true;
+        try
+        {
+            GeneralNav.IsChecked = category == "General";
+            AgentsNav.IsChecked = category == "Agents";
+            NotificationsNav.IsChecked = category == "Notifications";
+            KeyboardNav.IsChecked = category == "Keyboard";
+            IdentityNav.IsChecked = category == "Identity";
+            UsageNav.IsChecked = category == "Usage";
+
+            var compactIndex = category switch
+            {
+                "Agents" => 1,
+                "Notifications" => 2,
+                "Keyboard" => 3,
+                "Identity" => 4,
+                "Usage" => 5,
+                _ => 0,
+            };
+
+            if (CompactCategoryPicker.SelectedIndex != compactIndex)
+                CompactCategoryPicker.SelectedIndex = compactIndex;
+        }
+        finally
+        {
+            _syncingCategorySelection = false;
+        }
     }
 
     private static string LocalizedCategoryName(string category) => category switch

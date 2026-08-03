@@ -20,7 +20,7 @@
             <Setter Property="CornerRadius" Value="6" />
             <Setter Property="Padding" Value="8,3" />
             <Setter Property="MinHeight" Value="40" />
-            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontSize" Value="{StaticResource ProductMicroFontSize}" />
         </Style>
     </UserControl.Resources>
 
@@ -64,12 +64,10 @@
              transcript, sharing the same design tokens (Compact Tool Card == Tool Activity, minus
              the aggregate header, which stays gated on ShowCardChrome below). Unconditional now:
              the single-step case used to drop the chrome and sit flush on the transcript, but a
-             lone call floating on the page was exactly the "散落的普通文字" problem. -->
-        <!-- Vertical padding compensates for the step row's own asymmetric margin (top 2, bottom 10,
-             which spaces steps apart in a list). Multi-step keeps 8/8 — its header and completion
-             marker balance the top and bottom. The single-step compact card has only that one row,
-             so its bottom margin would otherwise leave ~6px more space below the row than above it,
-             sitting the content high; 10/4 cancels the difference so the lone tool row is centred. -->
+             lone call floating on the page was exactly the "loose plain text" problem. -->
+        <!-- Vertical padding compensates for the step row's own asymmetric margin. Multi-step
+             keeps 8/8 around its header and completion marker; the compact single-step variant
+             removes its own bottom inset because the row already contributes the final 8px. -->
         <!-- An outline card, not a filled one. The fill used to be SurfaceSecondaryBrush — a solid
              light-grey slab that sat heavier on the transcript than the agent's own reply below it
              (the large grey slab this pass set out to remove). Sitting the background on the chat
@@ -81,7 +79,7 @@
                 Background="Transparent"
                 BorderBrush="{ThemeResource BorderDefaultBrush}"
                 BorderThickness="1"
-                Padding="{x:Bind Activity.ShowCardChrome, Mode=OneWay, Converter={StaticResource BoolToThickness}, ConverterParameter='10,6,10,6|8,4,8,2'}">
+                Padding="{x:Bind Activity.ShowCardChrome, Mode=OneWay, Converter={StaticResource BoolToThickness}, ConverterParameter='12,8,12,8|12,6,12,0'}">
         <!-- No Spacing on this panel: StackPanel reserves it between child *slots*, including
              collapsed ones, so a folded card paid 5px for the hidden timeline and another 5px
              for the hidden error line — a blank strip under the header with nothing in it. The
@@ -251,8 +249,8 @@
                         <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="models:ToolStepViewModel">
                             <Grid x:Name="StepItemRoot"
-                                  Margin="0,1,0,4"
-                                  ColumnSpacing="10"
+                                  Margin="0,2,0,8"
+                                  ColumnSpacing="12"
                                   PointerEntered="StepItem_PointerEntered"
                                   PointerExited="StepItem_PointerExited">
                                 <Grid.ColumnDefinitions>
@@ -297,7 +295,7 @@
                                             Spacing="4">
                                     <!-- Step header -->
                                     <Button MinHeight="0"
-                                            Padding="0,1,0,3"
+                                            Padding="0,2,0,4"
                                             Background="Transparent"
                                             BorderThickness="0"
                                             CornerRadius="4"
@@ -319,7 +317,7 @@
                                             <StackPanel Spacing="1">
                                                 <TextBlock x:Name="StepNameText"
                                                            Text="{x:Bind DisplayLabel, Mode=OneWay}"
-                                                           FontSize="13"
+                                                           FontSize="{StaticResource ProductBodyFontSize}"
                                                            FontWeight="SemiBold"
                                                            Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource ToolStatusToBrush}, ConverterParameter=danger-only}"
                                                            TextTrimming="CharacterEllipsis" />
@@ -346,11 +344,11 @@
                                                             Spacing="5"
                                                             Visibility="{x:Bind ShowInlineInvocation, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                                                     <TextBlock Text="{x:Bind InvocationPrefix, Mode=OneWay}"
-                                                               FontSize="12"
+                                                               FontSize="{StaticResource ProductCodeFontSize}"
                                                                FontFamily="{StaticResource JetBrainsMonoFontFamily}"
                                                                Foreground="{ThemeResource TextTertiaryBrush}" />
                                                     <TextBlock Text="{x:Bind InvocationText, Mode=OneWay}"
-                                                               FontSize="12"
+                                                               FontSize="{StaticResource ProductCodeFontSize}"
                                                                FontFamily="{StaticResource JetBrainsMonoFontFamily}"
                                                                Foreground="{ThemeResource TextSecondaryBrush}"
                                                                TextTrimming="CharacterEllipsis"
@@ -366,7 +364,7 @@
                                             <TextBlock x:Name="StepDurationText"
                                                        Grid.Column="1"
                                                        Text="{x:Bind DurationLabel, Mode=OneWay}"
-                                                       FontSize="11"
+                                                       FontSize="{StaticResource ProductMicroFontSize}"
                                                        Opacity="0.5"
                                                        Foreground="{ThemeResource TextTertiaryBrush}"
                                                        VerticalAlignment="Top"
@@ -411,7 +409,7 @@
                                                     <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
                                                 <TextBlock Text="{x:Bind InvocationLabel, Mode=OneWay, Converter={StaticResource ToolActivityText}}"
-                                                           FontSize="12"
+                                                           FontSize="{StaticResource ProductCaptionFontSize}"
                                                            FontWeight="SemiBold"
                                                            VerticalAlignment="Center"
                                                            Foreground="{ThemeResource TextSecondaryBrush}" />
@@ -444,7 +442,7 @@
                                                          whitespace between them and there is no
                                                          Spacing on inlines to put it back. -->
                                                     <TextBlock Text="{x:Bind InvocationDisplayText, Mode=OneWay}"
-                                                               FontSize="12"
+                                                               FontSize="{StaticResource ProductCodeFontSize}"
                                                                FontFamily="{StaticResource JetBrainsMonoFontFamily}"
                                                                IsTextSelectionEnabled="True"
                                                                TextWrapping="Wrap" />
@@ -453,7 +451,7 @@
                                                          prompt. Held one step back so it never
                                                          competes with the value above it. -->
                                                     <TextBlock Text="{x:Bind InvocationSecondary, Mode=OneWay}"
-                                                               FontSize="12"
+                                                               FontSize="{StaticResource ProductCodeFontSize}"
                                                                FontFamily="{StaticResource JetBrainsMonoFontFamily}"
                                                                Foreground="{ThemeResource TextTertiaryBrush}"
                                                                IsTextSelectionEnabled="True"
@@ -472,7 +470,7 @@
                                             </Grid.ColumnDefinitions>
                                             <TextBlock Grid.Column="0"
                                                        Text="{x:Bind DetailLabel, Mode=OneWay, Converter={StaticResource ToolActivityText}}"
-                                                       FontSize="12"
+                                                       FontSize="{StaticResource ProductCaptionFontSize}"
                                                        FontWeight="SemiBold"
                                                        VerticalAlignment="Center"
                                                        Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource ToolStatusToBrush}}" />
@@ -631,7 +629,7 @@
                                 Visibility="{x:Bind Activity.Approval.HasApprovalCommand, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                             <StackPanel Spacing="6">
                                 <TextBlock Text="{x:Bind Activity.Approval.ApprovalCommandText, Mode=OneWay}"
-                                           FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="12" TextWrapping="Wrap"
+                                           FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="{StaticResource ProductCodeFontSize}" TextWrapping="Wrap"
                                            TextTrimming="Clip"
                                            MaxLines="{x:Bind Activity.Approval.ApprovalCommandMaxLines, Mode=OneWay}"
                                            IsTextSelectionEnabled="True"
@@ -665,7 +663,7 @@
                                                IconVariant="Regular" IconSize="Size16"
                                                Foreground="{ThemeResource TextSecondaryBrush}" />
                                 <TextBlock Text="{x:Bind Activity.Approval.ApprovalTargetText, Mode=OneWay}"
-                                           FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="12"
+                                           FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="{StaticResource ProductCodeFontSize}"
                                            TextTrimming="CharacterEllipsis" IsTextSelectionEnabled="True" />
                             </StackPanel>
                         </Border>
@@ -683,13 +681,13 @@
                                                AutomationProperties.Name="Risk warning" />
                                 <TextBlock Grid.Column="1"
                                            Text="{x:Bind Activity.Approval.ApprovalRiskText, Mode=OneWay}"
-                                           FontSize="12" Foreground="{ThemeResource TextPrimaryBrush}"
+                                           FontSize="{StaticResource ProductCaptionFontSize}" Foreground="{ThemeResource TextPrimaryBrush}"
                                            TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
                             </Grid>
                         </Border>
 
                         <TextBlock Text="{x:Bind Activity.Approval.ApprovalBatchSummary, Mode=OneWay}"
-                                   FontSize="12" Foreground="{ThemeResource AttentionBrush}"
+                                   FontSize="{StaticResource ProductCaptionFontSize}" Foreground="{ThemeResource AttentionBrush}"
                                    TextWrapping="Wrap"
                                    Visibility="{x:Bind Activity.Approval.HasApprovalBatch, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
 
@@ -723,7 +721,7 @@
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <ProgressRing Width="16" Height="16" IsActive="True" />
                             <TextBlock Text="{x:Bind Activity.Approval.ApprovalSubmittingVerb, Mode=OneWay}"
-                                       FontSize="13" VerticalAlignment="Center"
+                                       FontSize="{StaticResource ProductBodyFontSize}" VerticalAlignment="Center"
                                        AutomationProperties.LiveSetting="Polite" />
                         </StackPanel>
                     </Button>
@@ -741,7 +739,7 @@
                                            Foreground="{ThemeResource DangerBrush}" />
                             <TextBlock Grid.Column="1"
                                        Text="{x:Bind Activity.Approval.ApprovalErrorText, Mode=OneWay}"
-                                       FontSize="12" TextWrapping="Wrap"
+                                       FontSize="{StaticResource ProductCaptionFontSize}" TextWrapping="Wrap"
                                        Foreground="{ThemeResource TextPrimaryBrush}"
                                        AutomationProperties.LiveSetting="Assertive" />
                         <Button x:Uid="ToolRetry" Grid.Column="2" Content="Retry" MinHeight="34"
@@ -755,11 +753,11 @@
                            Visibility="{x:Bind Activity.Approval.IsApprovalWaiting, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                         <StackPanel x:Name="ApprovalAuxActions" Orientation="Horizontal" Spacing="4"
                                      VerticalAlignment="Center">
-                            <Button x:Name="ExplainWhyButton" x:Uid="ToolExplainWhy" Content="Explain why" Style="{StaticResource LogToolbarButtonStyle}"
+                            <Button x:Name="ExplainWhyButton" AutomationProperties.AutomationId="ExplainWhyButton" x:Uid="ToolExplainWhy" Content="Explain why" Style="{StaticResource LogToolbarButtonStyle}"
                                     MinHeight="40"
                                     Command="{x:Bind Activity.Approval.ExplainCommand, Mode=OneWay}"
                                     AutomationProperties.Name="Ask the agent to explain why this operation is required" />
-                            <Button x:Name="StopTaskButton" x:Uid="ToolStopTask" Content="Stop entire task" Style="{StaticResource LogToolbarButtonStyle}"
+                            <Button x:Name="StopTaskButton" AutomationProperties.AutomationId="StopTaskButton" x:Uid="ToolStopTask" Content="Stop entire task" Style="{StaticResource LogToolbarButtonStyle}"
                                     MinHeight="40" Foreground="{ThemeResource DangerBrush}"
                                     Command="{x:Bind Activity.Approval.StopCommand, Mode=OneWay}"
                                     AutomationProperties.Name="{x:Bind Activity.Approval.ApprovalStopName, Mode=OneWay}"
@@ -768,11 +766,11 @@
 
                         <StackPanel x:Name="ApprovalDecisionActions" Orientation="Horizontal" Spacing="8"
                                      HorizontalAlignment="Right">
-                            <Button x:Name="DeclineButton" x:Uid="ToolDecline" Content="Decline" MinHeight="40" Padding="14,0"
+                            <Button x:Name="DeclineButton" AutomationProperties.AutomationId="DeclineButton" x:Uid="ToolDecline" Content="Decline" MinHeight="40" Padding="14,0"
                                     Command="{x:Bind Activity.Approval.RejectCommand, Mode=OneWay}"
                                     AutomationProperties.Name="Decline this command"
                                     ToolTipService.ToolTip="Decline only this command; the agent may continue." />
-                            <Button x:Name="AllowSessionButton" x:Uid="ToolActivityAllowSession" MinHeight="40" Padding="12,0"
+                            <Button x:Name="AllowSessionButton" AutomationProperties.AutomationId="AllowSessionButton" x:Uid="ToolActivityAllowSession" MinHeight="40" Padding="12,0"
                                     Command="{x:Bind Activity.Approval.TrustSessionCommand, Mode=OneWay}"
                                     AutomationProperties.Name="{x:Bind Activity.Approval.ApprovalTrustName, Mode=OneWay}"
                                     ToolTipService.ToolTip="Allow this tool for the current session only.">
@@ -782,7 +780,7 @@
                                     <TextBlock x:Uid="ToolAllowSession" Text="Allow for session" />
                                 </StackPanel>
                             </Button>
-                            <Button x:Name="AllowOnceButton" MinHeight="40" Padding="14,0"
+                            <Button x:Name="AllowOnceButton" AutomationProperties.AutomationId="AllowOnceButton" MinHeight="40" Padding="14,0"
                                     Style="{StaticResource AccentButtonStyle}"
                                     Command="{x:Bind Activity.Approval.AllowOnceCommand, Mode=OneWay}"
                                     AutomationProperties.Name="{x:Bind Activity.Approval.ApprovalAllowOnceName, Mode=OneWay}">
@@ -807,7 +805,7 @@
                                            Foreground="{ThemeResource DangerBrush}"
                                            Visibility="{x:Bind Activity.Approval.IsApprovalStoppedResult, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                             <TextBlock Text="{x:Bind Activity.Approval.ApprovalResolvedText, Mode=OneWay}"
-                                       FontSize="13" FontWeight="SemiBold"
+                                       FontSize="{StaticResource ProductBodyFontSize}" FontWeight="SemiBold"
                                        Foreground="{ThemeResource TextPrimaryBrush}" />
                         </StackPanel>
                     </StackPanel>

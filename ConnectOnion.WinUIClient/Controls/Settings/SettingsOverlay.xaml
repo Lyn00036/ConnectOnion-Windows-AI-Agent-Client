@@ -102,6 +102,7 @@
                 <Grid Grid.Column="0" MinWidth="0" Background="{ThemeResource SettingsNavigationBrush}" Padding="14,18">
                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
                 <TextBox x:Uid="SettingsSearch" x:Name="SearchBox" PlaceholderText="Search settings" TextChanged="SearchBox_TextChanged"
+                             AutomationProperties.AutomationId="SettingsSearchBox"
                              AutomationProperties.Name="Search settings" />
                     <ScrollViewer Grid.Row="1" Margin="0,14,0,0"
                                   HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled"
@@ -119,20 +120,20 @@
                                 AutomationProperties.Name="Agent settings">
                         <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="Bot"/><TextBlock x:Uid="SettingsCategoryAgents" x:Name="AgentsNavLabel" Text="Agents"/></StackPanel>
                             </RadioButton>
-                            <RadioButton x:Uid="SettingsNavNotifications" GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
+                            <RadioButton x:Uid="SettingsNavNotifications" x:Name="NotificationsNav" GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
                                 Click="NotificationsNav_Click" AutomationProperties.Name="Notification settings">
                         <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="Alert"/><TextBlock x:Uid="SettingsCategoryNotifications" x:Name="NotificationsNavLabel" Text="Notifications"/></StackPanel>
                             </RadioButton>
-                            <RadioButton x:Uid="SettingsNavKeyboard" GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
+                            <RadioButton x:Uid="SettingsNavKeyboard" x:Name="KeyboardNav" GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
                                 Click="KeyboardNav_Click" AutomationProperties.Name="Keyboard shortcuts settings">
                         <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="Keyboard"/><TextBlock x:Uid="SettingsCategoryKeyboard" x:Name="KeyboardNavLabel" Text="Keyboard"/></StackPanel>
                             </RadioButton>
-                            <RadioButton x:Uid="SettingsNavIdentity" GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
+                            <RadioButton x:Uid="SettingsNavIdentity" x:Name="IdentityNav" GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
                                 Click="IdentityNav_Click" AutomationProperties.AutomationId="IdentityNav"
                                 AutomationProperties.Name="Identity settings">
                         <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="Key"/><TextBlock x:Uid="SettingsCategoryIdentity" x:Name="IdentityNavLabel" Text="Identity"/></StackPanel>
                             </RadioButton>
-                            <RadioButton x:Uid="SettingsNavUsage" GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
+                            <RadioButton x:Uid="SettingsNavUsage" x:Name="UsageNav" GroupName="SettingsCategory" Style="{StaticResource SettingsNavButtonStyle}"
                                 Click="UsageNav_Click" AutomationProperties.AutomationId="UsageNav"
                                 AutomationProperties.Name="Token usage">
                         <StackPanel Orientation="Horizontal" Spacing="10"><ic:FluentIcon Style="{StaticResource SettingsNavIconStyle}" Icon="DataUsage"/><TextBlock x:Uid="SettingsCategoryUsage" x:Name="UsageNavLabel" Text="Usage"/></StackPanel>
@@ -147,7 +148,7 @@
                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
                     <Grid x:Name="ContentHeader"
                           MinWidth="0"
-                          Padding="28,20,20,14">
+                          Padding="{StaticResource SettingsHeaderPadding}">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                         <TextBlock x:Name="CategoryTitle" AutomationProperties.HeadingLevel="Level1" x:Uid="SettingsCategoryGeneralHeading" Text="General" Style="{StaticResource TitleTextBlockStyle}" VerticalAlignment="Center" />
                         <StackPanel x:Name="CompactNavigation"
@@ -158,6 +159,7 @@
                             <ComboBox x:Uid="SettingsCategoryPicker" x:Name="CompactCategoryPicker"
                                       HorizontalAlignment="Stretch"
                                       SelectionChanged="CompactCategoryPicker_SelectionChanged"
+                                      AutomationProperties.AutomationId="SettingsCategoryPicker"
                                       AutomationProperties.Name="Settings category">
                                 <ComboBoxItem x:Uid="SettingsCompactCategoryGeneral" Content="General" Tag="General" />
                                 <ComboBoxItem x:Uid="SettingsCompactCategoryAgents" Content="Agents" Tag="Agents" />
@@ -167,12 +169,13 @@
                                 <ComboBoxItem x:Uid="SettingsCompactCategoryUsage" Content="Usage" Tag="Usage" />
                             </ComboBox>
                             <TextBox x:Uid="SettingsCompactSearch"
-                                     x:Name="CompactSearchBox"
+                                     x:Name="CompactSearchBox" AutomationProperties.AutomationId="CompactSearchBox"
                                      PlaceholderText="Search settings"
                                      TextChanged="CompactSearchBox_TextChanged"
                                      AutomationProperties.Name="Search settings" />
                         </StackPanel>
                         <Button x:Uid="SettingsClose" Grid.Column="1" Style="{StaticResource SettingsCloseButtonStyle}" Click="CloseButton_Click"
+                                AutomationProperties.AutomationId="SettingsCloseButton"
                                 AutomationProperties.Name="Close settings" ToolTipService.ToolTip="Close settings (Esc)">
                             <ic:FluentIcon Icon="Dismiss" IconVariant="Regular" IconSize="Size20" />
                         </Button>
@@ -183,25 +186,25 @@
                                   HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled"
                                   VerticalScrollMode="Enabled" VerticalScrollBarVisibility="Auto"
                                   HorizontalContentAlignment="Stretch">
-                        <controls:IdentitySettingsContent x:Name="IdentityContent" Margin="28,6,28,28" />
+                        <controls:IdentitySettingsContent x:Name="IdentityContent" Margin="{StaticResource SettingsContentMargin}" />
                     </ScrollViewer>
                     <ScrollViewer x:Name="AgentsScrollViewer" Grid.Row="1" Visibility="Collapsed"
                                   HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled"
                                   VerticalScrollMode="Enabled" VerticalScrollBarVisibility="Auto"
                                   HorizontalContentAlignment="Stretch">
-                        <controls:AgentsSettingsContent x:Name="AgentsContent" Margin="28,6,28,28" />
+                        <controls:AgentsSettingsContent x:Name="AgentsContent" Margin="{StaticResource SettingsContentMargin}" />
                     </ScrollViewer>
                     <ScrollViewer x:Name="UsageScrollViewer" Grid.Row="1" Visibility="Collapsed"
                                   HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled"
                                   VerticalScrollMode="Enabled" VerticalScrollBarVisibility="Auto"
                                   HorizontalContentAlignment="Stretch">
-                        <controls:UsageSettingsContent x:Name="UsageContent" Margin="28,6,28,28" />
+                        <controls:UsageSettingsContent x:Name="UsageContent" Margin="{StaticResource SettingsContentMargin}" />
                     </ScrollViewer>
                     <ScrollViewer x:Name="KeyboardScrollViewer" Grid.Row="1" Visibility="Collapsed"
                                   HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled"
                                   VerticalScrollMode="Enabled" VerticalScrollBarVisibility="Auto"
                                   HorizontalContentAlignment="Stretch">
-                        <controls:KeyboardSettingsContent x:Name="KeyboardContent" Margin="28,6,28,28" />
+                        <controls:KeyboardSettingsContent x:Name="KeyboardContent" Margin="{StaticResource SettingsContentMargin}" />
                     </ScrollViewer>
                 </Grid>
             </Grid>

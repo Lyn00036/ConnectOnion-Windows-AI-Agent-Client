@@ -42,6 +42,7 @@
                 <TextBlock x:Uid="ShortcutsDialogTitle" AutomationProperties.HeadingLevel="Level1" Text="Keyboard shortcuts" Style="{StaticResource TitleTextBlockStyle}"
                                Foreground="{ThemeResource TextPrimaryBrush}" VerticalAlignment="Center" />
                     <Button x:Uid="KeyboardShortcutsClose" Grid.Column="1" TabIndex="1" Style="{StaticResource ShortcutsCloseButtonStyle}" Click="CloseButton_Click"
+                            AutomationProperties.AutomationId="KeyboardShortcutsCloseButton"
                             AutomationProperties.Name="Close keyboard shortcuts" ToolTipService.ToolTip="Close (Esc)">
                         <ic:FluentIcon Icon="Dismiss" IconVariant="Regular" IconSize="Size20"
                                        Foreground="{ThemeResource TextSecondaryBrush}" />
@@ -117,12 +118,12 @@
                                                                                             BorderBrush="{ThemeResource BorderStrongBrush}"
                                                                                             BorderThickness="1" CornerRadius="6"
                                                                                             Padding="8,2" MinWidth="27" MinHeight="27">
-                                                                                        <TextBlock Text="{x:Bind Text}" FontSize="12"
+                                                                                        <TextBlock Text="{x:Bind Text}" FontSize="{StaticResource ProductCaptionFontSize}"
                                                                                                    HorizontalAlignment="Center" VerticalAlignment="Center"
                                                                                                    Foreground="{ThemeResource TextSecondaryBrush}" />
                                                                                     </Border>
                                                                                     <TextBlock Visibility="{x:Bind IsSeparator, Converter={StaticResource BoolToVis}}"
-                                                                                               Text="+" FontSize="12" VerticalAlignment="Center"
+                                                                                               Text="+" FontSize="{StaticResource ProductCaptionFontSize}" VerticalAlignment="Center"
                                                                                                Foreground="{ThemeResource TextTertiaryBrush}" />
                                                                                 </Grid>
                                                                             </DataTemplate>

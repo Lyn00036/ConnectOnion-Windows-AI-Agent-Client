@@ -32,7 +32,7 @@
             <!-- The header is the disclosure control. Same shape as ToolActivityView's: a
                  transparent Button wrapping the whole row, so the entire strip is one large hit
                  target and one tab stop rather than a small chevron the user has to aim at. -->
-            <Button x:Name="HeaderToggle"
+            <Button x:Name="HeaderToggle" AutomationProperties.AutomationId="HeaderToggle"
                     Padding="{x:Bind IsCompact, Mode=OneWay, Converter={StaticResource BoolToThickness}, ConverterParameter='12,9|14,12'}"
                     Background="Transparent"
                     BorderThickness="0"
@@ -53,7 +53,7 @@
                 </Grid.ColumnDefinitions>
                 <TextBlock Text="{x:Bind IconGlyph, Mode=OneWay}"
                            FontFamily="Segoe Fluent Icons"
-                           FontSize="16"
+                           FontSize="{StaticResource ProductSubtitleFontSize}"
                            VerticalAlignment="Top"
                            Foreground="{x:Bind IconTone, Mode=OneWay, Converter={StaticResource InteractiveToneToBrush}}"
                            AutomationProperties.AccessibilityView="Raw" />

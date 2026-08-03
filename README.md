@@ -78,7 +78,7 @@ Current SQLite tables:
 | --- | --- |
 | `app_meta` | key, value |
 | `agents` | id, name, address, direct_url, icon_path, invite_code, info_json, info_updated_at, sort_order |
-| `sessions` | id, agent_id, title, remote_session_id, last_processed_event_id, created_at, updated_at, sort_order, mode |
+| `sessions` | id, agent_id, title, has_custom_title, remote_session_id, last_processed_event_id, created_at, updated_at, sort_order, mode |
 | `preferences` | theme, sidebar_visible, message_font_size, shortcut_overrides_json, microphone_device_id |
 | `messages` | conversation_id, id, role, content, agent_name, event_kind/key/eyebrow/title/detail/meta/args/result/status, is_onboarding, created_at |
 | `message_attachments` | conversation_id, message_id, id, kind, file_name, mime_type, size_bytes, local_cache_path, remote_uri, status |
@@ -86,6 +86,7 @@ Current SQLite tables:
 | `trace_events` | id, conversation_id, execution_id, session_id, type, payload_json, ts |
 | `identity_keys` | address, private_seed, mnemonic (both DPAPI-protected, base64-encoded) |
 | `usage_events` | id, conversation_id, agent_id, agent_name, model, input_tokens, output_tokens, cached_tokens, cache_write_tokens, duration_ms, created_at |
+| `message_search` | FTS5 trigram index over user/agent message content, keyed by conversation_id + message_id |
 
 `messages` is one row per rendered chat bubble (not a serialized conversation
 envelope), keyed `(conversation_id, id)`. Saves are incremental:
@@ -124,7 +125,7 @@ connectonion-desktop/
       ConversationRepository.Mapping.cs  Row<->object SQL plumbing for the above
       PreferencesRepository.cs        Preference persistence
       UsageRepository.cs              Token-usage ledger (no FK, never cascaded)
-      IdentityStore.cs                Ed25519 identity persistence, DPAPI-encrypted seed
+      IdentityStore.cs                Ed25519 identity persistence, DPAPI-protected seed/recovery phrase
       AppJsonContext.cs               Source-generated JSON context for local persistence
     Models/                           AgentConfig, ChatMessage, ChatAttachment, SessionSummary,
                                       ToolActivity, PreferencesSnapshot, KeyChord/KeyBinding,
@@ -213,7 +214,10 @@ connectonion-desktop/
       UriLauncher.cs                  Mockable wrapper over Launcher.LaunchUriAsync
       ClipboardService.cs             Clipboard writes
       LayoutKeys.cs                   Keyboard-layout translation (P/Invokes MapVirtualKeyW)
-      KeyboardShortcutStartupService.cs  IHostedService that loads shortcut overrides
+      StartupStateService.cs          One startup snapshot for preferences/language/placement/shortcuts
+      LanguagePreferenceStore.cs      Persisted en-US / zh-CN selection
+      TextScaleService.cs              Applies the OS text-scale factor to WinUI content
+      WindowPlacementStore.cs          Restored-state position, size, and maximized state
       Runtime/
         AgentSessionManager.cs        App-level turn lifecycle: send, run, project, persist
         AgentTurnExecutor.cs          Drives one turn over a connection
@@ -229,7 +233,8 @@ connectonion-desktop/
     Styles/
       Colors.xaml                     Raw Light/Dark Color resources (brand palette)
       Brushes.xaml                    Semantic brushes + re-pointed Fluent theme keys
-    Strings/en-US/                    .resw resources (localization is scaffolded, not finished)
+    Strings/en-US/                    English .resw resources
+    Strings/zh-CN/                    Simplified Chinese .resw resources (key-parity gated)
     Properties/PublishProfiles/       win-x86, win-x64, win-arm64 profiles
     Package.appxmanifest              MSIX package manifest
 
@@ -263,10 +268,14 @@ connectonion-desktop/
     ConnectOnion.Protocol.Tests/      xunit tests for ConnectOnion.Protocol
     ConnectOnion.WinUIClient.UnitTests/  Headless tests over Core, plus the ArchUnit layer gate
     ConnectOnion.IntegrationTests/    SQLite schema/repository tests against a real database file
-    ConnectOnion.WinUIClient.UITests/ Opt-in FlaUI real-window shell smoke tests
+    ConnectOnion.WinUIClient.UITests/ FlaUI: 12 scheduled/on-demand shell tests + 2 opt-in audits
+    ConnectOnion.TrimSmoke/           Trimmed serialization/persistence console harness
 
   .github/workflows/ci.yml            Windows/.NET CI workflow
+  .github/workflows/release.yml       Tag-driven portable ZIP release workflow
 
+  scripts/Test-Coverage.ps1           Merged Protocol/Core coverage threshold gate
+  scripts/Invoke-TrimAudit.ps1        Trim-safety publish and restart audit
   scripts/Measure-Performance.ps1     Launch-time and memory benchmark script
 ```
 
@@ -477,6 +486,26 @@ covers the WinUI-free app surfaces (chat projection, notifications, caches, view
 `ConnectOnion.IntegrationTests` exercises schema migrations and the repositories against a real
 SQLite file.
 
+Run the same three suites with merged line-coverage thresholds as CI:
+
+```powershell
+dotnet test tests\ConnectOnion.Protocol.Tests\ConnectOnion.Protocol.Tests.csproj `
+  --collect:"XPlat Code Coverage" --settings coverage.runsettings --results-directory TestResults\protocol
+dotnet test tests\ConnectOnion.WinUIClient.UnitTests\ConnectOnion.WinUIClient.UnitTests.csproj `
+  --collect:"XPlat Code Coverage" --settings coverage.runsettings --results-directory TestResults\client
+dotnet test tests\ConnectOnion.IntegrationTests\ConnectOnion.IntegrationTests.csproj `
+  --collect:"XPlat Code Coverage" --settings coverage.runsettings --results-directory TestResults\integration
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Test-Coverage.ps1 `
+  -ResultsDirectory TestResults
+```
+
+The gate requires at least **86.0%** production line coverage for `ConnectOnion.Protocol` and
+**88.5%** for `ConnectOnion.WinUIClient.Core`; generated code and test assemblies are excluded.
+The real-window project discovers 14 tests. Its 12 shell tests run against a published unpackaged
+executable on the weekly CI schedule or through the `run_ui_smoke` workflow input; the memory and
+large-history performance audits remain explicitly opt-in. See [TEST_PLAN.md](docs/TEST_PLAN.md)
+for the exact command and isolation requirements.
+
 Run the protocol conformance gate:
 
 ```powershell
@@ -522,10 +551,12 @@ Current CI behavior:
 - Runs `ConnectOnion.Protocol.Tests`, `ConnectOnion.WinUIClient.UnitTests`, and `ConnectOnion.IntegrationTests`
 - Runs `ConnectOnion.Protocol.Conformance`
 
-CI also audits dependencies for known vulnerabilities, collects Cobertura coverage,
-compiles the UI smoke tests, and publishes a trimmed unpackaged build. The FlaUI
-smoke test itself only runs on a `workflow_dispatch` with `run_ui_smoke` checked,
-because it needs a real desktop session.
+CI also audits dependencies for known vulnerabilities, collects and uploads Cobertura reports,
+enforces the Protocol/Core coverage thresholds, runs the trim-safe serialization harness, and
+publishes an **untrimmed** ReadyToRun unpackaged build. The 12-test FlaUI shell suite runs weekly
+and on a `workflow_dispatch` with `run_ui_smoke` checked, using an isolated data root and uploading
+TRX/screenshot evidence. Tag-driven portable releases are handled separately by
+`.github/workflows/release.yml`; see [RELEASE.md](docs/RELEASE.md).
 
 ## Connect To An Agent
 
@@ -603,8 +634,10 @@ Known deployed development agents:
 - Copy action for chat messages
 - Collapse/expand for long responses
 - In-chat find overlay (Ctrl+F) with match highlighting and next/previous navigation
+- Global chat search across agent/session metadata and transcript content (SQLite FTS5 trigram index)
 - Agent offline notice surfaced in the chat composer
 - Light/dark theme with shell-aware title bar colors and semantic brush system
+- English and Simplified Chinese UI resources with a persisted language selector
 - Configurable message font size (S/M/L)
 - Keyboard shortcuts (sidebar toggle, new chat, zoom, full screen, find) with user-customizable bindings
 - Responsive sidebar with agent list and session list navigation
@@ -625,10 +658,10 @@ Known deployed development agents:
 
 - First production release (the tag-driven self-contained portable ZIP pipeline is implemented;
   clean-machine validation is still required, while signed MSIX publishing is paused)
-- Broad UI-level tests: the headless surfaces are covered and a FlaUI shell smoke test proves
-  the harness works, but navigation, drag-and-drop, and the find overlay are still untested.
-  `AutomationId`s exist on the critical controls (guarded by `AutomationContractTests`) —
-  anything beyond those needs ids added before it can be automated
+- Broad chat-level UI automation: 12 FlaUI shell tests cover launch, Settings, agent management,
+  first-run state, tray restoration, global session search, Shortcuts, and About, but message send,
+  reconnect, drag-and-drop, and in-chat find still need real-window coverage. Critical locators are
+  guarded by `AutomationContractTests`; add IDs alongside each new automation flow
 - Live protocol tests in CI
 - Full migration tooling for preserving older local app data (a pre-DPAPI identity row is
   regenerated rather than migrated; a database created before the `messages` schema isn't migrated)
@@ -674,6 +707,9 @@ All project documentation lives in [`docs/`](./docs/):
 | [Optimization notes](./docs/OPTIMIZATION.md) | Implemented architecture, performance, reliability, diagnostics, and localization improvements |
 | [Performance baseline](./docs/PERFORMANCE.md) | Launch-time and memory benchmark: method, budgets, current baseline |
 | [Concurrency notes](./docs/CONCURRENCY.md) | Thread model, synchronization primitives, and the post-`Closed` dispatcher race |
+| [Release guide](./docs/RELEASE.md) | Tag-driven self-contained portable ZIP release, gates, and MSIX status |
+| [Trimming gate](./docs/TRIMMING.md) | Why production remains untrimmed and the evidence required to change it |
+| [Memory investigation](./docs/MEMORY_LEAK_INVESTIGATION.md) | Repeated-navigation leak analysis and plateau test |
 
 [`CLAUDE.md`](./CLAUDE.md) is the authoritative description of the current architecture.
 

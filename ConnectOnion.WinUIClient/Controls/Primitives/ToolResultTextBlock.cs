@@ -43,12 +43,12 @@ public sealed class ToolResultTextBlock : UserControl
     {
         FontFamily = new FontFamily(
             "ms-appx:///Assets/Fonts/JetBrainsMonoNerdFontMono-Regular.ttf#JetBrainsMono NFM"),
-        FontSize = 12.5,
+        FontSize = 13,
         IsTextSelectionEnabled = true,
         // Always on: the log region is a fixed-width column, so anything that would overflow folds
         // rather than scrolling sideways.
         TextWrapping = TextWrapping.Wrap,
-        LineHeight = 19,
+        LineHeight = 20,
     };
 
     public ToolResultTextBlock()
@@ -76,7 +76,7 @@ public sealed class ToolResultTextBlock : UserControl
 
         // Re-indented JSON sits tighter: its lines are short, indented and visually grouped, so
         // the leading that keeps a wall of console text readable only pulls them apart.
-        _textBlock.LineHeight = formatted.Format == ResultFormat.Json ? 18 : 19;
+        _textBlock.LineHeight = formatted.Format == ResultFormat.Json ? 19 : 20;
 
         foreach (var token in formatted.Tokens)
         {

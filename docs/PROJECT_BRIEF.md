@@ -22,7 +22,7 @@
 | 5b | Secure handling of credentials | ✅ | `Data/IdentityStore.cs` — the Ed25519 seed is DPAPI-protected (`CurrentUser`) at rest, never plaintext; an unreadable identity is now reported to the user rather than silently replaced |
 | 6 | Windows desktop UX (layout, keyboard, long responses, settings, light/dark) | ✅ | Custom title bar + `ShellSidebar`; `Services/KeyboardShortcutCatalog` + `KeyboardShortcutsDialog`; `MarkdownTextBlock` for long responses; `SettingsOverlay`; full Light/Dark token system in `Styles/Colors.xaml` + `Styles/Brushes.xaml` |
 | 7 | Reliability: interruption, timeout, failure, invalid config, reconnect | ✅ | Timeouts and `ConnectionLost` in `AgentConnectionService`; failed/cancelled runs persist their partial output plus an error bubble (`AgentSessionManager.PersistFailedAsync`); manual reconnect via `ChatViewModel.ReconnectAsync` |
-| 8 | Testing and documentation | ✅ | Docs: `CLAUDE.md`, this `docs/` folder. Tests: CI runs `ConnectOnion.Protocol.Conformance` (the signing gate) plus three xunit projects under `tests/` — protocol, headless WinUI-layer units, and SQLite integration. UI-level (XAML runtime) tests remain the open gap; the plan and backlog are in [`TEST_PLAN.md`](./TEST_PLAN.md) |
+| 8 | Testing and documentation | ✅ | Docs: `CLAUDE.md`, this `docs/` folder. CI runs Protocol, Core/architecture, and SQLite suites with coverage thresholds plus `ConnectOnion.Protocol.Conformance`. A 12-test FlaUI shell suite runs weekly/on demand; broader chat-level UI automation remains in [`TEST_PLAN.md`](./TEST_PLAN.md). |
 
 ### Optional stretch goals
 
@@ -33,14 +33,14 @@
 | Multiple-agent workspace management | ✅ | Multiple agents, each with its own conversations; per-conversation connections isolated by `AgentConnectionRegistry` |
 | File drag-and-drop | ✅ | `Services/Attachments/AttachmentDropService.cs`; `Controls/Chat/ChatComposer` is the drop target |
 | Keyboard shortcuts | ✅ | `MainWindow.{File,Edit,View,Help}Menu.cs`; the catalog is surfaced in-app via Ctrl+Shift+/ |
-| Installer packaging / release-ready build | ⚠️ **Not done** | MSIX is configured in the `.csproj` but is **not wired into CI**, and there is no release automation |
+| Installer packaging / release-ready build | ⚠️ **Partial** | `.github/workflows/release.yml` publishes a gated x64 self-contained portable ZIP from `v*` tags. Signed MSIX distribution and clean-machine validation remain open. |
 
 ### Known limitations (as of this commit)
 
-- Thin test coverage of the WinUI layer *above* its headless surfaces. A FlaUI shell smoke test exists (opt-in in CI), but navigation, template selection, drag-and-drop, and the find overlay remain untested (see `TEST_PLAN.md`).
-- No installer / release pipeline. CI publishes a ReadyToRun unpackaged build with trimming disabled, but nothing is released from it.
-- `AutomationId`s cover only the critical controls the smoke test drives (guarded by `AutomationContractTests`); wider automation needs more ids added first.
-- Localization is scaffolded (`Strings/en-US` + `x:Uid`) but only partially migrated, and no second locale exists to validate it.
+- WinUI coverage above the headless surfaces is growing: 12 FlaUI shell tests now run weekly and on demand in CI, but chat navigation, template selection, drag-and-drop, and the in-conversation find overlay remain untested (see `TEST_PLAN.md`).
+- The portable ZIP release pipeline exists, but the first public release and clean-machine validation are still pending; signed MSIX publishing remains paused.
+- App XAML exposes 125 unique `AutomationId`s; `AutomationContractTests` guards the 39 critical real-window locators and rejects any named interactive control without an ID. Each new real-window flow still adds its app-owned locator to the critical subset.
+- English and Simplified Chinese resource sets exist and are key-parity gated; manual zh-CN layout, text-scaling, and Narrator validation remain open.
 
 ---
 

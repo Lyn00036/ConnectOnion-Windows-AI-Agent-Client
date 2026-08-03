@@ -21,12 +21,12 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBox x:Uid="KeyboardSearch" x:Name="SearchBox"
+            <TextBox x:Uid="KeyboardSearch" x:Name="SearchBox" AutomationProperties.AutomationId="SearchBox"
                      PlaceholderText="Search shortcuts"
                      TextChanged="SearchBox_TextChanged"
                      AutomationProperties.Name="Search shortcuts" />
             <Button x:Uid="KeyboardResetAll" Grid.Column="1"
-                    x:Name="ResetAllButton"
+                    x:Name="ResetAllButton" AutomationProperties.AutomationId="ResetAllButton"
                     Content="Reset all"
                     Click="ResetAll_Click"
                     IsEnabled="{x:Bind Vm.HasAnyRebinding, Mode=OneWay}"
