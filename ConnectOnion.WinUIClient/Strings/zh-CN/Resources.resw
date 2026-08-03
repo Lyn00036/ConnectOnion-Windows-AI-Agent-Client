@@ -718,6 +718,7 @@
   <data name="SettingsMicChoice.AutomationProperties.Name" xml:space="preserve"><value>麦克风</value></data>
   <data name="SettingsAgentsAddButton.AutomationProperties.Name" xml:space="preserve"><value>添加智能体</value></data>
   <data name="SidebarAddAgentButton.AutomationProperties.Name" xml:space="preserve"><value>添加智能体</value></data>
+  <data name="SidebarAddAgentButton.ToolTipService.ToolTip" xml:space="preserve"><value>添加 Agent</value></data>
   <data name="NoAgentsTitle" xml:space="preserve"><value>没有可用的智能体</value></data>
   <data name="NoAgentsBody" xml:space="preserve"><value>开始对话前请先添加一个智能体。</value></data>
   <data name="SettingsLanguageRestartNow.Content" xml:space="preserve"><value>立即重启</value></data>
