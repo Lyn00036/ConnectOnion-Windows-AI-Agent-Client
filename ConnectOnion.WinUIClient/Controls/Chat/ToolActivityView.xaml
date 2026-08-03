@@ -116,14 +116,14 @@
                                    IconVariant="Regular"
                                    IconSize="Size16"
                                    VerticalAlignment="Center"
-                                   Foreground="{ThemeResource TextSecondaryBrush}" />
+                                   Foreground="{ThemeResource TextTertiaryBrush}" />
 
                     <TextBlock x:Name="HeaderTitle"
                                Grid.Column="1"
                                Text="{x:Bind Activity.HeaderTitle, Mode=OneWay, Converter={StaticResource ToolActivityText}}"
                                FontSize="{x:Bind FontSize, Mode=OneWay}"
                                FontWeight="SemiBold"
-                               Foreground="{ThemeResource TextSecondaryBrush}"
+                               Foreground="{ThemeResource TextTertiaryBrush}"
                                VerticalAlignment="Center" />
 
                     <Border Grid.Column="2"
@@ -142,7 +142,7 @@
                                Text="{x:Bind Activity.Summary, Mode=OneWay, Converter={StaticResource ToolActivityText}}"
                                MaxWidth="500"
                                FontSize="{x:Bind FontSize, Mode=OneWay}"
-                               Foreground="{x:Bind Activity.Status, Mode=OneWay, Converter={StaticResource ToolStatusToBrush}, ConverterParameter='danger-only:TextSecondaryBrush'}"
+                               Foreground="{x:Bind Activity.Status, Mode=OneWay, Converter={StaticResource ToolStatusToBrush}, ConverterParameter='danger-only:TextTertiaryBrush'}"
                                TextTrimming="CharacterEllipsis"
                                VerticalAlignment="Center"
                                Visibility="{x:Bind Activity.HasApproval, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />

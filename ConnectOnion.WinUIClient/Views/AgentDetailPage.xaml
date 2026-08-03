@@ -21,15 +21,24 @@
                 <VisualState x:Name="Narrow">
                     <VisualState.Setters>
                         <Setter Target="ContentScroll.Padding" Value="{StaticResource AgentDetailPaddingNarrow}" />
-                        <Setter Target="ProfilePanel.Margin" Value="0,8,0,12" />
+                        <Setter Target="ProfilePanel.Margin" Value="0,4,0,8" />
+                        <Setter Target="AgentDetailAvatar.Size" Value="64" />
+                        <Setter Target="AgentDetailAvatar.FontSize" Value="{StaticResource ProductSectionTitleFontSize}" />
+                        <Setter Target="AgentDetailAvatar.CornerRadius" Value="20" />
                         <Setter Target="AgentNameText.FontSize" Value="{StaticResource ProductTitleFontSize}" />
+                        <Setter Target="AgentNameText.Margin" Value="0,14,0,0" />
                     </VisualState.Setters>
                 </VisualState>
                 <VisualState x:Name="Wide">
                     <VisualState.Setters>
                         <Setter Target="ContentScroll.Padding" Value="{StaticResource AgentDetailPaddingWide}" />
-                        <Setter Target="ProfilePanel.Margin" Value="0,12,0,24" />
+                        <Setter Target="ProfilePanel.Margin" Value="0,8,0,12" />
+                        <!-- Larger identity mark on tall/wide panes; type stays on the Product ramp. -->
+                        <Setter Target="AgentDetailAvatar.Size" Value="88" />
+                        <Setter Target="AgentDetailAvatar.FontSize" Value="{StaticResource ProductTitleFontSize}" />
+                        <Setter Target="AgentDetailAvatar.CornerRadius" Value="26" />
                         <Setter Target="AgentNameText.FontSize" Value="{StaticResource ProductHeroFontSize}" />
+                        <Setter Target="AgentNameText.Margin" Value="0,20,0,0" />
                     </VisualState.Setters>
                 </VisualState>
             </VisualStateGroup>
@@ -40,9 +49,8 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- The profile sits slightly below centre, keeping it visually connected to the
-             suggestions and composer without pinning a sparse identity block to the window's
-             exact midpoint on tall displays. Star rows collapse naturally when height is tight. -->
+        <!-- Equal star rows centre the identity block in the pane above the composer. Star rows
+             still collapse when height is tight. -->
         <ScrollViewer x:Name="ContentScroll"
                       Grid.Row="0"
                       HorizontalScrollMode="Disabled"
@@ -54,9 +62,9 @@
                       Visibility="{x:Bind Vm.HasAgent, Mode=OneWay, Converter={StaticResource BoolToVis}}">
             <Grid>
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="3*" />
+                    <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
-                    <RowDefinition Height="2*" />
+                    <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
             <!-- Four tiers, separated by gap size rather than by added chrome: identity, what the
                  agent is, the one action, then quiet affordances. The panel's own Spacing is 0 on
@@ -66,7 +74,7 @@
             <StackPanel x:Name="ProfilePanel"
                         Grid.Row="1"
                         MaxWidth="620"
-                        Margin="0,12,0,24"
+                        Margin="0,8,0,12"
                         HorizontalAlignment="Center"
                         VerticalAlignment="Center"
                         Spacing="0">
@@ -74,7 +82,9 @@
                 <!-- Tier 1 · Identity. The name owns its own line now; presence moved beneath it
                      rather than sitting alongside at 12px, where it competed for the same line and
                      capped how large the name could get. -->
-                <controls:AgentAvatar x:Uid="AgentDetailIcon" Size="64"
+                <controls:AgentAvatar x:Name="AgentDetailAvatar"
+                                      x:Uid="AgentDetailIcon"
+                                      Size="64"
                                       CornerRadius="20"
                                       FontSize="{StaticResource ProductSectionTitleFontSize}"
                                       HorizontalAlignment="Center"
@@ -84,7 +94,7 @@
 
                 <TextBlock x:Name="AgentNameText"
                            Text="{x:Bind Vm.AgentDisplayName, Mode=OneWay}"
-                           MaxWidth="520"
+                           MaxWidth="560"
                            Margin="0,16,0,0"
                            FontSize="{StaticResource ProductHeroFontSize}"
                            FontWeight="SemiBold"
@@ -116,7 +126,7 @@
                 <!-- Tier 2 · What it is. The model is the one fact here a reader acts on, so it
                      gets a chip of its own instead of being the first third of a run-on line. -->
                 <StackPanel Orientation="Horizontal"
-                            Margin="0,20,0,0"
+                            Margin="0,12,0,0"
                             Spacing="{StaticResource Spacing8}"
                             HorizontalAlignment="Center">
                     <Border Padding="9,3"
@@ -128,7 +138,7 @@
                         <TextBlock Text="{x:Bind Vm.DisplayModel, Mode=OneWay}"
                                    FontSize="{StaticResource ProductCaptionFontSize}"
                                    FontWeight="SemiBold"
-                                   Foreground="{ThemeResource TextSecondaryBrush}" />
+                                   Foreground="{ThemeResource TextTertiaryBrush}" />
                     </Border>
                     <Border Padding="9,3"
                             CornerRadius="6"
@@ -145,7 +155,7 @@
                 <TextBlock Text="{x:Bind Vm.AcceptedInputsSummary, Mode=OneWay}"
                            Margin="0,8,0,0"
                            FontSize="{StaticResource ProductCaptionFontSize}"
-                           Foreground="{ThemeResource TextSecondaryBrush}"
+                           Foreground="{ThemeResource TextTertiaryBrush}"
                            HorizontalAlignment="Center"
                            TextAlignment="Center"
                            TextWrapping="Wrap"
@@ -153,7 +163,7 @@
 
                 <!-- Quiet secondary actions stay together at one weight below the profile. -->
                 <StackPanel Orientation="Horizontal"
-                            Margin="0,16,0,0"
+                            Margin="0,10,0,0"
                             Spacing="{StaticResource Spacing4}"
                             HorizontalAlignment="Center">
                     <Button MinWidth="0"
@@ -167,12 +177,12 @@
                         <StackPanel Orientation="Horizontal" Spacing="5">
                             <TextBlock Text="{x:Bind Vm.ToolsToggleLabel, Mode=OneWay}"
                                        FontSize="{StaticResource ProductCaptionFontSize}"
-                                       Foreground="{ThemeResource TextSecondaryBrush}"
+                                       Foreground="{ThemeResource TextTertiaryBrush}"
                                        VerticalAlignment="Center" />
                             <ic:FluentIcon Icon="ChevronDown"
                                            IconVariant="Regular"
                                            IconSize="Size12"
-                                           Foreground="{ThemeResource TextSecondaryBrush}"
+                                           Foreground="{ThemeResource TextTertiaryBrush}"
                                            VerticalAlignment="Center" />
                         </StackPanel>
                         <Button.Flyout>
@@ -199,7 +209,7 @@
                             Padding="12,0"
                             CornerRadius="8"
                             FontSize="{StaticResource ProductCaptionFontSize}"
-                            Foreground="{ThemeResource TextSecondaryBrush}"
+                            Foreground="{ThemeResource TextTertiaryBrush}"
                             Style="{StaticResource TextActionButtonStyle}"
                             Visibility="Collapsed"
                             Click="Balance_Click"
@@ -211,7 +221,7 @@
                             Padding="12,0"
                             CornerRadius="8"
                             FontSize="{StaticResource ProductCaptionFontSize}"
-                            Foreground="{ThemeResource TextSecondaryBrush}"
+                            Foreground="{ThemeResource TextTertiaryBrush}"
                             Style="{StaticResource TextActionButtonStyle}"
                             Click="Share_Click"
                             Visibility="{x:Bind Vm.CanShareAgent, Mode=OneWay, Converter={StaticResource BoolToVis}}"

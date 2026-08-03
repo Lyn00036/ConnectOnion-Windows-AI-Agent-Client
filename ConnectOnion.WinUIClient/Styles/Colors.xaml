@@ -55,10 +55,13 @@
             <Color x:Key="SurfacePressedColor">#FFE4E4E3</Color>
             <Color x:Key="SurfaceSelectedColor">#FFEBEBEB</Color>
 
-            <!-- Text — neutral, no hue cast. -->
+            <!-- Text — neutral, no hue cast.
+                 Secondary/Tertiary are spaced farther apart than early builds so process
+                 chrome (Tertiary) can sit clearly below supporting copy (Secondary) without
+                 inventing a fourth weight. -->
             <Color x:Key="TextPrimaryColor">#FF1A1A1A</Color>
-            <Color x:Key="TextSecondaryColor">#FF5C5C5B</Color>
-            <Color x:Key="TextTertiaryColor">#FF6F6F6D</Color>
+            <Color x:Key="TextSecondaryColor">#FF4A4A49</Color>
+            <Color x:Key="TextTertiaryColor">#FF8A8A87</Color>
             <Color x:Key="TextDisabledColor">#FFB5B5B3</Color>
             <Color x:Key="TextOnBrandColor">#FFFFFFFF</Color>
             <Color x:Key="TextLinkColor">#FF333333</Color>
@@ -130,7 +133,7 @@
                  contrasting with it: the agent's turn is the page, and only the
                  user's turn is a distinct object on it. -->
             <Color x:Key="ChatBackgroundColor">#FFFFFFFF</Color>
-            <Color x:Key="UserMessageBackgroundColor">#FFF2F2F1</Color>
+            <Color x:Key="UserMessageBackgroundColor">#FFE8E8E7</Color>
             <Color x:Key="AgentMessageBackgroundColor">#FFFFFFFF</Color>
             <Color x:Key="SystemMessageBackgroundColor">#FFF4F4F3</Color>
             <Color x:Key="ChatInputBackgroundColor">#FFFFFFFF</Color>
@@ -240,10 +243,10 @@
             <Color x:Key="SurfacePressedColor">#FF333333</Color>
             <Color x:Key="SurfaceSelectedColor">#FF2A2A2A</Color>
 
-            <!-- Text -->
+            <!-- Text (see light dictionary — Secondary/Tertiary spacing). -->
             <Color x:Key="TextPrimaryColor">#FFF5F5F4</Color>
-            <Color x:Key="TextSecondaryColor">#FFA8A8A6</Color>
-            <Color x:Key="TextTertiaryColor">#FF82827F</Color>
+            <Color x:Key="TextSecondaryColor">#FFB4B4B2</Color>
+            <Color x:Key="TextTertiaryColor">#FF6E6E6B</Color>
             <Color x:Key="TextDisabledColor">#FF5C5C5A</Color>
             <Color x:Key="TextOnBrandColor">#FF1A1A1A</Color>
             <Color x:Key="TextLinkColor">#FFA0A0A0</Color>
@@ -291,7 +294,7 @@
 
             <!-- Chat (see the light dictionary on why agent == chat ground) -->
             <Color x:Key="ChatBackgroundColor">#FF121212</Color>
-            <Color x:Key="UserMessageBackgroundColor">#FF242424</Color>
+            <Color x:Key="UserMessageBackgroundColor">#FF2E2E2E</Color>
             <Color x:Key="AgentMessageBackgroundColor">#FF121212</Color>
             <Color x:Key="SystemMessageBackgroundColor">#FF1C1C1C</Color>
             <Color x:Key="ChatInputBackgroundColor">#FF1C1C1C</Color>
