@@ -352,13 +352,19 @@ public sealed class AgentConnectionServiceTests
             connectTimeout: TimeSpan.FromSeconds(1),
             silenceTimeout: TimeSpan.FromMilliseconds(80),
             watchdogInterval: TimeSpan.FromMilliseconds(20));
-        Exception? connectionLoss = null;
-        service.ConnectionLost += error => connectionLoss = error;
+        // Awaited, not sampled. ConnectionLost is raised by the watchdog on its own timer thread,
+        // and nothing orders that against SendInputAsync's throw — so reading a plain captured
+        // field straight after the await is a race that reports "Value is null" roughly one run in
+        // five. Waiting for the event makes the assertion mean "the watchdog reported the loss",
+        // which is what it was always trying to say.
+        var connectionLoss = new TaskCompletionSource<Exception>(TaskCreationOptions.RunContinuationsAsynchronously);
+        service.ConnectionLost += error => connectionLoss.TrySetResult(error);
 
         var error = await Assert.ThrowsAsync<TimeoutException>(() => service.SendInputAsync("hello", null));
 
         Assert.Equal("Connection went silent", error.Message);
-        Assert.IsType<TimeoutException>(connectionLoss);
+        var reported = await connectionLoss.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.IsType<TimeoutException>(reported);
         Assert.False(service.IsConnected);
     }
 
@@ -629,6 +635,55 @@ public sealed class AgentConnectionServiceTests
         Assert.Contains("mode_changed", streamed);
         Assert.Equal(AgentModes.Plan, modeChanged?.Mode);
         Assert.Equal(2, Volatile.Read(ref connectionNumber));
+    }
+
+    [Fact]
+    public async Task SendInputAsync_ConnectionDropsDuringTurn_AutomaticallyReconnectsAndResumes()
+    {
+        var connectionNumber = 0;
+        string? reconnectJson = null;
+        await using var server = new FakeAgentServer(async (socket, ct) =>
+        {
+            var current = Interlocked.Increment(ref connectionNumber);
+            var connect = await FakeAgentServer.ReceiveTextAsync(socket, ct);
+            if (current == 1)
+            {
+                await FakeAgentServer.SendTextAsync(
+                    socket,
+                    "{\"type\":\"CONNECTED\",\"session_id\":\"session-1\",\"status\":\"connected\"}",
+                    ct);
+                await FakeAgentServer.ReceiveTextAsync(socket, ct); // INPUT
+                await socket.CloseOutputAsync(
+                    WebSocketCloseStatus.InternalServerError,
+                    "test drop",
+                    ct);
+                return;
+            }
+
+            reconnectJson = connect;
+            await FakeAgentServer.SendTextAsync(
+                socket,
+                "{\"type\":\"CONNECTED\",\"session_id\":\"session-1\",\"status\":\"running\"}",
+                ct);
+            await FakeAgentServer.SendTextAsync(
+                socket,
+                "{\"type\":\"OUTPUT\",\"result\":\"resumed\"}",
+                ct);
+        });
+        await using var service = Service(server);
+        var reconnecting = new TaskCompletionSource<ReconnectingEvent>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        service.Reconnecting += value => reconnecting.TrySetResult(value);
+
+        var result = await service.SendInputAsync("hello", "session-1")
+            .WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal("resumed", result);
+        Assert.Equal(1, (await reconnecting.Task.WaitAsync(TimeSpan.FromSeconds(1))).Attempt);
+        Assert.Equal(2, Volatile.Read(ref connectionNumber));
+        Assert.NotNull(reconnectJson);
+        var reconnect = WireMessage.Parse(reconnectJson);
+        Assert.Equal("session-1", reconnect.GetString("session_id"));
     }
 
     [Fact]
