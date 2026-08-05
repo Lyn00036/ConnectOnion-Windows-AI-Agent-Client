@@ -1,6 +1,5 @@
 using System;
 using System.Diagnostics;
-using System.IO;
 using System.Threading;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Media;
@@ -153,14 +152,10 @@ internal static class StartupTelemetry
         var path = Environment.GetEnvironmentVariable(StartupProfiler.OutputPathEnvironmentVariable);
         if (string.IsNullOrWhiteSpace(path)) return;
 
-        var directory = Path.GetDirectoryName(Path.GetFullPath(path));
-        if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
-
-        // Written via a temp file + move so the harness, which polls for this path, can never
-        // read a half-serialized document and conclude the run produced garbage.
-        var temp = path + ".tmp";
-        File.WriteAllText(temp, metrics.ToJson());
-        File.Move(temp, path, overwrite: true);
+        // The benchmark polls this file while later readiness marks rewrite it. AtomicTextFile
+        // keeps every observed document complete and retries the short Windows sharing race when
+        // the poller has the previous destination open without FileShare.Delete.
+        AtomicTextFile.WriteAllText(path, metrics.ToJson());
     }
 
     private static string Configuration =>
