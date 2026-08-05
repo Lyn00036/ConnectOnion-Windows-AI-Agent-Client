@@ -14,6 +14,14 @@
   -->
   <PropertyGroup>
     <VersionPrefix>0.1.0</VersionPrefix>
+
+    <!--
+      Pin the Windows SDK targeting pack independently of the installed .NET SDK. SDK 10.0.301
+      resolves 10.0.19041.57, whose C#/WinRT 2.2 runtime emits 35 IL2081 trim warnings from its
+      generated ABI marshalling. 10.0.19041.87 carries C#/WinRT 2.3.1 and publishes cleanly while
+      preserving the app's Windows 10 19041 compile target and 17763 minimum runtime version.
+    -->
+    <WindowsSdkPackageVersion>10.0.19041.87</WindowsSdkPackageVersion>
   </PropertyGroup>
 
   <PropertyGroup>

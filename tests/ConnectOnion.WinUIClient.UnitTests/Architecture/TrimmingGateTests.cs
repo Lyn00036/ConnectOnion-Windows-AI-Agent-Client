@@ -110,6 +110,34 @@ public sealed class TrimmingGateTests
     }
 
     /// <summary>
+    /// A normal Release build leaves untrimmed publish intermediates under <c>obj</c>. Reusing
+    /// those files with <c>publish --no-restore</c> can silently produce an untrimmed portable ZIP
+    /// even though <c>PublishTrimmed=true</c> is present on the command line. The release job must
+    /// clean that runtime-specific state and let publish restore its own asset graph.
+    /// </summary>
+    [Fact]
+    public void Release_CleansPublishIntermediatesAndDoesNotSkipRestore()
+    {
+        var workflow = RepoFile(".github", "workflows", "release.yml");
+
+        Assert.Contains("Clean portable publish intermediates", workflow, StringComparison.Ordinal);
+        var cleanCommand = Regex.Match(
+            workflow,
+            @"dotnet clean[\s\S]*?(?=\r?\n\s*- name:)");
+
+        Assert.True(cleanCommand.Success, "Expected the release workflow to clean publish intermediates.");
+        Assert.Contains("--configuration $env:CONFIGURATION", cleanCommand.Value, StringComparison.Ordinal);
+        Assert.Contains("--runtime win-x64", cleanCommand.Value, StringComparison.Ordinal);
+
+        var publishCommand = Regex.Match(
+            workflow,
+            @"dotnet publish[\s\S]*?(?=\r?\n\s*- name:)");
+
+        Assert.True(publishCommand.Success, "Expected the release workflow to publish the portable app.");
+        Assert.DoesNotContain("--no-restore", publishCommand.Value, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// The harness only proves anything while the reflection fallback is off. If that property
     /// were dropped from the smoke project, every check in it would start passing vacuously — and
     /// a green audit would be worse than no audit.

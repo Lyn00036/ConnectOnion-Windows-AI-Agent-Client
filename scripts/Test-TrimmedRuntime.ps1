@@ -54,6 +54,11 @@ $ErrorActionPreference = 'Stop'
 
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 if (-not $OutDir) { $OutDir = Join-Path $RepoRoot 'artifacts/trim-runtime' }
+$OutDir = if ([IO.Path]::IsPathRooted($OutDir)) {
+    [IO.Path]::GetFullPath($OutDir)
+} else {
+    [IO.Path]::GetFullPath((Join-Path $RepoRoot $OutDir))
+}
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
 $AppProject   = Join-Path $RepoRoot 'ConnectOnion.WinUIClient/ConnectOnion.WinUIClient.csproj'
@@ -136,10 +141,23 @@ function Invoke-UiSuite {
 
     $env:CONNECTONION_DATA_ROOT = $Root
     try {
-        & dotnet test $UiProject --configuration Release --filter $Filter `
-            --results-directory (Join-Path $OutDir 'trx') --logger "trx;LogFileName=$TrxName" *>&1 |
-            Tee-Object -FilePath (Join-Path $OutDir ($TrxName -replace '\.trx$', '.log'))
-        return ($LASTEXITCODE -eq 0)
+        # dotnet writes failed-test diagnostics to stderr. With the script-wide Stop preference,
+        # Windows PowerShell converts that native stderr into a terminating ErrorRecord and exits
+        # before the TRX/report can be recorded. The process exit code is the authoritative suite
+        # result, so allow its output through the pipeline and restore strict handling afterwards.
+        $previousErrorActionPreference = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            & dotnet test $UiProject --configuration Release --filter $Filter `
+                --results-directory (Join-Path $OutDir 'trx') --logger "trx;LogFileName=$TrxName" *>&1 |
+                Tee-Object -FilePath (Join-Path $OutDir ($TrxName -replace '\.trx$', '.log')) |
+                Out-Host
+            $suiteExitCode = $LASTEXITCODE
+        }
+        finally {
+            $ErrorActionPreference = $previousErrorActionPreference
+        }
+        return ($suiteExitCode -eq 0)
     }
     finally {
         Remove-Item Env:\CONNECTONION_DATA_ROOT -ErrorAction SilentlyContinue

@@ -125,13 +125,24 @@ jobs:
 
       # ---- Gate 2: build the self-contained portable release -----------------------------------
 
+      # The solution build and trim audit intentionally exercise different publish shapes in the
+      # same job. Clear the app's RID intermediates before the shipping publish so MSBuild cannot
+      # reuse an untrimmed publish graph whose inputs differ only by global properties. The size
+      # audit would catch that mix-up later, but the publish step itself should be deterministic.
+      - name: Clean portable publish intermediates
+        shell: pwsh
+        run: >
+          dotnet clean $env:APP_PROJECT
+          --configuration $env:CONFIGURATION
+          --runtime win-x64
+          -p:Platform=$env:BUILD_PLATFORM
+
       - name: Publish self-contained portable build
         shell: pwsh
         run: >
           dotnet publish $env:APP_PROJECT
           --configuration $env:CONFIGURATION
           --runtime win-x64
-          --no-restore
           --output artifacts/portable
           -p:Platform=$env:BUILD_PLATFORM
           -p:Version=${{ steps.version.outputs.semver }}

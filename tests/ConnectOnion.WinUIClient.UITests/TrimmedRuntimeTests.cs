@@ -55,6 +55,15 @@ public sealed class TrimmedRuntimeTests
         var messageList = WaitForDescendant(window, "MessageList", TimeSpan.FromSeconds(20));
         Assert.True(messageList is not null, "the conversation did not open onto a message list");
 
+        // Historical multi-step cards deliberately reopen collapsed. Expand the durable card via
+        // its real disclosure control before asserting on step content; otherwise this test asks
+        // UI Automation to find rows that the product intentionally has not put in layout.
+        var activityHeader = WaitForDescendant(
+            window, "ToolActivityHeaderButton", TimeSpan.FromSeconds(20));
+        Assert.True(activityHeader is not null,
+            "the restored tool-activity card did not expose its disclosure header");
+        activityHeader!.AsButton().Invoke();
+
         // Waited for, not sampled once. The transcript is a virtualized list restored
         // asynchronously, so walking the tree the instant MessageList exists reads a partly
         // realized view — which reports a card as missing that simply had not been built yet.
