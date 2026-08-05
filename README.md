@@ -268,7 +268,7 @@ connectonion-desktop/
     ConnectOnion.Protocol.Tests/      xunit tests for ConnectOnion.Protocol
     ConnectOnion.WinUIClient.UnitTests/  Headless tests over Core, plus the ArchUnit layer gate
     ConnectOnion.IntegrationTests/    SQLite schema/repository tests against a real database file
-    ConnectOnion.WinUIClient.UITests/ FlaUI: 12 scheduled/on-demand shell tests + 2 opt-in audits
+    ConnectOnion.WinUIClient.UITests/ FlaUI: 23 required shell/chat tests + 1 skipped diagnostic + 2 opt-in audits
     ConnectOnion.TrimSmoke/           Trimmed serialization/persistence console harness
 
   .github/workflows/ci.yml            Windows/.NET CI workflow
@@ -501,9 +501,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Test-Coverage.ps1 `
 
 The gate requires at least **86.0%** production line coverage for `ConnectOnion.Protocol` and
 **88.5%** for `ConnectOnion.WinUIClient.Core`; generated code and test assemblies are excluded.
-The real-window project discovers 14 tests. Its 12 shell tests run against a published unpackaged
-executable on the weekly CI schedule or through the `run_ui_smoke` workflow input; the memory and
-large-history performance audits remain explicitly opt-in. See [TEST_PLAN.md](docs/TEST_PLAN.md)
+The real-window project discovers 27 tests. Its 23 required shell/chat tests run against a published
+unpackaged executable on every push and pull request; the Explorer drag-and-drop diagnostic is
+explicitly skipped because desktop DPI/layout makes its source coordinates nondeterministic. The
+memory and large-history performance audits remain opt-in. See [TEST_PLAN.md](docs/TEST_PLAN.md)
 for the exact command and isolation requirements.
 
 Run the protocol conformance gate:
@@ -524,8 +525,8 @@ dotnet run `
   --project ConnectOnion.Protocol.LiveTest\ConnectOnion.Protocol.LiveTest.csproj
 ```
 
-The live test requires a reachable ConnectOnion-compatible agent. It is not part
-of the default CI gate.
+The live test requires a reachable ConnectOnion-compatible agent. CI runs it only when a manual
+workflow dispatch selects `run_live_protocol`; push, pull-request, and scheduled runs skip it.
 
 Check NuGet package vulnerability status:
 
@@ -552,10 +553,11 @@ Current CI behavior:
 - Runs `ConnectOnion.Protocol.Conformance`
 
 CI also audits dependencies for known vulnerabilities, collects and uploads Cobertura reports,
-enforces the Protocol/Core coverage thresholds, runs the trim-safe serialization harness, and
-publishes an **untrimmed** ReadyToRun unpackaged build. The 12-test FlaUI shell suite runs weekly
-and on a `workflow_dispatch` with `run_ui_smoke` checked, using an isolated data root and uploading
-TRX/screenshot evidence. Tag-driven portable releases are handled separately by
+enforces the Protocol/Core coverage ratchet, runs the trim-safe serialization harness, and
+publishes a **trimmed, self-contained** ReadyToRun unpackaged build. The 23 required FlaUI shell/chat
+tests run on every push and pull request, using an isolated data root and uploading TRX/screenshot
+evidence; the drag-and-drop diagnostic is skipped. A separate manual-only job can exercise a real
+deployed agent. Tag-driven portable releases are handled separately by
 `.github/workflows/release.yml`; see [RELEASE.md](docs/RELEASE.md).
 
 ## Connect To An Agent
@@ -650,6 +652,11 @@ Known deployed development agents:
 - Edit menu (undo/redo/cut/copy/paste/select all) and View menu (sidebar, zoom, full screen, find)
 - Help menu (keyboard shortcuts dialog, ConnectOnion docs, About overlay)
 - Protocol conformance test gate
+- Manual-only live deployed-agent protocol smoke test in CI
+- Real-window automation for page navigation, Agent Detail templates and first send, chat send,
+  automatic reconnect, error/retry, mid-turn conversation switching, restart restore, in-chat
+  find, cold notification routing, and agent-icon surfaces
+- Legacy local-data migration for plaintext pre-DPAPI identities and pre-`messages` conversation envelopes
 - Windows/.NET CI workflow
 - Startup telemetry and shutdown teardown instrumentation for performance measurement
 - Launch-time and memory benchmark script (`scripts/Measure-Performance.ps1`)
@@ -658,18 +665,14 @@ Known deployed development agents:
 
 - First production release (the tag-driven self-contained portable ZIP pipeline is implemented;
   clean-machine validation is still required, while signed MSIX publishing is paused)
-- Broad chat-level UI automation: 12 FlaUI shell tests cover launch, Settings, agent management,
-  first-run state, tray restoration, global session search, Shortcuts, and About, but message send,
-  reconnect, drag-and-drop, and in-chat find still need real-window coverage. Critical locators are
-  guarded by `AutomationContractTests`; add IDs alongside each new automation flow
-- Live protocol tests in CI
-- Full migration tooling for preserving older local app data (a pre-DPAPI identity row is
-  regenerated rather than migrated; a database created before the `messages` schema isn't migrated)
+- Deterministic real-window drag-and-drop automation. The Explorer-based scenario is retained but
+  skipped because its source coordinates vary with desktop DPI and layout; its locators remain
+  guarded by `AutomationContractTests`
 
 ## Notes For Development
 
 - Keep new desktop changes in the WinUI projects. Logic that should be tested belongs in
-  `ConnectOnion.WinUIClient.Core` — the test projects can reference that, but not the app.
+  `ConnectOnion.WinUIClient.Core` — the test projects can reference that, but not the app.、
 - Use `x64`, `x86`, or `ARM64` for WinUI builds. Avoid relying on `Any CPU` for
   packaged app debugging.
 - Keep generated runtime files out of source control, including `bin/`, `obj/`,

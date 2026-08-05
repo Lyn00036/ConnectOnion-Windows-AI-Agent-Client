@@ -1,6 +1,6 @@
 # Engineering optimization notes
 
-Last updated: 2026-08-03
+Last updated: 2026-08-05
 
 ## Implemented
 
@@ -16,8 +16,8 @@ Last updated: 2026-08-03
 - **Localization:** WinUI `.resw` resources cover English and Simplified Chinese under `Strings/en-US` and `Strings/zh-CN`; architecture tests enforce key-for-key parity, non-empty translations, XAML `x:Uid` coverage, and Core resource lookups. Keep fallback XAML text when adding resources so development builds remain diagnosable. Strings assembled at runtime cannot carry an `x:Uid`, so they go through `Common/LocalizedStrings.Get(key, fallback)`, which takes the English text as a parameter for the same reason.
 - **Analyzer hygiene:** a clean unpackaged x64 application build completes with zero compiler/analyzer warnings. CA1848 is enforced, so *every* logging call site uses a cached `LoggerMessage` delegate, and persisted values use explicit culture semantics.
 - **Logging reaches the file three ways and no fourth:** constructor-injected `ILogger<T>` for container-created types, a `Configure(ILoggerFactory)` facade for the two `static` entry points in `Core` (`NotificationLog`, `IdentityStore`), and `AppServices.Logging` for framework-created code-behind. `Debug.WriteLine` is `[Conditional("DEBUG")]` and therefore never a failure path's only record — it appears only alongside a real logger call, or for development tracing (per-run-phase lines) that would be noise in a shipped log.
-- **Testing:** the protocol fake server uses an in-process Kestrel WebSocket endpoint on an OS-assigned port, eliminating `HttpListener` ACL and port-reservation races. The FlaUI project discovers 14 tests: 12 shell/settings/search/help tests plus opt-in memory and large-history performance audits.
-- **CI:** restore audits vulnerable packages; test runs emit Cobertura coverage and enforce 86.0% Protocol / 88.5% Core line thresholds; Release publishes use ReadyToRun with trimming disabled; and the isolated-profile 12-test FlaUI shell suite runs weekly or through `workflow_dispatch`, uploading TRX and screenshot evidence.
+- **Testing:** the protocol fake server uses an in-process Kestrel WebSocket endpoint on an OS-assigned port, eliminating `HttpListener` ACL and port-reservation races. The FlaUI project discovers 27 tests: 23 required shell/chat tests, one explicitly skipped Explorer drag diagnostic, the trimmed-runtime scenario, and opt-in memory/large-history audits. Real-window coverage includes page navigation, Agent Detail template/first-send flows, chat send, abnormal-drop resume, retry, mid-turn conversation switching, restart restore, in-chat find, cold notification routing, and agent-icon surfaces.
+- **CI:** restore audits vulnerable packages; test runs emit Cobertura coverage and enforce a ratchet against `coverage-baseline.json` (currently 86.12% Protocol / 83.59% Core, 0.25pp tolerance) rather than fixed thresholds; Release publishes use ReadyToRun with trimming enabled (see TRIMMING.md); the isolated-profile 23-test FlaUI gate runs on every push and PR; and a separate manual-only job can exercise a real deployed agent.
 
 ## Operational checks
 
@@ -37,7 +37,8 @@ bootstrapper reliably enough for this gate.
 ```powershell
 dotnet publish ConnectOnion.WinUIClient/ConnectOnion.WinUIClient.csproj `
   --configuration Release --runtime win-x64 -p:Platform=x64 `
-  -p:RunUnpackaged=true -p:PublishTrimmed=false -p:PublishReadyToRun=true
+  -p:RunUnpackaged=true -p:SelfContained=true -p:WindowsAppSDKSelfContained=true `
+  -p:PublishTrimmed=true -p:PublishReadyToRun=true
 $env:CONNECTONION_UI_TEST_EXE = (Resolve-Path 'ConnectOnion.WinUIClient/bin/Release/net10.0-windows10.0.19041.0/win-x64/publish/ConnectOnion.WinUIClient.exe')
 $env:CONNECTONION_DATA_ROOT = Join-Path $env:TEMP 'ConnectOnionUiSmoke'
 dotnet test tests/ConnectOnion.WinUIClient.UITests/ConnectOnion.WinUIClient.UITests.csproj `
@@ -52,6 +53,6 @@ For deeper performance investigations, capture an ETW trace with Windows Perform
 ## Follow-up backlog
 
 - Keep en-US/zh-CN resource parity green and complete manual zh-CN layout, text-scaling, and Narrator validation.
-- Expand real-window tests from the shell surfaces into chat send/reconnect, template selection, Markdown visual output, drag/drop, in-chat find, tray-icon interaction, and notification activation.
+- Expand real-window tests into Markdown visual output, direct tray-icon interaction, warm OS-notification delivery/click, and a deterministic drag/drop source. Cold notification routing is covered through an automation launch hook; the Explorer drag diagnostic stays skipped while DPI/layout can move its source target.
 - Add reconnect, shutdown-drain, and cold-activation race integration coverage.
 - Establish measured budgets for 1,000-message restore, search latency, and scrolling frame time. Cold start and steady-state memory are done — `scripts/Measure-Performance.ps1` measures them and `docs/PERFORMANCE.md` records the budgets and the current baseline.

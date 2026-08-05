@@ -22,7 +22,7 @@
 | 5b | Secure handling of credentials | ✅ | `Data/IdentityStore.cs` — the Ed25519 seed is DPAPI-protected (`CurrentUser`) at rest, never plaintext; an unreadable identity is now reported to the user rather than silently replaced |
 | 6 | Windows desktop UX (layout, keyboard, long responses, settings, light/dark) | ✅ | Custom title bar + `ShellSidebar`; `Services/KeyboardShortcutCatalog` + `KeyboardShortcutsDialog`; `MarkdownTextBlock` for long responses; `SettingsOverlay`; full Light/Dark token system in `Styles/Colors.xaml` + `Styles/Brushes.xaml` |
 | 7 | Reliability: interruption, timeout, failure, invalid config, reconnect | ✅ | Timeouts and `ConnectionLost` in `AgentConnectionService`; failed/cancelled runs persist their partial output plus an error bubble (`AgentSessionManager.PersistFailedAsync`); manual reconnect via `ChatViewModel.ReconnectAsync` |
-| 8 | Testing and documentation | ✅ | Docs: `CLAUDE.md`, this `docs/` folder. CI runs Protocol, Core/architecture, and SQLite suites with coverage thresholds plus `ConnectOnion.Protocol.Conformance`. A 12-test FlaUI shell suite runs weekly/on demand; broader chat-level UI automation remains in [`TEST_PLAN.md`](./TEST_PLAN.md). |
+| 8 | Testing and documentation | ✅ | Docs: `CLAUDE.md`, this `docs/` folder. CI runs Protocol, Core/architecture, and SQLite suites with a coverage ratchet plus `ConnectOnion.Protocol.Conformance`. A 23-test FlaUI shell/chat suite runs on every push and pull request; see [`TEST_PLAN.md`](./TEST_PLAN.md). |
 
 ### Optional stretch goals
 
@@ -37,9 +37,9 @@
 
 ### Known limitations (as of this commit)
 
-- WinUI coverage above the headless surfaces is growing: 12 FlaUI shell tests now run weekly and on demand in CI, but chat navigation, template selection, drag-and-drop, and the in-conversation find overlay remain untested (see `TEST_PLAN.md`).
+- WinUI coverage above the headless surfaces now includes 23 required FlaUI shell/chat tests on every push and pull request. Explorer drag-and-drop remains skipped because its source coordinates vary with desktop DPI/layout; OS notification delivery/click and direct tray-icon interaction remain manual (see `TEST_PLAN.md`).
 - The portable ZIP release pipeline exists, but the first public release and clean-machine validation are still pending; signed MSIX publishing remains paused.
-- App XAML exposes 125 unique `AutomationId`s; `AutomationContractTests` guards the 39 critical real-window locators and rejects any named interactive control without an ID. Each new real-window flow still adds its app-owned locator to the critical subset.
+- App XAML exposes 138 unique `AutomationId`s; `AutomationContractTests` guards the 51 critical real-window locators and rejects any named interactive control without an ID. Each new real-window flow still adds its app-owned locator to the critical subset.
 - English and Simplified Chinese resource sets exist and are key-parity gated; manual zh-CN layout, text-scaling, and Narrator validation remain open.
 
 ---
