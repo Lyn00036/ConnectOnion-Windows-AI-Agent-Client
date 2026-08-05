@@ -86,6 +86,82 @@ public sealed class AppDatabaseSchemaTests(TempDatabaseFixture fixture)
     }
 
     [Fact]
+    public async Task ApplyAsync_PreMessagesDatabase_ImportsConversationEnvelopeAndRepairsBaselineColumns()
+    {
+        await using var initialized = await AppDatabase.OpenAsync();
+        await using var connection = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+
+        // Exact schema from the last blob-storage build (8015d33^). CreateSchemaAsync mirrors the
+        // real startup order by ensuring today's missing tables before the migrator inspects v0.
+        await ExecuteAsync(connection, """
+            CREATE TABLE app_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+            CREATE TABLE agents (
+                id TEXT PRIMARY KEY, name TEXT NOT NULL, address TEXT NOT NULL,
+                direct_url TEXT NULL, invite_code TEXT NULL, info_json TEXT NULL,
+                info_updated_at TEXT NULL, sort_order INTEGER NOT NULL DEFAULT 0);
+            CREATE TABLE sessions (
+                id TEXT PRIMARY KEY, agent_id TEXT NOT NULL, title TEXT NOT NULL,
+                created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                sort_order INTEGER NOT NULL DEFAULT 0);
+            CREATE TABLE preferences (
+                id INTEGER PRIMARY KEY CHECK (id = 1), theme TEXT NOT NULL,
+                sidebar_visible INTEGER NOT NULL, message_font_size TEXT NOT NULL,
+                shortcut_overrides_json TEXT NOT NULL);
+            CREATE TABLE conversations (
+                storage_key TEXT PRIMARY KEY, address TEXT NOT NULL,
+                session_id TEXT NOT NULL, envelope_json TEXT NOT NULL,
+                updated_at TEXT NOT NULL);
+            CREATE TABLE identity_keys (
+                id INTEGER PRIMARY KEY CHECK (id = 1), address TEXT NOT NULL,
+                private_seed TEXT NOT NULL);
+
+            INSERT INTO agents (id, name, address) VALUES ('legacy-agent', 'Legacy', '0xlegacy');
+            INSERT INTO sessions (id, agent_id, title, created_at, updated_at)
+            VALUES ('legacy-session', 'legacy-agent', 'Old chat', '2026-07-01', '2026-07-01');
+            """);
+
+        const string envelope = """
+            {
+              "version": 0,
+              "state": {
+                "messages": [
+                  { "id": 1, "role": "User", "content": "preserve this prompt", "eventStatus": "Done" },
+                  { "id": 2, "role": "Agent", "content": "preserve this answer", "agentName": "Legacy", "eventStatus": "Done" }
+                ],
+                "createdAt": 1782864000000,
+                "updatedAt": 1782864001000
+              }
+            }
+            """;
+        await using (var insert = connection.CreateCommand())
+        {
+            insert.CommandText = """
+                INSERT INTO conversations (storage_key, address, session_id, envelope_json, updated_at)
+                VALUES ('co:agent:0xlegacy:session:legacy-session', '0xlegacy',
+                        'legacy-session', $envelope, '2026-07-01');
+                """;
+            insert.Parameters.AddWithValue("$envelope", envelope);
+            await insert.ExecuteNonQueryAsync();
+        }
+
+        await AppDatabase.CreateSchemaAsync(connection);
+        await SchemaMigrator.ApplyAsync(connection);
+
+        Assert.Equal(SchemaMigrator.LatestVersion, (int)await ScalarLongAsync(connection, "PRAGMA user_version;"));
+        Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'remote_session_id';"));
+        Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'last_processed_event_id';"));
+        Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM pragma_table_info('preferences') WHERE name = 'microphone_device_id';"));
+        Assert.Equal(2, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM messages WHERE conversation_id = 'legacy-session';"));
+        Assert.Equal("preserve this prompt", await ScalarStringAsync(connection, "SELECT content FROM messages WHERE conversation_id = 'legacy-session' AND id = 1;"));
+        Assert.Equal("preserve this answer", await ScalarStringAsync(connection, "SELECT content FROM messages WHERE conversation_id = 'legacy-session' AND id = 2;"));
+        Assert.Equal(2, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM message_search WHERE conversation_id = 'legacy-session';"));
+        Assert.Equal("1", await ScalarStringAsync(connection, "SELECT value FROM app_meta WHERE key = 'legacy_conversations_migrated';"));
+        // Keep the source blob as a recovery copy; the importer is idempotent through message PKs.
+        Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM conversations;"));
+    }
+
+    [Fact]
     public async Task ApplyAsync_VersionFourDatabase_AddsMnemonicColumnAndKeepsTheExistingIdentity()
     {
         await using var initialized = await AppDatabase.OpenAsync();

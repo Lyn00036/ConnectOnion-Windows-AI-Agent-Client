@@ -4,13 +4,35 @@ using ConnectOnion.WinUIClient.Models;
 namespace ConnectOnion.IntegrationTests.Database;
 
 [Collection(DatabaseCollection.Name)]
-public sealed class SessionRepositoryTests
+public sealed class SessionRepositoryTests : IAsyncLifetime
 {
     private readonly TempDatabaseFixture _fixture;
     private readonly SessionRepository _sessions = new();
     private readonly ConversationRepository _messages = new();
 
     public SessionRepositoryTests(TempDatabaseFixture fixture) => _fixture = fixture;
+
+    public async ValueTask InitializeAsync()
+    {
+        // SaveAsync owns the complete session index and legitimately removes rows not present in
+        // its input. Start each case with an empty index so child rows left by another class in
+        // this collection cannot make that delete fail; xunit v3 may choose any class order.
+        await using var connection = await AppDatabase.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            DELETE FROM message_attachments;
+            DELETE FROM messages;
+            DELETE FROM trace_events;
+            DELETE FROM executions;
+            DELETE FROM sessions;
+            DELETE FROM app_meta;
+            DELETE FROM agents;
+            INSERT INTO agents (id, name, address) VALUES ('agent-1', 'Agent', '0x1');
+            """;
+        await command.ExecuteNonQueryAsync();
+    }
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     [Fact]
     public async Task SaveUpdateAndDelete_Conversation_PersistsEachLifecycleStage()
