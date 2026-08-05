@@ -1,5 +1,11 @@
 # ConnectOnion Windows Desktop Client Pre-Release Performance Audit
 
+> **Historical report.** This captures the 2026-07-25 pre-release state and must not be rewritten
+> to match later code. Its conclusion that Release trimming was disabled was superseded on
+> 2026-08-05 after the warning, persist/restart, real-window, package and performance gates passed.
+> Read [`TRIMMING.md`](./TRIMMING.md) and [`PERFORMANCE.md`](./PERFORMANCE.md) for the current decision
+> and benchmark method.
+
 Audit date: 2026-07-25  
 Code baseline: `00363e4` plus the pending release changes in the working tree  
 Test configuration: Release / x64 / .NET SDK 10.0.301 / Unpackaged, with an unsigned x64 MSIX also produced  

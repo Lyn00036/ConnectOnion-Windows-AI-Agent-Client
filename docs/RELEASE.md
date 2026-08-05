@@ -83,6 +83,11 @@ The ratified x64 portable baseline is:
 | Self-contained portable ZIP, **trimmed**, ratified 2026-08-05 | 71.29 MB | 170.71 MB | +10% |
 | _(superseded)_ Self-contained portable ZIP, untrimmed, ratified 2026-07-27 | 118.91 MB | 309.21 MB | +10% |
 
+The latest Windows App SDK 2.3.1 release rehearsal produced **71.39 MB compressed / 170.85 MB
+expanded** (464 entries), inside the ratified budget. The small servicing/dependency delta does not
+move the gate's baseline; re-ratify only when a deliberate product change makes the current budget
+an inaccurate guard.
+
 The size gate catches accidental payload growth. If legitimate product work exceeds the budget,
 inspect the archive and deliberately re-ratify the baseline in both this document and
 `scripts/Test-PackageContents.ps1`.
@@ -98,7 +103,7 @@ payload. Find it, or re-ratify deliberately in both this document and
 
 ## Manual validation
 
-Before the first public release, test the extracted ZIP on a clean supported Windows profile:
+Before every public release, test the extracted ZIP on a clean supported Windows profile:
 
 1. Confirm `ConnectOnion.WinUIClient.exe` launches without installing .NET or Windows App SDK.
 2. Create an identity and conversation, give an agent a custom icon, then close the app.

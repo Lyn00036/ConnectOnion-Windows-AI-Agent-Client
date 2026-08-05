@@ -31,10 +31,11 @@ The criterion was therefore rescoped to the channel that actually ships, which i
 the same question — *is the artifact users download correct when trimmed?* — and which could be, and
 was, answered:
 
-- the portable ZIP audits clean (464 entries, no forbidden content) and is **71.29 MB compressed /
-  170.71 MB unpacked**, against untrimmed baselines of 118.91 / 309.21 MB;
-- the executable **from that ZIP** passes the rendering check and 12/12 shell tests;
-- and its warm start is 579.3 ms with a 152.4 MB idle working set, both better than untrimmed.
+- the latest portable release rehearsal audits clean (464 entries, no forbidden content) and is
+  **71.39 MB compressed / 170.85 MB unpacked**, against untrimmed baselines of 118.91 / 309.21 MB;
+- the executable **from that ZIP** passes the rendering check and all 23 required shell tests;
+- and its 10-sample warm start is 606.0 ms with a 153.9 MB idle working set, both better than the
+  same-machine untrimmed control.
 
 **If MSIX publishing is ever restored, the matrix must be run against a trimmed package before that
 channel ships.** It is listed below as deferred, not as met — nothing here has tested it.
@@ -69,8 +70,8 @@ questions. The runtime still does.
 | No unexplained app-owned `IL2026`/`IL3050` in the experimental trimmed publish | **Met** — 0 app-owned sites (was 16) |
 | Protocol and interactive serialization paths have direct unit or integration coverage | **Met** — see "Coverage" below |
 | Tool Activity and every interactive card survive persist/restart in the trimmed publish | **Met** — `scripts/Test-TrimmedRuntime.ps1`, 2026-08-05. The trimmed smoke harness seeds a data root and the **trimmed app** is launched against it and asked to render the turn; both sides are trimmed binaries. See "Real-window evidence" below |
-| Fake Agent and real-window smoke tests pass against the trimmed executable | **Met** — 12/12 shell tests pass against the trimmed executable, matching the untrimmed control. See the note on `HelpKeyboardShortcuts` below for the one that had to be fixed first |
-| The **shipped** channel — the self-contained portable ZIP — audits clean and runs trimmed | **Met** — `scripts/Test-PackageContents.ps1` passes on the trimmed ZIP (464 entries, no forbidden content, 71.29 MB compressed), and the executable extracted from it passes the rendering check and 12/12 shell tests |
+| Fake Agent and real-window smoke tests pass against the trimmed executable | **Met** — all 23 required shell tests pass against the trimmed executable, matching the untrimmed control. See the note on `HelpKeyboardShortcuts` below for the earlier 12-test suite issue that had to be fixed first |
+| The **shipped** channel — the self-contained portable ZIP — audits clean and runs trimmed | **Met** — `scripts/Test-PackageContents.ps1` passes on the trimmed ZIP (464 entries, no forbidden content, 71.39 MB compressed in the latest rehearsal), and the executable extracted from it passes the rendering check and all 23 required shell tests |
 | Signed MSIX functional matrix passes with trimming enabled | **Deferred, not met** — no MSIX is built, so there is nothing to run it against (`docs/RELEASE.md`). Replaced above by the channel that does ship. Run it against a trimmed package *before* MSIX publishing is restored |
 | No key operation regresses >10% against the same-machine untrimmed baseline | **Met** — worst delta **+2.9%** (managed heap); every other metric improved. Table below |
 | Package-size savings and compatibility risks documented | **Met** — this document |
@@ -187,12 +188,21 @@ Classification rule, as implemented in `Invoke-TrimAudit.ps1`:
 The trailing `[…\Some.csproj]` tag appears on *both* and cannot be used to tell them apart; the
 leading token is what distinguishes them.
 
-**Remaining third-party warnings: `IL2081` ×35, `IL2067` ×1** — all from CsWinRT's generated ABI
-marshalling (`ABI.Windows.Foundation.*`, `ABI.System.Collections.Generic.KeyValuePair`). They are
-generic-parameter annotation mismatches in code this repo does not own and cannot annotate. They
-are attributed to whichever project publishes, which makes them look app-owned until you read the
-message. Not suppressed — an `IL2081` that starts naming *our* types would be a real finding, and
-blanket suppression would hide it.
+**Remaining third-party warnings: none.** The 35 `IL2081` warnings from CsWinRT's generated ABI
+marshalling (`ABI.Windows.Foundation.*`, `ABI.System.Collections.Generic.KeyValuePair`) came from
+the .NET SDK's `Microsoft.Windows.SDK.NET.Ref 10.0.19041.57`, which carried C#/WinRT 2.2. The repo
+now pins `10.0.19041.87`, carrying C#/WinRT 2.3.1, and the same fully expanded trim analysis emits
+zero warnings. The newer analyzer also exposed one app-owned `CsWinRT1032` on a collection
+expression targeting `IReadOnlyList`; giving it an explicit array target fixed that warning.
+
+No warnings are suppressed. A future `IL2081` that starts naming *our* types would be a real
+finding, and blanket suppression would hide it.
+
+Serilog 4.3.0 previously contributed one `IL2067` from
+`Serilog.Capturing.PropertyValueConverter`. The core package is transitive here, so that version's
+`build`-only trimming target was not imported. `Directory.Packages.props` now pins Serilog 4.4.0,
+whose `buildTransitive` target reaches this project; the warning is absent from the Release trim
+audit.
 
 ## Size
 
@@ -200,7 +210,7 @@ Measured 2026-07-27, SDK 10.0.301, `main` at `c2ddeb5`:
 
 | Configuration | Size |
 |---|---|
-| Untrimmed + ReadyToRun (**what ships today**) | 247.59 MB |
+| Untrimmed + ReadyToRun (historical pre-trimming shipping shape) | 247.59 MB |
 | Trimmed, no ReadyToRun | 89.35 MB |
 | Difference | 158.24 MB (63.9%) |
 
@@ -214,38 +224,40 @@ upper bound, not a saving.
 
 ### The like-for-like number (measured 2026-08-05)
 
-Both publishes ReadyToRun, both self-contained, same machine:
+Both publishes ReadyToRun, both self-contained (including the Windows App SDK runtime), same
+machine, latest release rehearsal:
 
 | Publish | Size |
 |---|---|
-| Untrimmed + R2R (the shipping configuration) | 248.50 MB |
-| **Trimmed + R2R** | **109.14 MB** |
-| Difference | **139.36 MB (56.1%)** |
+| Untrimmed + R2R control | 310.28 MB |
+| **Trimmed + R2R (shipping configuration)** | **170.85 MB** |
+| Difference | **139.43 MB (44.9%)** |
 
 Reproduce the trimmed side with the same publish the runtime script uses:
 
 ```powershell
 dotnet publish ConnectOnion.WinUIClient/ConnectOnion.WinUIClient.csproj -c Release -r win-x64 `
-  -p:Platform=x64 -p:RunUnpackaged=true -p:PublishTrimmed=true -p:PublishReadyToRun=true `
+  -p:Platform=x64 -p:RunUnpackaged=true -p:SelfContained=true `
+  -p:WindowsAppSDKSelfContained=true -p:PublishTrimmed=true -p:PublishReadyToRun=true `
   -p:AppxPackageSigningEnabled=false -o artifacts/trim-audit/trimmed-r2r
 ```
 
 ### Runtime cost (measured 2026-08-05)
 
-`scripts/Measure-Performance.ps1 -Exe <publish>`, WarmUnpackaged, 5 iterations each, same machine,
+`scripts/Measure-Performance.ps1 -Exe <publish>`, WarmUnpackaged, 10 iterations each, same machine,
 untrimmed+R2R vs trimmed+R2R:
 
 | Metric | Untrimmed + R2R | Trimmed + R2R | Delta |
 |---|---:|---:|---:|
-| Warm start to first frame | 619.4 ms | 595.3 ms | −3.9% |
-| Idle working set | 170.7 MB | 152.8 MB | −10.5% |
-| Idle private bytes | 112.3 MB | 103.3 MB | −8.0% |
+| Warm start to first frame | 624.7 ms | 606.0 ms | −3.0% |
+| Idle working set | 173.2 MB | 153.9 MB | −11.1% |
+| Idle private bytes | 113.6 MB | 104.3 MB | −8.2% |
 | Managed heap at first frame | 3.5 MB | 3.6 MB | +2.9% |
-| Graceful shutdown | 117 ms | 107 ms | −8.5% |
+| Graceful shutdown | 121.0 ms | 118.5 ms | −2.1% |
 
 Worst regression **+2.9%**, against a >10% budget. Nothing here argues against trimming: startup is
 marginally faster and idle working set — the metric this document says is the real argument — is
-17.9 MB lower.
+19.3 MB lower.
 
 **Do not read the audit's trimmed publish as a startup measurement.** It sets
 `PublishReadyToRun=false`, and a cold first launch of that build logged **11.8 s** to first frame
@@ -262,7 +274,8 @@ launches the **trimmed app** against that root — so neither side of the round 
   tool-activity card *with its steps, arguments and results*, plus the `ask_user` and `plan_review`
   cards with their stamped answers, and correctly omits the settled approval. This is the assertion
   the original regression would have failed: the row was always readable, the card came back empty.
-- **Shell suite**: 12 of 12 pass against the trimmed executable, and against the untrimmed control.
+- **Shell suite**: all 23 required tests pass against the trimmed executable, matching the
+  untrimmed control; the Explorer-based drag diagnostic remains explicitly skipped.
 
   Getting there required fixing `HelpKeyboardShortcuts_OpensFocusedAndClosesWithEscape`, which
   failed on both builds in a full-suite run while passing 3/3 in isolation. It was the suite's only
