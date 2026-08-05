@@ -1,3 +1,5 @@
+using System.Text.Json;
+using ConnectOnion.WinUIClient.Models;
 using Microsoft.Data.Sqlite;
 
 namespace ConnectOnion.WinUIClient.Data;
@@ -23,13 +25,13 @@ internal static class SchemaMigrator
 {
     /// <summary>
     /// Version 1 is the baseline: the schema produced by <see cref="AppDatabase.CreateSchemaAsync"/>.
-    /// Databases created before versioning existed have that exact shape, so they are stamped as
-    /// version 1 without running anything (see <see cref="ApplyAsync"/>).
+    /// An unversioned database is repaired to that shape and any legacy conversation envelopes
+    /// are imported before it is stamped as version 1 (see <see cref="ApplyAsync"/>).
     /// </summary>
     private const int BaselineVersion = 1;
 
     /// <summary>The schema version this build expects. Bump when you append to <see cref="Migrations"/>.</summary>
-    internal const int LatestVersion = 8;
+    internal const int LatestVersion = 11;
 
     /// <summary>
     /// Ordered forward migrations. Each runs exactly once, in its own transaction, on databases
@@ -249,6 +251,144 @@ internal static class SchemaMigrator
                   AND NEW.content <> '';
             END;
             """),
+
+        // v9 - make the search index's own maintenance indexed.
+        //
+        // v8's triggers located the row to remove with
+        // `WHERE conversation_id = ... AND message_id = ...`. Both of those columns are declared
+        // UNINDEXED on the FTS5 table, and a non-MATCH constraint on an fts5 virtual table has no
+        // index to use at all - EXPLAIN QUERY PLAN reports `SCAN message_search VIRTUAL TABLE`.
+        // So every removed message scanned the *entire* search index, and because the trigger is
+        // per-row, `DELETE FROM messages WHERE conversation_id = ?` made deleting one conversation
+        // O(its messages x every message in the database). Measured on a 20k-message database,
+        // deleting a 500-message conversation took 1.03 s; the same delete after this migration
+        // takes 0.003 s.
+        //
+        // The fix is to address the FTS row by its rowid, which fts5 *does* look up directly (the
+        // plan becomes `... VIRTUAL TABLE INDEX 0:=`). `message_search_map` supplies that rowid and
+        // is an ordinary table, so its (conversation_id, message_id) lookup is a real index seek.
+        //
+        // This is emphatically *not* the "couple the index to SQLite's mutable implicit rowid" trap
+        // the search design warns about. The rowid stored here is the one we assign to the *FTS*
+        // row ourselves, and the stable (conversation_id, message_id) pair remains the only thing
+        // that identifies a message. Nothing reads `messages.rowid`.
+        //
+        // The index is rebuilt rather than migrated in place: v8 databases already hold FTS rows
+        // whose rowids were assigned implicitly and recorded nowhere, so there is nothing to
+        // back-fill the map from. Rebuilding also re-derives the role/content filter, which is why
+        // the tool/system rows a v8 database never indexed stay out.
+        new(9, """
+            CREATE TABLE IF NOT EXISTS message_search_map (
+                fts_rowid       INTEGER PRIMARY KEY,
+                conversation_id TEXT NOT NULL,
+                message_id      INTEGER NOT NULL
+            );
+
+            CREATE UNIQUE INDEX IF NOT EXISTS ux_message_search_map
+                ON message_search_map(conversation_id, message_id);
+
+            DROP TRIGGER IF EXISTS message_search_insert;
+            DROP TRIGGER IF EXISTS message_search_delete;
+            DROP TRIGGER IF EXISTS message_search_update;
+
+            DELETE FROM message_search;
+            DELETE FROM message_search_map;
+
+            INSERT INTO message_search_map(conversation_id, message_id)
+            SELECT conversation_id, id
+            FROM messages
+            WHERE role IN ('user', 'agent')
+              AND content IS NOT NULL
+              AND content <> '';
+
+            INSERT INTO message_search(rowid, conversation_id, message_id, content)
+            SELECT map.fts_rowid, map.conversation_id, map.message_id, messages.content
+            FROM message_search_map AS map
+            JOIN messages ON messages.conversation_id = map.conversation_id
+                         AND messages.id = map.message_id;
+
+            -- The map row is inserted first so last_insert_rowid() carries the id the FTS row is
+            -- then given explicitly. Both statements share one condition, so the pair either both
+            -- run or neither does and the two tables cannot drift apart.
+            CREATE TRIGGER message_search_insert
+            AFTER INSERT ON messages
+            WHEN NEW.role IN ('user', 'agent') AND NEW.content IS NOT NULL AND NEW.content <> ''
+            BEGIN
+                INSERT INTO message_search_map(conversation_id, message_id)
+                VALUES (NEW.conversation_id, NEW.id);
+
+                INSERT INTO message_search(rowid, conversation_id, message_id, content)
+                VALUES (last_insert_rowid(), NEW.conversation_id, NEW.id, NEW.content);
+            END;
+
+            CREATE TRIGGER message_search_delete
+            AFTER DELETE ON messages
+            BEGIN
+                DELETE FROM message_search
+                WHERE rowid = (
+                    SELECT fts_rowid FROM message_search_map
+                    WHERE conversation_id = OLD.conversation_id AND message_id = OLD.id);
+
+                DELETE FROM message_search_map
+                WHERE conversation_id = OLD.conversation_id AND message_id = OLD.id;
+            END;
+
+            -- Remove-then-reinsert, so a row that stops qualifying (its role edited away from
+            -- user/agent, or its content cleared) leaves the index rather than sitting in it
+            -- holding its old text.
+            CREATE TRIGGER message_search_update
+            AFTER UPDATE OF id, conversation_id, role, content ON messages
+            BEGIN
+                DELETE FROM message_search
+                WHERE rowid = (
+                    SELECT fts_rowid FROM message_search_map
+                    WHERE conversation_id = OLD.conversation_id AND message_id = OLD.id);
+
+                DELETE FROM message_search_map
+                WHERE conversation_id = OLD.conversation_id AND message_id = OLD.id;
+
+                INSERT INTO message_search_map(conversation_id, message_id)
+                SELECT NEW.conversation_id, NEW.id
+                WHERE NEW.role IN ('user', 'agent')
+                  AND NEW.content IS NOT NULL
+                  AND NEW.content <> '';
+
+                INSERT INTO message_search(rowid, conversation_id, message_id, content)
+                SELECT last_insert_rowid(), NEW.conversation_id, NEW.id, NEW.content
+                WHERE NEW.role IN ('user', 'agent')
+                  AND NEW.content IS NOT NULL
+                  AND NEW.content <> '';
+            END;
+            """),
+
+        // v10 - two indexes for deletes that were scanning.
+        //
+        // trace_events had only ix_trace_events_conversation(conversation_id, ts), but
+        // ConversationRepository.DeleteExecutionAsync removes traces by execution_id - a full scan
+        // on a user-facing action (cancelling a run before it reached the agent).
+        //
+        // sessions had only ix_sessions_agent_updated(agent_id, updated_at DESC), whose leading
+        // column does not match SessionRepository.LoadAsync's
+        // `ORDER BY sort_order, updated_at DESC, id`. That load runs on every sidebar refresh and
+        // was paying a full table scan plus a temporary B-tree sort; this index covers the order
+        // exactly, so the sort disappears.
+        new(10, """
+            CREATE INDEX IF NOT EXISTS ix_trace_events_execution
+                ON trace_events(execution_id);
+
+            CREATE INDEX IF NOT EXISTS ix_sessions_order
+                ON sessions(sort_order, updated_at DESC, id);
+            """),
+
+        // v11 - persist sidebar attention independently of notification delivery. A row is
+        // cleared when its conversation is opened; approval_required distinguishes an actionable
+        // interruption from an ordinary unread reply.
+        new(11, """
+            ALTER TABLE sessions ADD COLUMN unread_count INTEGER NOT NULL DEFAULT 0
+                CHECK(unread_count >= 0);
+            ALTER TABLE sessions ADD COLUMN requires_attention INTEGER NOT NULL DEFAULT 0
+                CHECK(requires_attention IN (0, 1));
+            """),
     };
 
     private sealed record Migration(int Version, string Sql);
@@ -265,12 +405,12 @@ internal static class SchemaMigrator
     {
         var current = await ReadVersionAsync(connection).ConfigureAwait(false);
 
-        // 0 means "never versioned": either a database we just created (already at the baseline
-        // shape) or one created by a pre-versioning build (same shape, because the baseline is
-        // exactly what those builds produced). Either way it is a valid version 1 — stamp it.
+        // 0 means "never versioned": a newly created database already has the baseline shape,
+        // while older builds may be missing baseline columns or still store message history in
+        // conversation envelopes. Repair/import inside one transaction, then stamp version 1.
         if (current == 0)
         {
-            await WriteVersionAsync(connection, BaselineVersion).ConfigureAwait(false);
+            await UpgradeUnversionedBaselineAsync(connection).ConfigureAwait(false);
             current = BaselineVersion;
         }
 
@@ -309,6 +449,185 @@ internal static class SchemaMigrator
         }
     }
 
+    private static async Task UpgradeUnversionedBaselineAsync(SqliteConnection connection)
+    {
+        await using var transaction =
+            (SqliteTransaction)await connection.BeginTransactionAsync().ConfigureAwait(false);
+
+        await AddColumnIfMissingAsync(
+            connection, transaction, "sessions", "remote_session_id", "TEXT NULL").ConfigureAwait(false);
+        await AddColumnIfMissingAsync(
+            connection, transaction, "sessions", "last_processed_event_id", "TEXT NULL").ConfigureAwait(false);
+        await AddColumnIfMissingAsync(
+            connection, transaction, "preferences", "microphone_device_id", "TEXT NOT NULL DEFAULT ''").ConfigureAwait(false);
+
+        if (await TableExistsAsync(connection, transaction, "conversations").ConfigureAwait(false))
+            await ImportLegacyConversationsAsync(connection, transaction).ConfigureAwait(false);
+
+        await using (var stamp = connection.CreateCommand())
+        {
+            stamp.Transaction = transaction;
+            stamp.CommandText = $"PRAGMA user_version = {BaselineVersion};";
+            await stamp.ExecuteNonQueryAsync().ConfigureAwait(false);
+        }
+
+        await transaction.CommitAsync().ConfigureAwait(false);
+    }
+
+    private static async Task ImportLegacyConversationsAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction)
+    {
+        var rows = new List<(string SessionId, string EnvelopeJson)>();
+        await using (var read = connection.CreateCommand())
+        {
+            read.Transaction = transaction;
+            read.CommandText = "SELECT session_id, envelope_json FROM conversations ORDER BY storage_key;";
+            await using var reader = await read.ExecuteReaderAsync().ConfigureAwait(false);
+            while (await reader.ReadAsync().ConfigureAwait(false))
+                rows.Add((reader.GetString(0), reader.GetString(1)));
+        }
+
+        foreach (var row in rows)
+        {
+            if (!await SessionExistsAsync(connection, transaction, row.SessionId).ConfigureAwait(false))
+            {
+                throw new InvalidOperationException(
+                    $"Legacy conversation '{row.SessionId}' has no matching session row. " +
+                    "The database was left unchanged so it can be repaired or backed up.");
+            }
+
+            LegacyConversationEnvelope envelope;
+            try
+            {
+                envelope = JsonSerializer.Deserialize(
+                    row.EnvelopeJson, AppJsonContext.Default.LegacyConversationEnvelope)
+                    ?? throw new JsonException("the envelope was null");
+            }
+            catch (JsonException ex)
+            {
+                throw new InvalidOperationException(
+                    $"Legacy conversation '{row.SessionId}' could not be decoded. " +
+                    "The database was left unchanged so it can be repaired or backed up.", ex);
+            }
+
+            var baseTimestamp = envelope.State.CreatedAt > 0
+                ? envelope.State.CreatedAt
+                : envelope.State.UpdatedAt;
+            for (var index = 0; index < envelope.State.Messages.Count; index++)
+            {
+                var message = envelope.State.Messages[index];
+                await using var insert = connection.CreateCommand();
+                insert.Transaction = transaction;
+                insert.CommandText = """
+                    INSERT OR IGNORE INTO messages
+                      (id, conversation_id, role, content, agent_name,
+                       event_kind, event_key, event_eyebrow, event_title,
+                       event_detail, event_meta, event_args, event_result,
+                       event_status, is_onboarding, created_at)
+                    VALUES
+                      ($id, $conversation_id, $role, $content, $agent_name,
+                       $event_kind, NULL, $event_eyebrow, $event_title,
+                       $event_detail, $event_meta, $event_args, $event_result,
+                       $event_status, $is_onboarding, $created_at);
+                    """;
+                AppDatabase.Add(insert, "$id", message.Id);
+                AppDatabase.Add(insert, "$conversation_id", row.SessionId);
+                AppDatabase.Add(insert, "$role", message.Role switch
+                {
+                    ChatRole.Agent => "agent",
+                    ChatRole.Event => "event",
+                    _ => "user",
+                });
+                AppDatabase.Add(insert, "$content", message.Content);
+                AppDatabase.Add(insert, "$agent_name", message.AgentName);
+                AppDatabase.Add(insert, "$event_kind", message.EventKind);
+                AppDatabase.Add(insert, "$event_eyebrow", message.EventEyebrow);
+                AppDatabase.Add(insert, "$event_title", message.EventTitle);
+                AppDatabase.Add(insert, "$event_detail", message.EventDetail);
+                AppDatabase.Add(insert, "$event_meta", message.EventMeta);
+                AppDatabase.Add(insert, "$event_args", message.EventArgs);
+                AppDatabase.Add(insert, "$event_result", message.EventResult);
+                AppDatabase.Add(insert, "$event_status", message.Status switch
+                {
+                    EventStatus.Running => "running",
+                    EventStatus.Error => "error",
+                    _ => "done",
+                });
+                AppDatabase.Add(insert, "$is_onboarding", message.IsOnboarding ? 1 : 0);
+                AppDatabase.Add(insert, "$created_at", baseTimestamp + index);
+                await insert.ExecuteNonQueryAsync().ConfigureAwait(false);
+            }
+        }
+
+        await using var marker = connection.CreateCommand();
+        marker.Transaction = transaction;
+        marker.CommandText = """
+            INSERT INTO app_meta (key, value)
+            VALUES ('legacy_conversations_migrated', '1')
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value;
+            """;
+        await marker.ExecuteNonQueryAsync().ConfigureAwait(false);
+    }
+
+    private static async Task AddColumnIfMissingAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string table,
+        string column,
+        string declaration)
+    {
+        if (!await TableExistsAsync(connection, transaction, table).ConfigureAwait(false)
+            || await ColumnExistsAsync(connection, transaction, table, column).ConfigureAwait(false))
+            return;
+
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        // All three identifiers/declarations are constants owned by this file, never input.
+        command.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} {declaration};";
+        await command.ExecuteNonQueryAsync().ConfigureAwait(false);
+    }
+
+    private static async Task<bool> TableExistsAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string table)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = $name;";
+        command.Parameters.AddWithValue("$name", table);
+        return Convert.ToInt64(await command.ExecuteScalarAsync().ConfigureAwait(false),
+            System.Globalization.CultureInfo.InvariantCulture) != 0;
+    }
+
+    private static async Task<bool> ColumnExistsAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string table,
+        string column)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = $"SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = $name;";
+        command.Parameters.AddWithValue("$name", column);
+        return Convert.ToInt64(await command.ExecuteScalarAsync().ConfigureAwait(false),
+            System.Globalization.CultureInfo.InvariantCulture) != 0;
+    }
+
+    private static async Task<bool> SessionExistsAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string sessionId)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "SELECT COUNT(*) FROM sessions WHERE id = $id;";
+        command.Parameters.AddWithValue("$id", sessionId);
+        return Convert.ToInt64(await command.ExecuteScalarAsync().ConfigureAwait(false),
+            System.Globalization.CultureInfo.InvariantCulture) != 0;
+    }
+
     private static async Task<int> ReadVersionAsync(SqliteConnection connection)
     {
         await using var command = connection.CreateCommand();
@@ -317,10 +636,4 @@ internal static class SchemaMigrator
         return value is null ? 0 : Convert.ToInt32(value, System.Globalization.CultureInfo.InvariantCulture);
     }
 
-    private static async Task WriteVersionAsync(SqliteConnection connection, int version)
-    {
-        await using var command = connection.CreateCommand();
-        command.CommandText = $"PRAGMA user_version = {version};";
-        await command.ExecuteNonQueryAsync().ConfigureAwait(false);
-    }
 }

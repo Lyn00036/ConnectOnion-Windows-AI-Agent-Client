@@ -515,13 +515,25 @@ public sealed class AgentConnectionService : IAsyncDisposable
         // The connect deadline is the only bounded wait; ONBOARD_REQUIRED
         // cancels it (a human/onboarding step now owns the connection).
         _connectTimeoutCts = new CancellationTokenSource(_connectTimeout);
-        await using (_connectTimeoutCts.Token.Register(() =>
-                         connectTcs.TrySetException(new TimeoutException("Authentication timed out"))))
-        await using (connectToken.Register(() => connectTcs.TrySetCanceled()))
+        try
         {
-            var connected = await connectTcs.Task.ConfigureAwait(false);
-            _authenticated = true;
-            SessionId = connected.GetString("session_id") ?? sessionId;
+            await using (_connectTimeoutCts.Token.Register(() =>
+                             connectTcs.TrySetException(new TimeoutException("Authentication timed out"))))
+            await using (connectToken.Register(() => connectTcs.TrySetCanceled()))
+            {
+                var connected = await connectTcs.Task.ConfigureAwait(false);
+                _authenticated = true;
+                SessionId = connected.GetString("session_id") ?? sessionId;
+            }
+        }
+        finally
+        {
+            // This field means "a handshake is in flight" to TryStartReconnect. Leaving the
+            // completed TCS here permanently made every later transport loss look like a failed
+            // initial handshake and silently disabled automatic reconnect for established turns.
+            _connectTcs = null;
+            _connectTimeoutCts?.Dispose();
+            _connectTimeoutCts = null;
         }
     }
 

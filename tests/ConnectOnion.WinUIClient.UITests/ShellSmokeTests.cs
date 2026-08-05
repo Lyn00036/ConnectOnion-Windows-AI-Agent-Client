@@ -6,11 +6,13 @@ using FlaUI.Core.Input;
 using FlaUI.Core.WindowsAPI;
 using FlaUI.UIA3;
 using Microsoft.Data.Sqlite;
+using Application = FlaUI.Core.Application;
 
 namespace ConnectOnion.WinUIClient.UITests;
 
 [Trait("Category", "UiSmoke")]
-public sealed class ShellSmokeTests
+[Collection(UiAutomationCollection.Name)]
+public sealed partial class ShellSmokeTests
 {
     public const string ExecutableEnvironmentVariable = "CONNECTONION_UI_TEST_EXE";
     private const string DataRootEnvironmentVariable = "CONNECTONION_DATA_ROOT";
@@ -524,15 +526,41 @@ public sealed class ShellSmokeTests
         Assert.NotNull(WaitForDescendant(window, "GeneralNav"));
     }
 
+    /// <summary>
+    /// Opens the Help menu and clicks one of its items.
+    ///
+    /// <para>Two things here are load-bearing, and both exist because a menu flyout can only be
+    /// opened by a <b>physical</b> click — <c>MenuBarItem</c> exposes ExpandCollapse rather than
+    /// Invoke, so the UIA-pattern route the rest of this suite prefers is not available. A physical
+    /// click goes to whatever window is under the cursor's coordinates in the foreground, which
+    /// makes it the one interaction in this suite that can be stolen.</para>
+    ///
+    /// <para>So the window is brought to the foreground first: the previous test's app is killed in
+    /// <c>Dispose</c>, and until that process finishes exiting it can still own the foreground, so
+    /// the click lands on a dying window and the flyout never opens. That is exactly how
+    /// <c>HelpKeyboardShortcuts</c> failed in a full-suite run while passing 3/3 in isolation.</para>
+    ///
+    /// <para>And the open is retried, because the click is a <i>toggle</i>: if a stray earlier click
+    /// already opened the flyout, clicking Help again closes it, and a single attempt then reports
+    /// the item as missing when the menu was in the opposite state to the one assumed.</para>
+    /// </summary>
     private static void OpenHelpMenuItem(Window window, string automationId)
     {
         var help = WaitForDescendant(window, "HelpMenuButton");
         Assert.NotNull(help);
-        help.AsMenuItem().Click();
 
-        var item = WaitForDescendant(window, automationId);
-        Assert.NotNull(item);
-        item.AsMenuItem().Click();
+        AutomationElement? item = null;
+        for (var attempt = 0; attempt < 3 && item is null; attempt++)
+        {
+            try { window.SetForeground(); }
+            catch (Exception) { /* the window may still be settling; the click below retries */ }
+
+            help.AsMenuItem().Click();
+            item = WaitForDescendant(window, automationId, TimeSpan.FromSeconds(5));
+        }
+
+        Assert.True(item is not null, $"the Help menu never revealed '{automationId}'");
+        item!.AsMenuItem().Click();
     }
 
     /// <summary>Polls for a descendant, tolerating the transient UIA failures a mutating visual
@@ -591,7 +619,9 @@ public sealed class ShellSmokeTests
     /// desktop; the documented UI-smoke workflow sets the path after publishing an unpackaged
     /// x64 build.
     /// </summary>
-    internal static LaunchedApp? LaunchApp(bool handleFirstRunDialog = true)
+    internal static LaunchedApp? LaunchApp(
+        bool handleFirstRunDialog = true,
+        IReadOnlyDictionary<string, string>? environment = null)
     {
         var executable = Environment.GetEnvironmentVariable(ExecutableEnvironmentVariable);
         if (string.IsNullOrWhiteSpace(executable)) return null;
@@ -604,7 +634,7 @@ public sealed class ShellSmokeTests
             .Select(process => process.Id)
             .ToHashSet();
 
-        using var launchedProcess = StartProcess(executable);
+        using var launchedProcess = StartProcess(executable, environment);
         Assert.NotNull(launchedProcess);
 
         // An unpackaged WinUI executable can hand off to the Windows App SDK host, so the
@@ -702,9 +732,13 @@ public sealed class ShellSmokeTests
         command.ExecuteNonQuery();
     }
 
-    private static System.Diagnostics.Process? StartProcess(string executable)
+    private static System.Diagnostics.Process? StartProcess(
+        string executable,
+        IReadOnlyDictionary<string, string>? environment = null)
     {
         var escapedExecutable = executable.Replace("'", "''", StringComparison.Ordinal);
+        var dataRoot = ResolveDataRoot();
+        var escapedDataRoot = dataRoot.Replace("'", "''", StringComparison.Ordinal);
         var startInfo = new System.Diagnostics.ProcessStartInfo("powershell.exe")
         {
             // The unpackaged Windows App SDK executable needs shell activation. Launch it through
@@ -719,8 +753,27 @@ public sealed class ShellSmokeTests
         startInfo.ArgumentList.Add("-NoProfile");
         startInfo.ArgumentList.Add("-NonInteractive");
         startInfo.ArgumentList.Add("-Command");
-        startInfo.ArgumentList.Add($"Start-Process -FilePath '{escapedExecutable}'");
-        startInfo.Environment[DataRootEnvironmentVariable] = ResolveDataRoot();
+        // Set the override in the child PowerShell command as well as its explicit environment
+        // block. Start-Process performs the final shell activation, and this keeps the value in
+        // that exact process's environment even on hosts that rebuild the child environment.
+        var environmentScript = new System.Text.StringBuilder(
+            $"$env:{DataRootEnvironmentVariable} = '{escapedDataRoot}'; ");
+        if (environment is not null)
+        {
+            foreach (var (key, value) in environment)
+            {
+                Assert.Matches("^[A-Z0-9_]+$", key);
+                var escapedValue = value.Replace("'", "''", StringComparison.Ordinal);
+                environmentScript.Append("$env:").Append(key).Append(" = '")
+                    .Append(escapedValue).Append("'; ");
+                startInfo.Environment[key] = value;
+            }
+        }
+        environmentScript.Append("Start-Process -FilePath '")
+            .Append(escapedExecutable)
+            .Append('\'');
+        startInfo.ArgumentList.Add(environmentScript.ToString());
+        startInfo.Environment[DataRootEnvironmentVariable] = dataRoot;
         return System.Diagnostics.Process.Start(startInfo);
     }
 
@@ -774,6 +827,7 @@ public sealed class ShellSmokeTests
     {
         public Window Window { get; } = window;
         public System.Diagnostics.Process Process => process;
+        public UIA3Automation Automation => automation;
 
         public System.Diagnostics.Process? StartAnotherInstance()
             => StartProcess(executable);

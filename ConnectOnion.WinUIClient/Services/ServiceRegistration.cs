@@ -80,7 +80,12 @@ public static class ServiceRegistration
 
         // ---- Presence + runtime ----
         services.AddSingleton<AgentPresenceService>();
-        // AgentSessionManager(HttpClient, ConversationRepository, UsageRepository?) — auto-wired.
+        // AgentSessionManager(HttpClient, ConversationRepository, UsageRepository?, ILogger?,
+        // NotificationCoordinator?) — auto-wired. The optional parameters are filled from the
+        // container when the type is registered and fall back to their defaults when it isn't,
+        // which is what lets a headless test construct this with two arguments. The coordinator is
+        // registered below; order does not matter to the container, and there is no cycle back to
+        // this type.
         services.AddSingleton<AgentSessionManager>();
 
         // ---- Notification subsystem ----
@@ -97,7 +102,8 @@ public static class ServiceRegistration
             presence: sp.GetRequiredService<WindowPresenceService>(),
             settings: sp.GetRequiredService<NotificationSettingsStore>(),
             scheduler: sp.GetRequiredService<INotificationScheduler>(),
-            onError: NotificationLog.Warn));
+            onError: NotificationLog.Warn,
+            attentionStore: sp.GetRequiredService<SessionRepository>()));
         services.AddSingleton<ConversationNavigationService>();
         services.AddSingleton<NotificationActivationRouter>();
 

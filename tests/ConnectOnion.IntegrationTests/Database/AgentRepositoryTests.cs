@@ -8,6 +8,48 @@ public sealed class AgentRepositoryTests
 {
     private readonly AgentRepository _repository = new();
 
+    /// <summary>
+    /// The thin read returns the same agents in the same order as the full one, and carries no
+    /// <c>info_json</c>.
+    ///
+    /// <para>The type is the safety mechanism here: <c>SaveAsync</c> writes <c>info_json</c> from
+    /// whatever object it is given, and five production call sites round-trip a load straight back
+    /// into it — so a blob-less <c>AgentConfig</c> would erase every agent's cached metadata.
+    /// <c>AgentSummary</c> has no route into <c>SaveAsync</c>, and this test would stop compiling
+    /// if that ever changed, which is the point.</para>
+    /// </summary>
+    [Fact]
+    public async Task LoadSummariesAsync_MatchesLoadAsync_WithoutCarryingInfoJson()
+    {
+        var agents = Enumerable.Range(0, 3).Select(i => new AgentConfig
+        {
+            Id = $"summary-{i}",
+            Name = $"Summary Agent {i}",
+            Address = $"0x{i}",
+            DirectUrl = i % 2 == 0 ? $"https://agent-{i}.example.test" : null,
+            IconPath = i == 0 ? "avatars/summary-0.png" : null,
+            InfoJson = "{\"skills\":[{\"name\":\"a\",\"description\":\"a big cached payload\"}]}",
+            InfoUpdatedAt = "2026-08-05T00:00:00Z",
+        }).ToList();
+        await _repository.SaveAsync(new AgentsState { Agents = agents, SelectedAgentId = "summary-1" });
+
+        var full = await _repository.LoadAsync();
+        var thin = await _repository.LoadSummariesAsync();
+
+        Assert.Equal(full.Agents.Select(a => a.Id), thin.Agents.Select(a => a.Id));
+        Assert.Equal(full.SelectedAgentId, thin.SelectedAgentId);
+        Assert.Equal(
+            full.Agents.Select(a => (a.Name, a.Address, a.DirectUrl, a.IconPath)),
+            thin.Agents.Select(a => (a.Name, a.Address, a.DirectUrl, a.IconPath)));
+        // Address + DirectUrl are exactly what a reachability probe dials, so the sidebar can
+        // drive presence from a summary without ever reading a full agent record.
+        Assert.All(thin.Agents, agent =>
+            Assert.False(string.IsNullOrWhiteSpace(agent.Address) && string.IsNullOrWhiteSpace(agent.DirectUrl)));
+
+        // The blob is still on disk — the thin read skips it, it does not drop it.
+        Assert.All(full.Agents, agent => Assert.Contains("cached payload", agent.InfoJson!, StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task SaveLoadAndDelete_Agent_RoundTripsLifecycleAndAllFields()
     {

@@ -6,9 +6,28 @@
 
 ## How to read this document (status)
 
-Sections **1–31 describe the wire protocol** — what the agent actually sends and expects. They remain
-the reference for anything touching `CONNECT` / `INPUT` / `OUTPUT`, streaming events, `session_id`,
-reconnect, and `last_msg_id`. Treat them as authoritative.
+Sections **1–31 describe the core wire protocol** — what the agent sends and expects for
+`CONNECT` / `INPUT` / `OUTPUT`, streaming, `session_id`, reconnect, and `last_msg_id`. They are
+authoritative for the frames they specify. The protocol has since gained extension frames that are
+implemented and tested but are not expanded into full standalone sections below; the current
+dispatch table in `ConnectOnion.Protocol/AgentConnectionService.cs` is authoritative for that
+supported set.
+
+Current implemented frame coverage:
+
+| Category | Frames handled by the client |
+|---|---|
+| Connection and terminal | `CONNECT`, `CONNECTED`, `OUTPUT`, `ERROR`, `PING`/`PONG` |
+| Input and control | `INPUT` (also used as runtime input while a turn is active), `INTERRUPT`, `mode_change`, `mode_changed`, `SESSION_STATUS`, `RUNTIME_INPUT_ACK` |
+| Interactive | `ask_user`, `approval_needed`, `plan_review` |
+| Onboarding | `ONBOARD_REQUIRED`, `ONBOARD_SUBMIT`, `ONBOARD_SUCCESS` |
+| Streamed activity | `thinking`, `llm_call`, `llm_result`, `tool_call`, `tool_result`, `assistant`, `intent`, `eval`, `compact`, `tool_blocked` |
+| Attachments and generated content | `agent_image`, `files_received`, `diff_preview` |
+| Reconnect/state synchronization | `session_sync`, `last_msg_id`, `session_id` |
+
+Unknown frame types are ignored rather than treated as terminal output. Adding a new supported
+frame therefore requires updating the dispatch table, protocol tests, the projection mapping when
+it is user-visible, and this coverage table.
 
 Sections **32–39 were design *recommendations*** written before the client existed (suggested DTO
 layers, SQLite schema, client mapping, state machine). **The implementation has since diverged from
@@ -18,7 +37,7 @@ them.** Where they disagree with the code, the code wins. Concretely:
 |---|---|
 | §32–34 typed request/response DTO classes | `ConnectOnion.Protocol` uses `WireMessage` (a thin `JsonElement` wrapper) for inbound and plain `Dictionary<string, object?>` for outbound. **No attribute-based DTOs, no source-gen context.** Follow that convention for new message types. |
 | §35 recommended SQLite schema | The real schema lives in `AppDatabase.CreateSchemaAsync`, versioned by `PRAGMA user_version` via `Data/SchemaMigrator.cs`. Notably `messages` is **one row per rendered bubble**, not a session JSON blob, and `message_attachments` stores metadata + a local cache path only — **never a base64 payload**. |
-| §36 recommended client mapping | The single stream-event → bubble mapping is `Services/Runtime/ChatTurnProjection.cs`; the per-event-type dispatch table it drives is `ChatTurnProjection.Events.cs`, which is where a new event type is handled. Both are driven identically by the live view model and the headless persist path. Do not add event handling anywhere else. |
+| §36 recommended client mapping | The single stream-event → bubble mapping is `ConnectOnion.WinUIClient.Core/Services/Runtime/ChatTurnProjection.cs`; the per-event-type dispatch table it drives is `ChatTurnProjection.Events.cs`, which is where a new event type is handled. Both are driven identically by the live view model and the headless persist path. Do not add event handling anywhere else. |
 | §37 recommended WinUI state machine | Connections and in-flight turns are owned app-level by `AgentSessionManager` + `ConversationRunRegistry`, **not by a page**. A turn survives page close, conversation switch, and tray minimize. |
 
 Where the protocol is implemented in this repo:

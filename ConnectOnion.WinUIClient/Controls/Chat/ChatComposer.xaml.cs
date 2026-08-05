@@ -526,6 +526,7 @@ public sealed partial class ChatComposer : UserControl, IDisposable
 
     private static IReadOnlyList<ComposerSuggestion> GenericSuggestions()
         =>
+        (ComposerSuggestion[])
         [
             new(
                 LocalizedStrings.Get(

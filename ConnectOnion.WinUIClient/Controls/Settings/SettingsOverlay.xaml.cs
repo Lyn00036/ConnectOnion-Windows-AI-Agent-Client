@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 using ConnectOnion.WinUIClient.Common;
 using Microsoft.UI.Xaml;
@@ -8,8 +9,13 @@ using Windows.System;
 
 namespace ConnectOnion.WinUIClient.Controls;
 
+public sealed record SettingsSearchResult(string Category, string Title);
+
 public sealed partial class SettingsOverlay : UserControl
 {
+    private static readonly string[] SearchCategories =
+        ["General", "Agents", "Notifications", "Keyboard", "Identity", "Usage"];
+
     private FrameworkElement? _focusReturnTarget;
     private string _selectedCategory = "General";
     private bool _syncingCategorySelection;
@@ -165,6 +171,7 @@ public sealed partial class SettingsOverlay : UserControl
         var isSettingsPage = !isIdentity && !isAgents && !isUsage && !isKeyboard;
 
         SettingsContent.Visibility = isSettingsPage ? Visibility.Visible : Visibility.Collapsed;
+        SettingsSearchResultsScrollViewer.Visibility = Visibility.Collapsed;
         IdentityScrollViewer.Visibility = isIdentity ? Visibility.Visible : Visibility.Collapsed;
         AgentsScrollViewer.Visibility = isAgents ? Visibility.Visible : Visibility.Collapsed;
         UsageScrollViewer.Visibility = isUsage ? Visibility.Visible : Visibility.Collapsed;
@@ -206,19 +213,51 @@ public sealed partial class SettingsOverlay : UserControl
             return;
         }
 
-        // Search is a modal-level affordance, so it must work from every category. Standalone
-        // panes used to hide the search boxes; merely keeping them visible would still leave the
-        // filtered SettingsPage collapsed behind Identity/Agents/Usage/Keyboard. Enter an
-        // explicit results mode and let clearing the query restore the selected category.
-        SettingsContent.Visibility = Visibility.Visible;
+        // Search the complete category index. The old implementation only filtered SettingsPage,
+        // silently excluding Agents, Keyboard, Identity and Usage even though the search box sits
+        // above all six categories.
+        SettingsContent.Visibility = Visibility.Collapsed;
         IdentityScrollViewer.Visibility = Visibility.Collapsed;
         AgentsScrollViewer.Visibility = Visibility.Collapsed;
         UsageScrollViewer.Visibility = Visibility.Collapsed;
         KeyboardScrollViewer.Visibility = Visibility.Collapsed;
-        SettingsContent.Filter(query);
+        SettingsSearchResultsScrollViewer.Visibility = Visibility.Visible;
+
+        var results = SearchCategories
+            .Where(category => CategoryMatches(category, query))
+            .Select(category => new SettingsSearchResult(category, LocalizedCategoryName(category)))
+            .ToList();
+        SettingsSearchResultsList.ItemsSource = results;
+        SettingsSearchResultsEmpty.Visibility = results.Count == 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         CategoryTitle.Text = LocalizedStrings.Get(
             "SettingsSearchResultsHeading",
             "Search results");
+    }
+
+    private static bool CategoryMatches(string category, string query)
+    {
+        var searchable = category switch
+        {
+            "General" => LocalizedStrings.Get("SettingsSearchKeywordsGeneral", "general appearance theme language window startup chat audio microphone"),
+            "Agents" => LocalizedStrings.Get("SettingsSearchKeywordsAgents", "agents agent address connection icon avatar delete rename"),
+            "Notifications" => LocalizedStrings.Get("SettingsSearchKeywordsNotifications", "notifications alerts sound banner toast approval reply"),
+            "Keyboard" => LocalizedStrings.Get("SettingsSearchKeywordsKeyboard", "keyboard shortcuts hotkeys keys bindings"),
+            "Identity" => LocalizedStrings.Get("SettingsSearchKeywordsIdentity", "identity address recovery phrase mnemonic private key seed backup restore"),
+            "Usage" => LocalizedStrings.Get("SettingsSearchKeywordsUsage", "usage tokens model cost history heatmap clear"),
+            _ => category,
+        };
+        searchable = $"{LocalizedCategoryName(category)} {searchable}";
+        return query.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .All(token => searchable.Contains(token, StringComparison.CurrentCultureIgnoreCase));
+    }
+
+    private void SettingsSearchResult_Click(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is not SettingsSearchResult result) return;
+        ClearSearch();
+        SelectCategory(result.Category);
     }
 
     private void ClearSearch()

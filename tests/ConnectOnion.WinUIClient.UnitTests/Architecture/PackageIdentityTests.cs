@@ -85,25 +85,14 @@ public sealed class PackageIdentityTests
         Assert.Contains("<DisplayName>ConnectOnion Desktop</DisplayName>", manifest, StringComparison.Ordinal);
     }
 
-    /// <summary>
-    /// The release build passes <c>PublishTrimmed=false</c> explicitly. Shrinking the package is
-    /// not a reason to enable trimming — that is gated separately by <c>docs/TRIMMING.md</c>, and
-    /// a size-budget breach is the most likely moment for someone to reach for it.
-    /// </summary>
-    [Fact]
-    public void ReleaseWorkflow_KeepsTrimmingDisabled()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "global.json")))
-        {
-            directory = directory.Parent;
-        }
-        var workflow = File.ReadAllText(
-            Path.Combine(directory!.FullName, ".github", "workflows", "release.yml"));
-
-        Assert.Contains("PublishTrimmed=false", workflow, StringComparison.Ordinal);
-        Assert.DoesNotContain("PublishTrimmed=true", workflow, StringComparison.Ordinal);
-    }
+    // The release workflow's PublishTrimmed setting used to be asserted here as well, pinned to
+    // false. It moved out rather than being flipped: TrimmingGateTests is the designated guard for
+    // that flag and now pins it in four places (Release, Debug, and both workflows' publishes), and
+    // two tests asserting the same contract from different files is how they end up disagreeing —
+    // which is exactly what happened when trimming was enabled on 2026-08-05 and this copy still
+    // demanded the opposite. The concern that put it here (someone reaching for trimming to escape
+    // a size-budget breach) is now answered where it actually arises: Test-PackageContents.ps1 says
+    // so in the failure message. See docs/TRIMMING.md.
 
     [Fact]
     public void ReleaseWorkflow_PublishesOnlySelfContainedPortableArchive()

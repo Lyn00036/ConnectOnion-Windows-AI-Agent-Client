@@ -1,5 +1,6 @@
 using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Models;
+using Microsoft.Data.Sqlite;
 
 namespace ConnectOnion.IntegrationTests.Database;
 
@@ -154,6 +155,85 @@ public sealed class ConversationRepositoryTests
         var plan = new List<string>();
         while (await reader.ReadAsync()) plan.Add(reader.GetString(3));
         Assert.Contains(plan, detail => detail.Contains("VIRTUAL TABLE INDEX", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// The search index is maintained by rowid, and deleting a conversation must not scan it.
+    ///
+    /// <para>Schema v8 removed FTS rows with
+    /// <c>WHERE conversation_id = ... AND message_id = ...</c>. Both columns are UNINDEXED on the
+    /// fts5 table and a non-MATCH constraint there has no index to use, so the plan was a full
+    /// <c>SCAN message_search VIRTUAL TABLE</c> — per deleted row, because the trigger is per-row.
+    /// Deleting one conversation was therefore O(its messages x every message in the database):
+    /// measured at 1.03 s for a 500-message conversation in a 20k-message database. v9 addresses
+    /// the row by rowid instead, via <c>message_search_map</c>.</para>
+    ///
+    /// <para>The plan assertion is the point of this test. The correctness half would pass just as
+    /// well against the v8 triggers, so without it a revert to the scanning form would be silent.</para>
+    /// </summary>
+    [Fact]
+    public async Task TranscriptSearchIndex_IsMaintainedByRowid_AndStaysAlignedAcrossEdits()
+    {
+        await _fixture.CreateSessionAsync("fts-keep");
+        await _fixture.CreateSessionAsync("fts-drop");
+        await _repository.UpsertMessagesAsync("fts-keep", new[] { Message(1, "keep me findable") });
+        await _repository.UpsertMessagesAsync(
+            "fts-drop", new[] { Message(1, "doomed alpha"), Message(2, "doomed beta") });
+
+        await using var connection = await AppDatabase.OpenAsync();
+
+        // The delete trigger's lookup resolves through the map's real index...
+        Assert.Contains(
+            await QueryPlanAsync(
+                connection,
+                """
+                EXPLAIN QUERY PLAN
+                SELECT fts_rowid FROM message_search_map
+                WHERE conversation_id = 'fts-drop' AND message_id = 1;
+                """),
+            detail => detail.Contains("ux_message_search_map", StringComparison.OrdinalIgnoreCase));
+
+        // ...and the FTS removal it feeds is a rowid seek, never a scan of the index.
+        var deletePlan = await QueryPlanAsync(
+            connection, "EXPLAIN QUERY PLAN DELETE FROM message_search WHERE rowid = 1;");
+        Assert.DoesNotContain(
+            deletePlan,
+            detail => detail.Contains("SCAN message_search", StringComparison.OrdinalIgnoreCase)
+                      && !detail.Contains(":=", StringComparison.Ordinal));
+
+        await _repository.DeleteMessagesAsync("fts-drop");
+
+        Assert.Empty(await _repository.SearchMessageContentAsync("doomed"));
+        Assert.Equal("keep me findable", (await _repository.SearchMessageContentAsync("findable"))["fts-keep"]);
+
+        // Every surviving FTS row is still described by the map row that names it — the pair is
+        // what the triggers keep in step, and a drift here is how a stale excerpt would surface.
+        Assert.Equal(0, await ScalarAsync(connection, """
+            SELECT COUNT(*) FROM message_search_map AS map
+            JOIN message_search AS search ON search.rowid = map.fts_rowid
+            WHERE search.conversation_id <> map.conversation_id
+               OR search.message_id <> map.message_id;
+            """));
+        Assert.Equal(0, await ScalarAsync(connection, """
+            SELECT (SELECT COUNT(*) FROM message_search) - (SELECT COUNT(*) FROM message_search_map);
+            """));
+    }
+
+    private static async Task<List<string>> QueryPlanAsync(SqliteConnection connection, string sql)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        await using var reader = await command.ExecuteReaderAsync();
+        var plan = new List<string>();
+        while (await reader.ReadAsync()) plan.Add(reader.GetString(3));
+        return plan;
+    }
+
+    private static async Task<long> ScalarAsync(SqliteConnection connection, string sql)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        return (long)(await command.ExecuteScalarAsync())!;
     }
 
     [Fact]

@@ -9,19 +9,19 @@ public sealed class TempDatabaseFixture : IAsyncLifetime
 
     public string DatabasePath => Path.Combine(RootDirectory, "connectonion.db");
 
-    public Task InitializeAsync()
+    public ValueTask InitializeAsync()
     {
         Environment.SetEnvironmentVariable(AppStorage.DataRootEnvironmentVariable, RootDirectory);
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
-    public Task DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         Environment.SetEnvironmentVariable(AppStorage.DataRootEnvironmentVariable, null);
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         if (Directory.Exists(RootDirectory))
             Directory.Delete(RootDirectory, recursive: true);
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     public async Task CreateSessionAsync(string sessionId = "conversation-1")

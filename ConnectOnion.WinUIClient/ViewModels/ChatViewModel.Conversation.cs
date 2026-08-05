@@ -51,11 +51,12 @@ public sealed partial class ChatViewModel
         IsStopping = false;
         _optimisticStopRunId = null;
 
-        _session = SessionSummary.NewConversation(_agent.Id, _sessionsState.Sessions, Common.SessionTitles.PlaceholderFormat);
+        _session = SessionSummary.NewConversation(
+            _agent.Id,
+            await _sessions.CountForAgentAsync(_agent.Id),
+            Common.SessionTitles.PlaceholderFormat);
         // A new conversation starts at the default mode rather than inheriting the last one: the
         // modes that skip approvals are exactly the ones nobody should acquire by accident.
-        _sessionsState.Sessions.Add(_session);
-        _sessionsState.ActiveSessionId = _session.Id;
         CurrentMode = _session.Mode;
         await _sessions.AppendSessionAsync(_session);
 
@@ -106,10 +107,11 @@ public sealed partial class ChatViewModel
         IsStopping = false;
         _optimisticStopRunId = null;
 
-        _session = SessionSummary.NewConversation(_agent.Id, _sessionsState.Sessions, Common.SessionTitles.PlaceholderFormat);
+        _session = SessionSummary.NewConversation(
+            _agent.Id,
+            await _sessions.CountForAgentAsync(_agent.Id),
+            Common.SessionTitles.PlaceholderFormat);
         _session.Mode = inheritedMode;
-        _sessionsState.Sessions.Add(_session);
-        _sessionsState.ActiveSessionId = _session.Id;
         CurrentMode = _session.Mode;
         await _sessions.AppendSessionAsync(_session);
 

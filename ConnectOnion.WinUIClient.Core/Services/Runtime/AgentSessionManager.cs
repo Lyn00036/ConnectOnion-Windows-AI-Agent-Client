@@ -12,6 +12,7 @@ using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services.Attachments;
+using ConnectOnion.WinUIClient.Services.Notifications;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -36,6 +37,7 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
             "Could not persist outgoing image {FileName} in the content cache; using its source path");
 
     private readonly ILogger<AgentSessionManager> _logger;
+    private readonly NotificationCoordinator? _notifications;
     private readonly HttpClient _http;
     private readonly ConversationRepository _conversations;
     private readonly UsageRepository _usage;
@@ -90,16 +92,25 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
 
     /// <param name="usage">Optional so existing callers and tests that don't care about accounting
     /// can omit it; a default instance is used when it isn't supplied.</param>
+    /// <param name="notifications">Optional for the same reason, but it is what keeps this type on
+    /// the testable side of the Core seam. Turn-completed and approval-required toasts are an
+    /// app-level concern, and this used to reach them through the static <c>AppServices</c>
+    /// locator — a reverse dependency on the app project that no headless test host can load, so
+    /// the whole run runtime sat outside the coverage gate for the sake of three call sites. The
+    /// coordinator itself already lives in Core; only the lookup did not. Null means "nothing is
+    /// listening", which is exactly a headless test's situation, not a degraded mode.</param>
     public AgentSessionManager(
         HttpClient http,
         ConversationRepository conversations,
         UsageRepository? usage = null,
-        ILogger<AgentSessionManager>? logger = null)
+        ILogger<AgentSessionManager>? logger = null,
+        NotificationCoordinator? notifications = null)
     {
         _http = http;
         _conversations = conversations;
         _usage = usage ?? new UsageRepository();
         _logger = logger ?? NullLogger<AgentSessionManager>.Instance;
+        _notifications = notifications;
         _connections = new AgentConnectionRegistry(http);
         _runs = new ConversationRunRegistry(this, new DebugRunLogger(), onError: ex =>
         {
@@ -619,8 +630,8 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         return run is { IsTerminal: false } ? connection.SetModeAsync(mode) : Task.CompletedTask;
     }
 
-    private static void NotifyApproval(AgentConfig agent, string conversationId, ApprovalRequest r)
-        => AppServices.Notifications.PublishApprovalRequired(
+    private void NotifyApproval(AgentConfig agent, string conversationId, ApprovalRequest r)
+        => _notifications?.PublishApprovalRequired(
             agent.Id, agent.Name, conversationId, r.Tool, r.Description, r.ArgumentsJson);
 
     /// <summary>Releases everything tied to a deleted conversation: cancels its active run (if
@@ -715,8 +726,8 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         // page open); the coordinator suppresses it when a window already shows this chat.
         if (agentName is not null)
         {
-            AppServices.Notifications.NotifyConnectionRestored(snapshot.AgentId);
-            AppServices.Notifications.PublishAgentTurnCompleted(
+            _notifications?.NotifyConnectionRestored(snapshot.AgentId);
+            _notifications?.PublishAgentTurnCompleted(
                 snapshot.AgentId, agentName, snapshot.ConversationId, snapshot.RunId,
                 finalReply, projection.TurnToolCallsCount, projection.TurnDurationMs);
         }
@@ -978,7 +989,7 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
             else
             {
                 attachment.Status = AttachmentStatus.Failed;
-                attachment.Error = LocalizedStrings.Get(
+                attachment.Error = CoreStrings.Get(
                     "ImageLoadFailed",
                     "Image could not be loaded.");
             }

@@ -63,7 +63,7 @@ Every tag-driven release reruns the full headless validation suite before publis
 - protocol, Core, and SQLite integration tests;
 - protocol conformance gate;
 - trimmed serialization smoke harness;
-- self-contained Release/x64 publish with trimming disabled;
+- self-contained Release/x64 publish, trimmed and ReadyToRun;
 - portable payload and size audit;
 - SHA-256 checksum generation.
 
@@ -80,18 +80,30 @@ The ratified x64 portable baseline is:
 
 | Artifact | Compressed | Expanded | Budget |
 |---|---:|---:|---:|
-| Self-contained portable ZIP, ratified 2026-07-27 | 118.91 MB | 309.21 MB | +10% |
+| Self-contained portable ZIP, **trimmed**, ratified 2026-08-05 | 71.29 MB | 170.71 MB | +10% |
+| _(superseded)_ Self-contained portable ZIP, untrimmed, ratified 2026-07-27 | 118.91 MB | 309.21 MB | +10% |
+
+The latest Windows App SDK 2.3.1 release rehearsal produced **71.39 MB compressed / 170.85 MB
+expanded** (464 entries), inside the ratified budget. The small servicing/dependency delta does not
+move the gate's baseline; re-ratify only when a deliberate product change makes the current budget
+an inaccurate guard.
 
 The size gate catches accidental payload growth. If legitimate product work exceeds the budget,
 inspect the archive and deliberately re-ratify the baseline in both this document and
 `scripts/Test-PackageContents.ps1`.
 
-**Do not enable trimming to get under budget.** Trimming is governed separately by
-[TRIMMING.md](./TRIMMING.md); the release workflow explicitly passes `PublishTrimmed=false`.
+Trimming was enabled on 2026-08-05 and the baseline re-ratified with it — see
+[TRIMMING.md](./TRIMMING.md) for the evidence. Re-ratifying was not bookkeeping: this gate is an
+upper bound, so keeping the untrimmed 118.91 MB figure would have left ~60 MB of slack beneath the
+limit and the accidental duplicate runtime it exists to catch would have passed unnoticed.
+
+**Trimming is therefore no longer a lever for getting under budget.** A breach now means real new
+payload. Find it, or re-ratify deliberately in both this document and
+`scripts/Test-PackageContents.ps1`.
 
 ## Manual validation
 
-Before the first public release, test the extracted ZIP on a clean supported Windows profile:
+Before every public release, test the extracted ZIP on a clean supported Windows profile:
 
 1. Confirm `ConnectOnion.WinUIClient.exe` launches without installing .NET or Windows App SDK.
 2. Create an identity and conversation, give an agent a custom icon, then close the app.

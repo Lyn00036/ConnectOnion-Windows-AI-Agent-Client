@@ -32,7 +32,8 @@ public sealed partial class MainWindow
         if (_isExiting || _isTrayDisposed) return;
 
         var sessionsTask = AppServices.Sessions.LoadAsync();
-        var agentsTask = AppServices.Agents.LoadAsync();
+        // Names only, and never written back — the thin read skips every agent's /info blob.
+        var agentsTask = AppServices.Agents.LoadSummariesAsync();
         await Task.WhenAll(sessionsTask, agentsTask);
 
         if (_isExiting || _isTrayDisposed) return;

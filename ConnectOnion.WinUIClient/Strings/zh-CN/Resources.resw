@@ -95,6 +95,8 @@
   <data name="SettingsMessageSize.Description" xml:space="preserve"><value>调整聊天消息的文字大小。</value></data>
   <data name="SettingsEnterToSend.Description" xml:space="preserve"><value>启用后，按 Enter 发送消息，按 Shift+Enter 换行。</value></data>
   <data name="SettingsNotificationsEnable.Description" xml:space="preserve"><value>控制应用内通知和 Windows 通知的总开关。</value></data>
+  <data name="SettingsSystemNotificationsUnavailable.Title" xml:space="preserve"><value>Windows 通知不可用</value></data>
+  <data name="SettingsSystemNotificationsUnavailable.Message" xml:space="preserve"><value>窗口打开时仍可显示应用内提醒。后台 Windows 通知需要此电脑安装 Windows App Runtime 通知服务。</value></data>
   <data name="SettingsAgentReplies.Description" xml:space="preserve"><value>当 Agent 在你未查看的对话中完成回复时通知你。</value></data>
   <data name="SettingsTaskCompletion.Description" xml:space="preserve"><value>当较长的多步骤任务完成时通知你。</value></data>
   <data name="SettingsApprovalRequests.Description" xml:space="preserve"><value>当 Agent 需要你的批准才能继续时通知你。</value></data>
@@ -114,6 +116,8 @@
   <data name="SidebarCollapseAgentChats" xml:space="preserve"><value>折叠 {0} 的聊天</value></data>
   <data name="SidebarExpandPinnedChats" xml:space="preserve"><value>展开置顶快捷入口</value></data>
   <data name="SidebarCollapsePinnedChats" xml:space="preserve"><value>折叠置顶快捷入口</value></data>
+  <data name="SidebarShowMoreChats" xml:space="preserve"><value>显示更多</value></data>
+  <data name="SidebarLoadingMoreChats" xml:space="preserve"><value>正在加载…</value></data>
   <data name="SidebarDeleteChat.Text" xml:space="preserve"><value>删除聊天</value></data>
   <data name="SidebarAgentNewChat.Text" xml:space="preserve"><value>新建聊天</value></data>
   <data name="SidebarAgentDetails.Text" xml:space="preserve"><value>Agent 详情</value></data>
@@ -862,4 +866,39 @@
   <data name="InteractiveCardCollapse" xml:space="preserve"><value>收起{0}</value></data>
   <data name="InteractiveCardExpand" xml:space="preserve"><value>展开{0}</value></data>
   <data name="PlanReviewSubtitle" xml:space="preserve"><value>智能体将在你回复后才会执行。</value></data>
+  <data name="MenuMore.Title" xml:space="preserve"><value>更多</value></data>
+  <data name="CompactMenuEdit.Text" xml:space="preserve"><value>编辑</value></data>
+  <data name="CompactMenuView.Text" xml:space="preserve"><value>查看</value></data>
+  <data name="CompactMenuUndo.Text" xml:space="preserve"><value>撤销</value></data>
+  <data name="CompactMenuRedo.Text" xml:space="preserve"><value>重做</value></data>
+  <data name="CompactMenuCut.Text" xml:space="preserve"><value>剪切</value></data>
+  <data name="CompactMenuCopy.Text" xml:space="preserve"><value>复制</value></data>
+  <data name="CompactMenuPaste.Text" xml:space="preserve"><value>粘贴</value></data>
+  <data name="CompactMenuDelete.Text" xml:space="preserve"><value>删除</value></data>
+  <data name="CompactMenuSelectAll.Text" xml:space="preserve"><value>全选</value></data>
+  <data name="CompactMenuToggleSidebar.Text" xml:space="preserve"><value>切换侧边栏</value></data>
+  <data name="CompactMenuOpenTerminal.Text" xml:space="preserve"><value>在数据文件夹中打开终端</value></data>
+  <data name="CompactMenuFind.Text" xml:space="preserve"><value>查找</value></data>
+  <data name="CompactMenuBack.Text" xml:space="preserve"><value>后退</value></data>
+  <data name="CompactMenuForward.Text" xml:space="preserve"><value>前进</value></data>
+  <data name="CompactMenuZoomIn.Text" xml:space="preserve"><value>放大</value></data>
+  <data name="CompactMenuZoomOut.Text" xml:space="preserve"><value>缩小</value></data>
+  <data name="CompactMenuActualSize.Text" xml:space="preserve"><value>实际大小</value></data>
+  <data name="CompactMenuFullScreen.Text" xml:space="preserve"><value>切换全屏</value></data>
+  <data name="RecoveryPhraseClipboardNotice.Text" xml:space="preserve"><value>复制内容不会进入剪贴板历史，并会在 60 秒后清除。</value></data>
+  <data name="RecoveryPhraseCopiedWithExpiry" xml:space="preserve"><value>已复制 · 60 秒后清除</value></data>
+  <data name="SettingsSearchResultsIntro.Text" xml:space="preserve"><value>请选择匹配的设置区域。</value></data>
+  <data name="SettingsSearchResultsEmpty.Text" xml:space="preserve"><value>未找到匹配的设置。</value></data>
+  <data name="SettingsSearchKeywordsGeneral" xml:space="preserve"><value>通用 外观 主题 语言 窗口 启动 聊天 音频 麦克风</value></data>
+  <data name="SettingsSearchKeywordsAgents" xml:space="preserve"><value>智能体 代理 地址 连接 图标 头像 删除 重命名</value></data>
+  <data name="SettingsSearchKeywordsNotifications" xml:space="preserve"><value>通知 提醒 声音 横幅 批准 回复</value></data>
+  <data name="SettingsSearchKeywordsKeyboard" xml:space="preserve"><value>键盘 快捷键 热键 按键 绑定</value></data>
+  <data name="SettingsSearchKeywordsIdentity" xml:space="preserve"><value>身份 地址 恢复短语 助记词 私钥 种子 备份 恢复</value></data>
+  <data name="SettingsSearchKeywordsUsage" xml:space="preserve"><value>用量 令牌 模型 费用 历史 热力图 清除</value></data>
+  <data name="SessionSearchShortTranscriptHint.Text" xml:space="preserve"><value>输入至少 3 个字符可搜索消息正文；聊天标题和智能体名称仍会立即匹配。</value></data>
+  <data name="DeleteFailedTitle" xml:space="preserve"><value>删除失败</value></data>
+  <data name="DeleteAgentFailed" xml:space="preserve"><value>无法删除该智能体，其他内容未被移除。</value></data>
+  <data name="DeleteConversationFailed" xml:space="preserve"><value>无法删除该会话，请重试。</value></data>
+  <data name="SidebarRequiresAttention" xml:space="preserve"><value>需要批准</value></data>
+  <data name="SidebarUnreadCount" xml:space="preserve"><value>{0} 条未读</value></data>
 </root>

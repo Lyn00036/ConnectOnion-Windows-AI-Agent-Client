@@ -90,6 +90,7 @@
                  everything this row would have summarised, and the disclosure it carries has
                  nothing left to disclose. -->
             <Button MinHeight="40"
+                    AutomationProperties.AutomationId="ToolActivityHeaderButton"
                     Visibility="{x:Bind Activity.ShowCardChrome, Mode=OneWay, Converter={StaticResource BoolToVis}}"
                     Padding="0,2"
                     Background="Transparent"

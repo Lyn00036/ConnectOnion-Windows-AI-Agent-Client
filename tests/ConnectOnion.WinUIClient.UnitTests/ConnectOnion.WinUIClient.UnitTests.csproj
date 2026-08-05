@@ -10,8 +10,8 @@
     <PackageReference Include="CommunityToolkit.Mvvm" />
     <PackageReference Include="coverlet.collector" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
-    <PackageReference Include="TngTech.ArchUnitNET.xUnit" />
-    <PackageReference Include="xunit" />
+    <PackageReference Include="TngTech.ArchUnitNET.xUnitV3" />
+    <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio" />
   </ItemGroup>
 

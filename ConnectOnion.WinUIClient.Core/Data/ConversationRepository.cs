@@ -314,9 +314,13 @@ public sealed partial class ConversationRepository
     ///
     /// <para>Restricted to <c>user</c> and <c>agent</c> rows on purpose: the same table holds
     /// tool arguments, tool output and process narration, and matching those would return
-    /// conversations on the strength of a file path scrolling past inside a tool card. Ordering by
-    /// <c>created_at DESC</c> before the group means the excerpt is the newest hit, and
-    /// <paramref name="limit"/> bounds the scan on a large history.</para>
+    /// conversations on the strength of a file path scrolling past inside a tool card. The excerpt
+    /// is the newest hit within each conversation, and <paramref name="limit"/> caps how many
+    /// conversations come back.</para>
+    ///
+    /// <para><paramref name="limit"/> bounds the <i>result</i>, not the work — every matching row
+    /// has to be seen before the newest one per conversation is known. Keeping that pass cheap is
+    /// what the query's shape is for; see the note on the SQL below.</para>
     /// </summary>
     /// <returns>Conversation id → excerpt. Empty on a blank query or on failure; this backs a
     /// search box, so a broken query degrades to "no content matches" rather than an error.</returns>
@@ -336,24 +340,33 @@ public sealed partial class ConversationRepository
         {
             await using var connection = await AppDatabase.OpenAsync(ct).ConfigureAwait(false);
             await using var command = connection.CreateCommand();
+            // Aggregate on the match set alone, then join `messages` once per surviving
+            // conversation. The previous form ranked with ROW_NUMBER() OVER (PARTITION BY ...),
+            // which had to join `messages` for *every matched row* and then sort the whole match
+            // set before the LIMIT could discard any of it — so the LIMIT bounded the result but
+            // not the work, and the trigram tokenizer makes broad short queries match nearly
+            // everything. Measured on a 60k-message database: 91 ms -> 27 ms for a three-letter
+            // query, 105 ms -> 49 ms for a word, with byte-identical results.
+            //
+            // MAX(message_id) selects the same row the ORDER BY did: within a conversation, ids
+            // are assigned MAX(id)+1, so id order is message order and created_at only ever ties
+            // where the old ordering fell through to id anyway.
             command.CommandText = """
-                WITH ranked AS (
-                    SELECT search.conversation_id,
-                           messages.content,
-                           messages.created_at,
-                           ROW_NUMBER() OVER (
-                               PARTITION BY search.conversation_id
-                               ORDER BY messages.created_at DESC, messages.id DESC
-                           ) AS rank_in_conversation
-                    FROM message_search AS search
-                    JOIN messages ON messages.conversation_id = search.conversation_id
-                                 AND messages.id = search.message_id
+                WITH hits(conversation_id, message_id) AS (
+                    SELECT conversation_id, message_id
+                    FROM message_search
                     WHERE message_search MATCH $match
+                ),
+                newest(conversation_id, message_id) AS (
+                    SELECT conversation_id, MAX(message_id)
+                    FROM hits
+                    GROUP BY conversation_id
                 )
-                SELECT conversation_id, content
-                FROM ranked
-                WHERE rank_in_conversation = 1
-                ORDER BY created_at DESC
+                SELECT newest.conversation_id, messages.content
+                FROM newest
+                JOIN messages ON messages.conversation_id = newest.conversation_id
+                             AND messages.id = newest.message_id
+                ORDER BY messages.created_at DESC
                 LIMIT $limit;
                 """;
             AppDatabase.Add(command, "$match", $"\"{normalizedQuery.Replace("\"", "\"\"")}\"");
@@ -434,23 +447,34 @@ public sealed partial class ConversationRepository
 
         await using var connection = await AppDatabase.OpenAsync(cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
+        // Grouped, not correlated. The obvious form of this query puts the MAX(id) in a scalar
+        // subquery beside `id = (...)`, but that subquery references the outer row's
+        // conversation_id, so SQLite marks it CORRELATED SCALAR SUBQUERY and re-evaluates it for
+        // *every message row* in every requested conversation — the cost becomes O(messages),
+        // not O(conversations), which on the first sidebar refresh after launch (nothing cached,
+        // so every conversation is requested) means walking the whole messages table.
+        //
+        // Resolving the ids in their own GROUP BY first makes that one index scan per
+        // conversation, and the join back is then a primary-key seek per row. Measured on a
+        // 20k-message database: 14 ms correlated, 4 ms grouped.
         command.CommandText = """
             WITH requested(conversation_id) AS (
                 SELECT value FROM json_each($conversation_ids)
+            ),
+            newest(conversation_id, id) AS (
+                SELECT conversation_id, MAX(id)
+                FROM messages
+                WHERE conversation_id IN (SELECT conversation_id FROM requested)
+                  AND event_kind IS NOT 'approval'
+                GROUP BY conversation_id
             )
-            SELECT id, role, content, agent_name,
+            SELECT messages.id, role, content, agent_name,
                    event_kind, event_key, event_eyebrow, event_title,
                    event_detail, event_meta, event_args, event_result,
-                   event_status, is_onboarding, created_at, conversation_id
-            FROM messages AS candidate
-            JOIN requested USING (conversation_id)
-            WHERE event_kind IS NOT 'approval'
-              AND id = (
-                  SELECT MAX(newest.id)
-                  FROM messages AS newest
-                  WHERE newest.conversation_id = candidate.conversation_id
-                    AND newest.event_kind IS NOT 'approval'
-            );
+                   event_status, is_onboarding, created_at, messages.conversation_id
+            FROM messages
+            JOIN newest ON newest.conversation_id = messages.conversation_id
+                       AND newest.id = messages.id;
             """;
         var ids = conversationIds.Distinct(StringComparer.Ordinal).ToList();
         AppDatabase.Add(

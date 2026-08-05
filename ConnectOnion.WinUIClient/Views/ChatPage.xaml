@@ -941,6 +941,7 @@
                                    VerticalAlignment="Center"
                                    Foreground="{ThemeResource TextSecondaryBrush}" />
                         <Button Command="{x:Bind Vm.RetryCommand}"
+                                AutomationProperties.AutomationId="RetryTurnButton"
                                 Padding="12,5"
                                 CornerRadius="8">
                             <controls:IconText x:Uid="ChatRetry" Glyph="ArrowClockwise" IconSize="Size16" Spacing="6" FontSize="{StaticResource ProductCaptionFontSize}" Text="Retry" />
@@ -966,6 +967,7 @@
                 <!-- Transport progress lives in the transcript; the composer keeps the live
                      usage readout but does not duplicate Connecting/Working beneath it. -->
                 <controls:ChatComposer x:Name="Composer"
+                                       AutomationProperties.AutomationId="ComposerSurface"
                                        CanSubmit="{x:Bind Vm.CanSend, Mode=OneWay}"
                                        EnterToSubmit="{x:Bind Vm.EnterToSend, Mode=OneWay}"
                                        IsBusy="{x:Bind Vm.IsComposerBusy, Mode=OneWay}"

@@ -16,6 +16,10 @@ namespace across every file, and `MainWindow.xaml.cs` must stay in the project r
 | `MainWindow.HelpMenu.cs` | About / keyboard-shortcuts dialogs |
 | `MainWindow.Shortcuts.cs` | Pushes live chords into the menu items' accelerator text |
 | `MainWindow.Notifications.cs` | In-app toast host wiring |
+| `MainWindow.Overlays.cs` | Shared modal-overlay focus scope and visibility coordination |
+| `MainWindow.Placement.cs` | Window placement restore/save and display-bound correction |
+| `MainWindow.SessionSearch.cs` | Global conversation-search overlay wiring and navigation |
 | `MainWindow.DragDrop.cs` | Window-wide "drop it on the composer" hint |
 | `MainWindow.Tray.cs` | H.NotifyIcon-backed tray lifecycle plus show/hide and close-to-tray |
 | `MainWindow.Tray.Interop.cs` | Minimal Win32 window hooks for close/minimize observation and foreground restore |
+| `MainWindow.Tray.Menu.cs` | Dynamic tray agent/conversation menu construction and commands |

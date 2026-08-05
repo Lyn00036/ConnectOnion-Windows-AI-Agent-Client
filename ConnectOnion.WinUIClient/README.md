@@ -27,12 +27,12 @@ unpackaged, the package's `LocalState\ConnectOnion\logs` when installed.
 
 - **Windows 10** version 1809 (build 17763) or later
 - **.NET 10 SDK** (pinned via `global.json` in the repository root)
-- **Windows App SDK 2.2** runtime (matching the project package reference)
+- **Windows App SDK 2.3.1** runtime (matching the project package reference)
 - **Visual Studio 2026** (recommended for WinUI debugging and packaging), with the
   **.NET Desktop Development** workload and the **Windows App SDK C# Templates** component
 
-See [Installing The Requirements](../README.md#installing-the-requirements) in the
-root README for the `winget` commands that set all of this up.
+See [Installing The Requirements](../docs/DEVELOPMENT.md#installing-the-requirements) in the
+developer guide for the `winget` commands that set all of this up.
 
 ## Quick Start
 
@@ -90,7 +90,6 @@ ConnectOnion.WinUIClient/
 │   │   ├── ChatPage.Attachments.cs       Opening and saving attachments
 │   │   ├── ChatPage.Interactive.cs       ask_user / approval / plan-review cards
 │   │   └── ChatPage.Find.cs              In-chat find (IFindHost)
-│   ├── SessionsPage                     Conversation list & management
 │   ├── AgentDetailPage                  Agent edit / connection test / info
 │   └── SettingsPage                     Theme, font size, notifications, audio
 │
@@ -99,7 +98,6 @@ ConnectOnion.WinUIClient/
 │   │   ├── ChatViewModel.Run.cs          Send/stop/mode; folds run snapshots into the list
 │   │   ├── ChatViewModel.Conversation.cs New / branch / retry
 │   │   └── ChatViewModel.StreamEvents.cs Live projection target
-│   ├── SessionsViewModel                Session CRUD, active session tracking
 │   ├── AgentDetailViewModel             Agent form state, /info loading, connection testing
 │   ├── SettingsViewModel                Preference read/write
 │   ├── UsageViewModel                   Per-model token totals for the Usage panel
@@ -118,10 +116,6 @@ ConnectOnion.WinUIClient/
 │   ├── LanguagePreferenceStore           Persisted en-US / zh-CN selection
 │   ├── TextScaleService                  Applies the OS text-scale factor
 │   ├── WindowPlacementStore              Restored-state position, size, and maximized state
-│   ├── Runtime/                         App-level turn lifecycle (owns sockets and runs)
-│   │   ├── AgentSessionManager          Send → run → project → persist, page-independent
-│   │   ├── AgentTurnExecutor            Drives one turn over a connection
-│   │   └── IAgentSessionManager         The contract pages depend on
 │   ├── Attachments/                     Picker, drop, incoming image cache
 │   └── Notifications/                   Windows + in-app toasts, activation routing
 │
@@ -159,6 +153,9 @@ ConnectOnion.WinUIClient.Core/          Referenced by the app and by every test 
 │   ├── SessionSelection                 The one testable "which session?" rule
 │   ├── KeyboardShortcutCatalog/Service  Shortcut source of truth + override resolution
 │   ├── Runtime/
+│   │   ├── AgentSessionManager          Send → run → project → persist, page-independent
+│   │   ├── AgentTurnExecutor            Drives one turn over a connection
+│   │   ├── IAgentSessionManager         Contract consumed by the WinUI layer
 │   │   ├── ChatTurnProjection           The single stream-event → ChatMessage mapping
 │   │   │   └── ChatTurnProjection.Events.cs  Its per-event-type dispatch table
 │   │   ├── ToolActivityProjector        tool_call / tool_result → timeline aggregation
@@ -184,7 +181,6 @@ User
        └─ Frame navigation
             ├─ HomePage      Select an agent to start
             ├─ ChatPage      WebSocket-powered chat with streaming events
-            ├─ SessionsPage  Manage per-agent conversations
             ├─ AgentDetailPage Edit / test / delete agent
             └─ SettingsPage  Theme, sidebar, font, shortcuts, identity
 ```
@@ -216,12 +212,12 @@ Structured local data is stored in one SQLite database. The root depends on depl
 | Packaged / Visual Studio deployed | package `LocalState\ConnectOnion\connectonion.db` |
 | Isolated automation | `%CONNECTONION_DATA_ROOT%\connectonion.db` |
 
-Schema tables:
+Schema version 11 has the following 12 logical tables:
 
 | Table | Purpose |
 | --- | --- |
 | `agents` | Saved agent connections (name, address, Direct URL, invite code) |
-| `sessions` | Per-agent conversation sessions (id, title/custom-title flag, timestamps, approval `mode`) |
+| `sessions` | Per-agent conversations (title/custom-title flag, timestamps, approval `mode`, unread count and attention state) |
 | `messages` | One row per rendered chat bubble, keyed `(conversation_id, id)` |
 | `message_attachments` | Attachment metadata only (kind, name, mime, size, cache path) — never base64 |
 | `executions` | One row per turn (prompt, result, status, duration) |
@@ -231,6 +227,7 @@ Schema tables:
 | `identity_keys` | Local Ed25519 identity (private seed and optional recovery phrase DPAPI-protected at rest) |
 | `app_meta` | Key-value application metadata |
 | `message_search` | FTS5 trigram index for global user/agent transcript search |
+| `message_search_map` | Stable conversation/message key → assigned FTS rowid map used by search triggers |
 
 Received `agent_image` attachments are cached under `<data root>\cache\images\`, named by the
 content's SHA-256 — the database holds the path, never the payload. Saved agent icons live under
@@ -265,14 +262,16 @@ Agent hosts must expose:
   the chosen answer is persisted into history
 - **Multimodal attachments** — outgoing image/file pick and drag-and-drop with capability
   preflight; incoming `agent_image` decoded and cached to disk
-- **Notifications** — turn-completed / approval-required toasts (Windows + in-app), deduped
+- **Notifications** — deduped turn-completed / approval-required toasts (Windows + in-app), with
+  persisted per-conversation unread and approval-attention badges
 - **Token-usage ledger** — per-model usage panel in Settings, independent of chat/agent deletion
 - **Find in chat** — Ctrl+F overlay with match highlighting
 - **Global chat search** — searches session/agent metadata and indexed transcript content
 - **Light/dark theme** — persisted preference with shell-aware title bar colors
 - **Localization** — English and Simplified Chinese resources with a persisted language selector
 - **Custom title bar** — Mica backdrop, back/forward navigation, sidebar toggle
-- **Responsive sidebar** — width adapts to window size
+- **Responsive sidebar** — width adapts to window size; rows are virtualized and expanded
+  conversation branches load in keyset-paginated pages
 - **Message copy** — copy any chat bubble content
 - **Message font size** — small / medium / large
 - **Keyboard shortcuts** — configurable overrides
@@ -287,12 +286,12 @@ Agent hosts must expose:
 | `tests/ConnectOnion.Protocol.Tests` | xunit tests for the wire protocol |
 | `tests/ConnectOnion.WinUIClient.UnitTests` | Headless xunit tests for this app's WinUI-free surfaces |
 | `tests/ConnectOnion.IntegrationTests` | SQLite schema/repository tests against a real database file |
-| `tests/ConnectOnion.WinUIClient.UITests` | 12 FlaUI shell smoke tests plus opt-in memory/performance audits |
+| `tests/ConnectOnion.WinUIClient.UITests` | 23 required FlaUI shell/chat tests, one skipped Explorer drag diagnostic, plus opt-in memory/performance audits |
 | `tests/ConnectOnion.TrimSmoke` | Trim-safe serialization, persistence, and identity restart harness |
 
 ## Repository
 
 This is the WinUI application project inside the ConnectOnion Desktop repository. The deleted
 Electron `frontend/` and Python `agent/` example trees are available only through git history.
-See the [root README](../README.md) for build instructions, CI details, releases, and migration
+See the [developer guide](../docs/DEVELOPMENT.md) for build instructions, CI details, releases, and migration
 history.

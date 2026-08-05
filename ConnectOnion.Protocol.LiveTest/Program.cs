@@ -6,19 +6,22 @@ using ConnectOnion.Protocol;
 // Live end-to-end test against a deployed ConnectOnion agent (Direct URL path).
 // Usage: dotnet run -- <directUrl> <address> "<prompt>"
 //
-// Deliberately outside the .sln and outside CI: it needs a real agent listening on the far end,
-// so it can fail for reasons that have nothing to do with this repo. Run it by hand when
-// changing the transport, and treat a failure as "investigate", not "the build is broken".
+// Deliberately outside the .sln: ordinary PR validation must stay deterministic. The CI workflow
+// runs this project only through an explicit workflow_dispatch switch, so deployed-agent
+// failures remain separated from the commit-level build gate and scheduled CI.
 //
 // Every interactive turn below is auto-answered so the run completes unattended. That is the
 // opposite of what the desktop client does — the point here is to exercise the frames, not the
 // decisions — so this file is not a model for how to handle approvals.
 
-// The defaults are a known dev agent. Overriding all three via argv is the normal use.
-var directUrl = args.Length > 0 ? args[0] : "http://124.156.170.117/browser";
-var address = args.Length > 1 ? args[1]
-    : "0xf83dfaec8890059e0bc247e78449000a4d81e808ad1d45042cfcbf28406713cb";
-var prompt = args.Length > 2 ? args[2] : "Say hello to Alice in one sentence.";
+// Arguments win locally; CI supplies repository variables without putting endpoint configuration
+// in the command line. Defaults retain the known development agent used before CI automation.
+var directUrl = Resolve(0, "CONNECTONION_LIVE_DIRECT_URL", "http://124.156.170.117/browser");
+var address = Resolve(
+    1,
+    "CONNECTONION_LIVE_AGENT_ADDRESS",
+    "0xf83dfaec8890059e0bc247e78449000a4d81e808ad1d45042cfcbf28406713cb");
+var prompt = Resolve(2, "CONNECTONION_LIVE_PROMPT", "Say hello to Alice in one sentence.");
 
 Console.WriteLine($"Direct URL : {directUrl}");
 Console.WriteLine($"Address    : {address}");
@@ -34,7 +37,7 @@ Console.WriteLine(new string('-', 60));
 
 await using var connection = new AgentConnectionService(address, directUrl, identity)
 {
-    InviteCode = Environment.GetEnvironmentVariable("CO_INVITE_CODE") ?? "COMP9900",
+    InviteCode = ResolveEnvironment("CO_INVITE_CODE", "COMP9900"),
 };
 connection.StreamEvent += e => Console.WriteLine($"  «event» {e.Type}: {e.Description}");
 connection.ConnectionLost += ex => Console.WriteLine($"  «lost»  {ex.Message}");
@@ -80,3 +83,14 @@ catch (Exception ex)
     Console.WriteLine($"LIVE TEST FAILED: {ex.GetType().Name}: {ex.Message}");
     return 1;
 }
+
+string Resolve(int index, string environmentName, string fallback)
+{
+    if (args.Length > index && !string.IsNullOrWhiteSpace(args[index])) return args[index];
+    return ResolveEnvironment(environmentName, fallback);
+}
+
+string ResolveEnvironment(string environmentName, string fallback) =>
+    Environment.GetEnvironmentVariable(environmentName) is { Length: > 0 } configured
+        ? configured
+        : fallback;

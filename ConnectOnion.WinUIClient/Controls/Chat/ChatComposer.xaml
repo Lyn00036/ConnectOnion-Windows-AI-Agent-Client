@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:ic="using:FluentIcons.WinUI"
     xmlns:models="using:ConnectOnion.WinUIClient.Models"
+    xmlns:controls="using:ConnectOnion.WinUIClient.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
@@ -36,9 +37,13 @@
                         </ItemsPanelTemplate>
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <Button Content="{Binding Label}"
-                                    Tag="{Binding Prompt}"
+                        <DataTemplate x:DataType="controls:ComposerSuggestion">
+                            <!-- Compiled binding is trim-safe. Classic Binding reaches these
+                                 internal suggestion properties by reflection, so the linker can
+                                 remove Prompt even though clicking the chip still fires. -->
+                            <Button Content="{x:Bind Label, Mode=OneTime}"
+                                    Tag="{x:Bind Prompt, Mode=OneTime}"
+                                    AutomationProperties.AutomationId="SuggestionButton"
                                     MinHeight="36"
                                     Padding="14,6"
                                     CornerRadius="18"
@@ -163,6 +168,7 @@
                               Visibility="Collapsed"
                               AutomationProperties.Name="Pending attachments">
                     <ItemsControl x:Name="AttachmentsList"
+                                  AutomationProperties.AutomationId="PendingAttachmentsList"
                                   ItemsSource="{x:Bind PendingAttachments}">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
@@ -640,6 +646,7 @@
                                        Foreground="{ThemeResource BrandPrimaryBrush}"
                                        VerticalAlignment="Center" />
                         <TextBlock x:Uid="ComposerDropHint" Text="Drop files to attach"
+                                   AutomationProperties.AutomationId="DropOverlayHint"
                                    FontSize="{StaticResource ProductBodyFontSize}"
                                    FontWeight="SemiBold"
                                    Foreground="{ThemeResource BrandPrimaryBrush}"

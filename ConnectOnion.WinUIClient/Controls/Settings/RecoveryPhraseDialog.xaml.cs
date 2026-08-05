@@ -114,7 +114,9 @@ public sealed partial class RecoveryPhraseDialog : ContentDialog
 
     private void Copy_Click(object sender, RoutedEventArgs e)
     {
-        ClipboardService.CopyText(_copyValue);
-        CopyButtonText.Text = LocalizedStrings.Get("CommonCopied", "Copied");
+        ClipboardService.CopySensitiveText(_copyValue);
+        CopyButtonText.Text = LocalizedStrings.Get(
+            "RecoveryPhraseCopiedWithExpiry",
+            "Copied · clears in 60 seconds");
     }
 }

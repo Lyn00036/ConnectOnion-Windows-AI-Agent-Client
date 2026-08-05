@@ -22,4 +22,5 @@ namespace ConnectOnion.WinUIClient.Data;
 [JsonSerializable(typeof(Dictionary<string, string>))]
 [JsonSerializable(typeof(List<string>))]
 [JsonSerializable(typeof(NotificationSettings))]
+[JsonSerializable(typeof(LegacyConversationEnvelope))]
 public sealed partial class AppJsonContext : JsonSerializerContext;

@@ -105,12 +105,26 @@ public sealed class AgentPresenceService
     /// coalesced onto a single probe.
     /// </summary>
     public Task EnsureCheckedAsync(AgentConfig agent)
+        => EnsureCheckedAsync(agent.Id, agent.Address, agent.DirectUrl);
+
+    /// <summary>
+    /// The same, for callers that hold an agent's endpoint without holding an
+    /// <see cref="AgentConfig"/>.
+    ///
+    /// <para>A probe needs exactly these three values, so requiring the full record forced callers
+    /// to read every agent — and every agent's cached <c>/info</c> blob — just to ask whether one
+    /// of them is reachable. The sidebar drives presence from its own row items, which already
+    /// carry the endpoint.</para>
+    /// </summary>
+    public Task EnsureCheckedAsync(string agentId, string address, string? directUrl)
     {
+        if (string.IsNullOrWhiteSpace(agentId)) return Task.CompletedTask;
+
         lock (_gate)
         {
-            if (_inflight.TryGetValue(agent.Id, out var running)) return running;
-            if (!ShouldProbeLocked(agent.Id, DateTimeOffset.UtcNow)) return Task.CompletedTask;
-            return StartProbeLocked(agent);
+            if (_inflight.TryGetValue(agentId, out var running)) return running;
+            if (!ShouldProbeLocked(agentId, DateTimeOffset.UtcNow)) return Task.CompletedTask;
+            return StartProbeLocked(agentId, address, directUrl);
         }
     }
 
@@ -123,14 +137,15 @@ public sealed class AgentPresenceService
             // A user-initiated refresh bypasses the EndpointResolver relay-lookup
             // cache (which holds an "offline" answer for ~30s) — otherwise clicking
             // Recheck right after the agent comes back up keeps reporting offline.
-            return StartProbeLocked(agent, forceRefresh: true);
+            return StartProbeLocked(agent.Id, agent.Address, agent.DirectUrl, forceRefresh: true);
         }
     }
 
-    private Task StartProbeLocked(AgentConfig agent, bool forceRefresh = false)
+    private Task StartProbeLocked(
+        string agentId, string address, string? directUrl, bool forceRefresh = false)
     {
-        var task = ProbeAsync(agent, forceRefresh);
-        _inflight[agent.Id] = task;
+        var task = ProbeAsync(agentId, address, directUrl, forceRefresh);
+        _inflight[agentId] = task;
         return task;
     }
 
@@ -149,7 +164,8 @@ public sealed class AgentPresenceService
         return ttl == TimeSpan.Zero || now - checkedAt >= ttl;
     }
 
-    private async Task ProbeAsync(AgentConfig agent, bool forceRefresh)
+    private async Task ProbeAsync(
+        string agentId, string address, string? directUrl, bool forceRefresh)
     {
         // Yield before touching shared state so RefreshAsync can release _gate and
         // register this task before Set() re-enters the lock / fires the event.
@@ -157,7 +173,7 @@ public sealed class AgentPresenceService
 
         // Checking is published before queueing, not after: the row should read "checking" while
         // it waits its turn, otherwise a large sweep leaves most agents looking untouched.
-        Set(agent.Id, AgentPresence.Checking, "Checking if the agent is online…");
+        Set(agentId, AgentPresence.Checking, "Checking if the agent is online…");
         var entered = false;
         try
         {
@@ -167,17 +183,17 @@ public sealed class AgentPresenceService
             // A lean /health reachability probe. The detail page fetches and persists /info
             // independently, so list/status refreshes never download metadata.
             var result = await _connectionTester.TestAsync(
-                agent.Address, agent.DirectUrl, forceRefresh: forceRefresh);
-            Set(agent.Id, result.Ok ? AgentPresence.Online : AgentPresence.Offline, result.Detail);
+                address, directUrl, forceRefresh: forceRefresh);
+            Set(agentId, result.Ok ? AgentPresence.Online : AgentPresence.Offline, result.Detail);
         }
         catch (Exception ex)
         {
-            Set(agent.Id, AgentPresence.Offline, ex.Message);
+            Set(agentId, AgentPresence.Offline, ex.Message);
         }
         finally
         {
             if (entered) ProbeGate.Release();
-            lock (_gate) _inflight.Remove(agent.Id);
+            lock (_gate) _inflight.Remove(agentId);
         }
     }
 

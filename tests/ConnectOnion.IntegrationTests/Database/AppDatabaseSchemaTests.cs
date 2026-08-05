@@ -29,6 +29,45 @@ public sealed class AppDatabaseSchemaTests(TempDatabaseFixture fixture)
         Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'mode';"));
         Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM pragma_table_info('identity_keys') WHERE name = 'mnemonic';"));
         Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM pragma_table_info('agents') WHERE name = 'icon_path';"));
+        Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'unread_count';"));
+        Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'requires_attention';"));
+    }
+
+    /// <summary>
+    /// Two indexes that exist for deletes and one ordering, none of which any query names
+    /// explicitly — so nothing else in the suite would notice if a migration edit dropped them.
+    ///
+    /// <para><c>ix_trace_events_execution</c> backs
+    /// <c>ConversationRepository.DeleteExecutionAsync</c>, which removes traces by
+    /// <c>execution_id</c>; without it that user-facing action full-scans <c>trace_events</c>.
+    /// <c>ix_sessions_order</c> covers <c>SessionRepository.LoadAsync</c>'s
+    /// <c>ORDER BY sort_order, updated_at DESC, id</c> — the pre-existing
+    /// <c>ix_sessions_agent_updated</c> leads with a different column, so that load ran a full scan
+    /// plus a temporary B-tree sort on every sidebar refresh.</para>
+    /// </summary>
+    [Fact]
+    public async Task OpenAsync_NewDatabase_CreatesTheIndexesBehindDeletesAndSessionOrdering()
+    {
+        await using var connection = await AppDatabase.OpenAsync();
+
+        Assert.Equal(1, await ScalarLongAsync(connection,
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'ix_trace_events_execution';"));
+        Assert.Equal(1, await ScalarLongAsync(connection,
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'ix_sessions_order';"));
+
+        // The ordering index has to actually be chosen, not merely exist: a covering index that
+        // the planner declines still leaves the sort in place, which is the cost being removed.
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            EXPLAIN QUERY PLAN
+            SELECT id FROM sessions ORDER BY sort_order, updated_at DESC, id;
+            """;
+        await using var reader = await command.ExecuteReaderAsync();
+        var plan = new List<string>();
+        while (await reader.ReadAsync()) plan.Add(reader.GetString(3));
+
+        Assert.Contains(plan, detail => detail.Contains("ix_sessions_order", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(plan, detail => detail.Contains("USE TEMP B-TREE", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -83,6 +122,82 @@ public sealed class AppDatabaseSchemaTests(TempDatabaseFixture fixture)
         Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'usage_events';"));
         Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'mode';"));
         Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM pragma_table_info('identity_keys') WHERE name = 'mnemonic';"));
+    }
+
+    [Fact]
+    public async Task ApplyAsync_PreMessagesDatabase_ImportsConversationEnvelopeAndRepairsBaselineColumns()
+    {
+        await using var initialized = await AppDatabase.OpenAsync();
+        await using var connection = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+
+        // Exact schema from the last blob-storage build (8015d33^). CreateSchemaAsync mirrors the
+        // real startup order by ensuring today's missing tables before the migrator inspects v0.
+        await ExecuteAsync(connection, """
+            CREATE TABLE app_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+            CREATE TABLE agents (
+                id TEXT PRIMARY KEY, name TEXT NOT NULL, address TEXT NOT NULL,
+                direct_url TEXT NULL, invite_code TEXT NULL, info_json TEXT NULL,
+                info_updated_at TEXT NULL, sort_order INTEGER NOT NULL DEFAULT 0);
+            CREATE TABLE sessions (
+                id TEXT PRIMARY KEY, agent_id TEXT NOT NULL, title TEXT NOT NULL,
+                created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                sort_order INTEGER NOT NULL DEFAULT 0);
+            CREATE TABLE preferences (
+                id INTEGER PRIMARY KEY CHECK (id = 1), theme TEXT NOT NULL,
+                sidebar_visible INTEGER NOT NULL, message_font_size TEXT NOT NULL,
+                shortcut_overrides_json TEXT NOT NULL);
+            CREATE TABLE conversations (
+                storage_key TEXT PRIMARY KEY, address TEXT NOT NULL,
+                session_id TEXT NOT NULL, envelope_json TEXT NOT NULL,
+                updated_at TEXT NOT NULL);
+            CREATE TABLE identity_keys (
+                id INTEGER PRIMARY KEY CHECK (id = 1), address TEXT NOT NULL,
+                private_seed TEXT NOT NULL);
+
+            INSERT INTO agents (id, name, address) VALUES ('legacy-agent', 'Legacy', '0xlegacy');
+            INSERT INTO sessions (id, agent_id, title, created_at, updated_at)
+            VALUES ('legacy-session', 'legacy-agent', 'Old chat', '2026-07-01', '2026-07-01');
+            """);
+
+        const string envelope = """
+            {
+              "version": 0,
+              "state": {
+                "messages": [
+                  { "id": 1, "role": "User", "content": "preserve this prompt", "eventStatus": "Done" },
+                  { "id": 2, "role": "Agent", "content": "preserve this answer", "agentName": "Legacy", "eventStatus": "Done" }
+                ],
+                "createdAt": 1782864000000,
+                "updatedAt": 1782864001000
+              }
+            }
+            """;
+        await using (var insert = connection.CreateCommand())
+        {
+            insert.CommandText = """
+                INSERT INTO conversations (storage_key, address, session_id, envelope_json, updated_at)
+                VALUES ('co:agent:0xlegacy:session:legacy-session', '0xlegacy',
+                        'legacy-session', $envelope, '2026-07-01');
+                """;
+            insert.Parameters.AddWithValue("$envelope", envelope);
+            await insert.ExecuteNonQueryAsync();
+        }
+
+        await AppDatabase.CreateSchemaAsync(connection);
+        await SchemaMigrator.ApplyAsync(connection);
+
+        Assert.Equal(SchemaMigrator.LatestVersion, (int)await ScalarLongAsync(connection, "PRAGMA user_version;"));
+        Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'remote_session_id';"));
+        Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'last_processed_event_id';"));
+        Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM pragma_table_info('preferences') WHERE name = 'microphone_device_id';"));
+        Assert.Equal(2, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM messages WHERE conversation_id = 'legacy-session';"));
+        Assert.Equal("preserve this prompt", await ScalarStringAsync(connection, "SELECT content FROM messages WHERE conversation_id = 'legacy-session' AND id = 1;"));
+        Assert.Equal("preserve this answer", await ScalarStringAsync(connection, "SELECT content FROM messages WHERE conversation_id = 'legacy-session' AND id = 2;"));
+        Assert.Equal(2, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM message_search WHERE conversation_id = 'legacy-session';"));
+        Assert.Equal("1", await ScalarStringAsync(connection, "SELECT value FROM app_meta WHERE key = 'legacy_conversations_migrated';"));
+        // Keep the source blob as a recovery copy; the importer is idempotent through message PKs.
+        Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM conversations;"));
     }
 
     [Fact]
