@@ -31,7 +31,7 @@ internal static class SchemaMigrator
     private const int BaselineVersion = 1;
 
     /// <summary>The schema version this build expects. Bump when you append to <see cref="Migrations"/>.</summary>
-    internal const int LatestVersion = 8;
+    internal const int LatestVersion = 11;
 
     /// <summary>
     /// Ordered forward migrations. Each runs exactly once, in its own transaction, on databases
@@ -250,6 +250,144 @@ internal static class SchemaMigrator
                   AND NEW.content IS NOT NULL
                   AND NEW.content <> '';
             END;
+            """),
+
+        // v9 - make the search index's own maintenance indexed.
+        //
+        // v8's triggers located the row to remove with
+        // `WHERE conversation_id = ... AND message_id = ...`. Both of those columns are declared
+        // UNINDEXED on the FTS5 table, and a non-MATCH constraint on an fts5 virtual table has no
+        // index to use at all - EXPLAIN QUERY PLAN reports `SCAN message_search VIRTUAL TABLE`.
+        // So every removed message scanned the *entire* search index, and because the trigger is
+        // per-row, `DELETE FROM messages WHERE conversation_id = ?` made deleting one conversation
+        // O(its messages x every message in the database). Measured on a 20k-message database,
+        // deleting a 500-message conversation took 1.03 s; the same delete after this migration
+        // takes 0.003 s.
+        //
+        // The fix is to address the FTS row by its rowid, which fts5 *does* look up directly (the
+        // plan becomes `... VIRTUAL TABLE INDEX 0:=`). `message_search_map` supplies that rowid and
+        // is an ordinary table, so its (conversation_id, message_id) lookup is a real index seek.
+        //
+        // This is emphatically *not* the "couple the index to SQLite's mutable implicit rowid" trap
+        // the search design warns about. The rowid stored here is the one we assign to the *FTS*
+        // row ourselves, and the stable (conversation_id, message_id) pair remains the only thing
+        // that identifies a message. Nothing reads `messages.rowid`.
+        //
+        // The index is rebuilt rather than migrated in place: v8 databases already hold FTS rows
+        // whose rowids were assigned implicitly and recorded nowhere, so there is nothing to
+        // back-fill the map from. Rebuilding also re-derives the role/content filter, which is why
+        // the tool/system rows a v8 database never indexed stay out.
+        new(9, """
+            CREATE TABLE IF NOT EXISTS message_search_map (
+                fts_rowid       INTEGER PRIMARY KEY,
+                conversation_id TEXT NOT NULL,
+                message_id      INTEGER NOT NULL
+            );
+
+            CREATE UNIQUE INDEX IF NOT EXISTS ux_message_search_map
+                ON message_search_map(conversation_id, message_id);
+
+            DROP TRIGGER IF EXISTS message_search_insert;
+            DROP TRIGGER IF EXISTS message_search_delete;
+            DROP TRIGGER IF EXISTS message_search_update;
+
+            DELETE FROM message_search;
+            DELETE FROM message_search_map;
+
+            INSERT INTO message_search_map(conversation_id, message_id)
+            SELECT conversation_id, id
+            FROM messages
+            WHERE role IN ('user', 'agent')
+              AND content IS NOT NULL
+              AND content <> '';
+
+            INSERT INTO message_search(rowid, conversation_id, message_id, content)
+            SELECT map.fts_rowid, map.conversation_id, map.message_id, messages.content
+            FROM message_search_map AS map
+            JOIN messages ON messages.conversation_id = map.conversation_id
+                         AND messages.id = map.message_id;
+
+            -- The map row is inserted first so last_insert_rowid() carries the id the FTS row is
+            -- then given explicitly. Both statements share one condition, so the pair either both
+            -- run or neither does and the two tables cannot drift apart.
+            CREATE TRIGGER message_search_insert
+            AFTER INSERT ON messages
+            WHEN NEW.role IN ('user', 'agent') AND NEW.content IS NOT NULL AND NEW.content <> ''
+            BEGIN
+                INSERT INTO message_search_map(conversation_id, message_id)
+                VALUES (NEW.conversation_id, NEW.id);
+
+                INSERT INTO message_search(rowid, conversation_id, message_id, content)
+                VALUES (last_insert_rowid(), NEW.conversation_id, NEW.id, NEW.content);
+            END;
+
+            CREATE TRIGGER message_search_delete
+            AFTER DELETE ON messages
+            BEGIN
+                DELETE FROM message_search
+                WHERE rowid = (
+                    SELECT fts_rowid FROM message_search_map
+                    WHERE conversation_id = OLD.conversation_id AND message_id = OLD.id);
+
+                DELETE FROM message_search_map
+                WHERE conversation_id = OLD.conversation_id AND message_id = OLD.id;
+            END;
+
+            -- Remove-then-reinsert, so a row that stops qualifying (its role edited away from
+            -- user/agent, or its content cleared) leaves the index rather than sitting in it
+            -- holding its old text.
+            CREATE TRIGGER message_search_update
+            AFTER UPDATE OF id, conversation_id, role, content ON messages
+            BEGIN
+                DELETE FROM message_search
+                WHERE rowid = (
+                    SELECT fts_rowid FROM message_search_map
+                    WHERE conversation_id = OLD.conversation_id AND message_id = OLD.id);
+
+                DELETE FROM message_search_map
+                WHERE conversation_id = OLD.conversation_id AND message_id = OLD.id;
+
+                INSERT INTO message_search_map(conversation_id, message_id)
+                SELECT NEW.conversation_id, NEW.id
+                WHERE NEW.role IN ('user', 'agent')
+                  AND NEW.content IS NOT NULL
+                  AND NEW.content <> '';
+
+                INSERT INTO message_search(rowid, conversation_id, message_id, content)
+                SELECT last_insert_rowid(), NEW.conversation_id, NEW.id, NEW.content
+                WHERE NEW.role IN ('user', 'agent')
+                  AND NEW.content IS NOT NULL
+                  AND NEW.content <> '';
+            END;
+            """),
+
+        // v10 - two indexes for deletes that were scanning.
+        //
+        // trace_events had only ix_trace_events_conversation(conversation_id, ts), but
+        // ConversationRepository.DeleteExecutionAsync removes traces by execution_id - a full scan
+        // on a user-facing action (cancelling a run before it reached the agent).
+        //
+        // sessions had only ix_sessions_agent_updated(agent_id, updated_at DESC), whose leading
+        // column does not match SessionRepository.LoadAsync's
+        // `ORDER BY sort_order, updated_at DESC, id`. That load runs on every sidebar refresh and
+        // was paying a full table scan plus a temporary B-tree sort; this index covers the order
+        // exactly, so the sort disappears.
+        new(10, """
+            CREATE INDEX IF NOT EXISTS ix_trace_events_execution
+                ON trace_events(execution_id);
+
+            CREATE INDEX IF NOT EXISTS ix_sessions_order
+                ON sessions(sort_order, updated_at DESC, id);
+            """),
+
+        // v11 - persist sidebar attention independently of notification delivery. A row is
+        // cleared when its conversation is opened; approval_required distinguishes an actionable
+        // interruption from an ordinary unread reply.
+        new(11, """
+            ALTER TABLE sessions ADD COLUMN unread_count INTEGER NOT NULL DEFAULT 0
+                CHECK(unread_count >= 0);
+            ALTER TABLE sessions ADD COLUMN requires_attention INTEGER NOT NULL DEFAULT 0
+                CHECK(requires_attention IN (0, 1));
             """),
     };
 

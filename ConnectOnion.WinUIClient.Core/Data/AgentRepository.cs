@@ -23,6 +23,22 @@ public sealed class AgentsState
 }
 
 /// <summary>
+/// An agent as the shell surfaces need it: enough to name it, draw it and reach it, and nothing
+/// else. Notably no <c>InfoJson</c> — see <see cref="AgentRepository.LoadSummariesAsync"/> for why
+/// this is a separate type rather than an <see cref="AgentConfig"/> with the blob left null.
+/// </summary>
+public sealed record AgentSummary(
+    string Id,
+    string Name,
+    string Address,
+    string? DirectUrl,
+    string? IconPath);
+
+/// <summary>The thin counterpart to <see cref="AgentsState"/>. Immutable, and with no route into
+/// <see cref="AgentRepository.SaveAsync"/> — a partial agent record must not be writable back.</summary>
+public sealed record AgentSummaryState(IReadOnlyList<AgentSummary> Agents, string? SelectedAgentId);
+
+/// <summary>
 /// Local SQLite persistence for saved agents. Port of <c>agentStorage.ts</c>.
 /// </summary>
 public sealed class AgentRepository
@@ -75,10 +91,73 @@ public sealed class AgentRepository
     }
 
     /// <summary>
+    /// The agent list without <c>info_json</c>, for the surfaces that only need to name, draw and
+    /// reach an agent.
+    ///
+    /// <para><c>info_json</c> is the agent's whole cached <c>/info</c> response — skills and their
+    /// descriptions included, a couple of KB each — and <see cref="LoadAsync"/> selects it every
+    /// time, at thirteen call sites, of which four ever read it. The sidebar refresh, the tray menu
+    /// and the search catalog are pulling that payload per agent and discarding it.</para>
+    ///
+    /// <para><b>Returns <see cref="AgentSummary"/> rather than a blob-less <see cref="AgentConfig"/>
+    /// on purpose.</b> <see cref="SaveAsync"/> writes <c>info_json</c> from the object handed to
+    /// it, so an <see cref="AgentConfig"/> read without the blob and then saved would erase every
+    /// agent's cached metadata. Five production call sites round-trip a <see cref="LoadAsync"/>
+    /// result straight back into <see cref="SaveAsync"/>, so this is not hypothetical — the
+    /// separate type is what makes the mistake unrepresentable rather than merely discouraged.
+    /// Same reasoning as <c>SessionPage</c> and the whole-index save it cannot reach.</para>
+    /// </summary>
+    public async Task<AgentSummaryState> LoadSummariesAsync(CancellationToken cancellationToken = default)
+    {
+        await using var connection = await AppDatabase.OpenAsync(cancellationToken).ConfigureAwait(false);
+        var selectedAgentId = await AppDatabase.GetMetaAsync(connection, SelectedAgentMetaKey)
+            .ConfigureAwait(false);
+
+        await using var command = connection.CreateCommand();
+        // Same ordering as LoadAsync: sort_order is the user's arrangement, name and id are
+        // tie-breakers so the list is stable rather than in whatever order SQLite returns rows.
+        command.CommandText = """
+            SELECT id, name, address, direct_url, icon_path
+            FROM agents
+            ORDER BY sort_order, name COLLATE NOCASE, id;
+            """;
+
+        var agents = new List<AgentSummary>();
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
+        {
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                agents.Add(new AgentSummary(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.GetString(2),
+                    ReadNullableString(reader, 3),
+                    ReadNullableString(reader, 4)));
+            }
+        }
+
+        // The same defensive filter LoadAsync applies, for the same reason: a row with no name or
+        // no endpoint renders as an unusable blank the user cannot even select to delete.
+        agents = agents
+            .Where(a => !string.IsNullOrWhiteSpace(a.Name)
+                        && a.Id != "local-agent"
+                        && (!string.IsNullOrWhiteSpace(a.Address) || !string.IsNullOrWhiteSpace(a.DirectUrl)))
+            .ToList();
+
+        if (selectedAgentId is not null && agents.All(a => a.Id != selectedAgentId))
+            selectedAgentId = null;
+
+        return new AgentSummaryState(agents, selectedAgentId);
+    }
+
+    /// <summary>
     /// Loads the agent list and selected id. Invalid rows are dropped (name
     /// required, the reserved "local-agent" id excluded, address required) and a
     /// stale selected pointer left after a deletion is cleared — mirroring the
     /// web app's defensive read.
+    ///
+    /// <para>Prefer <see cref="LoadSummariesAsync"/> unless you actually read <c>InfoJson</c>, or
+    /// intend to write the result back through <see cref="SaveAsync"/>.</para>
     /// </summary>
     public async Task<AgentsState> LoadAsync(CancellationToken cancellationToken = default)
     {

@@ -1,5 +1,6 @@
 using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Models;
+using ConnectOnion.WinUIClient.Services;
 
 namespace ConnectOnion.IntegrationTests.Database;
 
@@ -77,6 +78,27 @@ public sealed class SessionRepositoryTests : IAsyncLifetime
         // A mode the host wouldn't honour is not a mode: it falls back rather than being sent.
         session.Mode = "yolo";
         Assert.Equal("safe", session.Mode);
+    }
+
+    [Fact]
+    public async Task Attention_MarksUnreadPersistsApprovalAndClearsWhenOpened()
+    {
+        var session = Summary("session-attention", "Attention", "2026-01-01T00:00:00Z");
+        await _sessions.AppendSessionAsync(session, makeActive: true);
+
+        await _sessions.MarkUnreadAsync(session.Id, requiresAttention: false);
+        await _sessions.MarkUnreadAsync(session.Id, requiresAttention: true);
+
+        var unread = await _sessions.GetSessionAsync(session.Id);
+        Assert.NotNull(unread);
+        Assert.Equal(2, unread.UnreadCount);
+        Assert.True(unread.RequiresAttention);
+
+        await _sessions.ClearAttentionAsync(session.Id);
+        var opened = await _sessions.GetSessionAsync(session.Id);
+        Assert.NotNull(opened);
+        Assert.Equal(0, opened.UnreadCount);
+        Assert.False(opened.RequiresAttention);
     }
 
     [Fact]
@@ -197,6 +219,182 @@ public sealed class SessionRepositoryTests : IAsyncLifetime
         Assert.All((await _sessions.LoadAsync()).Sessions, s => Assert.False(s.IsPinned));
 
         await _sessions.SaveAsync(new SessionsState());
+    }
+
+    /// <summary>
+    /// The guard for the whole paging change: a delete must touch exactly the conversation asked
+    /// for.
+    ///
+    /// <para>The production delete paths used to remove one entry from a loaded index and hand the
+    /// remainder to <see cref="SessionRepository.SaveAsync"/>, which reconciles the whole table.
+    /// That is correct only while the loaded list really is every conversation — and paging makes
+    /// it a page. This test fails loudly against that shape the moment a read is bounded, which is
+    /// precisely the silent data loss it exists to prevent.</para>
+    /// </summary>
+    [Fact]
+    public async Task DeleteSessionAsync_RemovesOnlyThatConversation_AndItsPinAndActivePointer()
+    {
+        await SeedAsync(("keep-a", "2026-01-03T00:00:00Z"), ("drop", "2026-01-02T00:00:00Z"), ("keep-b", "2026-01-01T00:00:00Z"));
+        await _sessions.SetPinnedAsync("drop", true);
+        await _sessions.SetPinnedAsync("keep-a", true);
+        await _sessions.SetActiveSessionAsync("drop");
+
+        await _sessions.DeleteSessionAsync("drop");
+
+        var remaining = await _sessions.LoadAsync();
+        Assert.Equal(new[] { "keep-a", "keep-b" }, remaining.Sessions.Select(s => s.Id).Order());
+        // The pointer went with the row rather than dangling; picking a successor is the caller's.
+        Assert.Null(remaining.ActiveSessionId);
+        // The pin list is a JSON blob with no referential integrity of its own, so it is pruned by
+        // hand — and only the deleted conversation's pin.
+        Assert.Equal(new[] { "keep-a" }, (await _sessions.LoadPinnedAsync()).Select(s => s.Id));
+    }
+
+    [Fact]
+    public async Task DeleteSessionsForAgentAsync_RemovesOnlyThatAgentsConversations()
+    {
+        await InsertAgentAsync("agent-2");
+        await SeedAsync(("a1", "2026-01-02T00:00:00Z"), ("a2", "2026-01-01T00:00:00Z"));
+        await InsertSessionForAgentAsync("b1", "agent-2", "2026-01-03T00:00:00Z");
+        await _sessions.SetActiveSessionAsync("a1");
+
+        await _sessions.DeleteSessionsForAgentAsync("agent-1");
+
+        Assert.Equal(new[] { "b1" }, (await _sessions.LoadAsync()).Sessions.Select(s => s.Id));
+        Assert.Null(await _sessions.GetActiveSessionIdAsync());
+        Assert.Equal(0, await _sessions.CountForAgentAsync("agent-1"));
+        Assert.Equal(1, await _sessions.CountForAgentAsync("agent-2"));
+    }
+
+    [Fact]
+    public async Task GetSessionAsync_ReturnsTheRowOrNull_WithPinStateAttached()
+    {
+        await SeedAsync(("present", "2026-01-01T00:00:00Z"));
+        await _sessions.SetPinnedAsync("present", true);
+
+        var found = await _sessions.GetSessionAsync("present");
+        Assert.NotNull(found);
+        Assert.Equal("present", found!.Id);
+        Assert.True(found.IsPinned);
+        Assert.Null(await _sessions.GetSessionAsync("absent"));
+    }
+
+    /// <summary>
+    /// Keyset paging, newest first, with the extra-row probe answering <c>HasMore</c>.
+    /// <para>The cursor carries <c>id</c> as well as <c>updated_at</c> precisely so conversations
+    /// sharing a timestamp cannot straddle a page boundary and lose one — which is what the
+    /// same-timestamp pair here checks.</para>
+    /// </summary>
+    [Fact]
+    public async Task LoadAgentSessionsAsync_PagesNewestFirst_WithoutDroppingTiedTimestamps()
+    {
+        await SeedAsync(
+            ("s5", "2026-01-05T00:00:00Z"),
+            ("s4", "2026-01-04T00:00:00Z"),
+            ("s3b", "2026-01-03T00:00:00Z"),
+            ("s3a", "2026-01-03T00:00:00Z"),
+            ("s1", "2026-01-01T00:00:00Z"));
+
+        var walked = new List<string>();
+        var page = await _sessions.LoadAgentSessionsAsync("agent-1", limit: 2);
+        while (true)
+        {
+            walked.AddRange(page.Sessions.Select(s => s.Id));
+            if (page.NextCursor is not { } cursor) break;
+            page = await _sessions.LoadAgentSessionsAsync("agent-1", limit: 2, after: cursor);
+        }
+
+        // Every conversation, once, newest first — the tied pair broken by id descending.
+        Assert.Equal(new[] { "s5", "s4", "s3b", "s3a", "s1" }, walked);
+        Assert.Equal(walked.Distinct().Count(), walked.Count);
+
+        var first = await _sessions.LoadAgentSessionsAsync("agent-1", limit: 2);
+        Assert.True(first.HasMore);
+        Assert.Equal(2, first.Sessions.Count);
+        var whole = await _sessions.LoadAgentSessionsAsync("agent-1", limit: 5);
+        Assert.False(whole.HasMore);
+        Assert.Null(whole.NextCursor);
+    }
+
+    /// <summary>
+    /// <c>ResolveForAgentAsync</c> is the SQL twin of the pure <c>SessionSelection.FindExisting</c>,
+    /// and this is what stops the two from drifting: both are asked the same questions over the
+    /// same data and must agree. The pure function's own tests remain the statement of the rule.
+    /// </summary>
+    [Fact]
+    public async Task ResolveForAgentAsync_AgreesWithSessionSelection()
+    {
+        await InsertAgentAsync("agent-2");
+        await SeedAsync(("older", "2026-01-01T00:00:00Z"), ("newer", "2026-01-02T00:00:00Z"));
+        await InsertSessionForAgentAsync("other-agent", "agent-2", "2026-01-03T00:00:00Z");
+        var all = (await _sessions.LoadAsync()).Sessions;
+
+        foreach (var activeId in new string?[] { null, "older", "newer", "other-agent", "absent" })
+        {
+            await _sessions.SetActiveSessionAsync(activeId);
+            foreach (var agentId in new[] { "agent-1", "agent-2", "agent-unknown" })
+            {
+                var expected = SessionSelection.FindExisting(all, activeId, agentId);
+                var actual = await _sessions.ResolveForAgentAsync(agentId);
+                Assert.Equal(expected?.Id, actual?.Id);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task SearchByTitleAsync_MatchesSubstrings_AndTreatsWildcardsAsLiterals()
+    {
+        await SeedAsync(("plain", "2026-01-03T00:00:00Z"), ("percent", "2026-01-02T00:00:00Z"), ("under", "2026-01-01T00:00:00Z"));
+        await RenameAsync("plain", "Migration notes");
+        await RenameAsync("percent", "100% done");
+        await RenameAsync("under", "snake_case");
+
+        Assert.Equal(new[] { "plain" }, (await _sessions.SearchByTitleAsync("migration")).Select(s => s.Id));
+        // A literal % must not behave as "match anything", which is what an unescaped LIKE would do.
+        Assert.Equal(new[] { "percent" }, (await _sessions.SearchByTitleAsync("100%")).Select(s => s.Id));
+        Assert.Equal(new[] { "under" }, (await _sessions.SearchByTitleAsync("snake_")).Select(s => s.Id));
+        Assert.Empty(await _sessions.SearchByTitleAsync("nothing here"));
+        Assert.Empty(await _sessions.SearchByTitleAsync("   "));
+    }
+
+    [Fact]
+    public async Task LoadRecentAsync_ReturnsNewestAcrossAgents_BoundedByLimit()
+    {
+        await InsertAgentAsync("agent-2");
+        await SeedAsync(("a-old", "2026-01-01T00:00:00Z"), ("a-new", "2026-01-04T00:00:00Z"));
+        await InsertSessionForAgentAsync("b-mid", "agent-2", "2026-01-03T00:00:00Z");
+
+        Assert.Equal(new[] { "a-new", "b-mid" }, (await _sessions.LoadRecentAsync(2)).Select(s => s.Id));
+        Assert.Equal(3, (await _sessions.LoadRecentAsync(10)).Count);
+    }
+
+    private async Task SeedAsync(params (string Id, string UpdatedAt)[] sessions)
+    {
+        foreach (var (id, updatedAt) in sessions)
+            await _sessions.AppendSessionAsync(Summary(id, id, updatedAt), makeActive: false);
+    }
+
+    private async Task RenameAsync(string id, string title)
+    {
+        var session = await _sessions.GetSessionAsync(id);
+        session!.Title = title;
+        await _sessions.UpdateSessionAsync(session);
+    }
+
+    private static async Task InsertAgentAsync(string agentId)
+    {
+        await using var connection = await AppDatabase.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "INSERT INTO agents (id, name, address) VALUES ($id, $id, '0x2');";
+        command.Parameters.AddWithValue("$id", agentId);
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private async Task InsertSessionForAgentAsync(string id, string agentId, string updatedAt)
+    {
+        var summary = Summary(id, id, updatedAt);
+        summary.AgentId = agentId;
+        await _sessions.AppendSessionAsync(summary, makeActive: false);
     }
 
     private static SessionSummary Summary(string id, string title, string updatedAt) => new()

@@ -29,6 +29,45 @@ public sealed class AppDatabaseSchemaTests(TempDatabaseFixture fixture)
         Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'mode';"));
         Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM pragma_table_info('identity_keys') WHERE name = 'mnemonic';"));
         Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM pragma_table_info('agents') WHERE name = 'icon_path';"));
+        Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'unread_count';"));
+        Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'requires_attention';"));
+    }
+
+    /// <summary>
+    /// Two indexes that exist for deletes and one ordering, none of which any query names
+    /// explicitly — so nothing else in the suite would notice if a migration edit dropped them.
+    ///
+    /// <para><c>ix_trace_events_execution</c> backs
+    /// <c>ConversationRepository.DeleteExecutionAsync</c>, which removes traces by
+    /// <c>execution_id</c>; without it that user-facing action full-scans <c>trace_events</c>.
+    /// <c>ix_sessions_order</c> covers <c>SessionRepository.LoadAsync</c>'s
+    /// <c>ORDER BY sort_order, updated_at DESC, id</c> — the pre-existing
+    /// <c>ix_sessions_agent_updated</c> leads with a different column, so that load ran a full scan
+    /// plus a temporary B-tree sort on every sidebar refresh.</para>
+    /// </summary>
+    [Fact]
+    public async Task OpenAsync_NewDatabase_CreatesTheIndexesBehindDeletesAndSessionOrdering()
+    {
+        await using var connection = await AppDatabase.OpenAsync();
+
+        Assert.Equal(1, await ScalarLongAsync(connection,
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'ix_trace_events_execution';"));
+        Assert.Equal(1, await ScalarLongAsync(connection,
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'ix_sessions_order';"));
+
+        // The ordering index has to actually be chosen, not merely exist: a covering index that
+        // the planner declines still leaves the sort in place, which is the cost being removed.
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            EXPLAIN QUERY PLAN
+            SELECT id FROM sessions ORDER BY sort_order, updated_at DESC, id;
+            """;
+        await using var reader = await command.ExecuteReaderAsync();
+        var plan = new List<string>();
+        while (await reader.ReadAsync()) plan.Add(reader.GetString(3));
+
+        Assert.Contains(plan, detail => detail.Contains("ix_sessions_order", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(plan, detail => detail.Contains("USE TEMP B-TREE", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

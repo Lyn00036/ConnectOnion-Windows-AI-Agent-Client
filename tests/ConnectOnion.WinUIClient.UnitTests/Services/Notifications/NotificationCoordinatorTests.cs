@@ -16,12 +16,13 @@ public sealed class NotificationCoordinatorTests
         public FakeWindowPresence Presence { get; } = new();
         public FakeSettingsProvider Settings { get; } = new();
         public ManualScheduler Scheduler { get; } = new();
+        public RecordingAttentionStore Attention { get; } = new();
         public NotificationCoordinator Coordinator { get; }
 
         public Harness()
         {
             Coordinator = new NotificationCoordinator(
-                System, InApp, Presence, Settings, Scheduler);
+                System, InApp, Presence, Settings, Scheduler, attentionStore: Attention);
         }
     }
 
@@ -36,6 +37,7 @@ public sealed class NotificationCoordinatorTests
 
         Assert.Equal(0, h.System.Count);
         Assert.Equal(0, h.InApp.Count);
+        Assert.Empty(h.Attention.Calls);
     }
 
     [Fact]
@@ -50,6 +52,7 @@ public sealed class NotificationCoordinatorTests
         Assert.Equal(1, h.InApp.Count);
         Assert.Equal(0, h.System.Count);
         Assert.Equal(NotificationType.AgentReply, h.InApp.Last!.Type);
+        Assert.Equal((ConvId, false), Assert.Single(h.Attention.Calls));
     }
 
     [Fact]
@@ -121,6 +124,7 @@ public sealed class NotificationCoordinatorTests
 
         Assert.Equal(1, h.System.Count);
         Assert.Equal(NotificationType.ApprovalRequired, h.System.Last!.Type);
+        Assert.Equal((ConvId, true), Assert.Single(h.Attention.Calls));
     }
 
     [Fact]
@@ -187,6 +191,7 @@ public sealed class NotificationCoordinatorTests
         Assert.Equal(0, h.Scheduler.PendingCount);
         Assert.Equal(0, h.System.Count);
         Assert.Equal(0, h.InApp.Count);
+        Assert.Empty(h.Attention.Calls);
     }
 
     [Fact]
@@ -200,6 +205,7 @@ public sealed class NotificationCoordinatorTests
 
         Assert.Equal(0, h.System.Count);
         Assert.Equal(0, h.InApp.Count);
+        Assert.Empty(h.Attention.Calls);
     }
 
     [Fact]
@@ -235,5 +241,19 @@ public sealed class NotificationCoordinatorTests
     {
         public void Show(NotificationRequest request, bool playSound)
             => throw new InvalidOperationException("boom");
+    }
+
+    private sealed class RecordingAttentionStore : IConversationAttentionStore
+    {
+        public List<(string ConversationId, bool RequiresAttention)> Calls { get; } = [];
+
+        public Task MarkUnreadAsync(
+            string conversationId,
+            bool requiresAttention,
+            CancellationToken cancellationToken = default)
+        {
+            Calls.Add((conversationId, requiresAttention));
+            return Task.CompletedTask;
+        }
     }
 }
