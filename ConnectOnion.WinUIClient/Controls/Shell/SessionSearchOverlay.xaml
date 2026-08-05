@@ -36,6 +36,7 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
@@ -68,14 +69,25 @@
                     </Grid>
                 </Border>
 
-                <TextBlock x:Uid="SessionSearchChats"
+                <TextBlock x:Name="ShortTranscriptSearchHint"
+                           x:Uid="SessionSearchShortTranscriptHint"
                            Grid.Row="1"
+                           Text="Type at least 3 characters to search message text; chat titles and agent names still match now."
+                           Margin="6,0,6,6"
+                           FontSize="{StaticResource ProductCaptionFontSize}"
+                           Foreground="{ThemeResource TextSecondaryBrush}"
+                           TextWrapping="Wrap"
+                           Visibility="Collapsed"
+                           AutomationProperties.LiveSetting="Polite" />
+
+                <TextBlock x:Uid="SessionSearchChats"
+                           Grid.Row="2"
                            Text="Chats"
                            Margin="6,2,6,4"
                            FontSize="{StaticResource ProductCaptionFontSize}"
                            Foreground="{ThemeResource TextTertiaryBrush}" />
 
-                <Grid Grid.Row="2" MinHeight="80">
+                <Grid Grid.Row="3" MinHeight="80">
                     <ListView x:Name="ResultsList"
                               ItemsSource="{x:Bind Vm.Results, Mode=OneWay}"
                               SelectionMode="Single"

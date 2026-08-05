@@ -24,6 +24,7 @@ public sealed class NotificationActivationRouter
     /// Safe to call once at startup for both packaged and unpackaged apps.</summary>
     public void RegisterAndListen()
     {
+        if (!AppNotificationCapability.IsAvailable) return;
         if (System.Threading.Interlocked.CompareExchange(ref _registered, 1, 0) != 0) return;
         AppNotificationManager? manager = null;
         try
@@ -41,7 +42,7 @@ public sealed class NotificationActivationRouter
             if (manager is not null)
                 manager.NotificationInvoked -= OnNotificationInvoked;
             System.Threading.Interlocked.Exchange(ref _registered, 0);
-            NotificationLog.Warn("notification registration failed", ex);
+            AppNotificationCapability.MarkRuntimeUnavailable("registration", ex);
         }
     }
 

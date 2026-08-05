@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
+using ConnectOnion.WinUIClient.Services.Notifications;
 using ConnectOnion.WinUIClient.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -120,6 +121,7 @@ public sealed partial class SettingsPage : Page
     private void LoadNotificationSettings()
     {
         var s = AppServices.NotificationSettings.Current;
+        SystemNotificationsUnavailableInfoBar.IsOpen = !AppNotificationCapability.IsAvailable;
         EnableNotificationsSwitch.IsOn = s.EnableNotifications;
         NotifyAgentRepliesSwitch.IsOn = s.NotifyAgentReplies;
         NotifyTaskCompletionSwitch.IsOn = s.NotifyTaskCompletion;

@@ -37,8 +37,37 @@ public sealed partial class ShellAgentItem : RowStateItem
         ? LocalizedStrings.Format("SidebarCollapseAgentChats", "Collapse chats for {0}", DisplayName)
         : LocalizedStrings.Format("SidebarExpandAgentChats", "Expand chats for {0}", DisplayName);
     public int SessionCount => Sessions.Count;
+
+    /// <summary>The conversations currently <i>loaded</i> for this agent — one page's worth per
+    /// <see cref="LoadedPages"/>, not necessarily all the agent has. See <see cref="HasMoreSessions"/>.</summary>
     public ObservableCollection<ShellSessionItem> Sessions { get; } = new();
     public ObservableCollection<ShellSessionGroup> SessionGroups { get; } = new();
+
+    /// <summary>True when the agent has conversations older than the ones loaded, which is what
+    /// puts a "show more" row at the end of its branch.</summary>
+    public bool HasMoreSessions { get; set; }
+
+    /// <summary>
+    /// Where the next page resumes from — the keyset cursor of the last page loaded.
+    ///
+    /// <para>Held here rather than derived from the last row because the cursor belongs to the
+    /// query, not to the display: <see cref="ShellSessionItem"/> deliberately carries only what a
+    /// row draws, and the active-conversation row spliced in by the sidebar is not necessarily the
+    /// oldest thing the query returned.</para>
+    /// </summary>
+    public (string UpdatedAt, string Id)? NextSessionCursor { get; set; }
+
+    /// <summary>
+    /// How many pages have been pulled in. A refresh reloads <i>this many</i> rather than resetting
+    /// to one — otherwise any incoming message would silently collapse a branch the user had
+    /// expanded several pages deep, which reads as the sidebar losing conversations.
+    /// </summary>
+    public int LoadedPages { get; set; }
+
+    /// <summary>False until this agent's conversations have been fetched at least once. Distinct
+    /// from "loaded zero conversations": a collapsed agent is never fetched at all, and that is
+    /// the point of paging here — the cost of a branch is paid only when it is opened.</summary>
+    public bool SessionsLoaded { get; set; }
 
     public void RebuildSessionGroups()
     {

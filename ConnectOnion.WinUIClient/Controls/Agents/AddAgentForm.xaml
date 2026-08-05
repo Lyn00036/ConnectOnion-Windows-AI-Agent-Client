@@ -20,6 +20,7 @@
 
         <Border x:Name="ModalContainer"
                 MaxWidth="460"
+                MaxHeight="720"
                 Margin="24"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Center"
@@ -32,6 +33,12 @@
                 <ThemeShadow />
             </Border.Shadow>
 
+            <ScrollViewer HorizontalScrollMode="Disabled"
+                          HorizontalScrollBarVisibility="Disabled"
+                          VerticalScrollMode="Enabled"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalContentAlignment="Stretch"
+                          AutomationProperties.AutomationId="AddAgentFormScrollViewer">
             <StackPanel Padding="24"
                         Spacing="0">
                 <TextBlock x:Uid="AddAgentTitle" Text="Add an agent"
@@ -265,6 +272,7 @@
                     </Button>
                 </StackPanel>
             </StackPanel>
+            </ScrollViewer>
         </Border>
     </Grid>
 </UserControl>

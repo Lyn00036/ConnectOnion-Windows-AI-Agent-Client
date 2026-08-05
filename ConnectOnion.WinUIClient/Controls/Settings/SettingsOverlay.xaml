@@ -186,6 +186,31 @@
                     </Grid>
                     <views:SettingsPage x:Name="SettingsContent" Grid.Row="1" MinWidth="0"
                                         HorizontalAlignment="Stretch" />
+                    <ScrollViewer x:Name="SettingsSearchResultsScrollViewer" Grid.Row="1"
+                                  Visibility="Collapsed"
+                                  HorizontalScrollMode="Disabled"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollMode="Enabled"
+                                  VerticalScrollBarVisibility="Auto">
+                        <StackPanel Margin="{StaticResource SettingsContentMargin}" Spacing="12">
+                            <TextBlock x:Uid="SettingsSearchResultsIntro"
+                                       Text="Choose a matching settings area."
+                                       Foreground="{ThemeResource TextSecondaryBrush}"
+                                       TextWrapping="Wrap" />
+                            <ListView x:Name="SettingsSearchResultsList"
+                                      DisplayMemberPath="Title"
+                                      IsItemClickEnabled="True"
+                                      SelectionMode="None"
+                                      ItemClick="SettingsSearchResult_Click"
+                                      AutomationProperties.AutomationId="SettingsSearchResultsList" />
+                            <TextBlock x:Name="SettingsSearchResultsEmpty"
+                                       x:Uid="SettingsSearchResultsEmpty"
+                                       Text="No matching settings found."
+                                       Visibility="Collapsed"
+                                       Foreground="{ThemeResource TextSecondaryBrush}"
+                                       AutomationProperties.LiveSetting="Polite" />
+                        </StackPanel>
+                    </ScrollViewer>
                     <ScrollViewer x:Name="IdentityScrollViewer" Grid.Row="1" Visibility="Collapsed"
                                   HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled"
                                   VerticalScrollMode="Enabled" VerticalScrollBarVisibility="Auto"

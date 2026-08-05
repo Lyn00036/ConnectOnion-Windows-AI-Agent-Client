@@ -95,6 +95,8 @@
   <data name="SettingsMessageSize.Description" xml:space="preserve"><value>Adjust how large chat messages appear.</value></data>
   <data name="SettingsEnterToSend.Description" xml:space="preserve"><value>When enabled, Enter sends and Shift+Enter inserts a new line.</value></data>
   <data name="SettingsNotificationsEnable.Description" xml:space="preserve"><value>Master switch for all in-app and Windows notifications.</value></data>
+  <data name="SettingsSystemNotificationsUnavailable.Title" xml:space="preserve"><value>Windows notifications unavailable</value></data>
+  <data name="SettingsSystemNotificationsUnavailable.Message" xml:space="preserve"><value>In-app alerts remain available while this window is open. Background Windows notifications require the Windows App Runtime notification service on this PC.</value></data>
   <data name="SettingsAgentReplies.Description" xml:space="preserve"><value>Notify when an agent finishes replying in a conversation you're not viewing.</value></data>
   <data name="SettingsTaskCompletion.Description" xml:space="preserve"><value>Notify when a longer, multi-step task finishes.</value></data>
   <data name="SettingsApprovalRequests.Description" xml:space="preserve"><value>Notify when an agent needs your approval to continue.</value></data>
@@ -114,6 +116,8 @@
   <data name="SidebarCollapseAgentChats" xml:space="preserve"><value>Collapse chats for {0}</value></data>
   <data name="SidebarExpandPinnedChats" xml:space="preserve"><value>Expand pinned shortcuts</value></data>
   <data name="SidebarCollapsePinnedChats" xml:space="preserve"><value>Collapse pinned shortcuts</value></data>
+  <data name="SidebarShowMoreChats" xml:space="preserve"><value>Show more</value></data>
+  <data name="SidebarLoadingMoreChats" xml:space="preserve"><value>Loading…</value></data>
   <data name="SidebarDeleteChat.Text" xml:space="preserve"><value>Delete chat</value></data>
   <data name="SidebarAgentNewChat.Text" xml:space="preserve"><value>New chat</value></data>
   <data name="SidebarAgentDetails.Text" xml:space="preserve"><value>Agent details</value></data>
@@ -862,4 +866,39 @@
   <data name="InteractiveCardCollapse" xml:space="preserve"><value>Collapse {0}</value></data>
   <data name="InteractiveCardExpand" xml:space="preserve"><value>Expand {0}</value></data>
   <data name="PlanReviewSubtitle" xml:space="preserve"><value>The agent will not execute until you respond.</value></data>
+  <data name="MenuMore.Title" xml:space="preserve"><value>More</value></data>
+  <data name="CompactMenuEdit.Text" xml:space="preserve"><value>Edit</value></data>
+  <data name="CompactMenuView.Text" xml:space="preserve"><value>View</value></data>
+  <data name="CompactMenuUndo.Text" xml:space="preserve"><value>Undo</value></data>
+  <data name="CompactMenuRedo.Text" xml:space="preserve"><value>Redo</value></data>
+  <data name="CompactMenuCut.Text" xml:space="preserve"><value>Cut</value></data>
+  <data name="CompactMenuCopy.Text" xml:space="preserve"><value>Copy</value></data>
+  <data name="CompactMenuPaste.Text" xml:space="preserve"><value>Paste</value></data>
+  <data name="CompactMenuDelete.Text" xml:space="preserve"><value>Delete</value></data>
+  <data name="CompactMenuSelectAll.Text" xml:space="preserve"><value>Select All</value></data>
+  <data name="CompactMenuToggleSidebar.Text" xml:space="preserve"><value>Toggle Sidebar</value></data>
+  <data name="CompactMenuOpenTerminal.Text" xml:space="preserve"><value>Open Terminal in Data Folder</value></data>
+  <data name="CompactMenuFind.Text" xml:space="preserve"><value>Find</value></data>
+  <data name="CompactMenuBack.Text" xml:space="preserve"><value>Back</value></data>
+  <data name="CompactMenuForward.Text" xml:space="preserve"><value>Forward</value></data>
+  <data name="CompactMenuZoomIn.Text" xml:space="preserve"><value>Zoom In</value></data>
+  <data name="CompactMenuZoomOut.Text" xml:space="preserve"><value>Zoom Out</value></data>
+  <data name="CompactMenuActualSize.Text" xml:space="preserve"><value>Actual Size</value></data>
+  <data name="CompactMenuFullScreen.Text" xml:space="preserve"><value>Toggle Full Screen</value></data>
+  <data name="RecoveryPhraseClipboardNotice.Text" xml:space="preserve"><value>Copies stay off clipboard history and are cleared after 60 seconds.</value></data>
+  <data name="RecoveryPhraseCopiedWithExpiry" xml:space="preserve"><value>Copied · clears in 60 seconds</value></data>
+  <data name="SettingsSearchResultsIntro.Text" xml:space="preserve"><value>Choose a matching settings area.</value></data>
+  <data name="SettingsSearchResultsEmpty.Text" xml:space="preserve"><value>No matching settings found.</value></data>
+  <data name="SettingsSearchKeywordsGeneral" xml:space="preserve"><value>general appearance theme language window startup chat audio microphone</value></data>
+  <data name="SettingsSearchKeywordsAgents" xml:space="preserve"><value>agents agent address connection icon avatar delete rename</value></data>
+  <data name="SettingsSearchKeywordsNotifications" xml:space="preserve"><value>notifications alerts sound banner toast approval reply</value></data>
+  <data name="SettingsSearchKeywordsKeyboard" xml:space="preserve"><value>keyboard shortcuts hotkeys keys bindings</value></data>
+  <data name="SettingsSearchKeywordsIdentity" xml:space="preserve"><value>identity address recovery phrase mnemonic private key seed backup restore</value></data>
+  <data name="SettingsSearchKeywordsUsage" xml:space="preserve"><value>usage tokens model cost history heatmap clear</value></data>
+  <data name="SessionSearchShortTranscriptHint.Text" xml:space="preserve"><value>Type at least 3 characters to search message text; chat titles and agent names still match now.</value></data>
+  <data name="DeleteFailedTitle" xml:space="preserve"><value>Delete failed</value></data>
+  <data name="DeleteAgentFailed" xml:space="preserve"><value>The agent could not be deleted. Nothing else was removed.</value></data>
+  <data name="DeleteConversationFailed" xml:space="preserve"><value>The conversation could not be deleted. Please try again.</value></data>
+  <data name="SidebarRequiresAttention" xml:space="preserve"><value>Approval required</value></data>
+  <data name="SidebarUnreadCount" xml:space="preserve"><value>{0} unread</value></data>
 </root>

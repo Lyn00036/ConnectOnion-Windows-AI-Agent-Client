@@ -41,7 +41,9 @@ public sealed partial class ChatMessageTemplateSelector : DataTemplateSelector
         if (item is not ChatMessage message) return Empty;
 
         if (message.IsUser) return User;
-        if (message.IsAgent) return Agent;
+        // Persisted event rows from older builds can carry Role=Agent. EventKind is the more
+        // specific discriminator and must win; checking IsAgent first silently turns restored
+        // tool timelines and interactive cards into generic assistant bubbles.
         if (message.IsTurnUsageEvent) return Usage;
         if (message.IsActivityEvent) return Activity;
         if (message.IsToolActivityEvent) return ToolActivity;
@@ -56,6 +58,7 @@ public sealed partial class ChatMessageTemplateSelector : DataTemplateSelector
         if (message.IsApprovalEvent) return Empty;
         if (message.IsPlanReviewEvent) return PlanReview;
         if (message.IsDiffPreviewEvent) return DiffPreview;
+        if (message.IsAgent) return Agent;
 
         return Empty;
     }

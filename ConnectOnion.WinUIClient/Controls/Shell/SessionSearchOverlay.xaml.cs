@@ -110,7 +110,8 @@ public sealed partial class SessionSearchOverlay : UserControl, IDisposable
     {
         try
         {
-            var agentsTask = AppServices.Agents.LoadAsync();
+            // Names only, and never written back — the thin read skips every agent's /info blob.
+            var agentsTask = AppServices.Agents.LoadSummariesAsync();
             var sessionsTask = AppServices.Sessions.LoadAsync();
             await Task.WhenAll(agentsTask, sessionsTask);
 
@@ -150,6 +151,10 @@ public sealed partial class SessionSearchOverlay : UserControl, IDisposable
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
         Vm.SearchText = SearchBox.Text;
+        var queryLength = SearchBox.Text.Trim().Length;
+        ShortTranscriptSearchHint.Visibility = queryLength is > 0 and < 3
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         SelectFirstResult();
         // Titles filter synchronously from the in-memory catalog so the list responds on the
         // keystroke; searching what was actually *said* needs the database, so it trails behind
@@ -165,7 +170,7 @@ public sealed partial class SessionSearchOverlay : UserControl, IDisposable
     private void RestartContentSearchDebounce()
     {
         _contentSearchDebounce.Stop();
-        if (string.IsNullOrWhiteSpace(SearchBox.Text)) return;
+        if (SearchBox.Text.Trim().Length < 3) return;
         _contentSearchDebounce.Start();
     }
 

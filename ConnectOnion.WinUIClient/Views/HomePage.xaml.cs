@@ -96,12 +96,14 @@ public sealed partial class HomeAgentItem : Common.ObservableObject
 /// </summary>
 public sealed partial class HomePage : Page, IReloadablePage, IShutdownDisarmable, IDisposable
 {
-    // The wide content is 960px plus its 48px margins on both sides. This threshold must use the
+    // The wide content is 1120px plus its 48px margins on both sides. This threshold must use the
     // page viewport, not AdaptiveTrigger's top-level window width: during startup the shell can
     // restore from a wider presenter before the content Frame receives its final size, and in
     // steady state the sidebar takes up to 288px that the window width would wrongly count as
     // available. The row-level thresholds below are on the page for the same reason.
-    private const double WideViewportMinWidth = 1056;
+    private const double WideContentWidth = 1120;
+    private const double WideContentSideMargin = 48;
+    private const double WideViewportMinWidth = WideContentWidth + (2 * WideContentSideMargin);
     private const double RegularViewportMinWidth = 600;
 
     private readonly AgentPresenceService _presence = AppServices.Presence;
@@ -286,11 +288,12 @@ public sealed partial class HomePage : Page, IReloadablePage, IShutdownDisarmabl
 
             await AppServices.Agents.SetSelectedAgentAsync(agentId, _lifetimeCts.Token);
 
-            var sessionsState = await AppServices.Sessions.LoadAsync(_lifetimeCts.Token);
-            var recentSession = SessionSelection.FindExisting(
-                sessionsState.Sessions,
-                activeSessionId: null,
-                agentId: agentId);
+            // Purely "this agent's most recent" — the call this replaced passed
+            // activeSessionId: null, so the active pointer was deliberately not consulted. That is
+            // LoadAgentSessionsAsync's exact semantics, and it reads one row instead of the index.
+            var recent = await AppServices.Sessions.LoadAgentSessionsAsync(
+                agentId, limit: 1, cancellationToken: _lifetimeCts.Token);
+            var recentSession = recent.Sessions.Count > 0 ? recent.Sessions[0] : null;
 
             if (recentSession is null)
             {

@@ -425,9 +425,22 @@ public sealed partial class ShellSmokeTests
     private static void OpenAgentDetail(Window window)
     {
         var agent = WaitForDescendant(window, "AgentButton", TimeSpan.FromSeconds(15));
-        Assert.NotNull(agent);
+        Assert.True(agent is not null,
+            "No agent row reached UI Automation. Visible tree:\n" +
+            string.Join("\n", window.FindAllDescendants()
+                .Where(element => !string.IsNullOrWhiteSpace(
+                    element.Properties.AutomationId.ValueOrDefault))
+                .Take(120)
+                .Select(element =>
+                    $"{element.Properties.AutomationId.ValueOrDefault}: " +
+                    $"{element.Properties.Name.ValueOrDefault} " +
+                    $"[{element.ControlType}]")));
         agent!.AsButton().Invoke();
-        Assert.NotNull(WaitForDescendant(window, "BalanceButton", TimeSpan.FromSeconds(15)));
+        // BalanceButton is intentionally collapsed when the optional OpenOnion account service
+        // is unavailable. It cannot be a deterministic page marker for an isolated/offline UI
+        // test; the suggestion and composer are the detail page's always-present interaction
+        // surface and still prove that navigation completed.
+        Assert.NotNull(WaitForDescendant(window, "SuggestionButton", TimeSpan.FromSeconds(15)));
         Assert.NotNull(WaitForDescendant(window, "MessageInput", TimeSpan.FromSeconds(15)));
     }
 

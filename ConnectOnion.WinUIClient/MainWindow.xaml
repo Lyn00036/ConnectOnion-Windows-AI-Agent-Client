@@ -217,6 +217,35 @@
                                         KeyboardAcceleratorTextOverride="F11"
                                         Click="ToggleFullScreen_Click" />
                     </MenuBarItem>
+            <MenuBarItem x:Uid="MenuMore" x:Name="CompactMenuBarItem" Title="More"
+                         Visibility="Collapsed"
+                         AutomationProperties.AutomationId="CompactMenuButton">
+                        <MenuFlyoutSubItem x:Uid="CompactMenuEdit" Text="Edit">
+                            <MenuFlyoutItem x:Uid="CompactMenuUndo" Text="Undo" KeyboardAcceleratorTextOverride="Ctrl+Z" Click="Undo_Click" />
+                            <MenuFlyoutItem x:Uid="CompactMenuRedo" Text="Redo" KeyboardAcceleratorTextOverride="Ctrl+Y" Click="Redo_Click" />
+                            <MenuFlyoutSeparator />
+                            <MenuFlyoutItem x:Uid="CompactMenuCut" Text="Cut" KeyboardAcceleratorTextOverride="Ctrl+X" Click="Cut_Click" />
+                            <MenuFlyoutItem x:Uid="CompactMenuCopy" Text="Copy" KeyboardAcceleratorTextOverride="Ctrl+C" Click="Copy_Click" />
+                            <MenuFlyoutItem x:Uid="CompactMenuPaste" Text="Paste" KeyboardAcceleratorTextOverride="Ctrl+V" Click="Paste_Click" />
+                            <MenuFlyoutItem x:Uid="CompactMenuDelete" Text="Delete" Click="Delete_Click" />
+                            <MenuFlyoutSeparator />
+                            <MenuFlyoutItem x:Uid="CompactMenuSelectAll" Text="Select All" KeyboardAcceleratorTextOverride="Ctrl+A" Click="SelectAll_Click" />
+                        </MenuFlyoutSubItem>
+                        <MenuFlyoutSubItem x:Uid="CompactMenuView" Text="View">
+                            <MenuFlyoutItem x:Uid="CompactMenuToggleSidebar" Text="Toggle Sidebar" KeyboardAcceleratorTextOverride="Ctrl+B" Click="ToggleSidebarMenu_Click" />
+                            <MenuFlyoutItem x:Uid="CompactMenuOpenTerminal" Text="Open Terminal in Data Folder" KeyboardAcceleratorTextOverride="Ctrl+`" Click="OpenTerminal_Click" />
+                            <MenuFlyoutItem x:Uid="CompactMenuFind" Text="Find" KeyboardAcceleratorTextOverride="Ctrl+F" Click="Find_Click" />
+                            <MenuFlyoutSeparator />
+                            <MenuFlyoutItem x:Uid="CompactMenuBack" Text="Back" KeyboardAcceleratorTextOverride="Ctrl+[" Click="BackMenu_Click" />
+                            <MenuFlyoutItem x:Uid="CompactMenuForward" Text="Forward" KeyboardAcceleratorTextOverride="Ctrl+]" Click="ForwardMenu_Click" />
+                            <MenuFlyoutSeparator />
+                            <MenuFlyoutItem x:Uid="CompactMenuZoomIn" Text="Zoom In" KeyboardAcceleratorTextOverride="Ctrl+Shift+=" Click="ZoomIn_Click" />
+                            <MenuFlyoutItem x:Uid="CompactMenuZoomOut" Text="Zoom Out" KeyboardAcceleratorTextOverride="Ctrl+-" Click="ZoomOut_Click" />
+                            <MenuFlyoutItem x:Uid="CompactMenuActualSize" Text="Actual Size" Click="ActualSize_Click" />
+                            <MenuFlyoutSeparator />
+                            <MenuFlyoutItem x:Uid="CompactMenuFullScreen" Text="Toggle Full Screen" KeyboardAcceleratorTextOverride="F11" Click="ToggleFullScreen_Click" />
+                        </MenuFlyoutSubItem>
+                    </MenuBarItem>
             <MenuBarItem x:Uid="MenuHelp" x:Name="HelpMenuBarItem" Title="Help" AutomationProperties.AutomationId="HelpMenuButton">
                         <MenuFlyoutItem x:Uid="MenuKeyboardShortcuts" x:Name="KeyboardShortcutsMenuItem" Text="Keyboard shortcuts" AutomationProperties.AutomationId="KeyboardShortcutsMenuItem"
                                         KeyboardAcceleratorTextOverride="Ctrl+Shift+/"

@@ -41,7 +41,6 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
 
     private AgentConfig? _agent;
     private SessionSummary? _session;
-    private SessionsState _sessionsState = new();
     private long _createdAt;
 
     // Bumped by every LoadAsync. One view model now serves every conversation the page shows
@@ -482,6 +481,9 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
             return;
         }
 
+        await _sessions.ClearAttentionAsync(_session.Id, cancellationToken);
+        if (generation != _loadGeneration) return;
+
         HeaderText = $"{_agent.DisplayName} - {_session.Title}";
         CurrentMode = _session.Mode;
         RaiseHeaderProperties();
@@ -611,15 +613,16 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         string agentId,
         CancellationToken cancellationToken)
     {
-        _sessionsState = await _sessions.LoadAsync(cancellationToken);
-        var session = SessionSelection.FindExisting(
-            _sessionsState.Sessions, _sessionsState.ActiveSessionId, agentId);
-        if (session is null || session.Id == _sessionsState.ActiveSessionId)
+        // Two indexed reads, where this used to load every conversation the user has on every
+        // chat page load. ResolveForAgentAsync applies the same rule SessionSelection.FindExisting
+        // states, and a test holds the two to the same answers.
+        var activeId = await _sessions.GetActiveSessionIdAsync(cancellationToken);
+        var session = await _sessions.ResolveForAgentAsync(agentId, cancellationToken);
+        if (session is null || session.Id == activeId)
         {
             return session;
         }
 
-        _sessionsState.ActiveSessionId = session.Id;
         await _sessions.SetActiveSessionAsync(session.Id, cancellationToken);
         return session;
     }

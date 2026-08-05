@@ -102,7 +102,8 @@ public static class ServiceRegistration
             presence: sp.GetRequiredService<WindowPresenceService>(),
             settings: sp.GetRequiredService<NotificationSettingsStore>(),
             scheduler: sp.GetRequiredService<INotificationScheduler>(),
-            onError: NotificationLog.Warn));
+            onError: NotificationLog.Warn,
+            attentionStore: sp.GetRequiredService<SessionRepository>()));
         services.AddSingleton<ConversationNavigationService>();
         services.AddSingleton<NotificationActivationRouter>();
 

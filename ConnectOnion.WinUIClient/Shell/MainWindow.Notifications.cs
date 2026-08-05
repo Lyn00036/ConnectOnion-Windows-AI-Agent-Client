@@ -121,9 +121,8 @@ public sealed partial class MainWindow : IChatWindow
     /// the chat. Fails safe (navigates Home) when the conversation was deleted.</summary>
     public async Task ShowConversationAsync(string agentId, string conversationId)
     {
-        var sessions = await AppServices.Sessions.LoadAsync();
-        var session = sessions.Sessions.FirstOrDefault(s => s.Id == conversationId && s.AgentId == agentId);
-        if (session is null)
+        var session = await AppServices.Sessions.GetSessionAsync(conversationId);
+        if (session is null || session.AgentId != agentId)
         {
             NotificationLog.Info($"ShowConversationAsync: no session matched agentId={agentId} conversationId={conversationId} — navigating Home");
             NavigateTo(typeof(HomePage), forceReload: true);

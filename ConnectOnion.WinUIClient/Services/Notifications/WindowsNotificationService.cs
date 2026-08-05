@@ -15,6 +15,8 @@ public sealed class WindowsNotificationService : INotificationChannel
 {
     public void Show(NotificationRequest request, bool playSound)
     {
+        if (!AppNotificationCapability.IsAvailable) return;
+
         try
         {
             var builder = new AppNotificationBuilder()

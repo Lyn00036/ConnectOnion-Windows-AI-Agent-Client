@@ -243,14 +243,18 @@ public sealed partial class ShellSmokeTests
         if (string.IsNullOrWhiteSpace(
                 Environment.GetEnvironmentVariable(ExecutableEnvironmentVariable))) return false;
 
+        // Resolve and create the isolated root before AppDatabase first reads AppStorage. A caller
+        // may deliberately point CONNECTONION_DATA_ROOT at a fresh path; opening SQLite before
+        // creating that directory fails with SQLITE_CANTOPEN and makes the UI test depend on an
+        // unrelated bootstrap launch.
+        var dataRoot = ResolveDataRoot();
+
         // Initialize the isolated profile directly through the same production persistence APIs
         // the app uses. Shell activation is intentionally reserved for the UI action under test;
         // depending on a throwaway window to create the fixture makes setup sensitive to whether
         // Windows App SDK activation preserved the parent process's environment block.
         using (AppDatabase.OpenAsync().GetAwaiter().GetResult()) { }
         IdentityStore.EnsureIdentity();
-
-        var dataRoot = ResolveDataRoot();
 
         using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
         {
@@ -264,6 +268,8 @@ public sealed partial class ShellSmokeTests
         {
             cleanup.Transaction = transaction;
             cleanup.CommandText = """
+                DELETE FROM app_meta
+                WHERE key IN ('active_session_id', 'selected_agent_id');
                 DELETE FROM message_attachments
                 WHERE conversation_id IN (SELECT id FROM sessions WHERE agent_id = $agent);
                 DELETE FROM messages

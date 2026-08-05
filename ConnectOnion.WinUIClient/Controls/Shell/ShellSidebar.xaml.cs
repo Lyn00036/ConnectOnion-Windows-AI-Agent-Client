@@ -36,8 +36,57 @@ namespace ConnectOnion.WinUIClient.Controls;
 /// </summary>
 public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
 {
+    /// <summary>The agents and their conversations, as a tree. This stays the model the rest of
+    /// the class works against — <see cref="FindShellAgent"/>, the presence updates, the selection
+    /// repaint and <see cref="RememberExpandedAgentsFromUi"/> all read it. It is no longer what
+    /// XAML binds to; <see cref="SidebarRows"/> is.</summary>
     public ObservableCollection<ShellAgentItem> ShellAgents { get; } = new();
     public ObservableCollection<ShellSessionItem> PinnedSessions { get; } = new();
+
+    /// <summary>
+    /// The tree above, flattened into the one list the sidebar's single <c>ItemsRepeater</c>
+    /// renders — pinned header, pinned conversations, then each agent followed (when expanded) by
+    /// its time-group labels and conversations.
+    ///
+    /// <para>Flat because nested <c>ItemsRepeater</c>s do not virtualize: an inner repeater is
+    /// measured with an unconstrained height by its parent's item container, so it realizes every
+    /// item it has. See <c>ShellSidebarRows.cs</c>. The consequence for this class is that
+    /// expansion is a list rebuild rather than a <c>Visibility</c> flip — a collapsed agent's rows
+    /// are absent, not hidden — which is what <see cref="RebuildSidebarRows"/> exists for.</para>
+    ///
+    /// <para><c>object</c> rather than a common base type: the rows have nothing in common
+    /// behaviourally, and giving them a shared base purely to name this collection would have
+    /// forced <c>ShellAgentItem</c> and <c>ShellSessionItem</c> to change their own hierarchy.
+    /// <c>ShellSidebarRowTemplateSelector</c> dispatches on the concrete type.</para>
+    /// </summary>
+    public ObservableRangeCollection<object> SidebarRows { get; } = new();
+
+    /// <summary>One instance, reused across rebuilds, so the pinned section's chevron keeps its
+    /// binding rather than being re-created (and re-bound) every time the tree is rebuilt.</summary>
+    private readonly ShellPinnedHeaderRow _pinnedHeaderRow = new();
+
+    /// <summary>How many conversations one "page" of an agent's branch holds. Sized to comfortably
+    /// exceed a tall window's worth of rows, so the common user never sees a "show more" at all
+    /// and the paging is invisible until a branch is genuinely long.</summary>
+    private const int SessionPageSize = 25;
+
+    /// <summary>
+    /// How many agents a refresh probes up front, before the rest are left to
+    /// <see cref="AgentRow_ElementPrepared"/> to probe as they scroll into view.
+    ///
+    /// <para>The sweep used to be unconditional over every agent. Each probe is an HTTP call with
+    /// a retry pipeline, and the offline TTL is 30 s — so a user with a few hundred agents was
+    /// generating a few hundred requests every half minute for rows they could not see, throttled
+    /// to four at a time and therefore never actually finishing before the next sweep was due.</para>
+    ///
+    /// <para>Set well above what anyone accumulates by hand (agents are added one at a time, each
+    /// needing an address and an onboarding step), so for a real sidebar this is the old behaviour
+    /// exactly: every agent probed, online count complete on first paint. It only bites at counts
+    /// where the unbounded sweep was itself the problem. Deliberately not "only what is visible" —
+    /// an expanded branch of 25 conversations pushes the other agents below the fold, and their
+    /// status dots going blank because a conversation list is long would be a regression.</para>
+    /// </summary>
+    private const int MaxEagerPresenceProbes = 32;
 
     public event Action<Type, bool>? NavigationRequested;
     /// <summary>
@@ -78,7 +127,8 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     /// <summary>The agents the last load saw, kept only so the skip path above can still keep the
     /// presence probes running — those are TTL-based and must not stall just because the tree
     /// did not need redrawing.</summary>
-    private IReadOnlyList<AgentConfig> _knownAgents = Array.Empty<AgentConfig>();
+    private IReadOnlyList<(string Id, string Address, string? DirectUrl)> _knownAgents =
+        Array.Empty<(string, string, string?)>();
     /// <summary>
     /// Monotonically identifies refresh attempts. Storage reads yield, so an older attempt can
     /// otherwise resume after a newer navigation and repaint the previous selection. Only the
@@ -225,15 +275,18 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
             return;
         }
 
-        var agentsState = await AppServices.Agents.LoadAsync();
-        if (IsRefreshSuperseded(refreshGeneration)) return;
-        var sessionsState = await AppServices.Sessions.LoadAsync();
-        if (IsRefreshSuperseded(refreshGeneration)) return;
-        await RefreshSessionPreviewCacheAsync(sessionsState.Sessions);
+        // Summaries, not full records: this runs on every navigation and needs only what an
+        // agent row draws and probes with. See AgentRepository.LoadSummariesAsync.
+        var agentsState = await AppServices.Agents.LoadSummariesAsync();
         if (IsRefreshSuperseded(refreshGeneration)) return;
 
-        // Must run *before* the Clear below, while the old items still hold their expansion.
+        // Must run *before* the Clear below, while the old items still hold their expansion — and
+        // before the session loads, which now depend on which agents are expanded.
         RememberExpandedAgentsFromUi();
+        var pagesByAgent = ShellAgents.ToDictionary(
+            agent => agent.Id,
+            agent => Math.Max(1, agent.LoadedPages),
+            StringComparer.Ordinal);
         if (!_loadedPersistedExpansionState)
         {
             var persisted = await AppServices.SidebarState.LoadAsync();
@@ -249,34 +302,66 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         }
         if (IsRefreshSuperseded(refreshGeneration)) return;
 
+        // Sessions are fetched per agent, and only for the ones that are open. A collapsed branch
+        // costs nothing — that is the point of paging here, and it is where most of the saving is:
+        // the whole index used to be read regardless of what the user could actually see. An
+        // expanded branch reloads as many pages as it had, so an incoming message cannot collapse
+        // a branch the user had paged several deep.
+        var activeSessionId = await AppServices.Sessions.GetActiveSessionIdAsync();
+        if (IsRefreshSuperseded(refreshGeneration)) return;
+        var pinned = await AppServices.Sessions.LoadPinnedAsync();
+        if (IsRefreshSuperseded(refreshGeneration)) return;
+
+        var loadedByAgent = new Dictionary<string, SessionPage>(StringComparer.Ordinal);
+        foreach (var agent in agentsState.Agents)
+        {
+            var expanded = _hasExpansionState
+                ? _expandedAgentIds.Contains(agent.Id)
+                : agent.Id == agentsState.SelectedAgentId;
+            if (!expanded) continue;
+
+            var pages = pagesByAgent.TryGetValue(agent.Id, out var previous) ? previous : 1;
+            var page = await AppServices.Sessions.LoadAgentSessionsAsync(
+                agent.Id, SessionPageSize * pages);
+            if (IsRefreshSuperseded(refreshGeneration)) return;
+            loadedByAgent[agent.Id] = await EnsureActiveSessionVisibleAsync(
+                agent.Id, page, activeSessionId);
+            if (IsRefreshSuperseded(refreshGeneration)) return;
+        }
+
+        await RefreshSessionPreviewCacheAsync(
+            pinned.Concat(loadedByAgent.Values.SelectMany(page => page.Sessions)).ToList());
+        if (IsRefreshSuperseded(refreshGeneration)) return;
+
         // Publish the cache markers only after the final await and supersession check. Setting
         // them earlier lets a newer refresh take the skip path while this older one is still
         // waiting, after which the older attempt is discarded and neither one repaints the rows.
         _lastLoadedRevision = revision;
         _lastLoadedPageType = _currentPageType;
 
-        var renderSignature = ComputeRenderSignature(agentsState, sessionsState);
+        var renderSignature = ComputeRenderSignature(agentsState, activeSessionId, pinned, loadedByAgent);
         if (_lastRenderSignature == renderSignature)
         {
-            foreach (var agent in agentsState.Agents) _ = _presence.EnsureCheckedAsync(agent);
+            ProbeAgentPresence();
             return;
         }
         _lastRenderSignature = renderSignature;
-        _knownAgents = agentsState.Agents;
+        _knownAgents = agentsState.Agents
+            .Select(agent => (agent.Id, agent.Address, agent.DirectUrl))
+            .ToList();
 
         PinnedSessions.Clear();
         ShellAgents.Clear();
-        // A lookup, not a per-session scan: pinned rows show their owning agent's name, and the
-        // pinned list spans every agent.
-        var agentNames = agentsState.Agents.ToDictionary(agent => agent.Id, agent => agent.Name, StringComparer.Ordinal);
-        foreach (var session in sessionsState.Sessions
-                     .Where(session => session.IsPinned)
-                     .OrderByDescending(session => session.UpdatedAt, StringComparer.Ordinal))
+        // Already ordered newest-first by the query, and never paged — the pinned set is bounded
+        // by how many the user chose to pin.
+        foreach (var session in pinned)
         {
-            PinnedSessions.Add(CreateShellSessionItem(
-                session,
-                sessionsState.ActiveSessionId,
-                agentNames));
+            var pinnedRow = CreateShellSessionItem(session, activeSessionId);
+            // Marks this as the pinned-section copy so the row selector picks the pinned template
+            // (different indent, PinnedSession_Click, PinnedSessionButton). The same conversation
+            // also gets an ordinary row under its agent below, from a separate item.
+            pinnedRow.IsPinnedRow = true;
+            PinnedSessions.Add(pinnedRow);
         }
 
         foreach (var agent in agentsState.Agents)
@@ -298,11 +383,18 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
                 Presence = _presence.GetPresence(agent.Id),
             };
 
-            foreach (var session in sessionsState.Sessions
-                         .Where(s => s.AgentId == agent.Id)
-                         .OrderByDescending(s => s.UpdatedAt, StringComparer.Ordinal))
+            // Already newest-first from SQL, so no sort here — the ORDER BY matches what the
+            // ordinal UpdatedAt comparison used to do in memory.
+            if (loadedByAgent.TryGetValue(agent.Id, out var page))
             {
-                item.Sessions.Add(CreateShellSessionItem(session, sessionsState.ActiveSessionId, agentNames));
+                foreach (var session in page.Sessions)
+                {
+                    item.Sessions.Add(CreateShellSessionItem(session, activeSessionId));
+                }
+                item.HasMoreSessions = page.HasMore;
+                item.NextSessionCursor = page.NextCursor;
+                item.SessionsLoaded = true;
+                item.LoadedPages = pagesByAgent.TryGetValue(agent.Id, out var pages) ? pages : 1;
             }
             item.RebuildSessionGroups();
 
@@ -314,12 +406,157 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         // Fire-and-forget presence probes: the rows are already on screen with whatever the
         // service last knew, and each probe raises PresenceChanged to update its own dot when it
         // lands. Awaiting them would hold the whole sidebar behind the slowest network call.
-        foreach (var agent in agentsState.Agents)
-        {
-            _ = _presence.EnsureCheckedAsync(agent);
-        }
+        // Bounded — see MaxEagerPresenceProbes; the tail is probed by AgentRow_ElementPrepared as
+        // it is scrolled into view.
+        ProbeAgentPresence();
 
         _hasExpansionState = true;
+        RebuildSidebarRows();
+    }
+
+    /// <summary>
+    /// Projects <see cref="ShellAgents"/>/<see cref="PinnedSessions"/> and the current expansion
+    /// state into the flat <see cref="SidebarRows"/> list the repeater renders.
+    ///
+    /// <para>Called after a refresh rebuilds the tree, and by the two disclosure handlers — with a
+    /// flat list, expanding an agent means its conversation rows appear in the list rather than
+    /// becoming visible. Rebuilding the whole list rather than splicing one agent's range is
+    /// deliberate: the list is a few hundred small objects at worst, <c>ReplaceAll</c> raises a
+    /// single Reset, and only the rows in the viewport are realized from it — so the cost is
+    /// bounded by the window, not by the tree. Splicing would buy nothing and would need the
+    /// agent's row range tracked and kept correct across every other mutation.</para>
+    /// </summary>
+    private void RebuildSidebarRows()
+    {
+        var rows = new List<object>(ShellAgents.Count + PinnedSessions.Count + 1);
+
+        if (PinnedSessions.Count > 0)
+        {
+            _pinnedHeaderRow.IsExpanded = IsPinnedExpanded;
+            rows.Add(_pinnedHeaderRow);
+            if (IsPinnedExpanded) rows.AddRange(PinnedSessions);
+        }
+
+        foreach (var agent in ShellAgents)
+        {
+            rows.Add(agent);
+            if (!agent.IsExpanded) continue;
+
+            // The grouping still decides order and where the labels fall; only the label's
+            // container changed, from a nested list's header to a row of its own.
+            foreach (var group in agent.SessionGroups)
+            {
+                rows.Add(new ShellSessionGroupHeaderRow(group.Label));
+                rows.AddRange(group.Sessions);
+            }
+
+            if (agent.HasMoreSessions) rows.Add(new ShellShowMoreSessionsRow(agent.Id));
+        }
+
+        SidebarRows.ReplaceAll(rows);
+    }
+
+    /// <summary>
+    /// Guarantees the conversation currently on screen is in the page its agent renders.
+    ///
+    /// <para>Without this, opening a conversation far down a long branch would draw the branch with
+    /// no row selected — the selected row simply is not in the first page, so the sidebar looks
+    /// like it lost track of where the user is. Fetched as one extra row by id and inserted in
+    /// sorted position, and only when it is genuinely missing, so the usual case pays nothing.</para>
+    ///
+    /// <para><see cref="SessionPage.HasMore"/> is carried through untouched: the older
+    /// conversations that were skipped over still exist, so the branch must still offer to load
+    /// them.</para>
+    /// </summary>
+    private static async System.Threading.Tasks.Task<SessionPage> EnsureActiveSessionVisibleAsync(
+        string agentId,
+        SessionPage page,
+        string? activeSessionId)
+    {
+        if (activeSessionId is null) return page;
+        if (page.Sessions.Any(session => session.Id == activeSessionId)) return page;
+
+        var active = await AppServices.Sessions.GetSessionAsync(activeSessionId);
+        if (active is null || active.AgentId != agentId) return page;
+
+        var sessions = page.Sessions.ToList();
+        // Same ordering the query uses, so the row lands where it would have been.
+        var index = sessions.FindIndex(session =>
+            string.CompareOrdinal(session.UpdatedAt, active.UpdatedAt) < 0);
+        if (index < 0) sessions.Add(active);
+        else sessions.Insert(index, active);
+
+        return new SessionPage(sessions, page.HasMore);
+    }
+
+    /// <summary>
+    /// Fetches an agent's first page, for the branch the user has just opened for the first time.
+    /// Separate from <see cref="LoadMoreSessionsAsync"/> because there is no cursor yet and because
+    /// this one replaces the branch's contents rather than appending to them.
+    /// </summary>
+    private async System.Threading.Tasks.Task LoadFirstPageAsync(ShellAgentItem agent)
+    {
+        var page = await AppServices.Sessions.LoadAgentSessionsAsync(agent.Id, SessionPageSize);
+        if (Volatile.Read(ref _shutdown) != 0) return;
+
+        var activeSessionId = await AppServices.Sessions.GetActiveSessionIdAsync();
+        if (Volatile.Read(ref _shutdown) != 0) return;
+        page = await EnsureActiveSessionVisibleAsync(agent.Id, page, activeSessionId);
+        if (Volatile.Read(ref _shutdown) != 0) return;
+
+        await RefreshSessionPreviewCacheAsync(page.Sessions, prune: false);
+        if (Volatile.Read(ref _shutdown) != 0) return;
+
+        // The user can have collapsed the branch again while this was in flight; the rows are still
+        // recorded so a re-expansion is instant, they just are not rendered.
+        agent.Sessions.Clear();
+        foreach (var session in page.Sessions)
+        {
+            agent.Sessions.Add(CreateShellSessionItem(session, activeSessionId));
+        }
+        agent.HasMoreSessions = page.HasMore;
+        agent.NextSessionCursor = page.NextCursor;
+        agent.LoadedPages = 1;
+        agent.SessionsLoaded = true;
+        agent.RebuildSessionGroups();
+
+        _lastRenderSignature = null;
+        RebuildSidebarRows();
+    }
+
+    /// <summary>Pulls the next page into one agent's branch. The cursor is the branch's oldest
+    /// loaded conversation, so this continues where the last page stopped rather than re-reading
+    /// from the top.</summary>
+    private async System.Threading.Tasks.Task LoadMoreSessionsAsync(string agentId)
+    {
+        var agent = FindShellAgent(agentId);
+        if (agent is null || !agent.HasMoreSessions) return;
+        if (agent.NextSessionCursor is not { } cursor) return;
+
+        var next = await AppServices.Sessions.LoadAgentSessionsAsync(
+            agentId, SessionPageSize, after: cursor);
+        if (Volatile.Read(ref _shutdown) != 0) return;
+
+        var activeSessionId = await AppServices.Sessions.GetActiveSessionIdAsync();
+        if (Volatile.Read(ref _shutdown) != 0) return;
+
+        await RefreshSessionPreviewCacheAsync(next.Sessions, prune: false);
+        if (Volatile.Read(ref _shutdown) != 0) return;
+
+        foreach (var session in next.Sessions)
+        {
+            agent.Sessions.Add(CreateShellSessionItem(session, activeSessionId));
+        }
+        agent.HasMoreSessions = next.HasMore;
+        agent.NextSessionCursor = next.NextCursor;
+        agent.LoadedPages++;
+        agent.RebuildSessionGroups();
+
+        // The signature is computed from what was loaded, so it has to move with a page that just
+        // arrived — otherwise the next refresh would decide nothing had changed and skip the
+        // rebuild that puts these rows on screen.
+        _lastRenderSignature = null;
+        RebuildSidebarRows();
     }
 
     private bool IsRefreshSuperseded(long refreshGeneration)
@@ -332,10 +569,35 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     private void ProbeAgentPresence()
     {
         if (Volatile.Read(ref _shutdown) != 0) return;
-        foreach (var agent in _knownAgents) _ = _presence.EnsureCheckedAsync(agent);
+        foreach (var (id, address, directUrl) in _knownAgents.Take(MaxEagerPresenceProbes))
+        {
+            _ = _presence.EnsureCheckedAsync(id, address, directUrl);
+        }
     }
 
-    private int ComputeRenderSignature(AgentsState agentsState, SessionsState sessionsState)
+    /// <summary>
+    /// Probes an agent whose row has just been realized by the repeater.
+    ///
+    /// <para>This is what keeps presence bounded past <see cref="MaxEagerPresenceProbes"/>: beyond
+    /// that, an agent is checked when it is actually put on screen rather than because it exists.
+    /// The service coalesces and TTL-caches, so a row that scrolls in and out repeatedly costs a
+    /// dictionary lookup, not a request.</para>
+    /// </summary>
+    private void AgentRow_ElementPrepared(
+        Microsoft.UI.Xaml.Controls.ItemsRepeater sender,
+        Microsoft.UI.Xaml.Controls.ItemsRepeaterElementPreparedEventArgs args)
+    {
+        if (Volatile.Read(ref _shutdown) != 0) return;
+        if (sender.ItemsSourceView?.GetAt(args.Index) is not ShellAgentItem agent) return;
+
+        _ = _presence.EnsureCheckedAsync(agent.Id, agent.Address, agent.DirectUrl);
+    }
+
+    private int ComputeRenderSignature(
+        AgentSummaryState agentsState,
+        string? activeSessionId,
+        IReadOnlyList<SessionSummary> pinned,
+        IReadOnlyDictionary<string, SessionPage> loadedByAgent)
     {
         var hash = new HashCode();
         // The page comes first because row selection is page-dependent, not purely storage-derived:
@@ -346,7 +608,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         // the tree kept the agent row lit and the conversation row unselected.
         hash.Add(_currentPageType);
         hash.Add(agentsState.SelectedAgentId, StringComparer.Ordinal);
-        hash.Add(sessionsState.ActiveSessionId, StringComparer.Ordinal);
+        hash.Add(activeSessionId, StringComparer.Ordinal);
         hash.Add(IsPinnedExpanded);
         foreach (var expanded in _expandedAgentIds.OrderBy(id => id, StringComparer.Ordinal))
             hash.Add(expanded, StringComparer.Ordinal);
@@ -358,17 +620,32 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
             hash.Add(agent.DirectUrl, StringComparer.Ordinal);
             hash.Add(agent.IconPath, StringComparer.Ordinal);
         }
-        foreach (var session in sessionsState.Sessions)
+        AddSessions(pinned);
+        // Iterated in agent order rather than dictionary order: a HashCode is order-sensitive, and
+        // a Dictionary makes no ordering promise, so hashing its values directly would let the
+        // signature change without the tree having changed.
+        foreach (var agent in agentsState.Agents)
         {
-            hash.Add(session.Id, StringComparer.Ordinal);
-            hash.Add(session.AgentId, StringComparer.Ordinal);
-            hash.Add(session.Title, StringComparer.Ordinal);
-            hash.Add(session.UpdatedAt, StringComparer.Ordinal);
-            hash.Add(session.IsPinned);
-            if (_sessionPreviewCache.TryGetValue(session.Id, out var preview))
-                hash.Add(preview.Preview, StringComparer.Ordinal);
+            if (!loadedByAgent.TryGetValue(agent.Id, out var page)) continue;
+            AddSessions(page.Sessions);
+            // Part of what is rendered — it decides whether the branch ends with a "show more" row.
+            hash.Add(page.HasMore);
         }
         return hash.ToHashCode();
+
+        void AddSessions(IReadOnlyList<SessionSummary> sessions)
+        {
+            foreach (var session in sessions)
+            {
+                hash.Add(session.Id, StringComparer.Ordinal);
+                hash.Add(session.AgentId, StringComparer.Ordinal);
+                hash.Add(session.Title, StringComparer.Ordinal);
+                hash.Add(session.UpdatedAt, StringComparer.Ordinal);
+                hash.Add(session.IsPinned);
+                if (_sessionPreviewCache.TryGetValue(session.Id, out var preview))
+                    hash.Add(preview.Preview, StringComparer.Ordinal);
+            }
+        }
     }
 
     /// <summary>Ctrl+N / "New chat". Returns false when there is no agent to chat with, which
@@ -430,10 +707,17 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     private void RequestNavigationReset(Type page)
         => NavigationResetRequested?.Invoke(page);
 
+    /// <remarks>
+    /// Does not populate <see cref="ShellSessionItem.AgentName"/>: no row template in this control
+    /// renders it. It used to sit under a pinned conversation's title and was removed with the rest
+    /// of the two-line row treatment, but the parameter that fed it outlived the thing that drew
+    /// it — and on the paged load paths it meant reading every agent (and every agent's cached
+    /// <c>/info</c> blob) to fill a field nothing displays. The one surface that does show an
+    /// owning-agent name is <c>SessionSearchOverlay</c>, which sets it from its own catalog.
+    /// </remarks>
     private ShellSessionItem CreateShellSessionItem(
         SessionSummary session,
-        string? activeSessionId,
-        IReadOnlyDictionary<string, string> agentNames)
+        string? activeSessionId)
     {
         var updatedAt = ParseUpdatedAt(session.UpdatedAt);
         var preview = _sessionPreviewCache.TryGetValue(session.Id, out var cached)
@@ -446,7 +730,9 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
             Title = session.Title,
             Preview = preview,
             TimeGroup = FormatTimeGroup(updatedAt),
-            AgentName = agentNames.TryGetValue(session.AgentId, out var agentName) ? agentName : "",
+            UpdatedAtLabel = FormatCompactTimestamp(updatedAt),
+            UnreadCount = session.UnreadCount,
+            RequiresAttention = session.RequiresAttention,
             IsPinned = session.IsPinned,
             // Both the pinned shortcut and the canonical tree row represent the current
             // conversation, so both carry the current-location accent.
@@ -454,13 +740,23 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         };
     }
 
+    /// <param name="prune">Whether entries outside <paramref name="sessions"/> are evicted. True
+    /// only for the full refresh, where <paramref name="sessions"/> really is everything currently
+    /// rendered. An incremental page load passes just the page that arrived, and pruning against
+    /// that would throw away the previews for every row already on screen — they would be refetched
+    /// on the next refresh, and in the meantime the render signature would move for a tree that had
+    /// not changed.</param>
     private async System.Threading.Tasks.Task RefreshSessionPreviewCacheAsync(
-        IReadOnlyCollection<SessionSummary> sessions)
+        IReadOnlyCollection<SessionSummary> sessions,
+        bool prune = true)
     {
-        var currentIds = sessions.Select(session => session.Id).ToHashSet(StringComparer.Ordinal);
-        foreach (var staleId in _sessionPreviewCache.Keys.Where(id => !currentIds.Contains(id)).ToArray())
+        if (prune)
         {
-            _sessionPreviewCache.Remove(staleId);
+            var currentIds = sessions.Select(session => session.Id).ToHashSet(StringComparer.Ordinal);
+            foreach (var staleId in _sessionPreviewCache.Keys.Where(id => !currentIds.Contains(id)).ToArray())
+            {
+                _sessionPreviewCache.Remove(staleId);
+            }
         }
 
         var refresh = sessions
@@ -508,6 +804,15 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         return "Earlier";
     }
 
+    private static string FormatCompactTimestamp(DateTimeOffset? updatedAt)
+    {
+        if (updatedAt is null) return "";
+        var local = updatedAt.Value;
+        return local.Date == DateTimeOffset.Now.Date
+            ? local.ToString("t", CultureInfo.CurrentCulture)
+            : local.ToString("MMM d", CultureInfo.CurrentCulture);
+    }
+
     /// <summary>Whether an agent row renders as selected. Selection is page-dependent: an agent
     /// is only "current" while the user is on a page that is actually about an agent, so
     /// Settings or Home leaves the tree with nothing highlighted rather than pointing at
@@ -540,7 +845,18 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     {
         _expandedAgentIds.Add(agentId);
         var agent = FindShellAgent(agentId);
-        if (agent is not null) agent.IsExpanded = true;
+        if (agent is not null)
+        {
+            agent.IsExpanded = true;
+            // Same reason as the disclosure handlers: with a flat row list, expanding has to put
+            // the agent's conversation rows into the list. A caller that follows this with a
+            // RefreshAsync would rebuild anyway, but several do not (the tree is already current
+            // and only the expansion changed), and those left the agent looking expanded with
+            // nothing under it.
+            RebuildSidebarRows();
+            // And with paging, a branch that has never been opened has no rows to render yet.
+            if (!agent.SessionsLoaded) _ = LoadFirstPageAsync(agent);
+        }
         _hasExpansionState = true;
         QueueSidebarStateSave();
     }
@@ -576,31 +892,32 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     /// already belongs to this agent, else its most recent, else creating one.</summary>
     private async System.Threading.Tasks.Task<string> EnsureSessionAsync(string agentId)
     {
-        var sessionsState = await AppServices.Sessions.LoadAsync();
-        var active = sessionsState.Sessions.FirstOrDefault(s => s.Id == sessionsState.ActiveSessionId && s.AgentId == agentId);
-        if (active is not null) return active.Id;
-
-        var recent = sessionsState.Sessions
-            .Where(s => s.AgentId == agentId)
-            .OrderByDescending(s => s.UpdatedAt, StringComparer.Ordinal)
-            .FirstOrDefault();
-        if (recent is not null)
+        // Three targeted reads at most, where this used to load every conversation the user has
+        // ever had in order to answer "does this agent have one".
+        var activeId = await AppServices.Sessions.GetActiveSessionIdAsync();
+        if (activeId is not null)
         {
-            await AppServices.Sessions.SetActiveSessionAsync(recent.Id);
-            return recent.Id;
+            var active = await AppServices.Sessions.GetSessionAsync(activeId);
+            if (active?.AgentId == agentId) return active.Id;
         }
 
-        return await CreateAndActivateSessionAsync(sessionsState, agentId);
+        var recent = await AppServices.Sessions.LoadAgentSessionsAsync(agentId, limit: 1);
+        if (recent.Sessions.Count > 0)
+        {
+            await AppServices.Sessions.SetActiveSessionAsync(recent.Sessions[0].Id);
+            return recent.Sessions[0].Id;
+        }
+
+        return await CreateAndActivateSessionAsync(agentId);
     }
 
-    /// <summary>Appends a fresh "Conversation N" session for the agent to the
-    /// already-loaded state, makes it active, persists, and returns its id.</summary>
-    private static async System.Threading.Tasks.Task<string> CreateAndActivateSessionAsync(
-        SessionsState sessionsState, string agentId)
+    /// <summary>Appends a fresh "Conversation N" session for the agent, makes it active, persists,
+    /// and returns its id. The number comes from a <c>COUNT(*)</c> rather than from counting a
+    /// loaded index — that count was the only thing the whole list was ever read for here.</summary>
+    private static async System.Threading.Tasks.Task<string> CreateAndActivateSessionAsync(string agentId)
     {
-        var session = SessionSummary.NewConversation(agentId, sessionsState.Sessions, Common.SessionTitles.PlaceholderFormat);
-        sessionsState.Sessions.Add(session);
-        sessionsState.ActiveSessionId = session.Id;
+        var existingCount = await AppServices.Sessions.CountForAgentAsync(agentId);
+        var session = SessionSummary.NewConversation(agentId, existingCount, Common.SessionTitles.PlaceholderFormat);
         // One INSERT plus the active pointer, not a whole-index reconcile — see AppendSessionAsync.
         await AppServices.Sessions.AppendSessionAsync(session);
         return session.Id;
@@ -767,13 +1084,45 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
                 _expandedAgentIds.Remove(agentId);
             }
             _hasExpansionState = true;
+            // The rows are a flat list, so disclosure adds or removes this agent's conversation
+            // rows rather than toggling a Visibility on a nested repeater.
+            RebuildSidebarRows();
             QueueSidebarStateSave();
+            // A collapsed agent is never fetched, so the first expansion is also the first read of
+            // its conversations. Rows above are already on screen; this fills the branch in when it
+            // lands rather than holding the disclosure behind a query.
+            if (agent.IsExpanded && !agent.SessionsLoaded) _ = LoadFirstPageAsync(agent);
+        }
+    }
+
+    private async void ShowMoreSessions_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not string agentId) return;
+
+        // The row disables itself while its page is in flight, so a slow disk cannot let repeat
+        // clicks queue several pages. It is found by identity in the row list because the row is
+        // the thing that has to show the state.
+        var row = SidebarRows.OfType<ShellShowMoreSessionsRow>()
+            .FirstOrDefault(candidate => candidate.AgentId == agentId);
+        if (row is { IsLoading: true }) return;
+        if (row is not null) row.IsLoading = true;
+
+        try
+        {
+            await LoadMoreSessionsAsync(agentId);
+        }
+        finally
+        {
+            // The rebuild replaces the row, so this only matters when the load failed or was
+            // superseded and the old row is still on screen.
+            if (row is not null) row.IsLoading = false;
         }
     }
 
     private void TogglePinned_Click(object sender, RoutedEventArgs e)
     {
         IsPinnedExpanded = !IsPinnedExpanded;
+        RebuildSidebarRows();
         QueueSidebarStateSave();
     }
 

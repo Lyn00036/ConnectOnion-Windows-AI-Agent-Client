@@ -123,8 +123,15 @@ public sealed partial class MainWindow : Window
                 var benchmarkConversation =
                     Environment.GetEnvironmentVariable(
                         Diagnostics.StartupProfiler.OpenConversationEnvironmentVariable) == "1";
+                // Restore the chat the user was working in. The active pointer is validated by
+                // LoadAsync, so a deleted/corrupt id falls back to Home instead of opening a
+                // broken chat shell. The benchmark switch still forces Chat for perf runs.
+                var sessions = await _sessionRepository.LoadAsync();
+                var restoreConversation = sessions.ActiveSessionId is not null;
                 _skipNextNavigationSidebarRefresh = true;
-                NavigateTo(benchmarkConversation ? typeof(ChatPage) : typeof(HomePage));
+                NavigateTo(benchmarkConversation || restoreConversation
+                    ? typeof(ChatPage)
+                    : typeof(HomePage));
                 UpdateNavigationButtons();
                 EnsureInitialFocus();
                 Diagnostics.StartupTelemetry.Mark(Diagnostics.StartupPhases.ShellInitialized);
@@ -483,13 +490,14 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>Reduces secondary title-bar chrome before it can collide with the caption buttons.
-    /// Edit/View remain available through their live shortcuts and the keyboard-shortcuts panel;
-    /// File and Help stay visible because they contain app lifecycle and discovery actions.</summary>
+    /// The compact More menu mirrors Edit/View, so pointer and touch users do not lose commands
+    /// merely because the window is narrow.</summary>
     private void UpdateTitleBarLayout(double windowWidth)
     {
         var compact = windowWidth < 720;
         EditMenuBarItem.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         ViewMenuBarItem.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        CompactMenuBarItem.Visibility = compact ? Visibility.Visible : Visibility.Collapsed;
         ForwardButton.Visibility = windowWidth < 560 ? Visibility.Collapsed : Visibility.Visible;
     }
 
@@ -505,8 +513,26 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private void EnsureInitialFocus()
     {
-        if (Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(RootGrid.XamlRoot) is not null)
+        var focused = Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(RootGrid.XamlRoot);
+
+        // Shell initialization is asynchronous. The user can open a modal before it finishes,
+        // and that modal owns focus from then on; moving focus back into the page here would make
+        // the first field look ready while sending keystrokes somewhere else.
+        if (IsModalOverlayOpen) return;
+
+        // On first activation Windows assigns keyboard focus to the first tab stop before the
+        // async shell load completes. In this XAML that is the sidebar toggle, which made the
+        // control look selected even though the user had not touched it. Home has no editor that
+        // could own a caret, so move only that provisional shell focus into the content frame.
+        // Any other focused element reflects a real user/page choice and must be preserved.
+        if (ContentFrame.CurrentSourcePageType == typeof(HomePage)
+            && (focused is null || ReferenceEquals(focused, SidebarToggleButton)))
+        {
+            ContentFrame.Focus(FocusState.Programmatic);
             return;
+        }
+
+        if (focused is not null) return;
 
         ContentFrame.Focus(FocusState.Programmatic);
     }

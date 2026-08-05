@@ -291,10 +291,9 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
             // sending here would race the page that is about to own the conversation.
             await _agents.SetSelectedAgentAsync(Agent.Id);
 
-            var sessionsState = await _sessions.LoadAsync();
-            var session = SessionSummary.NewConversation(Agent.Id, sessionsState.Sessions, Common.SessionTitles.PlaceholderFormat);
-            sessionsState.Sessions.Add(session);
-            sessionsState.ActiveSessionId = session.Id;
+            // The conversation number is all the index was read for; COUNT(*) answers it directly.
+            var existingCount = await _sessions.CountForAgentAsync(Agent.Id);
+            var session = SessionSummary.NewConversation(Agent.Id, existingCount, Common.SessionTitles.PlaceholderFormat);
             await _sessions.AppendSessionAsync(session);
             return true;
         }
