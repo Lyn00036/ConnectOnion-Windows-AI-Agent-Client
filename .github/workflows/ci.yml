@@ -116,13 +116,23 @@ jobs:
         shell: pwsh
         run: dotnet test tests/ConnectOnion.WinUIClient.UITests/ConnectOnion.WinUIClient.UITests.csproj --configuration $env:CONFIGURATION
 
+      # The solution build above and this RID-specific publish use different global-property
+      # graphs. Clear the app intermediates and let publish restore its own graph so the UI suite
+      # always launches the same deterministic trimmed/R2R shape as the release workflow.
+      - name: Clean UI smoke publish intermediates
+        shell: pwsh
+        run: >
+          dotnet clean ConnectOnion.WinUIClient/ConnectOnion.WinUIClient.csproj
+          --configuration $env:CONFIGURATION
+          --runtime win-x64
+          -p:Platform=$env:BUILD_PLATFORM
+
       - name: Publish ReadyToRun unpackaged build
         shell: pwsh
         run: >
           dotnet publish ConnectOnion.WinUIClient/ConnectOnion.WinUIClient.csproj
           --configuration $env:CONFIGURATION
           --runtime win-x64
-          --no-restore
           -p:Platform=$env:BUILD_PLATFORM
           -p:RunUnpackaged=true
           -p:SelfContained=true
@@ -170,6 +180,7 @@ jobs:
           path: |
             TestResults/ui-smoke/*.trx
             artifacts/ui-smoke/*.png
+            ${{ runner.temp }}\ConnectOnionUiSmoke-${{ github.run_id }}-${{ github.run_attempt }}\logs\*.log
           if-no-files-found: warn
 
       # The cheap half of the trimming gate, on every run: it publishes only the small console

@@ -120,12 +120,40 @@ public sealed class TrimmingGateTests
     {
         var workflow = RepoFile(".github", "workflows", "release.yml");
 
-        Assert.Contains("Clean portable publish intermediates", workflow, StringComparison.Ordinal);
+        AssertPublishStartsFromCleanIntermediates(
+            workflow,
+            "Clean portable publish intermediates",
+            "release workflow");
+    }
+
+    /// <summary>
+    /// The real-window CI suite launches the published output, so it needs the same clean,
+    /// RID-specific property graph as the release artifact. Otherwise stale intermediates from
+    /// the preceding solution build can produce an executable that exits before UIA sees a
+    /// window, making every smoke test fail at launch.
+    /// </summary>
+    [Fact]
+    public void Ci_CleansPublishIntermediatesAndDoesNotSkipRestore()
+    {
+        var workflow = RepoFile(".github", "workflows", "ci.yml");
+
+        AssertPublishStartsFromCleanIntermediates(
+            workflow,
+            "Clean UI smoke publish intermediates",
+            "CI workflow");
+    }
+
+    private static void AssertPublishStartsFromCleanIntermediates(
+        string workflow,
+        string cleanStepName,
+        string workflowDescription)
+    {
+        Assert.Contains(cleanStepName, workflow, StringComparison.Ordinal);
         var cleanCommand = Regex.Match(
             workflow,
             @"dotnet clean[\s\S]*?(?=\r?\n\s*- name:)");
 
-        Assert.True(cleanCommand.Success, "Expected the release workflow to clean publish intermediates.");
+        Assert.True(cleanCommand.Success, $"Expected the {workflowDescription} to clean publish intermediates.");
         Assert.Contains("--configuration $env:CONFIGURATION", cleanCommand.Value, StringComparison.Ordinal);
         Assert.Contains("--runtime win-x64", cleanCommand.Value, StringComparison.Ordinal);
 
@@ -133,7 +161,7 @@ public sealed class TrimmingGateTests
             workflow,
             @"dotnet publish[\s\S]*?(?=\r?\n\s*- name:)");
 
-        Assert.True(publishCommand.Success, "Expected the release workflow to publish the portable app.");
+        Assert.True(publishCommand.Success, $"Expected the {workflowDescription} to publish the app.");
         Assert.DoesNotContain("--no-restore", publishCommand.Value, StringComparison.Ordinal);
     }
 
