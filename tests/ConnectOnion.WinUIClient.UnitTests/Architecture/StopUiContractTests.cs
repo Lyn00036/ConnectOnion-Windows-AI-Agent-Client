@@ -73,7 +73,7 @@ public sealed class StopUiContractTests
     public void GlobalStop_AlwaysUsesInterrupt_AndRuntimeInputReusesTheActiveSocket()
     {
         var manager = ReadRepositoryFile(
-            "ConnectOnion.WinUIClient", "Services", "Runtime", "AgentSessionManager.cs");
+            "ConnectOnion.WinUIClient.Core", "Services", "Runtime", "AgentSessionManager.cs");
         var viewModel = ReadRepositoryFile(
             "ConnectOnion.WinUIClient", "ViewModels", "ChatViewModel.cs");
         var runViewModel = ReadRepositoryFile(
