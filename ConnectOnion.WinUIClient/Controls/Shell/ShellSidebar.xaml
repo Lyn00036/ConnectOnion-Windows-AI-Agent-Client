@@ -344,12 +344,14 @@
                                                             Click="Agent_Click"
                                                             Tag="{x:Bind Id}" />
                                             <MenuFlyoutItem x:Uid="MenuChangeAgentIcon"
+                                                            AutomationProperties.AutomationId="ChangeAgentIconMenuItem"
                                                             Text="Change icon"
                                                             Click="ChangeAgentIcon_Click"
                                                             Tag="{x:Bind Id}" />
                                             <!-- Hidden rather than disabled when there is no custom icon:
                                                  an unavailable action is noise in a compact context menu. -->
                                             <MenuFlyoutItem x:Uid="MenuRemoveAgentIcon"
+                                                            AutomationProperties.AutomationId="RemoveAgentIconMenuItem"
                                                             Text="Remove custom icon"
                                                             Click="RemoveAgentIcon_Click"
                                                             Tag="{x:Bind Id}"

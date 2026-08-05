@@ -85,6 +85,7 @@
                 </StackPanel>
 
                 <Expander x:Uid="AddAgentAppearance"
+                          AutomationProperties.AutomationId="AgentAppearanceExpander"
                           Margin="0,16,0,0"
                           Header="Customize appearance (optional)"
                           IsExpanded="False">

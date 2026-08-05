@@ -39,6 +39,7 @@
                         <DataTemplate>
                             <Button Content="{Binding Label}"
                                     Tag="{Binding Prompt}"
+                                    AutomationProperties.AutomationId="SuggestionButton"
                                     MinHeight="36"
                                     Padding="14,6"
                                     CornerRadius="18"
@@ -163,6 +164,7 @@
                               Visibility="Collapsed"
                               AutomationProperties.Name="Pending attachments">
                     <ItemsControl x:Name="AttachmentsList"
+                                  AutomationProperties.AutomationId="PendingAttachmentsList"
                                   ItemsSource="{x:Bind PendingAttachments}">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
@@ -640,6 +642,7 @@
                                        Foreground="{ThemeResource BrandPrimaryBrush}"
                                        VerticalAlignment="Center" />
                         <TextBlock x:Uid="ComposerDropHint" Text="Drop files to attach"
+                                   AutomationProperties.AutomationId="DropOverlayHint"
                                    FontSize="{StaticResource ProductBodyFontSize}"
                                    FontWeight="SemiBold"
                                    Foreground="{ThemeResource BrandPrimaryBrush}"

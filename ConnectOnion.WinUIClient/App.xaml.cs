@@ -21,6 +21,11 @@ namespace ConnectOnion.WinUIClient
     /// </summary>
     public partial class App : Application
     {
+        internal const string UiNotificationAgentEnvironmentVariable =
+            "CONNECTONION_UI_NOTIFICATION_AGENT_ID";
+        internal const string UiNotificationConversationEnvironmentVariable =
+            "CONNECTONION_UI_NOTIFICATION_CONVERSATION_ID";
+
         private Window? _window;
 
         private readonly IHost _host;
@@ -183,6 +188,7 @@ namespace ConnectOnion.WinUIClient
                 // Arm only after Activate(): the first composition pass we want is this window's.
                 Diagnostics.StartupTelemetry.TrackFirstFrame();
                 HandleColdStartActivation();
+                HandleUiAutomationNotificationActivation();
                 FlushPendingActivation();
             }
             catch (Exception ex)
@@ -241,6 +247,29 @@ namespace ConnectOnion.WinUIClient
         private static void HandleColdStartActivation()
             => RouteNotificationActivation(Microsoft.Windows.AppLifecycle.AppInstance
                 .GetCurrent().GetActivatedEventArgs());
+
+        /// <summary>
+        /// Drives the same buffered notification-navigation path from the isolated FlaUI process.
+        /// Windows does not offer a deterministic way for an unpackaged CI process to synthesize
+        /// a notification click, so the real-window suite supplies the target through two
+        /// process-local environment variables. Ordinary launches never set them.
+        /// </summary>
+        private static void HandleUiAutomationNotificationActivation()
+        {
+            var agentId = Environment.GetEnvironmentVariable(UiNotificationAgentEnvironmentVariable);
+            var conversationId = Environment.GetEnvironmentVariable(
+                UiNotificationConversationEnvironmentVariable);
+            if (string.IsNullOrWhiteSpace(agentId) || string.IsNullOrWhiteSpace(conversationId))
+                return;
+
+            AppServices.NotificationActivation.HandleColdStart(
+                new System.Collections.Generic.Dictionary<string, string>
+                {
+                    ["action"] = "openConversation",
+                    ["agentId"] = agentId,
+                    ["conversationId"] = conversationId,
+                });
+        }
 
         /// <summary>
         /// A second launch — most commonly clicking a toast while the app is already

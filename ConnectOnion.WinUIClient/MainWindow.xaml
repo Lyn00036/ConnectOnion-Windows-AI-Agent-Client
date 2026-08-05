@@ -142,7 +142,8 @@
                      Background="Transparent"
                      BorderThickness="0"
                      VerticalAlignment="Center">
-            <MenuBarItem x:Uid="MenuFile" Title="File">
+            <MenuBarItem x:Uid="MenuFile" Title="File"
+                         AutomationProperties.AutomationId="FileMenuButton">
                         <MenuFlyoutItem x:Uid="MenuNewChat" x:Name="NewChatMenuItem" AutomationProperties.AutomationId="NewChatMenuItem" Text="New Chat"
                                         KeyboardAcceleratorTextOverride="Ctrl+N"
                                         Click="NewChat_Click" />
@@ -353,6 +354,7 @@
                              KeyDown="FindTextBox_KeyDown" />
 
                     <TextBlock x:Name="FindCounterText"
+                               AutomationProperties.AutomationId="FindCounterText"
                                Grid.Column="2"
                                x:Uid="FindCounter"
                                Text="0 / 0 results"
@@ -384,7 +386,9 @@
                                        Foreground="{ThemeResource TextSecondaryBrush}" />
                     </Button>
 
-                    <Button x:Uid="MainFindClose" Grid.Column="5"
+                    <Button x:Uid="MainFindClose" x:Name="CloseFindButton"
+                            AutomationProperties.AutomationId="CloseFindButton"
+                            Grid.Column="5"
                             Style="{StaticResource FindHudButtonStyle}"
                             Click="CloseFind_Click"
                             AutomationProperties.Name="Close find"
