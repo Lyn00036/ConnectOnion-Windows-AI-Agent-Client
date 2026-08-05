@@ -110,7 +110,11 @@ public sealed partial class ShellSmokeTests
             var newChat = WaitForElement(
                 launched.Automation.GetDesktop(), "NewChatMenuItem", TimeSpan.FromSeconds(5));
             Assert.NotNull(newChat);
-            newChat!.AsMenuItem().Click();
+            // The MenuBarItem itself needs a physical click to reveal its flyout, but the
+            // MenuFlyoutItem exposes InvokePattern. Invoking the command avoids a second desktop
+            // coordinate click that can be stolen when a hosted runner changes foreground
+            // ownership while the flyout is open.
+            newChat!.AsMenuItem().Invoke();
             Assert.NotNull(WaitForDescendant(window, "SuggestionButton", TimeSpan.FromSeconds(20)));
             Assert.NotNull(WaitForDescendant(window, "MessageInput", TimeSpan.FromSeconds(20)));
             Assert.Null(window.FindFirstDescendant(query => query.ByAutomationId("MessageList")));
