@@ -134,21 +134,37 @@
       with the wrong decimal separator.
     -->
 
+    <!--
+      Debug stays untrimmed and always will: trimming only affects `publish`, and paying its cost
+      on the inner loop would buy nothing. It is declared rather than left to default so the two
+      configurations sit next to each other and neither can be changed by accident.
+    -->
     <PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>
     <!--
       LOAD-BEARING. Not a leftover default.
 
       Trimming sets JsonSerializerIsReflectionEnabledByDefault=false, which turns every
       reflection-based JsonSerializer call into a runtime failure rather than a risk. The
-      2026-07-25 release audit found that as a Tool Activity timeline that restored empty in
-      Release and worked perfectly in Debug. Those call sites are now trim-safe and a trimmed
-      smoke harness proves they survive a publish + restart, but the criteria that need a signed
-      MSIX, a real window and a same-machine performance comparison are still open.
+      2026-07-25 release audit found exactly that: a Tool Activity timeline that restored empty in
+      Release and worked perfectly in Debug.
 
-      Turning this on is gated on docs/TRIMMING.md, and tests/ConnectOnion.WinUIClient.UnitTests/
-      Architecture/TrimmingGateTests.cs fails the build if it changes before then.
+      Enabled 2026-08-05 against the evidence in docs/TRIMMING.md, which is the gate — read it
+      before changing this. In short: 0 app-owned IL warnings; the serialization paths are
+      source-generated and a trimmed console harness proves them across a real process restart; the
+      trimmed *app* renders a turn written by that harness (tool-activity steps, arguments, results
+      and the interactive cards); the required shell/chat suite passes 23/23 against the trimmed executable; and
+      the shipped portable ZIP audits clean at 71.29 MB against a 118.91 MB untrimmed baseline with
+      no key operation regressing more than +2.9%.
+
+      What is NOT proved is the MSIX path, because this repo does not build one — the release
+      workflow ships a self-contained portable ZIP. That is the only distribution channel this
+      setting affects today, and it is the one that was validated. If MSIX publishing is ever
+      restored, run the functional matrix against a trimmed package before shipping it.
+
+      tests/ConnectOnion.WinUIClient.UnitTests/Architecture/TrimmingGateTests.cs pins this, so
+      changing it back is also a decision rather than an edit.
     -->
-    <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">False</PublishTrimmed>
+    <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">True</PublishTrimmed>
     <GenerateAppInstallerFile>False</GenerateAppInstallerFile>
     <!--
       Local packaging is deliberately unsigned. A PackageCertificateThumbprint resolves against

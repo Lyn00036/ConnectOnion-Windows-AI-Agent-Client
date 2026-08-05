@@ -14,18 +14,21 @@ on:
       - main
       - master
       - developSprint3
-  # The real-window suite is too expensive and desktop-sensitive for every PR, but it must not
-  # depend on someone remembering a checkbox forever. Run it weekly on the default branch too.
+  # The real-window suite now runs on PRs as well (see the step below for why). The weekly run
+  # stays: it is what catches a break caused by a runner-image change rather than by a commit,
+  # which a PR-triggered run cannot distinguish.
   schedule:
     - cron: '0 16 * * 1'
   workflow_dispatch:
     inputs:
-      run_ui_smoke:
-        description: Run the interactive WinUI shell smoke test
-        type: boolean
-        default: false
+      # run_ui_smoke was removed rather than left in place: the shell suite now runs on every
+      # event, so a checkbox offering to enable it would control nothing.
       run_trim_audit:
         description: Run the trimming gate audit (experimental trimmed publish + smoke harness)
+        type: boolean
+        default: false
+      run_live_protocol:
+        description: Run the deployed-agent protocol smoke test
         type: boolean
         default: false
 
@@ -96,7 +99,6 @@ jobs:
           -p:AppxPackageSigningEnabled=false
           -p:GenerateAppxPackageOnBuild=false
           -p:PublishReadyToRun=false
-          -p:PublishTrimmed=false
 
       - name: Run protocol unit tests
         shell: pwsh
@@ -123,12 +125,27 @@ jobs:
           --no-restore
           -p:Platform=$env:BUILD_PLATFORM
           -p:RunUnpackaged=true
-          -p:PublishTrimmed=false
+          -p:SelfContained=true
+          -p:WindowsAppSDKSelfContained=true
+          -p:PublishTrimmed=true
           -p:PublishReadyToRun=true
           -p:AppxPackageSigningEnabled=false
 
+      # Runs on every push and PR, not just the weekly schedule and the opt-in checkbox.
+      #
+      # It was gated because a real-window suite is expensive and desktop-sensitive. The cost is
+      # real but small — 23 required tests (plus one explicitly skipped drag diagnostic) inside
+      # a 10-minute cap, against a build this job already produced. What tipped the balance is
+      # where the changes actually are: over the last 100
+      # commits the most-edited files in the repo are ShellSidebar.xaml (16), ShellSidebar.xaml.cs
+      # (15), ShellSidebar.Events.cs (15), ChatPage.xaml (13) and AgentDetailPage.xaml (13). All
+      # UI, and all covered by nothing else — the headless suites cannot load a XAML type at all.
+      # So the most frequently changed code in the project had the weakest gate, and a break in it
+      # would sit on the default branch for up to a week.
+      #
+      # If this proves flaky, the fix is to stabilise or delete the offending test, not to put the
+      # whole suite back behind a checkbox nobody ticks.
       - name: Run interactive UI smoke test
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_ui_smoke) || github.event_name == 'schedule' }}
         timeout-minutes: 10
         shell: pwsh
         env:
@@ -143,8 +160,10 @@ jobs:
           --results-directory TestResults/ui-smoke
           --logger "trx;LogFileName=ui-smoke.trx"
 
+      # always(), with no event filter: the run that most needs its screenshots is the failing PR,
+      # which is precisely the case the previous condition excluded.
       - name: Upload UI smoke evidence
-        if: ${{ always() && ((github.event_name == 'workflow_dispatch' && inputs.run_ui_smoke) || github.event_name == 'schedule') }}
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: ui-smoke
@@ -185,7 +204,10 @@ jobs:
           path: TestResults/**/coverage.cobertura.xml
           if-no-files-found: warn
 
-      - name: Enforce coverage thresholds
+      # Ratcheted against coverage-baseline.json: fails on a drop below the recorded high-water
+      # mark, not against a hand-set number sitting a few lines above the measured value. Never
+      # pass -UpdateBaseline here; advancing the ratchet is a deliberate, reviewable commit.
+      - name: Enforce coverage ratchet
         shell: pwsh
         run: ./scripts/Test-Coverage.ps1 -ResultsDirectory TestResults
 
@@ -196,3 +218,34 @@ jobs:
           --project ConnectOnion.Protocol.Conformance/ConnectOnion.Protocol.Conformance.csproj
           --configuration $env:CONFIGURATION
           --no-build
+
+  live-protocol:
+    name: Live deployed-agent protocol
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_live_protocol }}
+    runs-on: windows-latest
+    timeout-minutes: 5
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+      CONNECTONION_LIVE_DIRECT_URL: ${{ vars.CONNECTONION_LIVE_DIRECT_URL }}
+      CONNECTONION_LIVE_AGENT_ADDRESS: ${{ vars.CONNECTONION_LIVE_AGENT_ADDRESS }}
+      CONNECTONION_LIVE_PROMPT: ${{ vars.CONNECTONION_LIVE_PROMPT }}
+      CO_INVITE_CODE: ${{ secrets.CONNECTONION_LIVE_INVITE_CODE }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      # This is intentionally its own job: a deployed endpoint is external state, so its signal
+      # must not be confused with the deterministic push/PR gate above. Repository variables can
+      # replace the checked-in development target; an invite code stays in Actions secrets.
+      - name: Run live protocol smoke test
+        shell: pwsh
+        run: >
+          dotnet run
+          --project ConnectOnion.Protocol.LiveTest/ConnectOnion.Protocol.LiveTest.csproj
+          --configuration Release

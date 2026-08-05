@@ -59,11 +59,21 @@ $isMsix = [IO.Path]::GetExtension($PackagePath) -in '.msix', '.appx'
 
 # Both forms carry .NET and Windows App SDK. Packaging overhead differs, so each release form has
 # its own ratified baseline. Explicit parameters still override these defaults.
+#
+# The portable baseline was re-ratified on 2026-08-05 when trimming was enabled for Release
+# (docs/TRIMMING.md): 118.91 -> 71.29 MB compressed, 309.21 -> 170.71 MB unpacked. Re-ratifying is
+# not bookkeeping — this gate is an upper bound, so leaving the untrimmed numbers in place would
+# have left roughly 60 MB of headroom below the limit, and the accidental second copy of the
+# runtime this exists to catch would have sailed through it.
+#
+# The MSIX numbers are NOT re-ratified: no MSIX is built (see docs/RELEASE.md), so they still
+# describe an untrimmed package. Re-measure them against a real trimmed package if that path is
+# ever restored, rather than scaling these by eye.
 if (-not $PSBoundParameters.ContainsKey('BaselineCompressedMb')) {
-    $BaselineCompressedMb = if ($isMsix) { 121.43 } else { 118.91 }
+    $BaselineCompressedMb = if ($isMsix) { 121.43 } else { 71.29 }
 }
 if (-not $PSBoundParameters.ContainsKey('BaselineUnpackedMb')) {
-    $BaselineUnpackedMb = if ($isMsix) { 310.07 } else { 309.21 }
+    $BaselineUnpackedMb = if ($isMsix) { 310.07 } else { 170.71 }
 }
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -235,7 +245,8 @@ if ($sizeBreaches.Count -gt 0) {
     else {
         Write-Host "`nFAIL: size regression — $($sizeBreaches -join '; ')." -ForegroundColor Red
         Write-Host "Find the payload, or re-ratify the baseline in docs/RELEASE.md deliberately." -ForegroundColor Red
-        Write-Host "Do NOT enable trimming to get back under budget; that is gated separately by docs/TRIMMING.md." -ForegroundColor Red
+        Write-Host "Trimming is already on, so it is not a lever to get back under budget — a breach here" -ForegroundColor Red
+        Write-Host "means real new payload. See docs/TRIMMING.md before touching that setting." -ForegroundColor Red
         $failed = $true
     }
 }

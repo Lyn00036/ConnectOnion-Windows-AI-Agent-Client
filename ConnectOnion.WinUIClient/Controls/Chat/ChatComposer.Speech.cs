@@ -16,6 +16,7 @@ using Windows.Media.SpeechRecognition;
 using WinRT;
 using ConnectOnion.WinUIClient.Services;
 using ConnectOnion.WinUIClient.Common;
+using Microsoft.Extensions.Logging;
 
 namespace ConnectOnion.WinUIClient.Controls;
 
@@ -27,6 +28,49 @@ namespace ConnectOnion.WinUIClient.Controls;
 // live in ChatComposer.xaml.cs; both partials share this one ChatComposer class.
 public sealed partial class ChatComposer
 {
+    // ---- Speech diagnostics ----
+    //
+    // Every failure below is in the user's environment rather than in this code — a denied
+    // microphone permission, a speech pack that is not installed, an endpoint another app holds
+    // exclusively — which is exactly why they need to be written down. The feature degrades
+    // silently by design (the composer simply stays a text box), so without these lines a report
+    // of "the microphone button does nothing" has no evidence behind it at all: the user sees one
+    // generic message, and the log file, which is the only thing they can send us, says nothing.
+    //
+    // Warning rather than Error throughout: none of these stop the app, and the text composer is
+    // always still there. LoggerMessage.Define because CA1848 is on. The `Log` property lives in
+    // ChatComposer.xaml.cs — this is the same partial class. EventIds continue that file's
+    // sequence, which ends at 3.
+
+    private static readonly Action<ILogger, Exception?> LogSpeechUnavailable =
+        LoggerMessage.Define(LogLevel.Warning, new EventId(10, "SpeechUnavailable"),
+            "Speech recognition could not start; the composer stays text-only");
+
+    private static readonly Action<ILogger, string, Exception?> LogSpeechConstraintsFailed =
+        LoggerMessage.Define<string>(LogLevel.Warning, new EventId(11, "SpeechConstraintsFailed"),
+            "Speech constraint compilation returned {Status}; dictation is unavailable on this machine");
+
+    private static readonly Action<ILogger, Exception?> LogSpeechCancelFailed =
+        LoggerMessage.Define(LogLevel.Warning, new EventId(12, "SpeechCancelFailed"),
+            "Cancelling the recognition session failed; the transcript captured so far is still flushed");
+
+    private static readonly Action<ILogger, string, Exception?> LogPreferredMicrophoneUnavailable =
+        LoggerMessage.Define<string>(LogLevel.Warning, new EventId(13, "PreferredMicrophoneUnavailable"),
+            "The microphone chosen in Settings ({DeviceId}) could not be opened; falling back to the system default");
+
+    private static readonly Action<ILogger, Exception?> LogDefaultMicrophoneUnavailable =
+        LoggerMessage.Define(LogLevel.Warning, new EventId(14, "DefaultMicrophoneUnavailable"),
+            "The default capture device could not be resolved; the waveform will not be drawn");
+
+    private static readonly Action<ILogger, string, Exception?> LogAudioMeterUnavailable =
+        LoggerMessage.Define<string>(LogLevel.Warning, new EventId(15, "AudioMeterUnavailable"),
+            "The audio meter could not start ({Reason}); recording continues without a waveform");
+
+    /// <summary>Information, not Warning: this is the healthy-path footprint trace described on
+    /// <see cref="LogSpeechFootprint"/>, not a failure.</summary>
+    private static readonly Action<ILogger, string, long, long, Exception?> LogSpeechMemoryFootprint =
+        LoggerMessage.Define<string, long, long>(LogLevel.Information, new EventId(16, "SpeechMemoryFootprint"),
+            "Speech {Phase}: working set {WorkingSetMb} MB, managed heap {HeapKb} KB");
 
     // ---- Waveform constants ----
     private const float BarWidth = 2;
@@ -171,6 +215,10 @@ public sealed partial class ChatComposer
         // a crash. Anything else is left to propagate.
         catch (Exception ex) when (ex is UnauthorizedAccessException or InvalidOperationException or COMException)
         {
+            // The one message the user sees cannot say which of the three it was — and it
+            // deliberately doesn't, since none of them are actionable in different ways. The log
+            // is where the distinction survives.
+            LogSpeechUnavailable(Log, ex);
             _recordingState = RecordingState.Idle;
             StopAudioMeter();
             RefreshSendButtonState();
@@ -210,7 +258,14 @@ public sealed partial class ChatComposer
 
         var compilation = await _speechRecognizer.CompileConstraintsAsync();
         ct.ThrowIfCancellationRequested();
-        if (compilation.Status != SpeechRecognitionResultStatus.Success) return false;
+        if (compilation.Status != SpeechRecognitionResultStatus.Success)
+        {
+            // Usually TopicLanguageNotSupported: the display language has no dictation pack
+            // installed. Nothing here can fix that, but naming the status turns "dictation doesn't
+            // work" into a Windows setting the user can actually go and change.
+            LogSpeechConstraintsFailed(Log, compilation.Status.ToString(), null);
+            return false;
+        }
 
         await _speechRecognizer.ContinuousRecognitionSession.StartAsync();
         ct.ThrowIfCancellationRequested();
@@ -240,7 +295,14 @@ public sealed partial class ChatComposer
                 await _speechRecognizer.ContinuousRecognitionSession.CancelAsync();
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            // Swallowed on purpose: the teardown below (detach handlers, flush transcript, dispose)
+            // has to run whether or not the session cancelled cleanly, or a failed cancel would
+            // strand the UI in Stopping and lose what the user just dictated. Logged because a
+            // recurring failure here is how a leaked native speech engine would first show up.
+            LogSpeechCancelFailed(Log, ex);
+        }
 
         try
         {
@@ -291,11 +353,15 @@ public sealed partial class ChatComposer
         {
             using var process = System.Diagnostics.Process.GetCurrentProcess();
             process.Refresh();
-            Serilog.Log.Information(
-                "Speech {Phase}: working set {WorkingSetMb} MB, managed heap {HeapKb} KB",
+            // Was a direct Serilog.Log.Information call. Routed through the same ILogger as
+            // everything else here so this file has one logging path rather than two, and so it
+            // satisfies CA1848 like every other call site in the app.
+            LogSpeechMemoryFootprint(
+                Log,
                 phase,
                 process.WorkingSet64 / 1024 / 1024,
-                GC.GetTotalMemory(forceFullCollection: false) / 1024);
+                GC.GetTotalMemory(forceFullCollection: false) / 1024,
+                null);
         }
         catch
         {
@@ -562,7 +628,11 @@ public sealed partial class ChatComposer
             };
 
             var graphResult = await AudioGraph.CreateAsync(settings);
-            if (graphResult.Status != AudioGraphCreationStatus.Success) return;
+            if (graphResult.Status != AudioGraphCreationStatus.Success)
+            {
+                LogAudioMeterUnavailable(Log, graphResult.Status.ToString(), null);
+                return;
+            }
             _audioGraph = graphResult.Graph;
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -570,14 +640,22 @@ public sealed partial class ChatComposer
             // the system default.  Use the multimedia-role endpoint so we
             // don't collide with the recognizer's communications-role device.
             DeviceInformation? captureDevice = null;
+            var preferredDeviceId = "";
             try
             {
                 var prefs = await AppServices.Preferences.LoadAsync(cancellationToken);
-                if (!string.IsNullOrEmpty(prefs.MicrophoneDeviceId))
-                    captureDevice = await DeviceInformation.CreateFromIdAsync(prefs.MicrophoneDeviceId);
+                preferredDeviceId = prefs.MicrophoneDeviceId ?? "";
+                if (!string.IsNullOrEmpty(preferredDeviceId))
+                    captureDevice = await DeviceInformation.CreateFromIdAsync(preferredDeviceId);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-            catch { }
+            catch (Exception ex)
+            {
+                // A saved device that has since been unplugged is the ordinary case, and falling
+                // back to the default is right. Worth a line even so: silently ignoring the choice
+                // made in Settings is otherwise indistinguishable from that setting not working.
+                LogPreferredMicrophoneUnavailable(Log, preferredDeviceId, ex);
+            }
 
             if (captureDevice is null)
             {
@@ -587,7 +665,13 @@ public sealed partial class ChatComposer
                     if (!string.IsNullOrEmpty(id))
                         captureDevice = await DeviceInformation.CreateFromIdAsync(id);
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    // Still recoverable: the CreateDeviceInputNodeAsync call below has its own
+                    // no-device overload. This is the second of two fallbacks failing, though, so
+                    // it is the line that explains a missing waveform on a machine that records.
+                    LogDefaultMicrophoneUnavailable(Log, ex);
+                }
             }
 
             var inputResult = captureDevice is null
@@ -596,6 +680,10 @@ public sealed partial class ChatComposer
                     MediaCategory.Other, _audioGraph.EncodingProperties, captureDevice);
             if (inputResult.Status != AudioDeviceNodeCreationStatus.Success)
             {
+                // DeviceNotAvailable here almost always means an endpoint-role collision with the
+                // recognizer — the exact failure the AudioRenderCategory.Media choice above exists
+                // to avoid — so the status is worth having when that reasoning needs revisiting.
+                LogAudioMeterUnavailable(Log, inputResult.Status.ToString(), null);
                 StopAudioMeter();
                 return;
             }
@@ -611,10 +699,12 @@ public sealed partial class ChatComposer
         }
         catch (OperationCanceledException)
         {
+            // The user stopped recording while the graph was still coming up. Not a fault.
             StopAudioMeter();
         }
-        catch
+        catch (Exception ex)
         {
+            LogAudioMeterUnavailable(Log, ex.GetType().Name, ex);
             StopAudioMeter();
         }
         finally
@@ -632,6 +722,11 @@ public sealed partial class ChatComposer
         if (_audioGraph is not null)
             _audioGraph.QuantumStarted -= AudioGraph_QuantumStarted;
 
+        // The one bare catch left in this file, and deliberately not logged. StopAudioMeter is the
+        // teardown every failure path above already calls, so a graph that failed to start throws
+        // here too — logging it would emit a second line for every first one, all of them saying
+        // only that a broken graph was also broken when disposed. The Dispose calls below are what
+        // actually have to happen, and they run either way.
         try { _audioGraph?.Stop(); } catch { }
 
         _audioFrameOutputNode?.Dispose();
