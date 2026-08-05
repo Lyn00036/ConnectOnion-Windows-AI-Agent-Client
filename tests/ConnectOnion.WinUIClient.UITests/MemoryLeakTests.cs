@@ -4,7 +4,6 @@ using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Models;
 using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Definitions;
-using Xunit.Abstractions;
 
 namespace ConnectOnion.WinUIClient.UITests;
 

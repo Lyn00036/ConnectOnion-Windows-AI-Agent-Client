@@ -12,9 +12,9 @@ public sealed class ImageContentStoreTests : IAsyncLifetime
 
     public ImageContentStoreTests(TempDatabaseFixture fixture) => _fixture = fixture;
 
-    public Task InitializeAsync() => Task.CompletedTask;
+    public ValueTask InitializeAsync() => ValueTask.CompletedTask;
 
-    public Task DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         foreach (var path in _createdPaths)
         {
@@ -27,7 +27,7 @@ public sealed class ImageContentStoreTests : IAsyncLifetime
                 // A failed test cleanup must not hide the assertion that already ran.
             }
         }
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     [Fact]

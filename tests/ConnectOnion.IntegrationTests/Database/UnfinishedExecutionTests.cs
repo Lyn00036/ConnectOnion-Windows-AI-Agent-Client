@@ -25,9 +25,9 @@ public sealed class UnfinishedExecutionTests : IAsyncLifetime
 
     public UnfinishedExecutionTests(TempDatabaseFixture fixture) => _fixture = fixture;
 
-    public Task InitializeAsync() => Task.CompletedTask;
+    public ValueTask InitializeAsync() => ValueTask.CompletedTask;
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         foreach (var conversationId in _conversations)
         {

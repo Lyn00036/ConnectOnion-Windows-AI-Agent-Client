@@ -57,6 +57,12 @@ dotnet_diagnostic.VSTHRD002.severity = none
 # xUnit collection definitions conventionally use the Collection suffix.
 dotnet_diagnostic.CA1711.severity = none
 
-# Test classes and fixtures release disposable fields through xUnit's
-# IAsyncLifetime contract, which the analyzer does not recognize as disposal.
-dotnet_diagnostic.CA1001.severity = none
+# CA1001 was suppressed here on the grounds that "test classes and fixtures release disposable
+# fields through xUnit's IAsyncLifetime contract, which the analyzer does not recognize". That
+# justification was wrong: it had exactly one hit, SidebarStateRepositoryTests, and that class
+# implemented neither IAsyncLifetime nor IDisposable — so it really was leaking a SemaphoreSlim
+# per test method, which is what the rule was telling us. The class now disposes, the rule has
+# zero hits, and it is left ON so the next one is caught rather than waved through.
+#
+# If a future test class genuinely does release through IAsyncLifetime and CA1001 objects, suppress
+# it on that class with a reason rather than restoring a blanket exemption here.
