@@ -356,7 +356,9 @@ public sealed partial class ShellSmokeTests
 
         // The form is opened *focused* so the user can paste an address immediately; without
         // this the click would still leave them one more click from typing.
-        Assert.True(input.Properties.HasKeyboardFocus.ValueOrDefault, "add-agent input did not take focus");
+        Assert.True(
+            WaitUntil(() => input.Properties.HasKeyboardFocus.ValueOrDefault),
+            "add-agent input did not take focus");
     }
 
     /// <summary>
