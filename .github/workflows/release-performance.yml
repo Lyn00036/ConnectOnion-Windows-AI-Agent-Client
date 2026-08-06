@@ -36,7 +36,7 @@ jobs:
     runs-on: [self-hosted, Windows, X64, performance]
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Build current unpackaged release candidate
         if: ${{ contains(inputs.mode, 'Unpackaged') }}
@@ -69,7 +69,7 @@ jobs:
 
       - name: Upload machine-readable report, Markdown and trace
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: startup-${{ inputs.mode }}-${{ github.sha }}
           path: |

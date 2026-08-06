@@ -45,7 +45,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -68,12 +68,12 @@ jobs:
           "prerelease=$(if ($semver -match '-') { 'true' } else { 'false' })" >> $env:GITHUB_OUTPUT
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
 
       - name: Set up Node.js for protocol conformance
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
 
@@ -212,7 +212,7 @@ jobs:
       # still has to be diagnosable without re-running the whole build.
       - name: Upload build artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: release-${{ steps.version.outputs.version }}
           path: artifacts/publish/
