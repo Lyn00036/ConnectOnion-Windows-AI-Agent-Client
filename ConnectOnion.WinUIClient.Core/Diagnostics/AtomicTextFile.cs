@@ -16,7 +16,8 @@ internal static class AtomicTextFile
         string path,
         string contents,
         int maxAttempts = 20,
-        int retryDelayMilliseconds = 25)
+        int retryDelayMilliseconds = 25,
+        Action<int>? retryObserved = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         ArgumentOutOfRangeException.ThrowIfLessThan(maxAttempts, 1);
@@ -41,6 +42,7 @@ internal static class AtomicTextFile
                 catch (Exception ex) when (
                     (ex is IOException or UnauthorizedAccessException) && attempt < maxAttempts)
                 {
+                    retryObserved?.Invoke(attempt);
                     Thread.Sleep(retryDelayMilliseconds);
                 }
             }

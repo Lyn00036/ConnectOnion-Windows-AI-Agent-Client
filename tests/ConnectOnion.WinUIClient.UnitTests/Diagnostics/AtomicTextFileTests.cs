@@ -17,16 +17,38 @@ public sealed class AtomicTextFileTests : IDisposable
         await File.WriteAllTextAsync(path, "old");
 
         var reader = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        var retryObserved = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        using var allowRetry = new ManualResetEventSlim();
         var write = Task.Run(() => AtomicTextFile.WriteAllText(
             path,
             "new",
             maxAttempts: 100,
-            retryDelayMilliseconds: 10));
+            retryDelayMilliseconds: 0,
+            retryObserved: _ =>
+            {
+                retryObserved.TrySetResult(true);
+                allowRetry.Wait();
+            }));
 
-        await Task.Delay(75);
-        Assert.False(write.IsCompleted);
-        await reader.DisposeAsync();
-        await write;
+        try
+        {
+            await retryObserved.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.False(write.IsCompleted);
+        }
+        finally
+        {
+            try
+            {
+                await reader.DisposeAsync();
+            }
+            finally
+            {
+                allowRetry.Set();
+            }
+        }
+
+        await write.WaitAsync(TimeSpan.FromSeconds(10));
 
         Assert.Equal("new", await File.ReadAllTextAsync(path));
         Assert.Empty(Directory.GetFiles(_directory, "*.tmp"));
