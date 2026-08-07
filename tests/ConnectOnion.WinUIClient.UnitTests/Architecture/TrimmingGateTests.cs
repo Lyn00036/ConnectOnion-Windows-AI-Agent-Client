@@ -173,6 +173,34 @@ public sealed class TrimmingGateTests
         }
     }
 
+    /// <summary>The app publish propagates its RID and trimming properties to Core and Protocol.
+    /// That graph cannot share a lock file with the no-RID solution restore because NuGet lock
+    /// files describe one exact graph rather than a superset.</summary>
+    [Theory]
+    [InlineData("ci.yml")]
+    [InlineData("release.yml")]
+    public void AppPublish_UsesTheDedicatedRidLockGraph(string workflowFile)
+    {
+        var workflow = RepoFile(".github", "workflows", workflowFile);
+        var appPublish = Regex.Match(
+            workflow,
+            @"dotnet publish (?:ConnectOnion.WinUIClient/ConnectOnion.WinUIClient.csproj|\$env:APP_PROJECT)[\s\S]*?(?=\r?\n\s*(?:#|- name:))");
+
+        Assert.True(appPublish.Success, $"Expected {workflowFile} to publish the WinUI app.");
+        Assert.Contains(
+            "-p:NuGetLockFilePath=packages.publish.lock.json",
+            appPublish.Value,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "-p:RuntimeIdentifiers=win-x64",
+            appPublish.Value,
+            StringComparison.Ordinal);
+
+        RepoFile("ConnectOnion.WinUIClient", "packages.publish.lock.json");
+        RepoFile("ConnectOnion.WinUIClient.Core", "packages.publish.lock.json");
+        RepoFile("ConnectOnion.Protocol", "packages.publish.lock.json");
+    }
+
     /// <summary>Each publish is preceded by a clean of the same project, so the publish cannot
     /// inherit intermediates the preceding solution build produced under different properties.</summary>
     [Fact]
@@ -203,6 +231,7 @@ public sealed class TrimmingGateTests
         Assert.True(cleanCommand.Success, $"Expected the {workflowDescription} to clean publish intermediates.");
         Assert.Contains("--configuration $env:CONFIGURATION", cleanCommand.Value, StringComparison.Ordinal);
         Assert.Contains("--runtime win-x64", cleanCommand.Value, StringComparison.Ordinal);
+        Assert.Contains("-p:BuildProjectReferences=false", cleanCommand.Value, StringComparison.Ordinal);
 
         var publishCommand = Regex.Match(
             workflow,
