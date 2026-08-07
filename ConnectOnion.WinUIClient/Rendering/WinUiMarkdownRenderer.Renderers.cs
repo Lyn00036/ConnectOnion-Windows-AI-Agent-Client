@@ -1,4 +1,5 @@
 using Markdig.Extensions.Tables;
+using Markdig.Extensions.TaskLists;
 using Markdig.Renderers;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
@@ -82,6 +83,12 @@ public sealed partial class WinUiMarkdownRenderer
     {
         protected override void Write(WinUiMarkdownRenderer renderer, LineBreakInline obj)
             => renderer.WriteLineBreak(obj);
+    }
+
+    private sealed class TaskListRenderer : MarkdownObjectRenderer<WinUiMarkdownRenderer, TaskList>
+    {
+        protected override void Write(WinUiMarkdownRenderer renderer, TaskList obj)
+            => renderer.WriteTaskList(obj);
     }
 
     private sealed class CodeInlineRenderer : MarkdownObjectRenderer<WinUiMarkdownRenderer, CodeInline>

@@ -236,6 +236,63 @@ public sealed partial class ShellSmokeTests
         }
     }
 
+    [Fact]
+    public async Task Chat_FindAcrossMarkdownCodeLinksAndUnclosedFence_DoesNotCrash()
+    {
+        await using var server = new UiFakeAgentServer();
+        const string markdown = """
+            Inline `needle` and [needle](https://example.test/path).
+
+            ```bash
+            needle
+            ```
+
+            https://example.test/needle
+
+            ```text
+            needle
+            """;
+        if (!PrepareChatProfile(server.BaseUri, (1, "agent", markdown))) return;
+
+        try
+        {
+            using var launched = LaunchApp(handleFirstRunDialog: false);
+            if (launched is null) return;
+            var window = launched.Window;
+            OpenChat(window);
+            Assert.NotNull(WaitForAccessibleName(window, "Inline", TimeSpan.FromSeconds(20)));
+
+            Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_F);
+            var find = WaitForDescendant(window, "FindTextBox");
+            Assert.NotNull(find);
+            Assert.True(WaitUntil(() => find.Properties.HasKeyboardFocus.ValueOrDefault));
+            find.AsTextBox().Text = "needle";
+
+            Assert.True(
+                WaitUntil(() =>
+                    WaitForDescendant(window, "FindCounterText", TimeSpan.FromMilliseconds(250))?
+                        .Properties.Name.ValueOrDefault == "1 / 5 results"),
+                "Markdown search did not report all code, link, URL, and unclosed-fence matches.");
+            Assert.False(launched.Process.HasExited);
+
+            var next = WaitForDescendant(window, "NextFindButton");
+            Assert.NotNull(next);
+            for (var index = 2; index <= 5; index++)
+            {
+                next!.AsButton().Invoke();
+                var expected = $"{index} / 5 results";
+                Assert.True(WaitUntil(() =>
+                    WaitForDescendant(window, "FindCounterText", TimeSpan.FromMilliseconds(250))?
+                        .Properties.Name.ValueOrDefault == expected));
+                Assert.False(launched.Process.HasExited);
+            }
+        }
+        finally
+        {
+            RemoveChatFixture();
+        }
+    }
+
     private static bool PrepareChatProfile(
         Uri directUri,
         params (long Id, string Role, string Content)[] messages)

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Markdig.Extensions.Tables;
+using Markdig.Extensions.TaskLists;
 using Markdig.Renderers;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
@@ -21,6 +22,9 @@ namespace ConnectOnion.WinUIClient.Rendering;
 /// </summary>
 public sealed partial class WinUiMarkdownRenderer : RendererBase
 {
+    private const double CodeBlockVerticalPadding = 8;
+    private const double CodeBlockScrollBarClearance = 8;
+
     /// <summary>The monospace face used for inline code, fenced blocks, and any search highlight
     /// inside them. One instance: it is immutable, and the descent cache in
     /// <see cref="HighlightedTextBlock"/> keys off its <c>Source</c>.</summary>
@@ -51,6 +55,12 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
         _searchQuery = searchQuery;
         _activeMatchIndex = activeMatchIndex;
 
+        // Subscribed once, in the constructor, rather than per thematic break: this renderer is
+        // owned by one control for that control's lifetime (see Reset), and _target is the same
+        // RichTextBlock throughout, so one handler covers every render. Per-rule subscriptions
+        // would accumulate on every recycle of a virtualized row.
+        _target.SizeChanged += OnTargetSizeChanged;
+
         ObjectRenderers.Add(new DocumentRenderer());
         ObjectRenderers.Add(new HeadingRenderer());
         ObjectRenderers.Add(new ParagraphRenderer());
@@ -64,6 +74,12 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
 
         ObjectRenderers.Add(new LiteralInlineRenderer());
         ObjectRenderers.Add(new LineBreakInlineRenderer());
+        // Registered before CodeInline/Emphasis for no functional reason, but it must be registered
+        // at all: TaskList is a LeafInline that UseAdvancedExtensions turns on, and Markdig
+        // silently writes nothing for an inline with no renderer. Without this a "- [x] done" and a
+        // "- [ ] todo" both rendered as a bare bullet — the checklist an agent writes into a plan
+        // lost the one thing that made it a checklist.
+        ObjectRenderers.Add(new TaskListRenderer());
         ObjectRenderers.Add(new CodeInlineRenderer());
         ObjectRenderers.Add(new EmphasisInlineRenderer());
         ObjectRenderers.Add(new LinkInlineRenderer());
@@ -102,6 +118,10 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
         _quoteDepth = 0;
         _listDepth = 0;
         _inlineScopes.Clear();
+
+        // The previous pass's rules belong to blocks the caller is about to clear. Holding them
+        // would both leak detached Borders and let a resize write widths into a dead tree.
+        _thematicBreaks.Clear();
     }
 
     public override object Render(MarkdownObject markdownObject)
@@ -220,16 +240,53 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
     internal void WriteCodeBlock(CodeBlock block)
         => WriteCodeBlockLines(block.Lines.ToString());
 
+    /// <summary>
+    /// A markdown <c>---</c> is a horizontal rule, so it has to span the content. This used to be
+    /// ten literal U+2500 box-drawing characters, which drew a short stub hanging off the left
+    /// margin at whatever width ten glyphs happened to be \u2014 it read as a rendering artifact rather
+    /// than a divider, and it did not change with the control's width.
+    ///
+    /// <para>A <see cref="RichTextBlock"/> takes only <see cref="Paragraph"/> blocks (WinUI 3 has
+    /// no <c>BlockUIContainer</c>), and an <see cref="InlineUIContainer"/> measures its child with
+    /// infinite width \u2014 so a <c>Stretch</c> alignment does nothing here and the width has to be
+    /// given explicitly. <see cref="_thematicBreaks"/> plus the one <c>SizeChanged</c> handler
+    /// below is what keeps it right after a resize, a zoom change, or a sidebar drag.</para>
+    /// </summary>
     internal void WriteThematicBreak()
     {
+        var rule = new Border
+        {
+            Height = 1,
+            Background = ResolveBrush("DividerBrush"),
+            Width = RuleWidth(),
+        };
+        _thematicBreaks.Add(rule);
+
         var paragraph = CreateParagraph();
         paragraph.Margin = new Thickness(0, 8, 0, 8);
-        paragraph.Inlines.Add(new Run
-        {
-            Text = "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
-            Foreground = ResolveBrush("TextFillColorTertiaryBrush"),
-        });
+        paragraph.Inlines.Add(new InlineUIContainer { Child = rule });
         _target.Blocks.Add(paragraph);
+    }
+
+    /// <summary>Rules created by the current document, so a resize can re-width them. Cleared by
+    /// <see cref="Reset"/> along with everything else that is per-pass \u2014 the previous pass's
+    /// borders are detached from the tree by then and must not be held.</summary>
+    private readonly List<Border> _thematicBreaks = new();
+
+    /// <summary>The target's content width, or 0 before first layout \u2014 in which case the
+    /// <c>SizeChanged</c> that follows the first arrange fills it in.</summary>
+    private double RuleWidth()
+    {
+        var width = _target.ActualWidth - _target.Padding.Left - _target.Padding.Right;
+        return width > 0 ? width : 0;
+    }
+
+    private void OnTargetSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (_thematicBreaks.Count == 0) return;
+
+        var width = RuleWidth();
+        foreach (var rule in _thematicBreaks) rule.Width = width;
     }
 
     internal void WriteTable(Table table)
@@ -468,8 +525,18 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
         CurrentInlines.Add(new InlineUIContainer { Child = border });
     }
 
+    /// <summary>
+    /// <c>**bold**</c>, <c>*italic*</c>, and the two tilde forms the advanced extensions add.
+    ///
+    /// <para><c>~~struck~~</c> gets a real strikethrough. It used to share the single-tilde
+    /// (subscript) treatment — grey italic — which reads as ordinary emphasis, so a plan that
+    /// crossed an item out looked exactly like one that stressed it. <c>TextDecorations</c> is a
+    /// <c>TextElement</c> property, so a Span can carry it without an InlineUIContainer.</para>
+    /// </summary>
     internal void WriteEmphasis(EmphasisInline inline)
     {
+        var isStrikethrough = inline.DelimiterChar == '~' && inline.DelimiterCount >= 2;
+
         Span container = inline.DelimiterChar switch
         {
             '~' => new Span(),
@@ -477,8 +544,16 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
             _ => new Italic(),
         };
 
-        if (inline.DelimiterChar == '~')
+        if (isStrikethrough)
         {
+            container.TextDecorations = TextDecorations.Strikethrough;
+            // Struck text is de-emphasised but still readable: keep the body colour rather than
+            // dropping to secondary on top of the line, which stacks two "less important" signals.
+        }
+        else if (inline.DelimiterChar == '~')
+        {
+            // Single tilde is the subscript extension. No real subscript in a RichTextBlock inline,
+            // so it keeps the pre-existing quiet-italic approximation.
             container.FontStyle = FontStyle.Italic;
             container.Foreground = ResolveBrush("TextFillColorSecondaryBrush");
         }
@@ -487,11 +562,33 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
         CurrentInlines.Add(container);
     }
 
+    /// <summary>Renders the <c>[ ]</c>/<c>[x]</c> marker of a GFM task-list item.</summary>
+    internal void WriteTaskList(TaskList inline)
+        => CurrentInlines.Add(new Run
+        {
+            // U+2611 / U+2610. Written as a text Run rather than a real CheckBox: these are a
+            // record of what the agent wrote, not controls the user can toggle, and a focusable
+            // control per line would also add a tab stop to every checklist row.
+            Text = inline.Checked ? "☑ " : "☐ ",
+            Foreground = ResolveBrush(
+                inline.Checked ? "BrandPrimaryBrush" : "TextFillColorTertiaryBrush"),
+        });
+
     internal void WriteLink(LinkInline inline)
     {
+        // An image reference renders as a clickable link labelled with its alt text, not as the
+        // raw URL this used to print. Two reasons it is not fetched and shown inline: images the
+        // agent actually sends arrive as `agent_image` events and go through
+        // AttachmentImageCacheService (hashed, size-capped, written to the local cache before they
+        // ever reach a message), and auto-fetching whatever URL appears in agent markdown would be
+        // a new outbound request the user never asked for. Falling back to the URL keeps a
+        // reference with no alt text reachable rather than rendering nothing.
         if (inline.IsImage)
         {
-            WriteHighlightedText(inline.Url ?? string.Empty);
+            var alt = GetPlainText(inline);
+            WriteImageReference(
+                string.IsNullOrWhiteSpace(alt) ? inline.Url ?? string.Empty : alt,
+                inline.Url);
             return;
         }
 
@@ -520,11 +617,62 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
         CurrentInlines.Add(hyperlink);
     }
 
+    /// <summary>Flattens an inline's literal descendants, for the places that need the text of a
+    /// node rather than its rendering — today the alt text of an image.</summary>
+    private static string GetPlainText(ContainerInline container)
+    {
+        var text = new System.Text.StringBuilder();
+        Collect(container);
+        return text.ToString().Trim();
+
+        void Collect(ContainerInline node)
+        {
+            foreach (var child in node)
+            {
+                switch (child)
+                {
+                    case LiteralInline literal: text.Append(literal.Content.ToString()); break;
+                    case CodeInline code: text.Append(code.Content); break;
+                    case LineBreakInline: text.Append(' '); break;
+                    case ContainerInline nested: Collect(nested); break;
+                }
+            }
+        }
+    }
+
+    private void WriteImageReference(string label, string? url)
+    {
+        var navigateUri = CreateUri(url);
+        if (navigateUri is null)
+        {
+            WriteHighlightedText(label);
+            return;
+        }
+
+        var hyperlink = new Hyperlink { Foreground = ResolveBrush("TextLinkBrush") };
+        hyperlink.Click += async (_, _) => await Launcher.LaunchUriAsync(navigateUri);
+        WriteHighlightedText(label, hyperlink.Inlines, allowInlineUIContainers: false);
+        CurrentInlines.Add(hyperlink);
+    }
+
     internal void WriteContainerInline(ContainerInline inline)
         => WriteNestedInlines(inline, CurrentInlines);
 
+    /// <summary>
+    /// Raw HTML the parser could not turn into markdown. The tag itself is never shown: it used to
+    /// be written out verbatim, so an agent's <c>&lt;b&gt;text&lt;/b&gt;</c> rendered with the
+    /// angle brackets visible and a <c>&lt;br&gt;</c> inside a table cell appeared as literal
+    /// characters instead of a break. Dropping the tag leaves the text between tags, which is the
+    /// content; <c>&lt;br&gt;</c> is the one tag with a document meaning here, so it is honoured.
+    /// </summary>
     internal void WriteHtmlInline(HtmlInline inline)
-        => WriteHighlightedText(inline.Tag);
+    {
+        var tag = inline.Tag?.Trim() ?? string.Empty;
+        if (tag.StartsWith("<br", StringComparison.OrdinalIgnoreCase))
+        {
+            CurrentInlines.Add(new LineBreak());
+        }
+    }
 
     private InlineCollection CurrentInlines => _inlineScopes.Peek();
 
@@ -616,7 +764,13 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
             HorizontalScrollMode = ScrollMode.Auto,
             VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
             VerticalScrollMode = ScrollMode.Disabled,
-            Padding = new Thickness(10, 8, 10, 8),
+            // WinUI expands an auto-hiding horizontal scrollbar over the bottom of its viewport.
+            // Keep the last code line above that overlay so grabbing the thumb never obscures it.
+            Padding = new Thickness(
+                10,
+                CodeBlockVerticalPadding,
+                10,
+                CodeBlockVerticalPadding + CodeBlockScrollBarClearance),
             Content = codeText,
         };
 

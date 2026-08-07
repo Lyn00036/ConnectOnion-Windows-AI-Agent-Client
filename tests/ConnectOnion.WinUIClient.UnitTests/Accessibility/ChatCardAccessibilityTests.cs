@@ -39,6 +39,18 @@ public sealed class ChatCardAccessibilityTests
         Assert.Contains("Math.Clamp(root.Size.Height", dialogCode, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void MarkdownCodeBlocks_KeepTextClearOfTheOverlayScrollBar()
+    {
+        var renderer = ReadApp("Rendering", "WinUiMarkdownRenderer.cs");
+
+        Assert.Contains("CodeBlockScrollBarClearance = 8", renderer, StringComparison.Ordinal);
+        Assert.Contains(
+            "CodeBlockVerticalPadding + CodeBlockScrollBarClearance",
+            renderer,
+            StringComparison.Ordinal);
+    }
+
     private static string ReadApp(params string[] relativeParts)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
