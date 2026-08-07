@@ -107,6 +107,39 @@ try {
     $entryCount    = $entries.Count
 
     $violations = @()
+    if (-not $isMsix) {
+        $rootFiles = @($entries | Where-Object { $_.FullName -notmatch '[/\\]' })
+        if ($rootFiles.Count -ne 1 -or
+            $rootFiles[0].FullName -ne 'ConnectOnion.WinUIClient.exe') {
+            $violations += [pscustomobject]@{
+                Rule = 'Portable root contains only the launcher'
+                Files = @($rootFiles | Select-Object -ExpandProperty FullName)
+            }
+        }
+
+        $requiredNestedPayload = @(
+            'app/ConnectOnion.WinUIClient.exe',
+            'app/coreclr.dll',
+            'app/Microsoft.WindowsAppRuntime.dll'
+        )
+        $entryNames = @($entries | ForEach-Object { $_.FullName -replace '\\', '/' })
+        $missingNestedPayload = @($requiredNestedPayload | Where-Object { $_ -notin $entryNames })
+        if ($missingNestedPayload.Count -gt 0) {
+            $violations += [pscustomobject]@{
+                Rule = 'Nested self-contained application payload'
+                Files = $missingNestedPayload
+            }
+        }
+
+        $rootDlls = @($rootFiles | Where-Object { $_.FullName -like '*.dll' })
+        if ($rootDlls.Count -gt 0) {
+            $violations += [pscustomobject]@{
+                Rule = 'DLLs must stay under app/'
+                Files = @($rootDlls | Select-Object -ExpandProperty FullName)
+            }
+        }
+    }
+
     foreach ($rule in $forbidden) {
         $hits = @($entries | Where-Object { & $rule.Match $_.FullName } | Select-Object -ExpandProperty FullName)
         if ($hits.Count -gt 0) {
@@ -214,7 +247,7 @@ if ($env:GITHUB_OUTPUT) {
 
 if ($env:GITHUB_STEP_SUMMARY) {
     $baselineKind = if ($isMsix) { 'self-contained MSIX' } else { 'portable ZIP' }
-    $baselineEntries = if ($isMsix) { 632 } else { 621 }
+    $baselineEntries = if ($isMsix) { 632 } else { 466 }
     @(
         "### Package audit",
         "",
