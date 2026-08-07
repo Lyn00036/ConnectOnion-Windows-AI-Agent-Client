@@ -46,10 +46,24 @@ public sealed partial class PlanSectionReviewDialog : ContentDialog
     private void XamlRoot_Changed(XamlRoot sender, XamlRootChangedEventArgs args)
         => ApplyResponsiveSize();
 
+    /// <summary>Widest the section list is allowed to get. Must stay below the
+    /// <c>ContentDialogMaxWidth</c> override in the XAML minus <see cref="DialogChromeWidth"/>,
+    /// or the grid is handed a width the dialog cannot show and the overflow is clipped.</summary>
+    private const double MaxContentWidth = 620;
+
+    /// <summary>Horizontal space the dialog spends on itself (padding plus border) around the
+    /// content.</summary>
+    private const double DialogChromeWidth = 48;
+
+    /// <summary>Taken off the window width before the content is sized, so a narrow window shrinks
+    /// the *content* rather than producing a dialog wider than the window it sits in: the dialog's
+    /// own chrome, plus a margin so it never runs edge to edge.</summary>
+    private const double WindowInset = DialogChromeWidth + 48;
+
     private void ApplyResponsiveSize()
     {
         if (XamlRoot is not { } root) return;
-        ContentGrid.Width = Math.Clamp(root.Size.Width - 96, 320, 620);
+        ContentGrid.Width = Math.Clamp(root.Size.Width - WindowInset, 320, MaxContentWidth);
         ContentGrid.Height = Math.Clamp(root.Size.Height - 180, 240, 620);
     }
 
