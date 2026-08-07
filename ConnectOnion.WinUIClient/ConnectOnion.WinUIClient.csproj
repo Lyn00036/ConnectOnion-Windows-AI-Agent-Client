@@ -152,7 +152,7 @@
       before changing this. In short: 0 app-owned IL warnings; the serialization paths are
       source-generated and a trimmed console harness proves them across a real process restart; the
       trimmed *app* renders a turn written by that harness (tool-activity steps, arguments, results
-      and the interactive cards); the required shell/chat suite passes 23/23 against the trimmed executable; and
+      and the interactive cards); the required shell/chat suite passes 25/25 against the trimmed executable; and
       the shipped portable ZIP audits clean at 71.29 MB against a 118.91 MB untrimmed baseline with
       no key operation regressing more than +2.9%.
 

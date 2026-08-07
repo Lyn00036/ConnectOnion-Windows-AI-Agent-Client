@@ -275,7 +275,7 @@ connectonion-desktop/
     ConnectOnion.Protocol.Tests/      xunit tests for ConnectOnion.Protocol
     ConnectOnion.WinUIClient.UnitTests/  Headless tests over Core, plus the ArchUnit layer gate
     ConnectOnion.IntegrationTests/    SQLite schema/repository tests against a real database file
-    ConnectOnion.WinUIClient.UITests/ FlaUI: 23 required shell/chat tests + 1 skipped diagnostic + 2 opt-in audits
+    ConnectOnion.WinUIClient.UITests/ FlaUI: 25 required shell/chat tests + 1 skipped diagnostic + 4 opt-in diagnostics/audits
     ConnectOnion.TrimSmoke/           Trimmed serialization/persistence console harness
 
   .github/workflows/ci.yml            Windows/.NET CI workflow
@@ -510,7 +510,7 @@ The gate is a ratchet against `coverage-baseline.json`, currently **86.12%** for
 `ConnectOnion.Protocol` and **83.59%** for `ConnectOnion.WinUIClient.Core`, with a 0.25 percentage
 point tolerance. The separate absolute floors prevent a deliberate baseline update from drifting
 below the minimum; generated code and test assemblies are excluded.
-The real-window project discovers 27 tests. Its 23 required shell/chat tests run against a published
+The real-window project discovers 31 tests. Its 25 required shell/chat tests run against a published
 unpackaged executable on every push and pull request; the Explorer drag-and-drop diagnostic is
 explicitly skipped because desktop DPI/layout makes its source coordinates nondeterministic. The
 memory and large-history performance audits remain opt-in. See [TEST_PLAN.md](./TEST_PLAN.md)
@@ -563,7 +563,7 @@ Current CI behavior:
 
 CI also audits dependencies for known vulnerabilities, collects and uploads Cobertura reports,
 enforces the Protocol/Core coverage ratchet, runs the trim-safe serialization harness, and
-publishes a **trimmed, self-contained** ReadyToRun unpackaged build. The 23 required FlaUI shell/chat
+publishes a **trimmed, self-contained** ReadyToRun unpackaged build. The 25 required FlaUI shell/chat
 tests run on every push and pull request, using an isolated data root and uploading TRX/screenshot
 evidence; the drag-and-drop diagnostic is skipped. A separate manual-only job can exercise a real
 deployed agent. Tag-driven portable releases are handled separately by
