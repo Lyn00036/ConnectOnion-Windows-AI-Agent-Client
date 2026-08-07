@@ -29,10 +29,17 @@ namespace ConnectOnion.WinUIClient.Controls;
 /// It also raises navigation as an event rather than performing it: the sidebar knows *what*
 /// the user picked, and <c>MainWindow</c> owns the frame that acts on it.
 ///
-/// The whole tree is rebuilt from storage on every <see cref="RefreshAsync"/> — there is no
-/// incremental update path. That keeps it simple and correct at the cost of losing transient UI
-/// state, which is exactly why expansion state is remembered separately (see
-/// <see cref="_expandedAgentIds"/>).
+/// A <see cref="RefreshAsync"/> that finds the tree's <i>shape or content</i> changed rebuilds it
+/// wholesale from storage — there is no incremental splice. That keeps it simple and correct at the
+/// cost of losing transient UI state, which is exactly why expansion state is remembered separately
+/// (see <see cref="_expandedAgentIds"/>).
+///
+/// <para>Selection is the one exception, and it has to be: clicking a conversation moves the
+/// active-session and selected-agent pointers, nothing else, and it is by far the most frequent
+/// thing the user does. That is compared separately (<see cref="ComputeSelectionSignature"/>) and
+/// applied in place (<see cref="ApplySelection"/>), so switching conversations never discards a
+/// single row. Adding new state to a row means deciding which of the two signatures owns it:
+/// anything that changes which rows exist or what they say belongs in the structure signature.</para>
 /// </summary>
 public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
 {
@@ -119,7 +126,13 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     private bool _hasExpansionState;
     private bool _loadedPersistedExpansionState;
     private bool _isPinnedExpanded = true;
-    private int? _lastRenderSignature;
+    /// <summary>Hash of everything that decides which rows exist. Null until the first refresh has
+    /// rendered, which is also what tells the guards below that there is a tree to compare
+    /// against.</summary>
+    private int? _lastStructureSignature;
+    /// <summary>Hash of which row is lit, tracked apart from the structure so a selection change
+    /// repaints in place instead of rebuilding. See <see cref="ComputeSelectionSignature"/>.</summary>
+    private int _lastSelectionSignature;
     /// <summary>The <see cref="Data.StorageRevision"/> and page the last full load was made
     /// against, so an unchanged refresh can return without touching SQLite at all.</summary>
     private long _lastLoadedRevision = -1;
@@ -269,7 +282,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         var revision = Data.StorageRevision.Current;
         if (_lastLoadedRevision == revision
             && _lastLoadedPageType == _currentPageType
-            && _lastRenderSignature is not null)
+            && _lastStructureSignature is not null)
         {
             ProbeAgentPresence();
             return;
@@ -339,13 +352,31 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         _lastLoadedRevision = revision;
         _lastLoadedPageType = _currentPageType;
 
-        var renderSignature = ComputeRenderSignature(agentsState, activeSessionId, pinned, loadedByAgent);
-        if (_lastRenderSignature == renderSignature)
+        // Two signatures, not one, and the split is the whole point. Selecting a conversation
+        // writes the active-session and selected-agent pointers, and both call
+        // StorageRevision.Bump — so the cheap guard at the top of this method always misses on a
+        // click. The old single signature folded the selection into it, so it missed too, and the
+        // most frequent interaction in the app went all the way to Clear() + rebuild: every
+        // ShellAgentItem and ShellSessionItem replaced, ReplaceAll raising a Reset, and the
+        // repeater re-realizing every visible row. That threw away the in-place paint
+        // SelectSessionAsync had already done a moment earlier, and it is what made an agent with
+        // a custom icon visibly flash (see AgentAvatar's cache note).
+        var structureSignature = ComputeStructureSignature(agentsState, pinned, loadedByAgent);
+        var selectionSignature = ComputeSelectionSignature(agentsState.SelectedAgentId, activeSessionId);
+        if (_lastStructureSignature == structureSignature)
         {
+            // Same tree, possibly a different row lit. Repaint the flags on the items already on
+            // screen; no collection is cleared, so nothing is re-realized.
+            if (_lastSelectionSignature != selectionSignature)
+            {
+                ApplySelection(agentsState.SelectedAgentId, activeSessionId);
+                _lastSelectionSignature = selectionSignature;
+            }
             ProbeAgentPresence();
             return;
         }
-        _lastRenderSignature = renderSignature;
+        _lastStructureSignature = structureSignature;
+        _lastSelectionSignature = selectionSignature;
         _knownAgents = agentsState.Agents
             .Select(agent => (agent.Id, agent.Address, agent.DirectUrl))
             .ToList();
@@ -520,7 +551,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         agent.SessionsLoaded = true;
         agent.RebuildSessionGroups();
 
-        _lastRenderSignature = null;
+        _lastStructureSignature = null;
         RebuildSidebarRows();
     }
 
@@ -555,7 +586,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         // The signature is computed from what was loaded, so it has to move with a page that just
         // arrived — otherwise the next refresh would decide nothing had changed and skip the
         // rebuild that puts these rows on screen.
-        _lastRenderSignature = null;
+        _lastStructureSignature = null;
         RebuildSidebarRows();
     }
 
@@ -593,22 +624,42 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         _ = _presence.EnsureCheckedAsync(agent.Id, agent.Address, agent.DirectUrl);
     }
 
-    private int ComputeRenderSignature(
+    /// <summary>
+    /// Which row is lit. Page type belongs here rather than in the structure signature because
+    /// selection is page-dependent, not purely storage-derived: <see cref="IsAgentSelected"/> and
+    /// <see cref="IsSessionSelected"/> both gate on <c>_currentPageType</c>, so the same selected
+    /// agent and active conversation must render differently on <c>AgentDetailPage</c> than on
+    /// <c>ChatPage</c>. Leaving it out of the comparison entirely made the common "open an agent,
+    /// then click the conversation you were already in" path skip the repaint — storage genuinely
+    /// had not changed — so the tree kept the agent row lit and the conversation row unselected.
+    /// </summary>
+    private int ComputeSelectionSignature(string? selectedAgentId, string? activeSessionId)
+    {
+        var hash = new HashCode();
+        hash.Add(_currentPageType);
+        hash.Add(selectedAgentId, StringComparer.Ordinal);
+        hash.Add(activeSessionId, StringComparer.Ordinal);
+        return hash.ToHashCode();
+    }
+
+    /// <summary>
+    /// Everything that decides which rows exist and what they say — deliberately excluding the
+    /// selection, which <see cref="ComputeSelectionSignature"/> owns and which can be repainted
+    /// without rebuilding anything.
+    ///
+    /// <para><c>SelectedAgentId</c> is safe to leave out even though it seeds the initial
+    /// expansion (<c>IsExpanded = … : agent.Id == SelectedAgentId</c>): that branch only runs
+    /// while <c>_hasExpansionState</c> is false, which is only true before the first completed
+    /// refresh — and until that refresh completes <c>_lastStructureSignature</c> is null, so the
+    /// guard this feeds cannot pass. Afterwards expansion comes from
+    /// <c>_expandedAgentIds</c>, which is hashed below.</para>
+    /// </summary>
+    private int ComputeStructureSignature(
         AgentSummaryState agentsState,
-        string? activeSessionId,
         IReadOnlyList<SessionSummary> pinned,
         IReadOnlyDictionary<string, SessionPage> loadedByAgent)
     {
         var hash = new HashCode();
-        // The page comes first because row selection is page-dependent, not purely storage-derived:
-        // IsAgentSelected/IsSessionSelected both gate on _currentPageType, so the *same* selected
-        // agent and active conversation must render differently on AgentDetailPage than on
-        // ChatPage. Leaving it out made the common "open an agent, then click the conversation you
-        // were already in" path skip the rebuild entirely — storage genuinely had not changed — so
-        // the tree kept the agent row lit and the conversation row unselected.
-        hash.Add(_currentPageType);
-        hash.Add(agentsState.SelectedAgentId, StringComparer.Ordinal);
-        hash.Add(activeSessionId, StringComparer.Ordinal);
         hash.Add(IsPinnedExpanded);
         foreach (var expanded in _expandedAgentIds.OrderBy(id => id, StringComparer.Ordinal))
             hash.Add(expanded, StringComparer.Ordinal);
@@ -642,6 +693,10 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
                 hash.Add(session.Title, StringComparer.Ordinal);
                 hash.Add(session.UpdatedAt, StringComparer.Ordinal);
                 hash.Add(session.IsPinned);
+                // Both values paint visible badges. Clearing them does not change UpdatedAt, so
+                // omitting them makes an opened conversation keep its stale unread/attention UI.
+                hash.Add(session.UnreadCount);
+                hash.Add(session.RequiresAttention);
                 if (_sessionPreviewCache.TryGetValue(session.Id, out var preview))
                     hash.Add(preview.Preview, StringComparer.Ordinal);
             }
@@ -964,10 +1019,36 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
                 // The optimistic paint must not survive a failed write. Force an authoritative
                 // rebuild even if the storage revision did not move before the exception.
                 _lastLoadedRevision = -1;
-                _lastRenderSignature = null;
+                _lastStructureSignature = null;
                 try { await RefreshAsync(); }
                 catch { /* best-effort rollback; persistence failure remains non-fatal */ }
             }
+        }
+    }
+
+    /// <summary>
+    /// Repaints selection onto the items already on screen, from the authoritative pointers.
+    ///
+    /// <para>The counterpart to <see cref="ApplyOptimisticSessionSelection"/>, which paints the
+    /// click's <i>intent</i> before storage confirms it. This one applies what storage actually
+    /// says, including the cases that one cannot express: an agent row lit on
+    /// <c>AgentDetailPage</c>, and nothing lit at all on Home or Settings. Both go through
+    /// <see cref="IsAgentSelected"/>/<see cref="IsSessionSelected"/>, so the result is identical
+    /// to what a full rebuild would have produced — that equivalence is what makes skipping the
+    /// rebuild safe.</para>
+    /// </summary>
+    private void ApplySelection(string? selectedAgentId, string? activeSessionId)
+    {
+        foreach (var session in PinnedSessions)
+            session.IsSelected = IsSessionSelected(session.Id, activeSessionId);
+
+        foreach (var agent in ShellAgents)
+        {
+            agent.IsSelected = IsAgentSelected(agent.Id, selectedAgentId);
+            // Session groups hold these same instances, so the canonical row and its pinned
+            // shortcut both update from the one pass.
+            foreach (var session in agent.Sessions)
+                session.IsSelected = IsSessionSelected(session.Id, activeSessionId);
         }
     }
 

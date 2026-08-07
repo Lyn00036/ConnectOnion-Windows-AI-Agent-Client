@@ -235,12 +235,85 @@ These are plateau tests, not absolute-memory budgets. Absolute idle budgets rema
 can be tightened through script parameters after a new Release baseline is ratified, but should
 not be loosened just to silence a regression.
 
+## August 2026 follow-up — the same primitive, a different axis
+
+The July suite measured **navigation**: open a surface, close it, repeat. It did not measure
+**turns**: hold one conversation open and keep chatting. That was listed below as a known gap, and
+a leak was living in it.
+
+### Symptom
+
+Memory climbed steeply during an ordinary text-only conversation — no images, no attachments.
+
+### Measurement
+
+`ShellSmokeTests.MemoryProbe.cs` (opt-in, `CONNECTONION_MEMORY_PROBE=1`) drives real turns through
+the loopback `UiFakeAgentServer` and samples the app process after each one. A representative turn
+is `llm_call` → 6 × `thinking` → `llm_result` → `assistant` → `OUTPUT`.
+
+40 text-only turns, before the fix:
+
+| turn | private MB | handles | threads |
+|---|---|---|---|
+| 0 | 132.6 | 1471 | 78 |
+| 10 | 367.5 | 4236 | 652 |
+| 20 | 665.8 | 7557 | 1346 |
+| 40 | 983.9 | 10544 | 1865 |
+
+Threads were the tell, exactly as this document's tripwire model predicts: ~55 per turn, never
+released, and the private-byte slope is mostly their stacks and the D3D devices behind them.
+
+### Bisection
+
+Three controlled runs, one variable each:
+
+1. **Turns carrying only `OUTPUT`** (no streamed events): threads flat at 136, 10 turns cost 30 MB
+   — the transcript itself. So the growth was in the streamed events.
+2. **6 vs 12 `thinking` events per turn**: identical slopes. So it was per *turn*, not per event.
+3. **`ThinkingIndicator` forced to `x:Load="False"`**: 10 turns went 139.6 → 158.1 MB with threads
+   78 → 81. The leak vanished entirely.
+
+### Root cause
+
+`ThinkingIndicator` wrapped a Win2D `CanvasAnimatedControl` — the same primitive section 3 removed
+from the composer's waveform, reintroduced in a worse place. In the composer it was one instance
+per page; here it sat inside a **virtualized `ListView` item template**, so an instance existed per
+running activity row.
+
+Each canvas carries its own D3D device, swap chain and render thread, and Win2D releases none of it
+unless `RemoveFromVisualTree()` is called. Nothing called it:
+
+- `OnUnloaded` only set `Canvas.Paused = true`, with a comment explaining that
+  `RemoveFromVisualTree` was deliberately omitted because Win2D does not support re-attaching a
+  canvas afterwards and a recycled row came back blank. Correct about Win2D; wrong conclusion.
+- `Dispose()` was reached only from `ChatPage.DisposeThinkingIndicators`, which walks the **live**
+  visual tree at page teardown — so it could not see instances `x:Load` had already detached.
+
+The XAML comment claimed `x:Load` bounded the app to one canvas because only one row is ever
+thinking. `x:Load` going false does not dispose what it unloads, and several rows per turn pass
+through the running state, so the real bound was one canvas per *realization*.
+
+### Fix
+
+`ThinkingIndicator` is now ordinary XAML shapes — eight rounded `Rectangle`s driven by one
+`Storyboard`. Every animated property is a `RenderTransform` or `Opacity`, so the loop is an
+independent (composition-thread) animation and costs no layout pass. The control keeps its
+`IDisposable`, `IsActive` and pause-on-`Unloaded` contract, so no call site changed.
+
+After the fix, same 40 turns: **147.1 → 185.1 MB, threads 78 → 78, handles 1556 → 1684**, with the
+curve flat from roughly turn 34.
+
+**The rule this leaves behind:** a Win2D canvas is a per-window-scale resource. Do not put one in
+anything a virtualizing host realizes, and do not treat `x:Load` as a lifetime guarantee — it
+defers construction, it does not dispose.
+
 ## Scope and limitations
 
 No finite automated test can prove that every allocation path in a process is leak-free. This
 suite covers every persistent navigation surface and the known expensive native primitives, then
-uses handles and threads as independent tripwires. It does not exercise microphone capture,
-long-running WebSocket turns, every attachment codec, multi-window behavior, GPU-driver-specific
+uses handles and threads as independent tripwires. The August 2026 probe above adds the
+many-turns-in-one-conversation axis, but only for text turns against a loopback agent. It does not
+exercise microphone capture, every attachment codec, multi-window behavior, GPU-driver-specific
 caches, or hours-long soak behavior. Those paths still require targeted scenarios or WPR/WPA when
 a regression report identifies them.
 

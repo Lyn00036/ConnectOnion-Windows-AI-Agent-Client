@@ -14,6 +14,8 @@ namespace ConnectOnion.WinUIClient.Models;
 /// </summary>
 public sealed partial class AgentConfig : Common.ObservableObject
 {
+    public const int MaxNameLength = 64;
+
     public AgentConfig()
     {
         Id = "";
@@ -34,6 +36,27 @@ public sealed partial class AgentConfig : Common.ObservableObject
     /// unchanged; every UI surface uses this same projection as the sidebar.</summary>
     [JsonIgnore]
     public string DisplayName => FriendlyAgentName.From(Name);
+
+    /// <summary>Applies a user-chosen local display name without touching the connection identity.
+    /// The endpoint and stable agent id remain the values used to reach the remote agent.</summary>
+    public bool TryRename(string? name)
+    {
+        var trimmed = name?.Trim() ?? "";
+        if (trimmed.Length == 0 || trimmed.Length > MaxNameLength
+            || string.Equals(trimmed, Name, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        Name = trimmed;
+        return true;
+    }
+
+    public static bool IsValidName(string? name)
+    {
+        var trimmed = name?.Trim();
+        return !string.IsNullOrEmpty(trimmed) && trimmed.Length <= MaxNameLength;
+    }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsRelayOnly))]

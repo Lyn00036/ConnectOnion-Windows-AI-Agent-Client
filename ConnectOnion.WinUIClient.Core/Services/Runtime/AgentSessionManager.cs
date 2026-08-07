@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
@@ -112,9 +111,8 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         _logger = logger ?? NullLogger<AgentSessionManager>.Instance;
         _notifications = notifications;
         _connections = new AgentConnectionRegistry(http);
-        _runs = new ConversationRunRegistry(this, new DebugRunLogger(), onError: ex =>
+        _runs = new ConversationRunRegistry(this, onError: ex =>
         {
-            Debug.WriteLine($"[run] error: {ex}");
             LogRunFailure(_logger, ex);
         });
     }
@@ -1000,11 +998,4 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         public void ReportUsage(TurnUsage usage) { }
     }
 
-    private sealed class DebugRunLogger : IRunLogger
-    {
-        public void Log(ConversationRunSnapshot s, string phase, TimeSpan elapsed) => Debug.WriteLine(
-            $"[run] {phase} run={s.RunId[..Math.Min(8, s.RunId.Length)]} conv={s.ConversationId} " +
-            $"agent={s.AgentId} status={s.Status} seq={s.Sequence} elapsed={elapsed.TotalMilliseconds:0}ms" +
-            (s.ErrorMessage is null ? "" : $" error={s.ErrorMessage}"));
-    }
 }

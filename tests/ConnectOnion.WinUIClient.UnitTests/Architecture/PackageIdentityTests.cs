@@ -108,7 +108,13 @@ public sealed class PackageIdentityTests
         Assert.Contains("-p:SelfContained=true", workflow, StringComparison.Ordinal);
         Assert.Contains("-p:WindowsAppSDKSelfContained=true", workflow, StringComparison.Ordinal);
         Assert.Contains("-p:RunUnpackaged=true", workflow, StringComparison.Ordinal);
+        Assert.Contains("-p:PublishSingleFile=false", workflow, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Microsoft.WindowsAppRuntime.dll", workflow, StringComparison.Ordinal);
+        Assert.Contains("ConnectOnion.PortableLauncher/ConnectOnion.PortableLauncher.csproj", workflow, StringComparison.Ordinal);
+        Assert.Contains("-p:PublishAot=true", workflow, StringComparison.Ordinal);
+        Assert.Contains("$stagedApp = Join-Path $stagedRoot 'app'", workflow, StringComparison.Ordinal);
+        Assert.Contains("Compress-Archive -Path (Join-Path $stagedRoot '*')", workflow, StringComparison.Ordinal);
+        Assert.Contains("Smoke-test portable root launcher", workflow, StringComparison.Ordinal);
         Assert.Contains("-x64-portable.zip", workflow, StringComparison.Ordinal);
         Assert.Contains(
             "Test-PackageContents.ps1 -PackagePath '${{ steps.collect.outputs.portable }}'",
@@ -182,4 +188,25 @@ public sealed class PackageIdentityTests
         Assert.Contains("PackageDependency", audit, StringComparison.Ordinal);
         Assert.Contains("External MSIX framework dependency", audit, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void PackageAuditPinsTheNestedPortableLayout()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "global.json")))
+        {
+            directory = directory.Parent;
+        }
+        Assert.NotNull(directory);
+
+        var audit = File.ReadAllText(
+            Path.Combine(directory!.FullName, "scripts", "Test-PackageContents.ps1"));
+
+        Assert.Contains("Portable root contains only the launcher", audit, StringComparison.Ordinal);
+        Assert.Contains("DLLs must stay under app/", audit, StringComparison.Ordinal);
+        Assert.Contains("app/ConnectOnion.WinUIClient.exe", audit, StringComparison.Ordinal);
+        Assert.Contains("app/coreclr.dll", audit, StringComparison.Ordinal);
+        Assert.Contains("app/Microsoft.WindowsAppRuntime.dll", audit, StringComparison.Ordinal);
+    }
+
 }

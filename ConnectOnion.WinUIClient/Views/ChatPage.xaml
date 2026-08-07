@@ -523,20 +523,24 @@
                                     Spacing="6"
                                     Padding="0,4"
                                     Visibility="{x:Bind IsRunningProgressActivity, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                            <!-- Win2D starburst, not a ProgressRing: a spinner in a transcript
+                            <!-- Animated starburst, not a ProgressRing: a spinner in a transcript
                                  reads as a progress bar and invites "how far along is it?", which
                                  this state cannot answer. IsActive is the message's own running
                                  flag — no second state to keep in sync.
 
-                                 x:Load, not just Visibility, and this is the important part: the
-                                 surrounding panel is only *hidden* on a settled row, but XAML
-                                 still constructs everything inside it. That meant a
-                                 CanvasAnimatedControl — a swap chain and a render thread — built
-                                 for every activity row in every conversation the user opened, all
-                                 paused, none released. x:Load defers construction until the row is
-                                 actually thinking, and at most one row ever is (the projection
-                                 removes the indicator on llm_result), so the app holds one canvas
-                                 rather than one per row ever seen. -->
+                                 x:Load, not just Visibility: the surrounding panel is only
+                                 *hidden* on a settled row, but XAML still constructs everything
+                                 inside it, so every activity row in every conversation the user
+                                 opened would build an indicator it can never show.
+
+                                 This deferral is a saving, but do not mistake it for a lifetime
+                                 guarantee — an earlier version of this comment did, and that is
+                                 how the app came to leak ~55 threads and ~23 MB per turn. x:Load
+                                 going false does not dispose what it unloads, and the same row can
+                                 realize a new one each time it re-enters the running state or the
+                                 list recycles its container. So the indicator has to be cheap to
+                                 build and cheap to abandon, which is why it is plain XAML shapes
+                                 rather than a Win2D canvas. See ThinkingIndicator.xaml. -->
                             <!-- x:Name is required by x:Load; it is not referenced from code. -->
                             <controls:ThinkingIndicator x:Name="ThinkingMark"
                                                         x:Load="{x:Bind IsRunningProgressActivity, Mode=OneWay}"

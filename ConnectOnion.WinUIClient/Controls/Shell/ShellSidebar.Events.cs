@@ -112,6 +112,13 @@ public sealed partial class ShellSidebar
         RequestNavigation(typeof(Views.AgentDetailPage), forceReload: true);
     }
 
+    private async void RenameAgent_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not string agentId) return;
+        var host = MainWindow.FromXamlRoot(XamlRoot);
+        if (host is not null) await host.RenameAgentAsync(agentId);
+    }
+
     /// <summary>
     /// Replaces the agent's avatar with an image the user picks.
     ///

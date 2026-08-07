@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text.Json;
 using ConnectOnion.WinUIClient.Models;
 using Microsoft.Data.Sqlite;
@@ -77,7 +76,6 @@ public sealed partial class ConversationRepository
                 // rethrowing: the turn genuinely happened, and one unreadable payload must not
                 // cost the user the surrounding conversation. The visible title says so
                 // instead of silently rendering an empty card.
-                Debug.WriteLine($"[db] tool activity payload for message {m.Id} could not be restored: {ex}");
                 LogToolActivityPayloadUnreadable(_logger, m.Id, ex);
                 m.EventKind = "activity";
                 m.EventTitle = "Tool execution history could not be restored";
@@ -114,7 +112,6 @@ public sealed partial class ConversationRepository
         {
             // Same bargain as the tool-activity payload above: one unreadable blob must not cost
             // the user the conversation. The caller falls back to the event_detail single step.
-            Debug.WriteLine($"[db] thought steps payload could not be restored: {ex}");
             LogThoughtStepsPayloadUnreadable(_logger, ex);
             return null;
         }

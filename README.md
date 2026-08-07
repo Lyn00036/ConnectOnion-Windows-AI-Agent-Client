@@ -41,17 +41,16 @@ You can reveal it again later under **Settings → Identity → Show recovery ph
 
 ### 2. Add an agent
 
-Select **Add Agent** from the Home page or sidebar, then enter the details supplied by the agent
-operator:
+Select **Add Agent** from the Home page or sidebar, then paste the connection supplied by the
+agent operator:
 
 | Field | What to enter |
 |---|---|
-| Agent name | A name used only on this PC |
-| Agent address | The agent's `0x…` ConnectOnion address |
-| Direct URL | Optional HTTPS/HTTP address for a directly hosted agent |
-| Invite code | Optional code required by some agents during onboarding |
+| Agent connection | The agent's `0x…` ConnectOnion address or its HTTPS/HTTP URL |
 
-Use **Test connection** to check the endpoint, then select **Add agent**. Choose the agent from the
+The app obtains the agent name from the connection automatically; you can rename it locally after
+adding it. Use **Test connection** to check the endpoint, then select **Add agent**. If the agent
+requires onboarding, the app asks for the invite code during that flow. Choose the agent from the
 sidebar, start a conversation, and send a message.
 
 ## What you can do
@@ -108,8 +107,9 @@ save the recovery phrase for any identity you may want to restore.
 ### An agent does not connect
 
 - Open the agent details and run **Test connection** again.
-- Confirm the address, Direct URL, and invite code with the agent operator.
-- If a Direct URL is configured, verify that the host is reachable from your network.
+- Confirm the `0x…` address or HTTP(S) connection URL with the agent operator.
+- If onboarding asks for an invite code, confirm that code separately with the operator.
+- For an HTTP(S) connection, verify that the host is reachable from your network.
 - A grey or amber status can mean the agent is offline or temporarily unavailable.
 
 ### Windows notifications are unavailable

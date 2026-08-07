@@ -236,9 +236,10 @@ public sealed partial class ChatPage : Page, IFindHost, IShutdownDisarmable, IDi
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
-        // This callback runs while the old visual tree is still reachable. Dispose the Win2D
-        // controls here rather than waiting for GC/Unloaded, where their native swap chains can
-        // already have escaped deterministic teardown.
+        // This callback runs while the old visual tree is still reachable. Dispose the controls
+        // that own native resources here rather than waiting for GC/Unloaded, where the
+        // composer's audio graph and speech recognizer can already have escaped deterministic
+        // teardown.
         SaveScrollPosition();
         ReportViewing(active: false);
         Dispose();

@@ -10,16 +10,37 @@
     SecondaryButtonText="Request changes"
     CloseButtonText="Cancel"
     DefaultButton="Primary">
+    <ContentDialog.Resources>
+        <!-- LOAD-BEARING. ContentDialogMaxWidth defaults to 548, and ApplyResponsiveSize gives the
+             content grid an explicit width of up to MaxContentWidth (620). An explicit width wider
+             than the dialog does not widen the dialog — the content overflows it and is clipped on
+             the right, silently. That is what cut off the right edge of every section's markdown
+             ("(Ubuntu 22.04/24.04, Linux 6.8.0-124-gene…") and left the feedback box with its whole
+             right padding missing. Raising the dialog's own ceiling is what lets the width the code
+             asks for actually exist; keep this above MaxContentWidth + ContentDialogPadding. -->
+        <x:Double x:Key="ContentDialogMaxWidth">760</x:Double>
+    </ContentDialog.Resources>
     <Grid x:Name="ContentGrid"
           MinWidth="320"
-          MaxWidth="760"
-          MinHeight="240"
-          MaxHeight="720">
+          MinHeight="240">
         <ListView x:Uid="PlanSectionList" ItemsSource="{x:Bind Sections}"
                   SelectionMode="None"
                   IsItemClickEnabled="False"
+                  Padding="0"
                   HorizontalContentAlignment="Stretch"
                   AutomationProperties.Name="Plan sections">
+            <!-- HorizontalContentAlignment on the ListView does not reach its generated
+                 ListViewItems in WinUI; without this setter each container sizes to its content's
+                 desired width instead of the viewport, so one wide line (a table, a long inline
+                 code span) pushes the whole card past the right edge. Same pattern as
+                 ChatPage.xaml's transcript list. -->
+            <ListView.ItemContainerStyle>
+                <Style TargetType="ListViewItem">
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    <Setter Property="Padding" Value="0" />
+                    <Setter Property="MinHeight" Value="0" />
+                </Style>
+            </ListView.ItemContainerStyle>
             <ListView.ItemContainerTransitions>
                 <TransitionCollection />
             </ListView.ItemContainerTransitions>

@@ -121,6 +121,7 @@
   <data name="SidebarDeleteChat.Text" xml:space="preserve"><value>删除聊天</value></data>
   <data name="SidebarAgentNewChat.Text" xml:space="preserve"><value>新建聊天</value></data>
   <data name="SidebarAgentDetails.Text" xml:space="preserve"><value>Agent 详情</value></data>
+  <data name="SidebarRenameAgent.Text" xml:space="preserve"><value>重命名 Agent</value></data>
   <data name="SidebarDeleteAgent.Text" xml:space="preserve"><value>删除 Agent</value></data>
   <data name="SidebarAddAgent.Text" xml:space="preserve"><value>添加 Agent</value></data>
   <data name="SidebarSettings.Text" xml:space="preserve"><value>设置</value></data>
@@ -300,6 +301,10 @@
   <data name="SidebarRenameChat.Text" xml:space="preserve"><value>重命名</value></data>
   <data name="RenameConversationTitle" xml:space="preserve"><value>重命名对话</value></data>
   <data name="RenameConversationFieldName" xml:space="preserve"><value>对话名称</value></data>
+  <data name="RenameAgentTitle" xml:space="preserve"><value>重命名 Agent</value></data>
+  <data name="RenameAgentFieldName" xml:space="preserve"><value>Agent 名称</value></data>
+  <data name="AgentRenameToastTitle" xml:space="preserve"><value>Agent 名称</value></data>
+  <data name="RenameAgentFailed" xml:space="preserve"><value>无法重命名该 Agent。</value></data>
   <data name="IdentityGenerateWait" xml:space="preserve"><value>请等待正在运行的对话结束后再生成新身份。</value></data>
   <data name="IdentityGenerateTitle" xml:space="preserve"><value>生成新身份？</value></data>
   <data name="IdentityGenerateWarning" xml:space="preserve"><value>首次登录时，此操作会替换当前身份并创建新的 OpenOnion 账户。当前余额、Agent 授权和账户历史不会迁移到新地址。请先备份当前恢复短语。</value></data>
@@ -559,6 +564,8 @@
   <data name="ToolActivityResizeLog.AutomationProperties.Name" xml:space="preserve"><value>放大或还原日志区域</value></data>
   <data name="ToolActivityAllowSession.ToolTipService.ToolTip" xml:space="preserve"><value>仅在当前会话中允许此工具。</value></data>
   <data name="AgentSettingsCopyAddress.ToolTipService.ToolTip" xml:space="preserve"><value>复制 Agent 地址</value></data>
+  <data name="AgentSettingsRenameAgent.ToolTipService.ToolTip" xml:space="preserve"><value>重命名 Agent</value></data>
+  <data name="AgentSettingsRenameAgent.AutomationProperties.Name" xml:space="preserve"><value>重命名 Agent</value></data>
   <data name="AgentSettingsDeleteAgent.ToolTipService.ToolTip" xml:space="preserve"><value>删除 Agent</value></data>
   <data name="IdentityCopyAddress.ToolTipService.ToolTip" xml:space="preserve"><value>复制地址</value></data>
   <data name="IdentityCopyAddress.AutomationProperties.Name" xml:space="preserve"><value>复制身份地址</value></data>

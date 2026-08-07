@@ -90,6 +90,32 @@ public sealed class AgentRepository
         // capability metadata. Do not invalidate and rebuild it for an invisible cache write.
     }
 
+    /// <summary>Updates one agent's local display name without round-tripping the whole agent
+    /// list. A rename dialog can remain open while another surface changes selection, order, or
+    /// cached metadata, so saving its earlier <see cref="AgentsState"/> snapshot would be unsafe.</summary>
+    public async Task<bool> UpdateNameAsync(
+        string agentId,
+        string name,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(agentId) || !AgentConfig.IsValidName(name)) return false;
+
+        await using var connection = await AppDatabase.OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE agents
+            SET name = $name
+            WHERE id = $id AND name <> $name;
+            """;
+        AppDatabase.Add(command, "$id", agentId);
+        AppDatabase.Add(command, "$name", name.Trim());
+        if (await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) == 0)
+            return false;
+
+        StorageRevision.Bump();
+        return true;
+    }
+
     /// <summary>
     /// The agent list without <c>info_json</c>, for the surfaces that only need to name, draw and
     /// reach an agent.

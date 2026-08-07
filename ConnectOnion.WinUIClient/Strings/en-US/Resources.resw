@@ -121,6 +121,7 @@
   <data name="SidebarDeleteChat.Text" xml:space="preserve"><value>Delete chat</value></data>
   <data name="SidebarAgentNewChat.Text" xml:space="preserve"><value>New chat</value></data>
   <data name="SidebarAgentDetails.Text" xml:space="preserve"><value>Agent details</value></data>
+  <data name="SidebarRenameAgent.Text" xml:space="preserve"><value>Rename agent</value></data>
   <data name="SidebarDeleteAgent.Text" xml:space="preserve"><value>Delete agent</value></data>
   <data name="SidebarAddAgent.Text" xml:space="preserve"><value>Add Agent</value></data>
   <data name="SidebarSettings.Text" xml:space="preserve"><value>Settings</value></data>
@@ -300,6 +301,10 @@
   <data name="SidebarRenameChat.Text" xml:space="preserve"><value>Rename</value></data>
   <data name="RenameConversationTitle" xml:space="preserve"><value>Rename conversation</value></data>
   <data name="RenameConversationFieldName" xml:space="preserve"><value>Conversation name</value></data>
+  <data name="RenameAgentTitle" xml:space="preserve"><value>Rename agent</value></data>
+  <data name="RenameAgentFieldName" xml:space="preserve"><value>Agent name</value></data>
+  <data name="AgentRenameToastTitle" xml:space="preserve"><value>Agent name</value></data>
+  <data name="RenameAgentFailed" xml:space="preserve"><value>The agent could not be renamed.</value></data>
   <data name="IdentityGenerateWait" xml:space="preserve"><value>Wait for the running conversation to finish before generating a new identity.</value></data>
   <data name="IdentityGenerateTitle" xml:space="preserve"><value>Generate a new identity?</value></data>
   <data name="IdentityGenerateWarning" xml:space="preserve"><value>This replaces your current identity and creates a different OpenOnion account on first sign-in. Your current balance, agent authorizations, and account history do not move to the new address. Back up the current recovery phrase first.</value></data>
@@ -559,6 +564,8 @@
   <data name="ToolActivityResizeLog.AutomationProperties.Name" xml:space="preserve"><value>Enlarge or restore log area</value></data>
   <data name="ToolActivityAllowSession.ToolTipService.ToolTip" xml:space="preserve"><value>Allow this tool for the current session only.</value></data>
   <data name="AgentSettingsCopyAddress.ToolTipService.ToolTip" xml:space="preserve"><value>Copy agent address</value></data>
+  <data name="AgentSettingsRenameAgent.ToolTipService.ToolTip" xml:space="preserve"><value>Rename agent</value></data>
+  <data name="AgentSettingsRenameAgent.AutomationProperties.Name" xml:space="preserve"><value>Rename agent</value></data>
   <data name="AgentSettingsDeleteAgent.ToolTipService.ToolTip" xml:space="preserve"><value>Delete agent</value></data>
   <data name="IdentityCopyAddress.ToolTipService.ToolTip" xml:space="preserve"><value>Copy address</value></data>
   <data name="IdentityCopyAddress.AutomationProperties.Name" xml:space="preserve"><value>Copy identity address</value></data>
