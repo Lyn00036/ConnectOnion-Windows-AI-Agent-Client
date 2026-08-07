@@ -238,12 +238,12 @@ content's SHA-256 — the database holds the path, never the payload. Saved agen
 1. Open the app — the **HomePage** shows saved agents
 2. Click **"Add another agent"** to create a new connection
 3. Fill in:
-   - **Agent name** — local display name
-   - **Agent address** — `0x...` relay address for lookup
-   - **Direct URL** — (recommended) deployed host URL, e.g. `http://124.156.170.117/email`
-   - **Invite code** — optional, for agents requiring onboarding
-4. The client probes `{Direct URL}/health` and shows reachability status
-5. Select an agent → a new session auto-creates → chat begins
+   - **Agent connection** — a `0x...` relay address or deployed host URL, e.g. `http://124.156.170.117/email`
+   - **Custom icon** — optional, under **Customize appearance**
+4. The client resolves the connection, fetches agent information and shows reachability status
+5. The connection response supplies the agent name; the user can rename it locally after adding
+6. If onboarding is required, the client asks for the invite code during that flow
+7. Select an agent → a new session auto-creates → chat begins
 
 Agent hosts must expose:
 - `GET /health`

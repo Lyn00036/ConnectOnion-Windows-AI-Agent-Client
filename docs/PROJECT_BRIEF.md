@@ -38,9 +38,9 @@
 ### Known limitations (as of this commit)
 
 - WinUI coverage above the headless surfaces now includes 25 required FlaUI shell/chat tests on every push and pull request. Explorer drag-and-drop remains skipped because its source coordinates vary with desktop DPI/layout; OS notification delivery/click and direct tray-icon interaction remain manual (see `TEST_PLAN.md`).
-- The portable ZIP release pipeline has published `v1.0.0`. Clean-profile validation remains a
+- The portable ZIP release pipeline has published `v1.0.1`. Clean-profile validation remains a
   manual gate for each new release; signed MSIX publishing remains paused.
-- App XAML exposes 138 unique `AutomationId`s; `AutomationContractTests` guards the 51 critical real-window locators and rejects any named interactive control without an ID. Each new real-window flow still adds its app-owned locator to the critical subset.
+- App XAML exposes 145 unique `AutomationId`s; `AutomationContractTests` guards the 53 critical real-window locators and rejects any named interactive control without an ID. Each new real-window flow still adds its app-owned locator to the critical subset.
 - English and Simplified Chinese resource sets exist and are key-parity gated; manual zh-CN layout, text-scaling, and Narrator validation remain open.
 
 ---

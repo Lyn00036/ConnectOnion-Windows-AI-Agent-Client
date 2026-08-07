@@ -275,7 +275,7 @@ connectonion-desktop/
     ConnectOnion.Protocol.Tests/      xunit tests for ConnectOnion.Protocol
     ConnectOnion.WinUIClient.UnitTests/  Headless tests over Core, plus the ArchUnit layer gate
     ConnectOnion.IntegrationTests/    SQLite schema/repository tests against a real database file
-    ConnectOnion.WinUIClient.UITests/ FlaUI: 25 required shell/chat tests + 1 skipped diagnostic + 4 opt-in diagnostics/audits
+    ConnectOnion.WinUIClient.UITests/ FlaUI: 25 required shell/chat tests + 1 skipped diagnostic + 1 trimmed-runtime scenario + 3 opt-in diagnostics/audits
     ConnectOnion.TrimSmoke/           Trimmed serialization/persistence console harness
 
   .github/workflows/ci.yml            Windows/.NET CI workflow
@@ -510,7 +510,7 @@ The gate is a ratchet against `coverage-baseline.json`, currently **86.12%** for
 `ConnectOnion.Protocol` and **83.59%** for `ConnectOnion.WinUIClient.Core`, with a 0.25 percentage
 point tolerance. The separate absolute floors prevent a deliberate baseline update from drifting
 below the minimum; generated code and test assemblies are excluded.
-The real-window project discovers 31 tests. Its 25 required shell/chat tests run against a published
+The real-window project discovers 30 tests. Its 25 required shell/chat tests run against a published
 unpackaged executable on every push and pull request; the Explorer drag-and-drop diagnostic is
 explicitly skipped because desktop DPI/layout makes its source coordinates nondeterministic. The
 memory and large-history performance audits remain opt-in. See [TEST_PLAN.md](./TEST_PLAN.md)
@@ -574,16 +574,17 @@ deployed agent. Tag-driven portable releases are handled separately by
 Add agents from the Home page or sidebar. Click **"Add another agent"** or use the
 `+` button in the sidebar to create a new agent connection.
 
-Connection fields:
+The add form has one required connection field:
 
 ```text
-Agent name     Local display name
-Agent address  0x... address for relay lookup
-Direct URL     Optional deployed host URL
-Invite code    Optional onboarding code when the agent requires one
+Agent connection  0x... address for relay lookup, or a deployed HTTP(S) URL
 ```
 
-Prefer `Direct URL` for day-to-day development when the remote host is known.
+The connection response supplies the agent name. A user can rename it locally after adding the
+agent, and any invite code is requested later only when onboarding requires one. An optional custom
+icon can be selected under **Customize appearance**.
+
+Prefer an HTTP(S) URL for day-to-day development when the remote host is known.
 The client probes `{Direct URL}/health` during connection testing and connects
 to `{Direct URL}/ws` for chat. If a Direct URL contains a base path, such as
 `http://host/email`, that base path is preserved.
@@ -600,7 +601,7 @@ GET /info
 WS  /ws
 ```
 
-Known deployed development agents:
+Development fixtures used during the August 2026 validation:
 
 | Agent | Direct URL | Address |
 | --- | --- | --- |
@@ -612,6 +613,9 @@ Known deployed development agents:
 > **Access notes:** `remote-admin-agent` is not self-service — contact **Kai Pan** to get
 > added to the whitelist before connecting. All other agents above accept the invite
 > code `COMP9900` during onboarding.
+>
+> These are historical validation endpoints, not release dependencies or availability guarantees.
+> Confirm the current Share-screen connection with the agent operator before relying on one.
 
 ## Implemented
 

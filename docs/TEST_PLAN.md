@@ -1,6 +1,6 @@
 # ConnectOnion Desktop — Test Plan & Test Cases
 
-> Version 2.1 · Branch `main` · Architecture and test-infrastructure status refreshed 2026-08-05 against the current working tree
+> Version 2.1 · Branch `main` · Architecture and test-infrastructure status refreshed 2026-08-07 against the current working tree
 > Test counts are a dated generated snapshot, not a permanent constant. Protocol Conformance and real-window UI tests are reported separately from the headless xUnit total.
 
 ---
@@ -32,7 +32,7 @@
 
 ---
 
-> Verification refresh: 2026-08-05. The Core seam, CommunityToolkit.Mvvm, Generic Host dependency injection, ArchUnitNET boundaries, fake-agent fixtures, SQLite fixtures, the ratcheted coverage gate, and the FlaUI real-window project are implemented. The run runtime now sits inside the Core seam and has behavioural tests, and the shell smoke suite runs on every push and PR. See [AGENTS.md](../AGENTS.md), [PERFORMANCE.md](./PERFORMANCE.md), and [PERFORMANCE_AUDIT_2026-07-25_EN.md](./PERFORMANCE_AUDIT_2026-07-25_EN.md) for the authoritative architecture and measured evidence.
+> Verification refresh: 2026-08-07. The Core seam, CommunityToolkit.Mvvm, Generic Host dependency injection, ArchUnitNET boundaries, fake-agent fixtures, SQLite fixtures, the ratcheted coverage gate, and the FlaUI real-window project are implemented. The run runtime now sits inside the Core seam and has behavioural tests, and the shell smoke suite runs on every push and PR. See [AGENTS.md](../AGENTS.md), [PERFORMANCE.md](./PERFORMANCE.md), and [PERFORMANCE_AUDIT_2026-07-25_EN.md](./PERFORMANCE_AUDIT_2026-07-25_EN.md) for the authoritative architecture and measured evidence.
 
 ## 1. Document Goals
 
@@ -58,7 +58,7 @@ Production projects sit at the repo root, test projects under `tests/`. Everythi
 | `tests/ConnectOnion.Protocol.Tests` | ✅ | ✅ | xunit unit tests for the wire protocol |
 | `tests/ConnectOnion.WinUIClient.UnitTests` | ✅ | ✅ | Headless xunit tests over `Core`, plus the ArchUnitNET layer-boundary gate |
 | `tests/ConnectOnion.IntegrationTests` | ✅ | ✅ | xunit tests against a real SQLite file (schema, migrations, repositories, identity) |
-| `tests/ConnectOnion.WinUIClient.UITests` | ✅ | ✅ | xUnit + FlaUI (UIA3) real-window tests. The project discovers all 31; 25 required shell/chat tests run on every push/PR, one Explorer drag diagnostic is skipped, the trimmed-runtime scenario has its own gate, and four diagnostics/audits remain opt-in. |
+| `tests/ConnectOnion.WinUIClient.UITests` | ✅ | ✅ | xUnit + FlaUI (UIA3) real-window tests. The project discovers all 30; 25 required shell/chat tests run on every push/PR, one Explorer drag diagnostic is skipped, the trimmed-runtime scenario has its own gate, and three diagnostics/audits remain opt-in. |
 
 The test projects can't reference the app project (`net10.0-windows` + Windows App SDK won't load in a headless test host), so they take a `ProjectReference` on `ConnectOnion.WinUIClient.Core`, which holds every WinUI-free surface of the client. **Moving a production file into `Core` is how it comes under test.** (This replaces the older `<Compile Include>` link lists — those are gone.)
 
@@ -132,24 +132,24 @@ Write path: `ConversationRepository.UpsertMessagesAsync` is the **only** writer 
 
 ### 2.8 Existing tests and verified snapshot
 
-**Verified snapshot (2026-08-07, Release): 1,399 passing headless xUnit tests.** The three suites are deliberately counted separately so future changes can identify where drift occurred:
+**Verified snapshot (2026-08-07, Release): 1,404 passing headless xUnit tests.** The three suites are deliberately counted separately so future changes can identify where drift occurred:
 
 | Suite | Project | Passing tests | CI behavior |
 |---|---|---:|---|
 | Protocol xUnit | `tests/ConnectOnion.Protocol.Tests` | **224** | Runs on every push and pull request |
-| Core unit + architecture | `tests/ConnectOnion.WinUIClient.UnitTests` | **995** | Runs on every push and pull request; includes the ArchUnitNET boundary gate |
+| Core unit + architecture | `tests/ConnectOnion.WinUIClient.UnitTests` | **1,000** | Runs on every push and pull request; includes the ArchUnitNET boundary gate |
 | SQLite integration | `tests/ConnectOnion.IntegrationTests` | **180** | Runs on every push and pull request against temporary real SQLite files |
-| **Headless xUnit total** | — | **1,399** | Sum of the three rows above |
+| **Headless xUnit total** | — | **1,404** | Sum of the three rows above |
 
-`ConnectOnion.Protocol.Conformance` is a separate Release gate. It cross-checks address derivation, canonical JSON, signatures, and verification against the Node.js reference and is **not** included in the 1,399 xUnit total.
+`ConnectOnion.Protocol.Conformance` is a separate Release gate. It cross-checks address derivation, canonical JSON, signatures, and verification against the Node.js reference and is **not** included in the 1,404 xUnit total.
 
-> Since the 2026-08-05 snapshot, agent naming, markdown rendering/layout, diagnostic-output, and
-> portable-release contracts added 24 Core/architecture tests, while agent-repository rename
-> coverage added 2 SQLite integration tests. `tests/Directory.Build.props` keeps one output path
-> per configuration so a platform switch cannot silently report a stale assembly. Re-derive
-> counts with a plain `dotnet test` per project.
+> Agent naming, markdown rendering/layout, diagnostic-output, portable-release, and sidebar
+> selection/cache contracts account for the latest Core/architecture growth, while targeted agent
+> rename coverage accounts for the latest SQLite integration growth. `tests/Directory.Build.props`
+> keeps one output path per configuration so a platform switch cannot silently report a stale
+> assembly. Re-derive counts with a plain `dotnet test` per project.
 
-The real-window project currently discovers **31 xUnit/FlaUI tests**: 25 required shell/chat tests, one explicitly skipped Explorer drag diagnostic, one trimmed-runtime scenario, and four opt-in diagnostics/audit tests.
+The real-window project currently discovers **30 xUnit/FlaUI tests**: 25 required shell/chat tests, one explicitly skipped Explorer drag diagnostic, one trimmed-runtime scenario, and three opt-in diagnostics/audit tests.
 
 | File | Test | Execution requirement |
 |---|---|---|
@@ -193,7 +193,7 @@ dotnet test tests\ConnectOnion.WinUIClient.UITests\ConnectOnion.WinUIClient.UITe
 dotnet run --project ConnectOnion.Protocol.Conformance\ConnectOnion.Protocol.Conformance.csproj --configuration Release
 ```
 
-This is a **generated snapshot dated 2026-08-05**. When counts change, update the three suite values, the total, verification date, SDK/build mode, and the evidence commit in the same pull request. Count changes alone are not a quality signal.
+This is a **generated snapshot dated 2026-08-07**. When counts change, update the three suite values, the total, verification date, SDK/build mode, and the evidence commit in the same pull request. Count changes alone are not a quality signal.
 
 CI collects Cobertura data with `coverage.runsettings`, uploads the raw reports, and then runs
 `scripts/Test-Coverage.ps1`. The gate merges source lines by file and line number so Core code
@@ -214,7 +214,7 @@ it had been outside instrumentation entirely. Its still-uncovered socket half is
 the denominator instead of hidden by exclusion.
 
 The gate additionally reports the size of what it **cannot** measure — `ConnectOnion.WinUIClient`
-is ~22.4k lines of C# and ~9.1k of XAML that no Cobertura report can include, because a headless
+is ~23.7k lines of C# and ~9.5k of XAML that no Cobertura report can include, because a headless
 host cannot load the Windows App SDK and the FlaUI suite runs the app out-of-process. That number
 is source lines and is not comparable to the coverage table.
 
@@ -222,7 +222,7 @@ is source lines and is not comparable to the coverage table.
 
 The test infrastructure itself is implemented: the Core seam, ArchUnitNET boundary tests, fake-agent server, temporary SQLite fixtures, FlaUI project, startup/performance harnesses, and memory-leak gate all exist. The remaining work is expansion and hardening rather than creating those projects from scratch.
 
-- Real-window coverage now includes 25 required shell/chat tests plus one explicitly skipped Explorer drag diagnostic and four opt-in diagnostics/audits. It covers page navigation, Agent Detail template and first-send behavior, send, abnormal-drop reconnect/resume, retry, mid-turn conversation switching, restart restoration, markdown-aware in-chat find, agent rename persistence, cold activation routing, and agent-icon surfaces. Direct tray-icon interaction, OS notification delivery/click, keyboard-only submit, and deterministic drag/drop remain tracked by [#12](https://github.com/unsw-cse-comp99-3900/capstone-project-26t2-9900-t09c-almond/issues/12).
+- Real-window coverage now includes 25 required shell/chat tests plus one explicitly skipped Explorer drag diagnostic and three opt-in diagnostics/audits. It covers page navigation, Agent Detail template and first-send behavior, send, abnormal-drop reconnect/resume, retry, mid-turn conversation switching, restart restoration, markdown-aware in-chat find, agent rename persistence, cold activation routing, and agent-icon surfaces. Direct tray-icon interaction, OS notification delivery/click, keyboard-only submit, and deterministic drag/drop remain tracked by [#12](https://github.com/unsw-cse-comp99-3900/capstone-project-26t2-9900-t09c-almond/issues/12).
 - Connection lifecycle, cold-start races, reconnect, and shutdown integration coverage are tracked by [#13](https://github.com/unsw-cse-comp99-3900/capstone-project-26t2-9900-t09c-almond/issues/13).
 - Long-conversation baselines and budgets are tracked by [#14](https://github.com/unsw-cse-comp99-3900/capstone-project-26t2-9900-t09c-almond/issues/14).
 - Accessibility automation, keyboard reachability, names, focus, scaling, and contrast gates are tracked by [#16](https://github.com/unsw-cse-comp99-3900/capstone-project-26t2-9900-t09c-almond/issues/16).
@@ -293,7 +293,7 @@ MSIX is outside the currently shipped portable channel. If publishing it is rest
 | **B. Core unit + architecture** | xUnit + ArchUnitNET | Headless, no `Microsoft.UI` | View models, projections, policies, caches, services, and enforced layer boundaries |
 | **C. SQLite integration** | xUnit + real temporary SQLite | Headless Windows | Schema, migrations, repositories, persistence, identity, and lifecycle integration |
 | **D. Static UI contracts** | xUnit source/XAML checks | Headless | Automation IDs, shared typography, source contracts, resource and accessibility invariants |
-| **E. Real-window UI / E2E** | xUnit + FlaUI UIA3 | Published unpackaged process in a real desktop session | 25 required shell/chat tests, one skipped Explorer drag diagnostic, a trimmed-runtime check, plus four opt-in diagnostics/audits |
+| **E. Real-window UI / E2E** | xUnit + FlaUI UIA3 | Published unpackaged process in a real desktop session | 25 required shell/chat tests, one skipped Explorer drag diagnostic, a trimmed-runtime check, plus three opt-in diagnostics/audits |
 | **F. Protocol Conformance** | Console release gate + Node reference | Release | Cryptographic/canonical-JSON compatibility; reported separately |
 | **G. Manual** | Checklist and profiler evidence | Real hardware/OS state | Narrator, high contrast, speech/audio, packaged install, notifications, ETW/WPR, real-agent stress |
 
@@ -396,9 +396,9 @@ The Generic Host is the production composition root. Tests normally construct th
 
 | ID | Title | Layer | Pri | Steps | Expected | Auto | Framework | Code location |
 |---|---|---|---|---|---|---|---|---|
-| **UT-AGENT-001** | Reject submit when address and direct URL are both empty | A | **P0** | Submit empty form | Shows "Enter a 0x address or Direct URL."; nothing written | ⚠️ (logic lives in code-behind) | xUnit after extraction, or FlaUI for rendered behavior | `AddAgentForm.xaml.cs:96` |
-| **UT-AGENT-002** | Reject add before a successful connection test | A | **P0** | Fill address, skip Test | Shows "Test connection successfully before adding this agent." | ⚠️ | same | `AddAgentForm.xaml.cs:105` |
-| **UT-AGENT-003** | Blank name falls back to a default | A | P1 | Empty name, valid address | Name falls back to the address, else "Agent" | ✅ | xunit | `AddAgentForm.xaml.cs:176-177` |
+| **UT-AGENT-001** | Empty connection cannot be tested or added | A | **P0** | Open the form with an empty `Agent connection` input | `CanTest` and `CanAdd` remain false; the untouched empty field does not show an error | ✅ | xUnit | `AddAgentViewModelTests.EmptyInput_DoesNotShowValidationError` |
+| **UT-AGENT-002** | Reject add before a successful connection test | A | **P0** | Enter a valid `0x…` address or HTTP(S) URL, skip Test | Test is enabled but Add remains disabled until that exact input passes | ✅ | xUnit | `AddAgentViewModelTests.HttpUrl_IsValidAndEnablesTesting` / `AgentAddress_IsValidAndEnablesTesting` |
+| **UT-AGENT-003** | Missing reported name falls back locally | A | P1 | Successful connection response contains no agent name | Stored name becomes `Agent <first 8 connection characters>`; the add form has no name field | ⚠️ missing direct fallback assertion | xUnit | `AddAgentViewModel.AddAsync`, `CreateFallbackName` |
 | **DB-AGENT-001** | Agent create / read / delete | D | **P0** | CRUD | Round-trips correctly | ✅ | xunit | `AgentRepository` |
 | **DB-AGENT-002** | Deleting an agent cascades to its sessions | D | **P0** | Delete an agent with conversations | `sessions` / `messages` stay consistent; no orphan rows (FK enforced) | ✅ | xunit | `AgentRepository` + FK |
 | **UT-AGENT-004** | Delete an agent that is currently connected | C | **P0** | Agent has an active run | Run is cancelled, socket released, no dangling references | ✅ | xunit + fake | `AgentSessionManager.ReleaseConversationAsync`, `ConversationCache` invalidation |
@@ -605,7 +605,7 @@ The Generic Host is the production composition root. Tests normally construct th
 
 | ID | Title | Layer | Pri | Expected | Auto |
 |---|---|---|---|---|---|
-| **A11Y-ID-001** | **Named interactive controls carry an `AutomationId`** | B | **P0** | Per the table in §13.1 | ✅ automated | 138 IDs are unique; the 51 critical E2E locators and every named interactive XAML element are guarded by `AutomationContractTests` |
+| **A11Y-ID-001** | **Named interactive controls carry an `AutomationId`** | B | **P0** | Per the table in §13.1 | ✅ automated | 145 IDs are unique; the 53 critical E2E locators and every named interactive XAML element are guarded by `AutomationContractTests` |
 | **A11Y-NAME-001** | Icon-only buttons carry `AutomationProperties.Name` | B | **P0** | 48 exist; all icon buttons must be covered | ✅ static scan |
 | **A11Y-NAME-002** | Interactive card headers announce their state | B | P1 | `InteractiveAccessibilityName` includes eyebrow, title, outcome, expanded/collapsed | ⚠️ |
 | **A11Y-NAME-003** | Keycaps are not double-announced | B | P2 | Keycaps are `AccessibilityView=Raw`; the group name carries the full combo | ⚠️ | `KeyboardShortcutsDialog.xaml` |
@@ -660,7 +660,7 @@ The Generic Host is the production composition root. Tests normally construct th
 
 ### 13.1 `AutomationId` implementation status
 
-App XAML contains **138 unique IDs**. `Accessibility/AutomationContractTests.cs` verifies global uniqueness, requires an ID on every named interactive XAML element, and separately pins the **51 critical IDs** used by the current real-window suite. Repeated item-template controls use stable role IDs and are scoped through their identified list/container. Add a locator to the critical subset when a new E2E flow starts depending on it. Remaining E2E scenarios are tracked by Issue #12; broader accessibility semantics are tracked by Issue #16.
+App XAML contains **145 unique IDs**. `Accessibility/AutomationContractTests.cs` verifies global uniqueness, requires an ID on every named interactive XAML element, and separately pins the **53 critical IDs** used by the current real-window suite. Repeated item-template controls use stable role IDs and are scoped through their identified list/container. Add a locator to the critical subset when a new E2E flow starts depending on it. Remaining E2E scenarios are tracked by Issue #12; broader accessibility semantics are tracked by Issue #16.
 
 | AutomationId | Location | Status |
 |---|---|---|
@@ -827,9 +827,9 @@ All of the following must hold before release:
 
 In addition to §18:
 
-- [x] The app, Core, Protocol, Conformance project, and all four test projects are wired into the solution as documented.
+- [x] The app, portable launcher, Core, Protocol, Conformance project, and all four test projects are wired into the solution as documented.
 - [x] CI restores, audits dependencies, builds Release/x64, runs all three headless suites, collects coverage, compiles/discovers UI tests, publishes the unpackaged executable, and runs Protocol Conformance.
-- [x] Headless snapshot verified on 2026-08-07: 224 Protocol + 995 Core/architecture + 180 SQLite integration = 1,399.
+- [x] Headless snapshot verified on 2026-08-07: 224 Protocol + 1,000 Core/architecture + 180 SQLite integration = 1,404.
 - [x] Twenty-five required real-window shell/chat tests pass together against the CI-equivalent published executable and the portable root launcher; the Explorer drag diagnostic is skipped.
 - [x] Memory and UI performance audit tests have passed separately against a published executable.
 - [x] Coverage is ratcheted in CI against `coverage-baseline.json`: 86.12% Protocol and 83.59% Core merged line coverage, failing on a drop of more than 0.25pp.
@@ -858,7 +858,7 @@ connectonion-desktop/
 └── tests/
     ├── Directory.Build.props                  # pins one output path per configuration
     ├── ConnectOnion.Protocol.Tests/           # xUnit; 224 snapshot
-    ├── ConnectOnion.WinUIClient.UnitTests/    # xUnit + ArchUnitNET; 971 snapshot
+    ├── ConnectOnion.WinUIClient.UnitTests/    # xUnit + ArchUnitNET; 1000 snapshot
     │   ├── Accessibility/
     │   ├── Architecture/
     │   ├── Common/
@@ -866,15 +866,16 @@ connectonion-desktop/
     │   ├── Runtime/
     │   ├── Services/
     │   └── ViewModels/
-    ├── ConnectOnion.IntegrationTests/         # xUnit + temporary real SQLite; 178 snapshot
+    ├── ConnectOnion.IntegrationTests/         # xUnit + temporary real SQLite; 180 snapshot
     │   ├── Database/
     │   ├── Runtime/
     │   │   └── AgentSessionManagerTests.cs    # run-runtime persistence behaviour
     │   └── Services/
-    └── ConnectOnion.WinUIClient.UITests/      # xUnit + FlaUI; 31 discovered tests
-        ├── ShellSmokeTests.cs                 # 25 required + one skipped drag + two opt-in probes
+    └── ConnectOnion.WinUIClient.UITests/      # xUnit + FlaUI; 30 discovered tests
+        ├── ShellSmokeTests.cs                 # shared harness and shell smoke cases
         ├── ShellSmokeTests.Chat.cs            # send, reconnect, find, skipped Explorer drag diagnostic
         ├── ShellSmokeTests.ChatExtended.cs    # navigation, first send, retry, switch/restart, activation, icons
+        ├── ShellSmokeTests.MemoryProbe.cs      # opt-in many-turn conversation memory probe
         ├── UiFakeAgentServer.cs               # loopback HTTP/WebSocket test agent
         ├── MemoryLeakTests.cs                 # opt-in lifecycle/memory gate
         └── PerformanceAuditTests.cs           # opt-in large-history UI audit
@@ -935,4 +936,4 @@ These were never testing problems — they are real design gaps that writing the
 
 ---
 
-*End of document. Snapshot: 1,399 headless xUnit tests (224 Protocol + 995 Core/architecture + 180 SQLite integration), 31 discovered real-window UI tests (25 required shell/chat + 1 skipped Explorer drag diagnostic + 1 trimmed-runtime scenario + 4 opt-in diagnostics/audits), Protocol Conformance, and the manual-only live-protocol smoke reported separately. Verified 2026-08-07.*
+*End of document. Snapshot: 1,404 headless xUnit tests (224 Protocol + 1,000 Core/architecture + 180 SQLite integration), 30 discovered real-window UI tests (25 required shell/chat + 1 skipped Explorer drag diagnostic + 1 trimmed-runtime scenario + 3 opt-in diagnostics/audits), Protocol Conformance, and the manual-only live-protocol smoke reported separately. Verified 2026-08-07.*

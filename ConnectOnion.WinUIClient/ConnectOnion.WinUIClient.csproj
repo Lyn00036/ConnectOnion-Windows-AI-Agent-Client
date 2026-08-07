@@ -153,7 +153,7 @@
       source-generated and a trimmed console harness proves them across a real process restart; the
       trimmed *app* renders a turn written by that harness (tool-activity steps, arguments, results
       and the interactive cards); the required shell/chat suite passes 25/25 against the trimmed executable; and
-      the shipped portable ZIP audits clean at 71.29 MB against a 118.91 MB untrimmed baseline with
+      the latest staged portable ZIP audits clean at 73.22 MB against a 71.29 MB trimmed baseline with
       no key operation regressing more than +2.9%.
 
       What is NOT proved is the MSIX path, because this repo does not build one — the release
