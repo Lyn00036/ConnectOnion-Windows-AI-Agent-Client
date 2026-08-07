@@ -376,12 +376,13 @@ public sealed partial class ChatTurnProjection
             diff.SetDiffState(state);
         }
 
-        // Whatever outcome each file reached, the runtime is over and the transcript should
-        // return to its compact reading state. This also covers informational previews and diffs
-        // that had already moved to Failed/Disconnected before the terminal callback arrived.
-        // The disclosure remains available, so the user can explicitly reopen any result.
-        foreach (var diff in Messages.Where(message => message.IsDiffPreviewEvent))
-            diff.IsDiffExpanded = false;
+        // No blanket collapse here any more. SetDiffState already routes each card through
+        // SynchronizeDiffPresentation, which applies the right default for the state it landed in
+        // — and that default is now state-specific rather than uniform. Sweeping every diff shut at
+        // turn end contradicted it in exactly the case that matters: a Failed, PartiallyApplied,
+        // Disconnected or Unconfirmed diff is the one whose body and DiffProblemText the user needs
+        // to read, and it was being folded away alongside the clean ones. It also overrode any
+        // deliberate expansion the user had made while the turn ran.
     }
 
     private static bool IsWriteFileTool(string toolName)

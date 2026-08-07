@@ -17,10 +17,10 @@
                    Tapped="Backdrop_Tapped" />
 
         <Border x:Name="ModalContainer"
-                Width="560"
+                MaxWidth="560"
                 MaxHeight="620"
                 Margin="24,72,24,24"
-                HorizontalAlignment="Center"
+                HorizontalAlignment="Stretch"
                 VerticalAlignment="Top"
                 Background="{ThemeResource SettingsContentBrush}"
                 BorderBrush="{ThemeResource SettingsModalBorderBrush}"

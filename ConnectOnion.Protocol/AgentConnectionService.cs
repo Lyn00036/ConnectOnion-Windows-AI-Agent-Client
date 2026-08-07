@@ -742,28 +742,28 @@ public sealed class AgentConnectionService : IAsyncDisposable
                 return;
 
             case "CONNECTED":
-            {
-                var state = ConnectedState.Parse(msg);
-                LastConnectedState = state;
-                // Raised before the connect promise resolves so a subscriber that reconciles
-                // history has done so by the time the caller's SendInputAsync continues.
-                if (state.ServerNewer) SessionDiverged?.Invoke(state);
-                // The transient receive document is disposed when this handler returns, while
-                // RunContinuationsAsynchronously means EnsureConnectedAsync reads the message
-                // later. CONNECTED is tiny, so clone only this one cross-boundary frame.
-                _connectTcs?.TrySetResult(WireMessage.Parse(msg.Root.GetRawText()));
-                return;
-            }
+                {
+                    var state = ConnectedState.Parse(msg);
+                    LastConnectedState = state;
+                    // Raised before the connect promise resolves so a subscriber that reconciles
+                    // history has done so by the time the caller's SendInputAsync continues.
+                    if (state.ServerNewer) SessionDiverged?.Invoke(state);
+                    // The transient receive document is disposed when this handler returns, while
+                    // RunContinuationsAsynchronously means EnsureConnectedAsync reads the message
+                    // later. CONNECTED is tiny, so clone only this one cross-boundary frame.
+                    _connectTcs?.TrySetResult(WireMessage.Parse(msg.Root.GetRawText()));
+                    return;
+                }
 
             case "OUTPUT":
-            {
-                _awaitingHumanResponse = false;
-                var result = msg.GetString("result") ?? "";
-                if (msg.TryGet("duration_ms", out var d) && d.ValueKind == JsonValueKind.Number)
-                    LastExecutionDurationMs = d.GetDouble();
-                _inputTcs?.TrySetResult(result);
-                return;
-            }
+                {
+                    _awaitingHumanResponse = false;
+                    var result = msg.GetString("result") ?? "";
+                    if (msg.TryGet("duration_ms", out var d) && d.ValueKind == JsonValueKind.Number)
+                        LastExecutionDurationMs = d.GetDouble();
+                    _inputTcs?.TrySetResult(result);
+                    return;
+                }
 
             case "ERROR":
                 // Whatever the agent was parked on is over — don't leave the watchdog suspended.
@@ -793,17 +793,17 @@ public sealed class AgentConnectionService : IAsyncDisposable
             // leave the real ask_user blocked forever. See diff_writer.py `_send_preview`.
             case "diff_preview":
             case "session_sync":
-            {
-                var eventId = msg.GetString("id");
-                if (!string.IsNullOrEmpty(eventId))
-                    LastProcessedEventId = eventId;
-                StreamEvent?.Invoke(new AgentStreamEvent(
-                    msg.Type,
-                    DescribeEvent(msg),
-                    eventId,
-                    BufferedEventJson(msg)));
-                return;
-            }
+                {
+                    var eventId = msg.GetString("id");
+                    if (!string.IsNullOrEmpty(eventId))
+                        LastProcessedEventId = eventId;
+                    StreamEvent?.Invoke(new AgentStreamEvent(
+                        msg.Type,
+                        DescribeEvent(msg),
+                        eventId,
+                        BufferedEventJson(msg)));
+                    return;
+                }
 
             case "ONBOARD_REQUIRED":
                 // A human/onboarding step now owns the connection, so stop the
@@ -853,19 +853,19 @@ public sealed class AgentConnectionService : IAsyncDisposable
                 return;
 
             case "mode_changed":
-            {
-                // Forwarded as a stream event *as well as* a typed one: the stream copy is what
-                // the run buffers and the projection turns into a visible "Mode: plan" card, so a
-                // mode the agent chose for itself is never a silent change.
-                var mode = msg.GetString("mode");
-                if (string.IsNullOrEmpty(mode)) return;
-                var eventId = msg.GetString("id");
-                if (!string.IsNullOrEmpty(eventId)) LastProcessedEventId = eventId;
-                StreamEvent?.Invoke(new AgentStreamEvent(
-                    msg.Type, DescribeEvent(msg), eventId, msg.Root.GetRawText()));
-                ModeChanged?.Invoke(new ModeChangedEvent(mode, msg.GetString("triggered_by")));
-                return;
-            }
+                {
+                    // Forwarded as a stream event *as well as* a typed one: the stream copy is what
+                    // the run buffers and the projection turns into a visible "Mode: plan" card, so a
+                    // mode the agent chose for itself is never a silent change.
+                    var mode = msg.GetString("mode");
+                    if (string.IsNullOrEmpty(mode)) return;
+                    var eventId = msg.GetString("id");
+                    if (!string.IsNullOrEmpty(eventId)) LastProcessedEventId = eventId;
+                    StreamEvent?.Invoke(new AgentStreamEvent(
+                        msg.Type, DescribeEvent(msg), eventId, msg.Root.GetRawText()));
+                    ModeChanged?.Invoke(new ModeChangedEvent(mode, msg.GetString("triggered_by")));
+                    return;
+                }
 
             case "RUNTIME_INPUT_ACK":
                 RuntimeInputAcknowledged?.Invoke();

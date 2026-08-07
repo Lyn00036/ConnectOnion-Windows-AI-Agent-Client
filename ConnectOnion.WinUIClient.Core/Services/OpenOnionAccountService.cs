@@ -46,6 +46,48 @@ public sealed class OpenOnionAccountService : IDisposable
     public string? ApiKey { get; private set; }
     public OpenOnionProfile? Profile { get; private set; }
 
+    /// <summary>
+    /// Gets the bearer token derived from the current identity without loading the account
+    /// profile. Callers can force a new token after an authenticated API returns 401.
+    /// </summary>
+    public async Task<string> GetApiKeyAsync(
+        bool forceAuthentication = false,
+        CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            for (var attempt = 0; attempt < 3; attempt++)
+            {
+                var version = GetStateVersion();
+                try
+                {
+                    var identity = _identityProvider();
+                    var token = GetTokenFor(identity.Address);
+                    if (forceAuthentication || attempt > 0 || string.IsNullOrWhiteSpace(token))
+                    {
+                        token = await AuthenticateCoreAsync(identity, version, cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+
+                    return token;
+                }
+                catch (AccountStateChangedException) when (attempt < 2)
+                {
+                    // Retry against an identity restored while authentication was in flight.
+                }
+            }
+
+            throw new InvalidOperationException(
+                "The ConnectOnion identity changed repeatedly while OpenOnion was authenticating. Try again.");
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     /// <summary>Gets a fresh profile, authenticating first when this process has no token.</summary>
     public async Task<OpenOnionProfile> RefreshAsync(
         bool forceAuthentication = false,

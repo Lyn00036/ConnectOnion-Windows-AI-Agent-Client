@@ -17,10 +17,24 @@ public sealed partial class MainWindow
     private async void ChatShortcut_KeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (e.Handled || IsModalOverlayOpen) return;
-        if (MatchShortcut(e) != KeyboardShortcutCatalog.Ids.CycleChatMode) return;
+        var shortcut = MatchShortcut(e);
+        if (shortcut is null) return;
         if (ContentFrame.Content is not ChatPage page) return;
 
-        e.Handled = true;
-        await page.CycleApprovalModeAsync();
+        switch (shortcut)
+        {
+            case KeyboardShortcutCatalog.Ids.CycleChatMode:
+                e.Handled = true;
+                await page.CycleApprovalModeAsync();
+                break;
+
+            // Both modifiers, so it stays clear of typing for the same reason the mode shortcut
+            // does. It is a no-op when nothing is blocking, which is why it does not mark the
+            // event handled in that case — a dead key press should not swallow the chord.
+            case KeyboardShortcutCatalog.Ids.GoToPendingDecision:
+                if (!page.GoToPendingDecision()) return;
+                e.Handled = true;
+                break;
+        }
     }
 }

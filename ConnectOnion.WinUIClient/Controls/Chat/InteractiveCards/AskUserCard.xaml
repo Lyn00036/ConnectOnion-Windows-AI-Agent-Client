@@ -38,7 +38,7 @@
                            Subtitle="{x:Bind Message.AskUserCardSubtitle, Mode=OneWay, Converter={StaticResource InteractiveText}}"
                            StatusLabel="{x:Bind Message.InteractiveStateLabel, Mode=OneWay}"
                            ShowStatusBadge="{x:Bind Message.ShowAskUserStatusBadge, Mode=OneWay}"
-                           ShowBody="{x:Bind Message.ShowAskUserPendingContent, Mode=OneWay}"
+                           ShowBody="{x:Bind Message.ShowAskUserBody, Mode=OneWay}"
                            ShowFooter="{x:Bind Message.ShowAskUserPendingContent, Mode=OneWay}"
                            IsCompact="{x:Bind Message.IsAskUserCompact, Mode=OneWay}"
                            ChromeTone="{x:Bind Message.AskUserChromeTone, Mode=OneWay}"
@@ -142,6 +142,33 @@
                     <ItemsRepeater.ItemTemplate>
                         <DataTemplate x:DataType="models:AskUserOptionEntry">
                             <Grid Margin="0,0,0,6">
+                                <!-- Brand accent for the selected option.
+                                     Brushes.xaml deliberately leaves ToggleSwitch/CheckBox/
+                                     RadioButton on their native Fluent keys (see its header note
+                                     and the High Contrast reasoning), so a checked option rendered
+                                     in the *system* accent while the Submit button beside it used
+                                     the re-pointed AccentButtonStyle — two different accent colours
+                                     on one card.
+                                     Overridden here rather than globally so the exemption those
+                                     controls were granted stands everywhere else, and declared
+                                     inline rather than via StaticResource because WinUI requires a
+                                     FrameworkElement.Resources dictionary to be uniquely owned —
+                                     a shared instance throws the moment a second row reuses it.
+                                     A DataTemplate gives each realized row its own copy. -->
+                                <Grid.Resources>
+                                    <SolidColorBrush x:Key="RadioButtonOuterEllipseCheckedFill" Color="{ThemeResource BrandPrimaryColor}" />
+                                    <SolidColorBrush x:Key="RadioButtonOuterEllipseCheckedFillPointerOver" Color="{ThemeResource BrandPrimaryColor}" />
+                                    <SolidColorBrush x:Key="RadioButtonOuterEllipseCheckedFillPressed" Color="{ThemeResource BrandPrimaryColor}" />
+                                    <SolidColorBrush x:Key="RadioButtonOuterEllipseCheckedStroke" Color="{ThemeResource BrandPrimaryColor}" />
+                                    <SolidColorBrush x:Key="RadioButtonOuterEllipseCheckedStrokePointerOver" Color="{ThemeResource BrandPrimaryColor}" />
+                                    <SolidColorBrush x:Key="RadioButtonOuterEllipseCheckedStrokePressed" Color="{ThemeResource BrandPrimaryColor}" />
+                                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillChecked" Color="{ThemeResource BrandPrimaryColor}" />
+                                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver" Color="{ThemeResource BrandPrimaryColor}" />
+                                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPressed" Color="{ThemeResource BrandPrimaryColor}" />
+                                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeChecked" Color="{ThemeResource BrandPrimaryColor}" />
+                                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPointerOver" Color="{ThemeResource BrandPrimaryColor}" />
+                                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPressed" Color="{ThemeResource BrandPrimaryColor}" />
+                                </Grid.Resources>
                                 <RadioButton Tag="{x:Bind}"
                                              MinHeight="40"
                                              Padding="8,4"
@@ -190,6 +217,19 @@
                              IsEnabled="{x:Bind Message.IsInteractiveEditable, Mode=OneWay}"
                              KeyDown="AnswerTextBox_KeyDown" />
                 </StackPanel>
+
+                <!-- The way back to a diff this decision retired. Once the change is applied or
+                     rejected the diff withdraws from the transcript, and this settled card is then
+                     the only thing on screen that knows it existed. -->
+                <Button x:Name="RecallDiffButton"
+                        AutomationProperties.AutomationId="RecallDiffButton"
+                        x:Uid="AskUserViewChanges"
+                        Content="View changes"
+                        HorizontalAlignment="Left"
+                        Style="{StaticResource InteractiveCardTertiaryButtonStyle}"
+                        Visibility="{x:Bind Message.CanRecallDiff, Mode=OneWay, Converter={StaticResource BoolToVis}}"
+                        Click="RecallDiff_Click"
+                        AutomationProperties.Name="View the changes this decision applied" />
 
                 <StackPanel Spacing="3" Visibility="{x:Bind Message.ShowInteractiveError, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                     <TextBlock Text="{x:Bind Message.InteractiveStateDescription, Mode=OneWay}"

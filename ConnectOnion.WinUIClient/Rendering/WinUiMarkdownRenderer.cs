@@ -877,10 +877,10 @@ public sealed partial class WinUiMarkdownRenderer : RendererBase
         if (blocksUIContainers) _uiContainerBlockedDepth++;
         try
         {
-        for (Markdig.Syntax.Inlines.Inline? child = container.FirstChild; child is not null; child = child.NextSibling)
-        {
-            Write(child);
-        }
+            for (Markdig.Syntax.Inlines.Inline? child = container.FirstChild; child is not null; child = child.NextSibling)
+            {
+                Write(child);
+            }
         }
         finally
         {

@@ -16,6 +16,8 @@ public sealed partial class ShellSmokeTests
 {
     public const string ExecutableEnvironmentVariable = "CONNECTONION_UI_TEST_EXE";
     private const string DataRootEnvironmentVariable = "CONNECTONION_DATA_ROOT";
+    private const string DocumentationScreenshotDirectoryVariable =
+        "CONNECTONION_README_SCREENSHOT_DIR";
     private static readonly Lazy<string> DefaultDataRoot = new(CreateDefaultDataRoot);
     private static int _profileLaunchHandled;
     private static int _sqliteProviderConfigured;
@@ -54,6 +56,7 @@ public sealed partial class ShellSmokeTests
         Assert.Null(window.FindFirstDescendant(query => query.ByAutomationId(settingsContentId)));
 
         OpenSettings(window);
+        CaptureDocumentationScreenshot(window, "settings-general.png");
 
         var search = WaitForDescendant(window, "SettingsSearchBox");
         Assert.NotNull(search);
@@ -428,6 +431,7 @@ public sealed partial class ShellSmokeTests
         Assert.True(addFirstAgent.IsEnabled);
         Assert.NotNull(docs);
         Assert.True(docs.IsEnabled);
+        CaptureDocumentationScreenshot(window, "home.png");
 
         addFirstAgent.AsButton().Invoke();
         var input = WaitForDescendant(window, "AgentAddressInput");
@@ -613,6 +617,28 @@ public sealed partial class ShellSmokeTests
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Captures a stable, window-only documentation image when the opt-in output directory is
+    /// configured. Normal UI smoke runs do no screenshot work. Keeping capture on the same paths
+    /// CI exercises means README images come from production XAML and realistic state.
+    /// </summary>
+    internal static void CaptureDocumentationScreenshot(Window window, string fileName)
+    {
+        var directory = Environment.GetEnvironmentVariable(
+            DocumentationScreenshotDirectoryVariable);
+        if (string.IsNullOrWhiteSpace(directory)) return;
+
+        Directory.CreateDirectory(directory);
+        var handle = new IntPtr(window.Properties.NativeWindowHandle.ValueOrDefault);
+        Assert.NotEqual(IntPtr.Zero, handle);
+        Assert.True(MoveWindow(handle, 80, 50, 1400, 900, true));
+        window.SetForeground();
+        Thread.Sleep(600);
+
+        using var capture = Capture.Rectangle(window.BoundingRectangle, new CaptureSettings());
+        capture.ToFile(Path.Combine(directory, fileName));
     }
 
     /// <summary>

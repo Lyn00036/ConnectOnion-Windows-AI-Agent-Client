@@ -38,6 +38,12 @@
   <data name="ChatAnswer.PlaceholderText" xml:space="preserve"><value>Something else...</value></data>
   <data name="ChatRetry.Text" xml:space="preserve"><value>Retry</value></data>
   <data name="ComposerInput.PlaceholderText" xml:space="preserve"><value>Do anything</value></data>
+  <data name="ComposerContextUndo.Text" xml:space="preserve"><value>Undo</value></data>
+  <data name="ComposerContextRedo.Text" xml:space="preserve"><value>Redo</value></data>
+  <data name="ComposerContextCut.Text" xml:space="preserve"><value>Cut</value></data>
+  <data name="ComposerContextCopy.Text" xml:space="preserve"><value>Copy</value></data>
+  <data name="ComposerContextPaste.Text" xml:space="preserve"><value>Paste</value></data>
+  <data name="ComposerContextSelectAll.Text" xml:space="preserve"><value>Select all</value></data>
   <data name="MenuNewChat.Text" xml:space="preserve"><value>New Chat</value></data>
   <data name="MenuOpenFolder.Text" xml:space="preserve"><value>Open Data Folder</value></data>
   <data name="MenuClose.Text" xml:space="preserve"><value>Hide to Tray</value></data>
@@ -103,7 +109,7 @@
   <data name="SettingsConnectionProblems.Description" xml:space="preserve"><value>Notify when an agent stays disconnected for a while.</value></data>
   <data name="SettingsPlaySound.Description" xml:space="preserve"><value>Play a sound with Windows notifications.</value></data>
   <data name="SettingsMessagePreview.Description" xml:space="preserve"><value>Include a snippet of the reply. When off, notifications only say you have a new response.</value></data>
-  <data name="SettingsMicrophone.Description" xml:space="preserve"><value>Choose the microphone for voice input.</value></data>
+  <data name="SettingsMicrophone.Description" xml:space="preserve"><value>Choose the microphone for voice input. Recordings are sent to OpenOnion for cloud transcription after consent.</value></data>
   <data name="SidebarWorkspace.Text" xml:space="preserve"><value>Agent workspace</value></data>
   <data name="SidebarAgentsNavigation.ToolTipService.ToolTip" xml:space="preserve"><value>Agent library</value></data>
   <data name="SidebarAgentsNavigation.AutomationProperties.Name" xml:space="preserve"><value>Agent library</value></data>
@@ -280,6 +286,28 @@
   <data name="ChatHeader" xml:space="preserve"><value>Chat</value></data>
   <data name="ChatSelectAgent" xml:space="preserve"><value>Select an agent to start chatting</value></data>
   <data name="VoiceListening" xml:space="preserve"><value>Listening...</value></data>
+  <data name="VoiceListeningHint" xml:space="preserve"><value>Listening... Enter to finish, Esc to discard</value></data>
+  <data name="VoiceStarting" xml:space="preserve"><value>Starting microphone...</value></data>
+  <data name="VoiceTranscribing" xml:space="preserve"><value>Transcribing...</value></data>
+  <data name="VoiceRecordingStatus" xml:space="preserve"><value>Recording {0}</value></data>
+  <data name="VoiceRecordingInstructions" xml:space="preserve"><value>Recording. Press Enter to finish or Escape to discard.</value></data>
+  <data name="VoiceRecordingTimeFormat" xml:space="preserve"><value>{0} / {1}</value></data>
+  <data name="VoiceStopRecording" xml:space="preserve"><value>Stop recording</value></data>
+  <data name="VoiceFinishRecording" xml:space="preserve"><value>Finish recording and transcribe (Enter)</value></data>
+  <data name="VoiceCancelInput" xml:space="preserve"><value>Cancel and discard voice input (Esc)</value></data>
+  <data name="VoiceCancelTranscription" xml:space="preserve"><value>Cancel transcription (Esc)</value></data>
+  <data name="VoiceMicrophoneBlocked" xml:space="preserve"><value>Microphone access is blocked. Allow it in Windows Settings &gt; Privacy &amp; security &gt; Microphone, then try again.</value></data>
+  <data name="VoiceMicrophoneMissing" xml:space="preserve"><value>No microphone was found. Connect one, choose it in Settings, or type your message instead.</value></data>
+  <data name="VoiceMicrophoneUnavailable" xml:space="preserve"><value>The microphone is unavailable. Close other apps using it, check Settings, and try again.</value></data>
+  <data name="VoiceAuthenticationFailure" xml:space="preserve"><value>Voice transcription could not authenticate this identity. Try again or check Settings &gt; Identity.</value></data>
+  <data name="VoiceServiceUnavailable" xml:space="preserve"><value>Voice transcription is unavailable right now. Check your connection and try again.</value></data>
+  <data name="VoiceNoSpeech" xml:space="preserve"><value>No speech was detected. Try again or type your message.</value></data>
+  <data name="VoiceCloudConsentTitle" xml:space="preserve"><value>Send audio for cloud transcription?</value></data>
+  <data name="VoiceCloudConsentBody" xml:space="preserve"><value>Your recording will be sent securely to OpenOnion to create a transcript. ConnectOnion Desktop discards the audio after transcription and does not add it to chat history. OpenOnion processes it under its privacy policy.</value></data>
+  <data name="VoiceCloudConsentContinue" xml:space="preserve"><value>Continue</value></data>
+  <data name="VoiceConsentSaveFailed" xml:space="preserve"><value>Voice recording could not start because your consent preference could not be saved. Try again.</value></data>
+  <data name="VoiceTranscriptionTimeout" xml:space="preserve"><value>Voice transcription timed out. Check your connection and try again.</value></data>
+  <data name="VoiceTranscriptionNetworkUnavailable" xml:space="preserve"><value>Voice transcription could not be reached. Check your connection and try again.</value></data>
   <data name="ComposerDoAnything" xml:space="preserve"><value>Do anything</value></data>
   <data name="VoiceInputTitle" xml:space="preserve"><value>Voice input</value></data>
   <data name="CommonOk" xml:space="preserve"><value>OK</value></data>
@@ -290,6 +318,7 @@
   <data name="ComposerAttachmentPickFailure" xml:space="preserve"><value>Could not add that attachment. Please try again.</value></data>
   <data name="ComposerAttachmentDropFailure" xml:space="preserve"><value>Could not read the dropped files.</value></data>
   <data name="CommonCancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="CommonClose" xml:space="preserve"><value>Close</value></data>
   <data name="CommonDelete" xml:space="preserve"><value>Delete</value></data>
   <data name="SettingsWindow.Text" xml:space="preserve"><value>Window</value></data>
   <data name="SettingsCloseBehavior.Header" xml:space="preserve"><value>When you close the window</value></data>
@@ -352,6 +381,19 @@
   <data name="AskUserAdditionalDetails.Text" xml:space="preserve"><value>Additional details</value></data>
   <data name="AskUserOptionalAnswer.PlaceholderText" xml:space="preserve"><value>Add an optional answer or context…</value></data>
   <data name="AskUserSkip.Content" xml:space="preserve"><value>Skip</value></data>
+  <data name="AskUserViewChanges.Content" xml:space="preserve"><value>View changes</value></data>
+  <data name="ToolStopConfirmTitle.Text" xml:space="preserve"><value>Stop the entire task?</value></data>
+  <data name="ToolStopConfirmDetail.Text" xml:space="preserve"><value>The agent stops here, not just this command. Work already done is kept, but nothing further runs.</value></data>
+  <data name="ToolStopConfirmAction.Content" xml:space="preserve"><value>Stop task</value></data>
+  <data name="ToolApprovalRequiredBadge" xml:space="preserve"><value>Approval required</value></data>
+  <data name="ApprovalRiskReadOnly" xml:space="preserve"><value>This command only reads. Nothing is changed or deleted.</value></data>
+  <data name="ToolActivityOneStep" xml:space="preserve"><value>1 step</value></data>
+  <data name="ToolActivityStepCount" xml:space="preserve"><value>{0} steps</value></data>
+  <data name="ApprovalRiskUnknown" xml:space="preserve"><value>This command was not recognised. Read it before allowing it to run.</value></data>
+  <data name="ChatJumpToDecision.Content" xml:space="preserve"><value>Go to it</value></data>
+  <data name="ChatPendingApproval" xml:space="preserve"><value>The agent is waiting for your approval.</value></data>
+  <data name="ChatPendingPlanReview" xml:space="preserve"><value>The agent is waiting for you to review its plan.</value></data>
+  <data name="ChatPendingQuestion" xml:space="preserve"><value>The agent is waiting for your answer.</value></data>
   <data name="PlanReviewCard.Title" xml:space="preserve"><value>Review execution plan</value></data>
   <data name="PlanReviewMode.Text" xml:space="preserve"><value>Plan mode</value></data>
   <data name="PlanReviewHint.Text" xml:space="preserve"><value>Review scope, ordering, and risks before approving.</value></data>
@@ -416,6 +458,7 @@
   <data name="KeyboardOpenSettings" xml:space="preserve"><value>Open settings</value></data>
   <data name="KeyboardCloseWindow" xml:space="preserve"><value>Close window</value></data>
   <data name="KeyboardCycleChatMode" xml:space="preserve"><value>Cycle approval mode</value></data>
+  <data name="KeyboardGoToPendingDecision" xml:space="preserve"><value>Go to pending decision</value></data>
   <data name="KeyboardExit" xml:space="preserve"><value>Exit application</value></data>
   <data name="KeyboardUndo" xml:space="preserve"><value>Undo</value></data>
   <data name="KeyboardRedo" xml:space="preserve"><value>Redo</value></data>
@@ -550,10 +593,12 @@
   <data name="ComposerRemoveAttachment.AutomationProperties.Name" xml:space="preserve"><value>Remove attachment</value></data>
   <data name="ComposerAddAttachment.ToolTipService.ToolTip" xml:space="preserve"><value>Add attachment</value></data>
   <data name="ComposerAddAttachment.AutomationProperties.Name" xml:space="preserve"><value>Add attachment</value></data>
-  <data name="ComposerVoiceInput.ToolTipService.ToolTip" xml:space="preserve"><value>Voice input</value></data>
-  <data name="ComposerVoiceInput.AutomationProperties.Name" xml:space="preserve"><value>Voice input</value></data>
-  <data name="ComposerStopVoiceInput.ToolTipService.ToolTip" xml:space="preserve"><value>Stop voice input</value></data>
-  <data name="ComposerStopVoiceInput.AutomationProperties.Name" xml:space="preserve"><value>Stop voice input</value></data>
+  <data name="ComposerVoiceInput.ToolTipService.ToolTip" xml:space="preserve"><value>Start voice recording</value></data>
+  <data name="ComposerVoiceInput.AutomationProperties.Name" xml:space="preserve"><value>Start voice recording</value></data>
+  <data name="ComposerCancelVoiceInput.ToolTipService.ToolTip" xml:space="preserve"><value>Cancel and discard voice input</value></data>
+  <data name="ComposerCancelVoiceInput.AutomationProperties.Name" xml:space="preserve"><value>Cancel and discard voice input</value></data>
+  <data name="ComposerFinishVoiceInput.ToolTipService.ToolTip" xml:space="preserve"><value>Finish recording and transcribe</value></data>
+  <data name="ComposerFinishVoiceInput.AutomationProperties.Name" xml:space="preserve"><value>Finish recording and transcribe</value></data>
   <data name="ComposerSendMessage.ToolTipService.ToolTip" xml:space="preserve"><value>Send message</value></data>
   <data name="ComposerSendMessage.AutomationProperties.Name" xml:space="preserve"><value>Send message</value></data>
   <data name="ToolActivityCopyInput.ToolTipService.ToolTip" xml:space="preserve"><value>Copy the full command, target, path, or query</value></data>
@@ -624,6 +669,7 @@
   <data name="AgentIconInvalidImage" xml:space="preserve"><value>That file is not an image this app can read.</value></data>
   <data name="AgentIconProcessFailed" xml:space="preserve"><value>The selected image could not be processed.</value></data>
   <data name="AgentIconSaveFailed" xml:space="preserve"><value>The agent icon could not be saved.</value></data>
+  <data name="AgentIconSaveAfterAddFailed" xml:space="preserve"><value>The agent was added, but its icon could not be saved.</value></data>
   <data name="AgentIconDeleteFailed" xml:space="preserve"><value>The agent icon could not be removed.</value></data>
   <data name="AddAgentIntro.Text" xml:space="preserve"><value>Paste the connection details from the agent's Share screen.</value></data>
   <data name="AddAgentInput.PlaceholderText" xml:space="preserve"><value>0x… or https://example.com/agent</value></data>
@@ -652,6 +698,9 @@
   <data name="AgentShareCopyAddress.AutomationProperties.Name" xml:space="preserve"><value>Copy agent address</value></data>
   <data name="AgentShareCopyLink.AutomationProperties.Name" xml:space="preserve"><value>Copy agent web chat link</value></data>
   <data name="AskUserSkip.AutomationProperties.Name" xml:space="preserve"><value>Skip this question</value></data>
+  <data name="AskUserViewChanges.AutomationProperties.Name" xml:space="preserve"><value>View the changes this decision applied</value></data>
+  <data name="ToolStopConfirmAction.AutomationProperties.Name" xml:space="preserve"><value>Confirm stopping the entire task</value></data>
+  <data name="ChatJumpToDecision.AutomationProperties.Name" xml:space="preserve"><value>Scroll to the decision the agent is waiting on</value></data>
   <data name="PlanReviewSections.AutomationProperties.Name" xml:space="preserve"><value>Open full plan and review each section</value></data>
   <data name="PlanReviewCopy.AutomationProperties.Name" xml:space="preserve"><value>Copy execution plan</value></data>
   <data name="ToolApprovalRequired.AutomationProperties.Name" xml:space="preserve"><value>Approval required</value></data>

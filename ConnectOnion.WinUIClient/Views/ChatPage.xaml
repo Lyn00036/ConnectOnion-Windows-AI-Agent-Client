@@ -754,15 +754,15 @@
                                            HorizontalAlignment="Stretch" />
             </DataTemplate>
 
-            <!-- Ask-user card. Not a bordered box on the transcript: the options are the only
-                 things that carry a frame, so the card reads as a list of choices rather than a
-                 dialog dropped into the conversation. Header (chevron | icon | title | status
-                 badge) over the question, then — while it waits — the option cards, a labelled
-                 divider, the custom answer box and a quiet way out; once answered, a single
-                 "Your answer" line. The status appears once as the badge word, not also as a dot.
+            <!-- Ask-user card. Header (chevron | icon | title | status badge) over the question,
+                 then — while it waits — the options, the custom answer box and a quiet way out;
+                 once answered it folds to the header and can be reopened to see what was asked.
+                 The status appears once as the badge word, not also as a dot.
 
-                 The option rows are hand-built Buttons, not RadioButton/CheckBox — see the
-                 comment on the ItemsControl below for why. -->
+                 The whole card lives in AskUserCard.xaml over the shared InteractiveCard chrome;
+                 this template only hands it the message and routes its two events. Option rows are
+                 stock RadioButton/CheckBox with the brand accent overridden inline — see the note
+                 on their DataTemplate for why that override is local. -->
 
 
 
@@ -770,6 +770,9 @@
                 <controls:AskUserCard Message="{x:Bind}"
                                       SubmitRequested="AskUserCard_SubmitRequested"
                                       SkipRequested="AskUserCard_SkipRequested" />
+            </DataTemplate>
+            <DataTemplate x:Key="ChatApprovalTemplate" x:DataType="models:ChatMessage">
+                <controls:ApprovalCard Message="{x:Bind}" />
             </DataTemplate>
             <DataTemplate x:Key="ChatPlanReviewTemplate" x:DataType="models:ChatMessage">
                 <controls:PlanReviewCard Message="{x:Bind}"
@@ -803,6 +806,7 @@
                                                 Activity="{StaticResource ChatActivityTemplate}"
                                                 ToolActivity="{StaticResource ChatToolActivityTemplate}"
                                                 AskUser="{StaticResource ChatAskUserTemplate}"
+                                                Approval="{StaticResource ChatApprovalTemplate}"
                                                 PlanReview="{StaticResource ChatPlanReviewTemplate}"
                                                 DiffPreview="{StaticResource ChatDiffPreviewTemplate}"
                                                 Empty="{StaticResource ChatEmptyTemplate}" />
@@ -968,11 +972,61 @@
                     </animations:Implicit.ShowAnimations>
                 </controls:OfflineNoticeBar>
 
+                <!-- The pending-decision bar. It sits in the composer stack rather than floating
+                     over the transcript because the point is that the composer is *not* the way to
+                     answer right now, and a bar directly above it says so in the place the user is
+                     about to type. Unlike the retry/offline bars this one is not mutually exclusive
+                     with them: an agent can be blocked on a decision while the socket is also in
+                     trouble, and suppressing either message would hide a real state.
+
+                     It carries the jump action because the card it points at can be anywhere — an
+                     approval renders inside the turn's one tool-activity card, anchored where the
+                     turn's first tool call landed, which by the eighth tool is well above the fold. -->
+                <Border x:Name="PendingDecisionBar"
+                        HorizontalAlignment="Center"
+                        Margin="24,0"
+                        MaxWidth="620"
+                        CornerRadius="10"
+                        Padding="14,8"
+                        Background="{ThemeResource SurfaceElevatedBrush}"
+                        BorderBrush="{ThemeResource AttentionBrush}"
+                        BorderThickness="1"
+                        AutomationProperties.AutomationId="PendingDecisionBar"
+                        AutomationProperties.LiveSetting="Assertive"
+                        AutomationProperties.Name="{x:Bind Vm.PendingInteractiveText, Mode=OneWay}"
+                        Visibility="{x:Bind Vm.IsAwaitingUserDecision, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                    <animations:Implicit.ShowAnimations>
+                        <animations:OpacityAnimation From="0" To="1" Duration="0:0:0.2" />
+                        <animations:TranslationAnimation From="0,8,0" To="0,0,0" Duration="0:0:0.2" />
+                    </animations:Implicit.ShowAnimations>
+                    <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                        <ic:FluentIcon Icon="Info"
+                                       IconVariant="Regular"
+                                       IconSize="Size16"
+                                       VerticalAlignment="Center"
+                                       Foreground="{ThemeResource AttentionBrush}"
+                                       AutomationProperties.AccessibilityView="Raw" />
+                        <TextBlock Text="{x:Bind Vm.PendingInteractiveText, Mode=OneWay}"
+                                   FontSize="{StaticResource ProductCaptionFontSize}"
+                                   TextWrapping="Wrap"
+                                   VerticalAlignment="Center"
+                                   Foreground="{ThemeResource TextPrimaryBrush}" />
+                        <Button x:Name="JumpToPendingButton"
+                                AutomationProperties.AutomationId="JumpToPendingButton"
+                                x:Uid="ChatJumpToDecision"
+                                Content="Go to it"
+                                VerticalAlignment="Center"
+                                Click="JumpToPending_Click"
+                                AutomationProperties.Name="Scroll to the decision the agent is waiting on" />
+                    </StackPanel>
+                </Border>
+
                 <!-- Transport progress lives in the transcript; the composer keeps the live
                      usage readout but does not duplicate Connecting/Working beneath it. -->
                 <controls:ChatComposer x:Name="Composer"
                                        AutomationProperties.AutomationId="ComposerSurface"
                                        CanSubmit="{x:Bind Vm.CanSend, Mode=OneWay}"
+                                       IsSubmitBlocked="{x:Bind Vm.IsAwaitingUserDecision, Mode=OneWay}"
                                        EnterToSubmit="{x:Bind Vm.EnterToSend, Mode=OneWay}"
                                        IsBusy="{x:Bind Vm.IsComposerBusy, Mode=OneWay}"
                                        CanStop="{x:Bind Vm.CanStop, Mode=OneWay}"

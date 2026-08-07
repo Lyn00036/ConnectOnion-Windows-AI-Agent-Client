@@ -27,31 +27,6 @@
     <Grid MaxWidth="{x:Bind Activity.PresentationMaxWidth, Mode=OneWay}"
           HorizontalAlignment="Stretch"
           Visibility="{x:Bind Activity.IsVisible, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-        <VisualStateManager.VisualStateGroups>
-            <VisualStateGroup x:Name="WidthStates">
-                <VisualState x:Name="Narrow">
-                    <VisualState.StateTriggers>
-                        <AdaptiveTrigger MinWindowWidth="0" />
-                    </VisualState.StateTriggers>
-                    <VisualState.Setters>
-                        <Setter Target="ApprovalAuxActions.Orientation" Value="Vertical" />
-                        <Setter Target="ApprovalAuxActions.HorizontalAlignment" Value="Stretch" />
-                        <Setter Target="ApprovalDecisionActions.Orientation" Value="Vertical" />
-                        <Setter Target="ApprovalDecisionActions.HorizontalAlignment" Value="Stretch" />
-                        <Setter Target="ExplainWhyButton.HorizontalAlignment" Value="Stretch" />
-                        <Setter Target="StopTaskButton.HorizontalAlignment" Value="Stretch" />
-                        <Setter Target="DeclineButton.HorizontalAlignment" Value="Stretch" />
-                        <Setter Target="AllowSessionButton.HorizontalAlignment" Value="Stretch" />
-                        <Setter Target="AllowOnceButton.HorizontalAlignment" Value="Stretch" />
-                    </VisualState.Setters>
-                </VisualState>
-                <VisualState x:Name="Wide">
-                    <VisualState.StateTriggers>
-                        <AdaptiveTrigger MinWindowWidth="1000" />
-                    </VisualState.StateTriggers>
-                </VisualState>
-            </VisualStateGroup>
-        </VisualStateManager.VisualStateGroups>
         <Grid.ChildrenTransitions>
             <TransitionCollection>
                 <EntranceThemeTransition />
@@ -147,6 +122,17 @@
                                TextTrimming="CharacterEllipsis"
                                VerticalAlignment="Center"
                                Visibility="{x:Bind Activity.HasApproval, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
+
+                    <!-- Same slot as Summary, which is blank while an approval is embedded. The
+                         decision folds the timeline (see ToolActivityProjector.ApplyAutoExpansion),
+                         so without this the card would give no sign that the turn had already run
+                         anything before it stopped. -->
+                    <TextBlock Grid.Column="4"
+                               Text="{x:Bind Activity.CollapsedStepCountHint, Mode=OneWay, Converter={StaticResource ToolActivityText}}"
+                               FontSize="{x:Bind FontSize, Mode=OneWay}"
+                               Foreground="{ThemeResource TextTertiaryBrush}"
+                               VerticalAlignment="Center"
+                               Visibility="{x:Bind Activity.ShowCollapsedStepCount, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
 
                     <ic:FluentIcon x:Name="HeaderChevron"
                                    Grid.Column="5"
@@ -589,229 +575,15 @@
                 </StackPanel>
             </Grid>
 
-            <!-- Approval is the second level inside the tool record: compact decision content,
-                 never another full card. The backing approval message is rendered nowhere else.
+            <!-- No approval region here any more. approval_needed is its own transcript row
+                 (Controls/Chat/InteractiveCards/ApprovalCard.xaml) because this card is a
+                 turn-level aggregate anchored at the turn's FIRST tool call, while an approval
+                 arrives much later — so a turn that had also appended a plan, a question or a
+                 diff drew its live decision back up above all of them, mid-conversation.
 
-                 x:Load rather than Visibility: this is a ~200-line subtree — the request body, the
-                 command block and its toggle, the batch line, the details disclosure, the decision
-                 buttons and all four resolved-result states — and Approval is null on the large
-                 majority of tool cards, which are ordinary tool calls nobody was asked to approve.
-                 Collapsed still means built, so every one of those cards was paying for it.
-
-                 The step ItemTemplate above now gets the same treatment on its own collapsed
-                 detail block (StepDetail), for the same reason. -->
-            <Grid x:Name="ApprovalSection"
-                  x:Load="{x:Bind Activity.HasApproval, Mode=OneWay}"
-                  KeyDown="ApprovalRoot_KeyDown">
-                <Border Width="3"
-                        HorizontalAlignment="Left"
-                        Margin="0,8,0,0"
-                        CornerRadius="1.5"
-                        Background="{ThemeResource AttentionBrush}"
-                        Visibility="{x:Bind Activity.Approval.IsApprovalWaiting, Mode=OneWay, Converter={StaticResource BoolToVis}}"
-                        AutomationProperties.AccessibilityView="Raw" />
-                <StackPanel Margin="{x:Bind Activity.Approval.IsApprovalWaiting, Mode=OneWay, Converter={StaticResource BoolToThickness}, ConverterParameter='12,0,0,0|0'}">
-                    <Border Height="1" Margin="0,8,0,12" Background="{ThemeResource BorderSubtleBrush}" />
-
-                    <StackPanel Spacing="12"
-                                Visibility="{x:Bind Activity.Approval.ShowApprovalRequestBody, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                        <StackPanel Spacing="3">
-                            <TextBlock Text="{x:Bind Activity.Approval.ApprovalPromptTitle, Mode=OneWay}"
-                                       FontSize="{x:Bind FontSize, Mode=OneWay}" FontWeight="SemiBold"
-                                       Foreground="{ThemeResource TextPrimaryBrush}" TextWrapping="Wrap" />
-                            <TextBlock Text="{x:Bind Activity.Approval.ApprovalPromptSubtitle, Mode=OneWay}"
-                                       FontSize="{x:Bind FontSize, Mode=OneWay}" Foreground="{ThemeResource TextSecondaryBrush}"
-                                       TextWrapping="Wrap" />
-                        </StackPanel>
-
-                        <Border Padding="10,8" CornerRadius="7"
-                                Background="{ThemeResource CodeBackgroundBrush}"
-                                BorderBrush="{ThemeResource BorderSubtleBrush}" BorderThickness="1"
-                                Visibility="{x:Bind Activity.Approval.HasApprovalCommand, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                            <StackPanel Spacing="6">
-                                <TextBlock Text="{x:Bind Activity.Approval.ApprovalCommandText, Mode=OneWay}"
-                                           FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="{StaticResource ProductCodeFontSize}" TextWrapping="Wrap"
-                                           TextTrimming="Clip"
-                                           MaxLines="{x:Bind Activity.Approval.ApprovalCommandMaxLines, Mode=OneWay}"
-                                           IsTextSelectionEnabled="True"
-                                           AutomationProperties.Name="{x:Bind Activity.Approval.ApprovalCommandText, Mode=OneWay}" />
-                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="4">
-                                    <Button x:Uid="ToolCopyCommand" Content="Copy command"
-                                            Style="{StaticResource LogToolbarButtonStyle}"
-                                            MinHeight="32"
-                                            IsEnabled="{x:Bind Activity.Approval.AreApprovalRequestControlsEnabled, Mode=OneWay}"
-                                            Tag="{x:Bind Activity.Approval}"
-                                            Click="ApprovalCopyCommand_Click"
-                                            AutomationProperties.Name="Copy command"
-                                            ToolTipService.ToolTip="Copy the complete command" />
-                                    <Button Content="{x:Bind Activity.Approval.ApprovalCommandToggleLabel, Mode=OneWay}"
-                                            Style="{StaticResource LogToolbarButtonStyle}"
-                                            MinHeight="32"
-                                            IsEnabled="{x:Bind Activity.Approval.AreApprovalRequestControlsEnabled, Mode=OneWay}"
-                                            Command="{x:Bind Activity.Approval.ToggleApprovalCommandCommand, Mode=OneWay}"
-                                            Visibility="{x:Bind Activity.Approval.ShowApprovalCommandToggle, Mode=OneWay, Converter={StaticResource BoolToVis}}"
-                                            AutomationProperties.Name="{x:Bind Activity.Approval.ApprovalCommandToggleLabel, Mode=OneWay}" />
-                                </StackPanel>
-                            </StackPanel>
-                        </Border>
-
-                        <Border Padding="10,7" CornerRadius="7" HorizontalAlignment="Left"
-                                Background="{ThemeResource SurfaceSecondaryBrush}"
-                                ToolTipService.ToolTip="{x:Bind Activity.Approval.ApprovalTargetTooltip, Mode=OneWay}"
-                                Visibility="{x:Bind Activity.Approval.ShowApprovalNonCommandTarget, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                            <StackPanel Orientation="Horizontal" Spacing="8" MaxWidth="560">
-                                <ic:FluentIcon Icon="{x:Bind Activity.Approval.ApprovalTargetKind, Mode=OneWay, Converter={StaticResource ApprovalTargetIcon}}"
-                                               IconVariant="Regular" IconSize="Size16"
-                                               Foreground="{ThemeResource TextSecondaryBrush}" />
-                                <TextBlock Text="{x:Bind Activity.Approval.ApprovalTargetText, Mode=OneWay}"
-                                           FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="{StaticResource ProductCodeFontSize}"
-                                           TextTrimming="CharacterEllipsis" IsTextSelectionEnabled="True" />
-                            </StackPanel>
-                        </Border>
-
-                        <Border Padding="10,8" CornerRadius="7"
-                                Background="{ThemeResource AttentionSubtleBrush}">
-                            <Grid ColumnSpacing="8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <ic:FluentIcon x:Uid="ToolRiskWarning" Icon="Warning" IconVariant="Regular" IconSize="Size16"
-                                               VerticalAlignment="Top"
-                                               Foreground="{ThemeResource AttentionBrush}"
-                                               AutomationProperties.Name="Risk warning" />
-                                <TextBlock Grid.Column="1"
-                                           Text="{x:Bind Activity.Approval.ApprovalRiskText, Mode=OneWay}"
-                                           FontSize="{StaticResource ProductCaptionFontSize}" Foreground="{ThemeResource TextPrimaryBrush}"
-                                           TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
-                            </Grid>
-                        </Border>
-
-                        <TextBlock Text="{x:Bind Activity.Approval.ApprovalBatchSummary, Mode=OneWay}"
-                                   FontSize="{StaticResource ProductCaptionFontSize}" Foreground="{ThemeResource AttentionBrush}"
-                                   TextWrapping="Wrap"
-                                   Visibility="{x:Bind Activity.Approval.HasApprovalBatch, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-
-                        <StackPanel Spacing="6">
-                            <HyperlinkButton Content="{x:Bind Activity.Approval.ApprovalDetailsLabel, Mode=OneWay}"
-                                             Padding="0" MinHeight="32" HorizontalAlignment="Left"
-                                             IsEnabled="{x:Bind Activity.Approval.AreApprovalRequestControlsEnabled, Mode=OneWay}"
-                                             Command="{x:Bind Activity.Approval.ToggleApprovalDetailsCommand, Mode=OneWay}"
-                                             AutomationProperties.Name="{x:Bind Activity.Approval.ApprovalDetailsLabel, Mode=OneWay}" />
-                            <Border x:Name="ApprovalDetailsPanel"
-                                    x:Load="{x:Bind Activity.Approval.IsApprovalDetailsOpen, Mode=OneWay}"
-                                    Padding="10" CornerRadius="7"
-                                    Background="{ThemeResource CodeBackgroundBrush}"
-                                    BorderBrush="{ThemeResource BorderSubtleBrush}" BorderThickness="1">
-                                <ScrollViewer MaxHeight="180" VerticalScrollBarVisibility="Auto"
-                                              HorizontalScrollBarVisibility="Disabled"
-                                              HorizontalScrollMode="Disabled"
-                                              IsVerticalScrollChainingEnabled="True"
-                                              IsTabStop="False">
-                                    <controls:ToolResultTextBlock Text="{x:Bind Activity.Approval.EventArgs, Mode=OneWay}" />
-                                </ScrollViewer>
-                            </Border>
-                        </StackPanel>
-
-                    </StackPanel>
-
-                    <Button Margin="0,12,0,0" MinHeight="36" Padding="14,0"
-                            HorizontalAlignment="Right" IsEnabled="False"
-                            Style="{StaticResource AccentButtonStyle}"
-                            Visibility="{x:Bind Activity.Approval.IsApprovalSubmitting, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <ProgressRing Width="16" Height="16" IsActive="True" />
-                            <TextBlock Text="{x:Bind Activity.Approval.ApprovalSubmittingVerb, Mode=OneWay}"
-                                       FontSize="{StaticResource ProductBodyFontSize}" VerticalAlignment="Center"
-                                       AutomationProperties.LiveSetting="Polite" />
-                        </StackPanel>
-                    </Button>
-
-                    <Border Margin="0,12,0,0" Padding="10,8" CornerRadius="7"
-                            Background="{ThemeResource DangerSubtleBrush}"
-                            Visibility="{x:Bind Activity.Approval.IsApprovalFailedResult, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                        <Grid ColumnSpacing="10">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <ic:FluentIcon Icon="ErrorCircle" IconVariant="Regular" IconSize="Size16"
-                                           Foreground="{ThemeResource DangerBrush}" />
-                            <TextBlock Grid.Column="1"
-                                       Text="{x:Bind Activity.Approval.ApprovalErrorText, Mode=OneWay}"
-                                       FontSize="{StaticResource ProductCaptionFontSize}" TextWrapping="Wrap"
-                                       Foreground="{ThemeResource TextPrimaryBrush}"
-                                       AutomationProperties.LiveSetting="Assertive" />
-                        <Button x:Uid="ToolRetry" Grid.Column="2" Content="Retry" MinHeight="34"
-                                    Command="{x:Bind Activity.Approval.RetryApprovalCommand, Mode=OneWay}"
-                                    AutomationProperties.Name="Retry approval response" />
-                        </Grid>
-                    </Border>
-
-                    <StackPanel Margin="0,12,0,0"
-                                 Spacing="8"
-                           Visibility="{x:Bind Activity.Approval.IsApprovalWaiting, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                        <StackPanel x:Name="ApprovalAuxActions" Orientation="Horizontal" Spacing="4"
-                                     VerticalAlignment="Center">
-                            <Button x:Name="ExplainWhyButton" AutomationProperties.AutomationId="ExplainWhyButton" x:Uid="ToolExplainWhy" Content="Explain why" Style="{StaticResource LogToolbarButtonStyle}"
-                                    MinHeight="40"
-                                    Command="{x:Bind Activity.Approval.ExplainCommand, Mode=OneWay}"
-                                    AutomationProperties.Name="Ask the agent to explain why this operation is required" />
-                            <Button x:Name="StopTaskButton" AutomationProperties.AutomationId="StopTaskButton" x:Uid="ToolStopTask" Content="Stop entire task" Style="{StaticResource LogToolbarButtonStyle}"
-                                    MinHeight="40" Foreground="{ThemeResource DangerBrush}"
-                                    Command="{x:Bind Activity.Approval.StopCommand, Mode=OneWay}"
-                                    AutomationProperties.Name="{x:Bind Activity.Approval.ApprovalStopName, Mode=OneWay}"
-                                    ToolTipService.ToolTip="This stops the entire agent task, not only this command." />
-                        </StackPanel>
-
-                        <StackPanel x:Name="ApprovalDecisionActions" Orientation="Horizontal" Spacing="8"
-                                     HorizontalAlignment="Right">
-                            <Button x:Name="DeclineButton" AutomationProperties.AutomationId="DeclineButton" x:Uid="ToolDecline" Content="Decline" MinHeight="40" Padding="14,0"
-                                    Command="{x:Bind Activity.Approval.RejectCommand, Mode=OneWay}"
-                                    AutomationProperties.Name="Decline this command"
-                                    ToolTipService.ToolTip="Decline only this command; the agent may continue." />
-                            <Button x:Name="AllowSessionButton" AutomationProperties.AutomationId="AllowSessionButton" x:Uid="ToolActivityAllowSession" MinHeight="40" Padding="12,0"
-                                    Command="{x:Bind Activity.Approval.TrustSessionCommand, Mode=OneWay}"
-                                    AutomationProperties.Name="{x:Bind Activity.Approval.ApprovalTrustName, Mode=OneWay}"
-                                    ToolTipService.ToolTip="Allow this tool for the current session only.">
-                                <StackPanel Orientation="Horizontal" Spacing="7">
-                                    <ic:FluentIcon Icon="ShieldTask" IconVariant="Regular" IconSize="Size16"
-                                                   Foreground="{ThemeResource TextSecondaryBrush}" />
-                                    <TextBlock x:Uid="ToolAllowSession" Text="Allow for session" />
-                                </StackPanel>
-                            </Button>
-                            <Button x:Name="AllowOnceButton" AutomationProperties.AutomationId="AllowOnceButton" MinHeight="40" Padding="14,0"
-                                    Style="{StaticResource AccentButtonStyle}"
-                                    Command="{x:Bind Activity.Approval.AllowOnceCommand, Mode=OneWay}"
-                                    AutomationProperties.Name="{x:Bind Activity.Approval.ApprovalAllowOnceName, Mode=OneWay}">
-                                <StackPanel Orientation="Horizontal" Spacing="7">
-                                    <ic:FluentIcon Icon="Play" IconVariant="Regular" IconSize="Size16" />
-                                    <TextBlock x:Uid="ToolAllowOnce" Text="Allow once" />
-                                </StackPanel>
-                            </Button>
-                        </StackPanel>
-                    </StackPanel>
-
-                    <StackPanel Spacing="5"
-                                Visibility="{x:Bind Activity.Approval.IsApprovalResolved, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <ic:FluentIcon Icon="Checkmark" IconVariant="Regular" IconSize="Size16"
-                                           Foreground="{ThemeResource SuccessBrush}"
-                                           Visibility="{x:Bind Activity.Approval.IsApprovalApprovedResult, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-                            <ic:FluentIcon Icon="Dismiss" IconVariant="Regular" IconSize="Size16"
-                                           Foreground="{ThemeResource DangerBrush}"
-                                           Visibility="{x:Bind Activity.Approval.IsApprovalRejectedResult, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-                            <ic:FluentIcon Icon="RecordStop" IconVariant="Regular" IconSize="Size16"
-                                           Foreground="{ThemeResource DangerBrush}"
-                                           Visibility="{x:Bind Activity.Approval.IsApprovalStoppedResult, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-                            <TextBlock Text="{x:Bind Activity.Approval.ApprovalResolvedText, Mode=OneWay}"
-                                       FontSize="{StaticResource ProductBodyFontSize}" FontWeight="SemiBold"
-                                       Foreground="{ThemeResource TextPrimaryBrush}" />
-                        </StackPanel>
-                    </StackPanel>
-                </StackPanel>
-            </Grid>
+                 The link survives: ToolActivityViewModel.Approval is still set, which is what
+                 puts "Approval required" on this header and folds the timeline while the decision
+                 is open. It is a back-reference now, not a render host. -->
         </StackPanel>
         </Border>
     </Grid>

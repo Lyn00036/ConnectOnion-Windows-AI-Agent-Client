@@ -48,6 +48,7 @@ public static class KeyboardShortcutCatalog
         public const string ToggleFullScreen = "view.toggleFullScreen";
 
         public const string CycleChatMode = "chat.cycleMode";
+        public const string GoToPendingDecision = "chat.goToPendingDecision";
 
         public const string KeyboardShortcuts = "general.keyboardShortcuts";
     }
@@ -103,6 +104,7 @@ public static class KeyboardShortcutCatalog
         new("Chat", new List<KeyboardShortcutItem>
         {
             Custom(Ids.CycleChatMode, "Cycle approval mode", CtrlShift('M')),
+            Custom(Ids.GoToPendingDecision, "Go to pending decision", CtrlShift('D')),
             Fixed("Send message", ComposerReason, Combo("Enter")),
             Fixed("Insert new line", ComposerReason, Combo("Shift", "Enter")),
         }),

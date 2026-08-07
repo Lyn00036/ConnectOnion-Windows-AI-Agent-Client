@@ -7,7 +7,12 @@ public sealed class StopUiContractTests
     [Fact]
     public void ApprovalSurface_ExposesFiveProtocolActionsWithoutAFeedbackInput()
     {
-        var xaml = ReadRepositoryFile("ConnectOnion.WinUIClient", "Controls", "Chat", "ToolActivityView.xaml");
+        // The decision surface moved out of ToolActivityView into its own card. That card is a
+        // turn-level aggregate anchored at the turn's FIRST tool call, while an approval arrives
+        // much later — so a turn that had also appended a plan, a question or a diff drew the live
+        // decision back up above all of them, mid-conversation.
+        var xaml = ReadRepositoryFile(
+            "ConnectOnion.WinUIClient", "Controls", "Chat", "InteractiveCards", "ApprovalCard.xaml");
 
         Assert.Contains("AllowOnceCommand", xaml, StringComparison.Ordinal);
         Assert.Contains("TrustSessionCommand", xaml, StringComparison.Ordinal);
@@ -16,6 +21,15 @@ public sealed class StopUiContractTests
         Assert.Contains("ExplainCommand", xaml, StringComparison.Ordinal);
         Assert.Contains("Explain why", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("TextBox Header=\"Reason for declining", xaml, StringComparison.Ordinal);
+
+        // And it is genuinely gone from the tool card rather than duplicated into both.
+        var toolCard = ReadRepositoryFile(
+            "ConnectOnion.WinUIClient", "Controls", "Chat", "ToolActivityView.xaml");
+        Assert.DoesNotContain("AllowOnceCommand", toolCard, StringComparison.Ordinal);
+        Assert.DoesNotContain("ApprovalSection", toolCard, StringComparison.Ordinal);
+        // The back-reference stays: it is what puts "Approval required" on the tool card's header
+        // and folds its timeline while the decision is open.
+        Assert.Contains("Activity.IsAwaitingApproval", toolCard, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -27,7 +41,27 @@ public sealed class StopUiContractTests
 
         Assert.Contains("StopButton.IsEnabled = CanStop", source, StringComparison.Ordinal);
         Assert.Contains("InputBox.IsEnabled = CanSubmit", source, StringComparison.Ordinal);
-        Assert.Contains("var canSend = CanSubmit && !isAttachmentsBusy", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "var canSend = CanSubmit && !IsSubmitBlocked && !isAttachmentsBusy",
+            source, StringComparison.Ordinal);
+
+        // IsSubmitBlocked is "you may write, you just cannot send it" — the state while the agent
+        // is parked on an interactive card. It must reach the send button and nothing else. The
+        // three composition controls stay on CanSubmit alone, because disabling a focused TextBox
+        // makes WinUI move focus to the next enabled sibling — the approval-mode button — so
+        // routing this through CanSubmit drew a focus ring around "Safe" every time an approval
+        // arrived while the caret was in the box.
+        foreach (var line in source.Split('\n').Where(candidate => candidate.Contains(
+                     "IsSubmitBlocked", StringComparison.Ordinal)))
+        {
+            Assert.DoesNotContain("InputBox.IsEnabled", line, StringComparison.Ordinal);
+            Assert.DoesNotContain("AddAttachmentButton.IsEnabled", line, StringComparison.Ordinal);
+            Assert.DoesNotContain("SpeechButton.IsEnabled", line, StringComparison.Ordinal);
+        }
+        Assert.Contains("AddAttachmentButton.IsEnabled = CanSubmit && !isActive", source, StringComparison.Ordinal);
+        Assert.Contains("SpeechButton.IsEnabled = CanSubmit && !isActive", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "IsSubmitBlocked=\"{x:Bind Vm.IsAwaitingUserDecision", page, StringComparison.Ordinal);
         Assert.Contains("RuntimeComposerStopping", source, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"StopRing\"", xaml, StringComparison.Ordinal);
         Assert.Contains("IsBusy=\"{x:Bind Vm.IsComposerBusy", page, StringComparison.Ordinal);

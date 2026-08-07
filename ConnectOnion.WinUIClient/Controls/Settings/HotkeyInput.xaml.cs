@@ -100,7 +100,7 @@ public sealed partial class HotkeyInput : UserControl
     {
         if (_capturing)
         {
-        ChordText.Text = Common.LocalizedStrings.Get("HotkeyPressKey", "Press a key…");
+            ChordText.Text = Common.LocalizedStrings.Get("HotkeyPressKey", "Press a key…");
             return;
         }
 

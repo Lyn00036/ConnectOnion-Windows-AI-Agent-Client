@@ -106,7 +106,7 @@ public static class ToolActivityMigration
     {
         // ConversationCache bypasses SQLite deserialization, so apply the same historical-card
         // presentation policy here as RowToMessage does for database-backed restores.
-        if (message.IsPlanReviewEvent) message.IsInteractiveCardExpanded = false;
+        if (message.IsInteractiveEvent) message.IsInteractiveCardExpanded = false;
 
         if (!message.IsToolActivityEvent || message.ToolActivity is not { } activity) return;
 

@@ -9,6 +9,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
+    PreviewKeyDown="Composer_PreviewKeyDown"
     SizeChanged="Composer_SizeChanged">
 
     <StackPanel x:Name="ComposerPanel"
@@ -324,6 +325,53 @@
                          TextChanged="InputBox_TextChanged"
                          GotFocus="InputBox_GotFocus"
                          PreviewKeyDown="InputBox_PreviewKeyDown">
+                    <TextBox.ContextFlyout>
+                        <!-- Explicit rather than TextCommandBarFlyout: on the current WinUI
+                             runtime the stock flyout does not open for this nested, transparent
+                             multiline editor. These commands still call TextBox's native editing
+                             APIs, while named items make the menu verifiable through UIA. -->
+                        <MenuFlyout x:Name="ComposerEditMenu"
+                                    Opening="ComposerEditMenu_Opening">
+                            <MenuFlyoutItem x:Name="ComposerUndoMenuItem"
+                                            x:Uid="ComposerContextUndo"
+                                            AutomationProperties.AutomationId="ComposerUndoMenuItem"
+                                            Text="Undo"
+                                            KeyboardAcceleratorTextOverride="Ctrl+Z"
+                                            Click="ComposerUndo_Click" />
+                            <MenuFlyoutItem x:Name="ComposerRedoMenuItem"
+                                            x:Uid="ComposerContextRedo"
+                                            AutomationProperties.AutomationId="ComposerRedoMenuItem"
+                                            Text="Redo"
+                                            KeyboardAcceleratorTextOverride="Ctrl+Y"
+                                            Click="ComposerRedo_Click" />
+                            <MenuFlyoutSeparator />
+                            <MenuFlyoutItem x:Name="ComposerCutMenuItem"
+                                            x:Uid="ComposerContextCut"
+                                            AutomationProperties.AutomationId="ComposerCutMenuItem"
+                                            Text="Cut"
+                                            KeyboardAcceleratorTextOverride="Ctrl+X"
+                                            Click="ComposerCut_Click" />
+                            <MenuFlyoutItem x:Name="ComposerCopyMenuItem"
+                                            x:Uid="ComposerContextCopy"
+                                            AutomationProperties.AutomationId="ComposerCopyMenuItem"
+                                            Text="Copy"
+                                            KeyboardAcceleratorTextOverride="Ctrl+C"
+                                            Click="ComposerCopy_Click" />
+                            <MenuFlyoutItem x:Name="ComposerPasteMenuItem"
+                                            x:Uid="ComposerContextPaste"
+                                            AutomationProperties.AutomationId="ComposerPasteMenuItem"
+                                            Text="Paste"
+                                            KeyboardAcceleratorTextOverride="Ctrl+V"
+                                            Click="ComposerPaste_Click" />
+                            <MenuFlyoutSeparator />
+                            <MenuFlyoutItem x:Name="ComposerSelectAllMenuItem"
+                                            x:Uid="ComposerContextSelectAll"
+                                            AutomationProperties.AutomationId="ComposerSelectAllMenuItem"
+                                            Text="Select all"
+                                            KeyboardAcceleratorTextOverride="Ctrl+A"
+                                            Click="ComposerSelectAll_Click" />
+                        </MenuFlyout>
+                    </TextBox.ContextFlyout>
                     <TextBox.Resources>
                         <Thickness x:Key="TextControlBorderThemeThickness">0</Thickness>
                         <Thickness x:Key="TextControlBorderThemeThicknessFocused">0</Thickness>
@@ -368,7 +416,8 @@
                                        Foreground="{ThemeResource TextPrimaryBrush}" />
                     </Button>
 
-                    <StackPanel Grid.Column="1"
+                    <StackPanel x:Name="FooterMetadataPanel"
+                                Grid.Column="1"
                                 Orientation="Horizontal"
                                 Spacing="6"
                                 Margin="4,0,0,0"
@@ -448,15 +497,26 @@
                           Grid.Column="1"
                           Height="34"
                           MinWidth="72"
+                          ColumnSpacing="6"
+                          AutomationProperties.LiveSetting="Polite"
                           Visibility="Collapsed">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="24" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
                         <Border Background="{ThemeResource SurfaceElevatedBrush}"
-                                CornerRadius="4" />
+                                CornerRadius="4"
+                                Grid.ColumnSpan="3" />
                         <!-- A plain XAML Canvas is intentional. CanvasAnimatedControl creates a
                              swap chain and native render threads even before recording starts. -->
                         <Canvas x:Name="WaveformCanvas"
+                                Grid.Column="0"
+                                Grid.ColumnSpan="2"
+                                Margin="6,0,0,0"
                                 HorizontalAlignment="Stretch"
                                 VerticalAlignment="Stretch"
-                                Background="{ThemeResource SurfaceElevatedBrush}"
+                                Background="Transparent"
                                 SizeChanged="WaveformCanvas_SizeChanged">
                             <Line x:Name="WaveformBaseline"
                                   Stroke="{ThemeResource BorderStrongBrush}"
@@ -464,6 +524,7 @@
                                   StrokeDashArray="2,2" />
                         </Canvas>
                         <ProgressRing x:Name="BufferSpinner"
+                                      Grid.Column="0"
                                       Width="18"
                                       Height="18"
                                       HorizontalAlignment="Center"
@@ -471,17 +532,27 @@
                                       IsActive="False"
                                       Visibility="Collapsed"
                                       Foreground="{ThemeResource ComposerMutedControlBrush}" />
+                        <TextBlock x:Name="VoiceStatusText"
+                                   Grid.Column="1"
+                                   AutomationProperties.AutomationId="VoiceStatus"
+                                   FontSize="{StaticResource ProductCaptionFontSize}"
+                                   Foreground="{ThemeResource TextSecondaryBrush}"
+                                   HorizontalAlignment="Left"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis"
+                                   Visibility="Collapsed" />
                         <TextBlock x:Name="WaveformTimerText"
-                                   Text="0:00"
+                                   Grid.Column="2"
+                                   Text="0:00 / 2:00"
                                    FontSize="{StaticResource ProductCaptionFontSize}"
                                    Foreground="{ThemeResource TextTertiaryBrush}"
-                                   VerticalAlignment="Bottom"
+                                   VerticalAlignment="Center"
                                    HorizontalAlignment="Right"
-                                   Margin="0,0,8,3" />
+                                   Margin="2,0,8,0" />
                     </Grid>
 
                     <Button x:Uid="ComposerVoiceInput" x:Name="SpeechButton" AutomationProperties.AutomationId="SpeechButton"
-                            AutomationProperties.Name="Voice input"
+                            AutomationProperties.Name="Start voice recording"
                             Grid.Column="3"
                             Width="40"
                             Height="40"
@@ -492,7 +563,7 @@
                             HorizontalContentAlignment="Center"
                             VerticalContentAlignment="Center"
                             Click="Speech_Click"
-                            ToolTipService.ToolTip="Voice input">
+                            ToolTipService.ToolTip="Start voice recording">
                         <Grid Width="20" Height="20">
                             <ic:FluentIcon x:Name="SpeechIcon"
                                            Icon="Mic"
@@ -507,10 +578,31 @@
                         </Grid>
                     </Button>
 
-                    <Button x:Uid="ComposerStopVoiceInput" x:Name="StopSpeechButton"
-                            AutomationProperties.AutomationId="StopVoiceInputButton"
-                            AutomationProperties.Name="Stop voice input"
+                    <Button x:Uid="ComposerCancelVoiceInput" x:Name="CancelSpeechButton"
+                            AutomationProperties.AutomationId="CancelVoiceInputButton"
+                            AutomationProperties.Name="Cancel voice input"
                             Grid.Column="3"
+                            Width="40"
+                            Height="40"
+                            Padding="0"
+                            CornerRadius="20"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center"
+                            Click="CancelSpeech_Click"
+                            Visibility="Collapsed"
+                            ToolTipService.ToolTip="Cancel voice input">
+                        <ic:FluentIcon Icon="Dismiss"
+                                       IconVariant="Regular"
+                                       IconSize="Size20"
+                                       Foreground="{ThemeResource TextSecondaryBrush}" />
+                    </Button>
+
+                    <Button x:Uid="ComposerFinishVoiceInput" x:Name="FinishSpeechButton"
+                            AutomationProperties.AutomationId="FinishVoiceInputButton"
+                            AutomationProperties.Name="Finish recording"
+                            Grid.Column="4"
                             Width="40"
                             Height="40"
                             Padding="0"
@@ -519,9 +611,9 @@
                             BorderThickness="0"
                             HorizontalContentAlignment="Center"
                             VerticalContentAlignment="Center"
-                            Click="StopSpeech_Click"
+                            Click="FinishSpeech_Click"
                             Visibility="Collapsed"
-                            ToolTipService.ToolTip="Stop voice input">
+                            ToolTipService.ToolTip="Finish recording">
                         <Rectangle Width="9"
                                    Height="9"
                                    RadiusX="1"

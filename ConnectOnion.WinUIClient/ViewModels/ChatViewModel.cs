@@ -118,6 +118,13 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         // the one place they all funnel through.
         Messages.CollectionChanged += (_, e) =>
         {
+            // Covers every bulk mutation the list has — a conversation load's ReplaceAll, an older
+            // page's InsertRange, a Clear on switch — so a restored conversation that ends on an
+            // unanswered card is recognised as blocking without each of those call sites having to
+            // remember to say so. Live single Adds go through IChatProjectionTarget.Add, which
+            // refreshes there because it also has to wire the approval responder.
+            RefreshPendingInteractive();
+
             if (e.NewItems is null) return;
             foreach (ChatMessage message in e.NewItems)
                 message.MessageFontSize = MessageFontSize;
@@ -209,6 +216,7 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
                 embeddedApproval.ApprovalResponder = null;
         }
         Messages.Clear();
+        PendingInteractive = null;
     }
 
     /// <summary>Applies a live message-font-size change from Settings. Assigning the property
@@ -248,6 +256,10 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         else
         {
             RemoveTurnProgress();
+            // A turn that ends seals any card it left unanswered, so nothing is blocking any more.
+            // This is also the path that clears the bar when a run is stopped or errors out
+            // underneath a card the user never got to.
+            RefreshPendingInteractive();
         }
     }
 
@@ -262,7 +274,62 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
 
     // Sending is gated on the agent being confirmed online — matching the "green dot means
     // you can chat" model — not on holding a live socket (the transport connects lazily).
+    //
+    // Deliberately NOT gated on IsAwaitingUserDecision. That reads as the right place for it, but
+    // CanSend drives the composer's CanSubmit, which disables the text box itself — and disabling
+    // a focused TextBox makes WinUI move focus to the next enabled sibling, which here is the
+    // approval-mode button. Every approval arriving while the caret was in the box put a focus
+    // ring on "Safe". Blocking the send is IsAwaitingUserDecision's job (see SendAsync and the
+    // composer's IsSubmitBlocked); blocking composition was never asked for.
     public bool CanSend => HasAgent && _session is not null && IsOnline && !IsConnecting;
+
+    /// <summary>The interactive card the agent is currently blocked on, or null.
+    ///
+    /// <para>Nothing in the view model used to know this existed, which left the transcript with
+    /// <b>two independent ways to answer one question</b>: the card's own Submit, and the composer
+    /// — which stays enabled during a turn and routes typing to
+    /// <c>SendRuntimeInputAsync</c> (<see cref="SendAsync"/>'s <c>isRuntimeInput</c> path). Both
+    /// looked live, neither said which was the real one, and the composer's answer does not resolve
+    /// the card.</para>
+    ///
+    /// <para>It also had no <i>position</i>. An <c>approval_needed</c> renders inside the turn's one
+    /// tool-activity card, which is anchored where the turn's <i>first</i> tool call landed — so by
+    /// the eighth tool the decision surface can be far above the fold, with nothing on screen saying
+    /// the turn has stopped and is waiting. This property is what the pending bar and the
+    /// jump-to-decision action are built on.</para></summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsAwaitingUserDecision))]
+    [NotifyPropertyChangedFor(nameof(PendingInteractiveText))]
+    public partial ChatMessage? PendingInteractive { get; private set; }
+
+    public bool IsAwaitingUserDecision => PendingInteractive is not null;
+
+    /// <summary>What the pending bar says. Names the kind of decision rather than restating the
+    /// question, which is on the card the bar points at.</summary>
+    public string PendingInteractiveText => PendingInteractive switch
+    {
+        null => "",
+        { IsPlanReviewEvent: true } => LocalizedStrings.Get(
+            "ChatPendingPlanReview", "The agent is waiting for you to review its plan."),
+        { IsApprovalEvent: true } or { IsFileChangeApproval: true } => LocalizedStrings.Get(
+            "ChatPendingApproval", "The agent is waiting for your approval."),
+        _ => LocalizedStrings.Get(
+            "ChatPendingQuestion", "The agent is waiting for your answer."),
+    };
+
+
+    /// <summary>Recomputes <see cref="PendingInteractive"/> from the list.
+    ///
+    /// <para>Deliberately a scan rather than a subscription. Subscribing to each card's
+    /// <c>PropertyChanged</c> would make every message hold a delegate back to this view model —
+    /// the exact edge <see cref="Cleanup"/> has to sever for <c>ApprovalResponder</c>, because
+    /// <c>ConversationCache</c> outlives the page and would otherwise pin the whole view model and
+    /// its message collection. The set of moments this can change is small and closed (a card is
+    /// added, a card is answered, a turn ends, a conversation loads), so the callers can just say
+    /// so. The rule itself is <see cref="PendingDecision.Find"/>, in Core so it can be covered
+    /// headlessly.</para></summary>
+    private void RefreshPendingInteractive()
+        => PendingInteractive = PendingDecision.Find(Messages);
     public bool CanReconnect => HasAgent && !IsProcessing && !IsConnecting && Presence != AgentPresence.Checking;
     public bool IsComposerBusy => IsProcessing;
 
@@ -830,6 +897,8 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         // model, whose lifetime already bounds the message's.
         if (message.IsApprovalEvent && message.IsEmbeddedApproval)
             message.ApprovalResponder = HandleApprovalDecisionAsync;
+        // One of the four moments PendingInteractive can change. See RefreshPendingInteractive.
+        if (message.IsInteractiveEvent) RefreshPendingInteractive();
     }
     void IChatProjectionTarget.ResolveAgentImage(string dataUrl, ChatAttachment attachment)
         => _ = ResolveAgentImageAsync(dataUrl, attachment);

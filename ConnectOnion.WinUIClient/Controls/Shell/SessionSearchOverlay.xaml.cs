@@ -143,7 +143,10 @@ public sealed partial class SessionSearchOverlay : UserControl, IDisposable
     {
         if (width <= 0 || height <= 0) return;
 
-        ModalContainer.Width = Math.Max(0, Math.Min(560, width - 40));
+        // Stretch + MaxWidth, so the width is "available minus Margin" as resolved by layout.
+        // The removed line computed it from ActualWidth with its own margin constant, which
+        // disagreed with the Margin set below and, away from 100% zoom/text scale, measured a
+        // different width than the window (FloatingOverlayLayer is scaled).
         ModalContainer.MaxHeight = Math.Max(0, Math.Min(620, height - 64));
         ModalContainer.Margin = new Thickness(20, height >= 640 ? 72 : 24, 20, 20);
     }

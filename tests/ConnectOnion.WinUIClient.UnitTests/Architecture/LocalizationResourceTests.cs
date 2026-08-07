@@ -1,6 +1,7 @@
 using System.Xml;
 using System.Xml.Linq;
 using System.Text.RegularExpressions;
+using System.Text.Json;
 
 namespace ConnectOnion.WinUIClient.UnitTests.Architecture;
 
@@ -30,6 +31,56 @@ public sealed class LocalizationResourceTests
         Assert.Contains("CultureInfo.CurrentCulture", source, StringComparison.Ordinal);
         Assert.Contains("ReportFallbackOnce", source, StringComparison.Ordinal);
         Assert.Contains("using English", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LiteralRuntimeFallbacks_MatchTheEnglishResourceValue()
+    {
+        var appDirectory = FindRepositoryDirectory("ConnectOnion.WinUIClient");
+        var repository = Directory.GetParent(appDirectory)!.FullName;
+        var english = ReadResources("en-US");
+        var lookup = new Regex(
+            @"(?:LocalizedStrings|CoreStrings)\.(?:Get|Format)\(\s*""(?<key>(?:\\.|[^""])*)""\s*,\s*" +
+            @"(?<fallback>""(?:\\.|[^""])*""(?:\s*\+\s*""(?:\\.|[^""])*"")*)",
+            RegexOptions.CultureInvariant);
+        var literal = new Regex(@"""(?:\\.|[^""])*""", RegexOptions.CultureInvariant);
+        var violations = new List<string>();
+
+        foreach (var project in new[] { "ConnectOnion.WinUIClient", "ConnectOnion.WinUIClient.Core" })
+        {
+            var projectDirectory = Path.Combine(repository, project);
+            foreach (var path in Directory.EnumerateFiles(projectDirectory, "*.cs", SearchOption.AllDirectories))
+            {
+                var segments = path.Split(Path.DirectorySeparatorChar);
+                if (segments.Contains("obj", StringComparer.OrdinalIgnoreCase)
+                    || segments.Contains("bin", StringComparer.OrdinalIgnoreCase))
+                    continue;
+
+                var source = File.ReadAllText(path);
+                foreach (Match match in lookup.Matches(source))
+                {
+                    var key = JsonSerializer.Deserialize<string>($"\"{match.Groups["key"].Value}\"")!;
+                    var fallback = string.Concat(literal.Matches(match.Groups["fallback"].Value)
+                        .Select(part => JsonSerializer.Deserialize<string>(part.Value)));
+                    var line = source[..match.Index].Count(character => character == '\n') + 1;
+                    if (!english.TryGetValue(key, out var resource))
+                    {
+                        violations.Add($"{project}/{Path.GetRelativePath(projectDirectory, path)}:{line} " +
+                            $"'{key}' has no en-US resource row");
+                    }
+                    else if (!string.Equals(resource, fallback, StringComparison.Ordinal))
+                    {
+                        violations.Add($"{project}/{Path.GetRelativePath(projectDirectory, path)}:{line} " +
+                            $"'{key}' fallback differs from en-US: \"{fallback}\" != \"{resource}\"");
+                    }
+                }
+            }
+        }
+
+        Assert.True(
+            violations.Count == 0,
+            "Literal runtime localization fallbacks must be the canonical English resource text:" +
+            Environment.NewLine + string.Join(Environment.NewLine, violations));
     }
 
     [Fact]

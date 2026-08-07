@@ -102,6 +102,12 @@ public sealed partial class ChatViewModel
         var session = _session;
         if ((text.Length == 0 && !hasAttachments) || agent is null || session is null
             || !CanSend) return;
+        // The agent is parked on a card, and that card is the only thing that can answer it.
+        // Without this, typing here goes out as runtime INPUT (see isRuntimeInput above) while the
+        // card's Submit is still live — two ways to answer one question, only one of which
+        // resolves it. The composer disables its send button for the same reason; this is the
+        // guard behind it, since Retry and Edit-and-resend reach SendAsync by other routes.
+        if (IsAwaitingUserDecision) return;
 
         // A new send supersedes any prior failure — the old attempt is no longer retryable.
         CanRetry = false;

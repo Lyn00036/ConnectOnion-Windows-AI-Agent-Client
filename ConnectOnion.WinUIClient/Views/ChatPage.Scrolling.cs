@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using ConnectOnion.WinUIClient.Models;
@@ -108,14 +109,14 @@ public sealed partial class ChatPage
         {
             var budget = OverlayReadyBudget();
 
-        // First wait: enough top-of-list containers to consider the viewport painted
-        // (typical viewport holds 8–15 items), bounded by the budget so the overlay
-        // never sticks if items are zero-height/collapsed.
+            // First wait: enough top-of-list containers to consider the viewport painted
+            // (typical viewport holds 8–15 items), bounded by the budget so the overlay
+            // never sticks if items are zero-height/collapsed.
             await WaitForContainersRealizedAsync(
                 Math.Min(Vm.Messages.Count, 12), budget, cancellationToken);
 
-        // One frame so the RichTextBlock/Markdown content inside each realized
-        // container can finish its first internal layout pass.
+            // One frame so the RichTextBlock/Markdown content inside each realized
+            // container can finish its first internal layout pass.
             await NextFrameAsync(cancellationToken);
 
             // Restore scroll position FIRST (while overlay is still visible),
@@ -341,6 +342,76 @@ public sealed partial class ChatPage
         }
         return tcs.Task;
     }
+    private void JumpToPending_Click(object sender, RoutedEventArgs e) => ScrollToPendingDecision();
+
+    /// <summary>The keyboard route to the pending decision. Returns false when nothing is blocking,
+    /// so the shell can leave the key press unhandled rather than swallowing the chord.</summary>
+    public bool GoToPendingDecision()
+    {
+        if (Vm.PendingInteractive is null) return false;
+        ScrollToPendingDecision();
+        return true;
+    }
+
+    /// <summary>Brings the card the agent is blocked on into view and puts keyboard focus on it.
+    ///
+    /// <para>Focus, not just scroll. A keyboard or screen-reader user reaching a decision by
+    /// scrolling still has to Tab through every bubble above it, and with a turn's worth of tool
+    /// rows on screen that is a long way; the whole reason this action exists is that the card is
+    /// not where the user is.</para>
+    ///
+    /// <para><c>ScrollIntoView</c> rather than a computed offset: the row may not be realized at
+    /// all (the list is virtualized), so there is no element to measure until the list has put one
+    /// there. The focus attempt therefore waits a frame for realization, and simply does nothing
+    /// if the container still is not there — the scroll has happened either way, which is the part
+    /// that matters.</para>
+    ///
+    /// <para><b>Only ever runs from a user action</b> — the pending bar's button or Ctrl+Shift+D.
+    /// Nothing calls it when a decision arrives: moving the viewport, or the focus, on someone's
+    /// behalf interrupts whatever they were reading, and the card is not going anywhere. Taking
+    /// focus here is right precisely because they asked to go there.</para>
+    /// </summary>
+    private async void ScrollToPendingDecision()
+    {
+        if (Vm.PendingInteractive is not { } pending) return;
+
+        // An approval renders inside its owning tool-activity card, and a file-change ask_user
+        // inside its diff — in both cases the message that carries the decision is not the row
+        // that draws it, so scroll to whichever row is actually on the transcript.
+        var target = ResolveTranscriptRow(pending);
+        if (target is null) return;
+
+        // The user asked to be at this card, so stop following the tail — being dragged back down
+        // would undo the jump. MessageScrollViewer_ViewChanged re-arms the flag on its own once
+        // they scroll back near the bottom.
+        _stickToBottom = false;
+        MessageList.ScrollIntoView(target, ScrollIntoViewAlignment.Leading);
+
+        try
+        {
+            await NextFrameAsync(_pageLifetimeCts.Token);
+            if (MessageList.ContainerFromItem(target) is ListViewItem container)
+                container.Focus(FocusState.Programmatic);
+        }
+        catch (OperationCanceledException) when (_pageLifetimeCts.IsCancellationRequested)
+        {
+        }
+    }
+
+    /// <summary>The row that actually renders a decision. Hidden implementation rows (an approval,
+    /// or an ask_user still hosted by its diff) resolve to the card that draws them.</summary>
+    private ChatMessage? ResolveTranscriptRow(ChatMessage message)
+    {
+        if (message.IsTranscriptRowVisible) return message;
+        if (message.RelatedDiffPreview is { IsTranscriptRowVisible: true } diff) return diff;
+        if (message.OwnerToolActivity is { } owner)
+        {
+            return Vm.Messages.FirstOrDefault(
+                candidate => ReferenceEquals(candidate.ToolActivity, owner));
+        }
+        return null;
+    }
+
     private void ScrollToLatest_Click(object sender, RoutedEventArgs e)
     {
         _stickToBottom = true;

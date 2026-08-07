@@ -3,6 +3,7 @@ using System.Net.Http;
 using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Services.Notifications;
 using ConnectOnion.WinUIClient.Services.Runtime;
+using ConnectOnion.WinUIClient.Services.Speech;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -56,6 +57,10 @@ public static class AppServices
     /// <summary>Process-memory OpenOnion authentication and account balance.</summary>
     public static OpenOnionAccountService OpenOnionAccount
         => Provider.GetRequiredService<OpenOnionAccountService>();
+
+    /// <summary>Cloud speech-to-text client authenticated by the installation identity.</summary>
+    public static VoiceTranscriptionService VoiceTranscription
+        => Provider.GetRequiredService<VoiceTranscriptionService>();
 
     // Opens external links. A test can substitute a fake by assigning this override — the
     // underlying Launcher is a static WinRT type that cannot be mocked directly; when unset the

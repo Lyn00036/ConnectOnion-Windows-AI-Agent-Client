@@ -75,8 +75,11 @@ public sealed partial class AboutOverlay : UserControl
     {
         if (width <= 0 || height <= 0) return;
 
-        var safeMargin = width >= 700 ? 64d : 40d;
-        ModalContainer.Width = Math.Max(0, Math.Min(400, width - safeMargin));
+        // Stretch + MaxWidth, so the width is "available minus Margin" as resolved by layout.
+        // The removed line computed it from ActualWidth with its own margin constant, which
+        // disagreed with the Margin in XAML and, away from 100% zoom/text scale, measured a
+        // different width than the window (FloatingOverlayLayer is scaled). MaxHeight stays in
+        // code: it is a proportion of the available height, which XAML cannot express.
         ModalContainer.MaxHeight = Math.Max(0, Math.Min(390, height * 0.8));
     }
 
