@@ -232,6 +232,150 @@ public sealed class AgentRepositoryTests
     }
 
     [Fact]
+    public async Task TargetedAgentWrites_PreserveUnrelatedRowsSelectionAndCachedInfo()
+    {
+        var existing = new AgentConfig
+        {
+            Id = "targeted-existing",
+            Name = "Existing",
+            Address = "0x1",
+            InfoJson = "{\"model\":\"keep\"}",
+            InfoUpdatedAt = "2026-08-07T00:00:00Z",
+        };
+        await _repository.SaveAsync(new AgentsState
+        {
+            Agents = [existing],
+            SelectedAgentId = existing.Id,
+        });
+
+        var added = new AgentConfig
+        {
+            Id = "targeted-added",
+            Name = "Added",
+            Address = "0x2",
+            IconPath = "avatars/added-old.png",
+        };
+        Assert.True(await _repository.AppendAgentAsync(added, makeSelected: false));
+        Assert.True(await _repository.UpdateIconPathAsync(added.Id, "avatars/added-new.png"));
+
+        var loaded = await _repository.LoadAsync();
+        Assert.Equal(existing.Id, loaded.SelectedAgentId);
+        Assert.Equal(existing.InfoJson, Assert.Single(loaded.Agents, a => a.Id == existing.Id).InfoJson);
+        Assert.Equal(
+            "avatars/added-new.png",
+            Assert.Single(loaded.Agents, a => a.Id == added.Id).IconPath);
+    }
+
+    [Fact]
+    public async Task DeleteAgentAsync_RemovesItsWholeGraphAndKeepsOtherAgents()
+    {
+        var removed = new AgentConfig { Id = "atomic-agent", Name = "Remove", Address = "0x1" };
+        var kept = new AgentConfig { Id = "atomic-keep", Name = "Keep", Address = "0x2" };
+        await _repository.SaveAsync(new AgentsState
+        {
+            Agents = [removed, kept],
+            SelectedAgentId = removed.Id,
+        });
+
+        await using (var connection = await AppDatabase.OpenAsync())
+        await using (var seed = connection.CreateCommand())
+        {
+            seed.CommandText = """
+                INSERT INTO sessions (id, agent_id, title, created_at, updated_at, sort_order, mode)
+                VALUES ('atomic-session', 'atomic-agent', 'Owned', 'now', 'now', 0, 'safe');
+                INSERT INTO messages (id, conversation_id, role, content, created_at)
+                VALUES (1, 'atomic-session', 'user', 'message', 1);
+                INSERT INTO message_attachments (
+                    id, conversation_id, message_id, kind, file_name, size_bytes, status, created_at)
+                VALUES ('atomic-attachment', 'atomic-session', 1, 'file', 'test.txt', 1, 'sent', 1);
+                INSERT INTO executions (id, conversation_id, prompt, status, created_at)
+                VALUES ('atomic-execution', 'atomic-session', 'test', 'done', 1);
+                INSERT INTO trace_events (id, conversation_id, execution_id, type, payload_json)
+                VALUES ('atomic-trace', 'atomic-session', 'atomic-execution', 'output', '{}');
+                INSERT INTO app_meta (key, value) VALUES ('active_session_id', 'atomic-session');
+                INSERT INTO app_meta (key, value) VALUES ('pinned_session_ids', '["atomic-session"]');
+                """;
+            await seed.ExecuteNonQueryAsync();
+        }
+
+        Assert.True(await _repository.DeleteAgentAsync(removed.Id, kept.Id));
+
+        var loaded = await _repository.LoadAsync();
+        Assert.Equal(kept.Id, loaded.SelectedAgentId);
+        Assert.Equal(kept.Id, Assert.Single(loaded.Agents).Id);
+        await using var verify = await AppDatabase.OpenAsync();
+        await using var count = verify.CreateCommand();
+        count.CommandText = """
+            SELECT
+                (SELECT COUNT(*) FROM sessions WHERE id = 'atomic-session') +
+                (SELECT COUNT(*) FROM messages WHERE conversation_id = 'atomic-session') +
+                (SELECT COUNT(*) FROM message_attachments WHERE conversation_id = 'atomic-session') +
+                (SELECT COUNT(*) FROM executions WHERE conversation_id = 'atomic-session') +
+                (SELECT COUNT(*) FROM trace_events WHERE conversation_id = 'atomic-session');
+            """;
+        Assert.Equal(
+            0L,
+            Convert.ToInt64(
+                await count.ExecuteScalarAsync(),
+                System.Globalization.CultureInfo.InvariantCulture));
+        Assert.Null(await AppDatabase.GetMetaAsync(verify, "active_session_id"));
+        Assert.Null(await AppDatabase.GetMetaAsync(verify, "pinned_session_ids"));
+    }
+
+    [Fact]
+    public async Task DeleteAgentAsync_WhenAChildDeleteFails_RollsBackEverything()
+    {
+        var agent = new AgentConfig { Id = "atomic-rollback", Name = "Rollback", Address = "0x1" };
+        await _repository.SaveAsync(new AgentsState { Agents = [agent], SelectedAgentId = agent.Id });
+        await using (var connection = await AppDatabase.OpenAsync())
+        await using (var seed = connection.CreateCommand())
+        {
+            seed.CommandText = """
+                INSERT INTO sessions (id, agent_id, title, created_at, updated_at, sort_order, mode)
+                VALUES ('atomic-rollback-session', 'atomic-rollback', 'Owned', 'now', 'now', 0, 'safe');
+                INSERT INTO messages (id, conversation_id, role, content, created_at)
+                VALUES (1, 'atomic-rollback-session', 'user', 'keep', 1);
+                CREATE TRIGGER fail_atomic_agent_delete
+                BEFORE DELETE ON messages
+                WHEN OLD.conversation_id = 'atomic-rollback-session'
+                BEGIN
+                    SELECT RAISE(ABORT, 'forced agent delete failure');
+                END;
+                """;
+            await seed.ExecuteNonQueryAsync();
+        }
+
+        try
+        {
+            await Assert.ThrowsAsync<Microsoft.Data.Sqlite.SqliteException>(() =>
+                _repository.DeleteAgentAsync(agent.Id));
+        }
+        finally
+        {
+            await using var connection = await AppDatabase.OpenAsync();
+            await using var dropTrigger = connection.CreateCommand();
+            dropTrigger.CommandText = "DROP TRIGGER IF EXISTS fail_atomic_agent_delete;";
+            await dropTrigger.ExecuteNonQueryAsync();
+        }
+
+        var loaded = await _repository.LoadAsync();
+        Assert.Equal(agent.Id, Assert.Single(loaded.Agents).Id);
+        Assert.Equal(agent.Id, loaded.SelectedAgentId);
+        await using var verify = await AppDatabase.OpenAsync();
+        await using var count = verify.CreateCommand();
+        count.CommandText = """
+            SELECT
+                (SELECT COUNT(*) FROM sessions WHERE id = 'atomic-rollback-session') +
+                (SELECT COUNT(*) FROM messages WHERE conversation_id = 'atomic-rollback-session');
+            """;
+        Assert.Equal(
+            2L,
+            Convert.ToInt64(
+                await count.ExecuteScalarAsync(),
+                System.Globalization.CultureInfo.InvariantCulture));
+    }
+
+    [Fact]
     public async Task SaveAsync_RemovingAgent_DeletesItsConversationGraphFirst()
     {
         var agent = new AgentConfig { Id = "agent-with-session", Name = "Agent", Address = "0x1" };

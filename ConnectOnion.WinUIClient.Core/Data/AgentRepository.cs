@@ -45,6 +45,185 @@ public sealed class AgentRepository
 {
     private const string SelectedAgentMetaKey = "selected_agent_id";
 
+    /// <summary>Adds one agent at the end of the user's ordering without reconciling or deleting
+    /// any existing rows. The insert and optional selection change commit together.</summary>
+    public async Task<bool> AppendAgentAsync(
+        AgentConfig agent,
+        bool makeSelected = true,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(agent);
+        if (string.IsNullOrWhiteSpace(agent.Id)
+            || !AgentConfig.IsValidName(agent.Name)
+            || !HasConnectionTarget(agent)
+            || agent.Id == "local-agent")
+        {
+            return false;
+        }
+
+        await using var connection = await AppDatabase.OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken)
+            .ConfigureAwait(false);
+        await using var insert = connection.CreateCommand();
+        insert.Transaction = transaction;
+        insert.CommandText = """
+            INSERT OR IGNORE INTO agents (
+                id, name, address, direct_url, icon_path, invite_code,
+                info_json, info_updated_at, sort_order)
+            SELECT
+                $id, $name, $address, $direct_url, $icon_path, $invite_code,
+                $info_json, $info_updated_at,
+                COALESCE((SELECT MAX(sort_order) + 1 FROM agents), 0);
+            """;
+        AppDatabase.Add(insert, "$id", agent.Id);
+        AppDatabase.Add(insert, "$name", agent.Name.Trim());
+        AppDatabase.Add(insert, "$address", agent.Address);
+        AppDatabase.Add(insert, "$direct_url", agent.DirectUrl);
+        AppDatabase.Add(insert, "$icon_path",
+            string.IsNullOrWhiteSpace(agent.IconPath) ? null : agent.IconPath);
+        AppDatabase.Add(insert, "$invite_code", agent.InviteCode);
+        AppDatabase.Add(insert, "$info_json", agent.InfoJson);
+        AppDatabase.Add(insert, "$info_updated_at", agent.InfoUpdatedAt);
+
+        if (await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) == 0)
+            return false;
+
+        if (makeSelected)
+        {
+            await AppDatabase.SetMetaAsync(connection, transaction, SelectedAgentMetaKey, agent.Id)
+                .ConfigureAwait(false);
+        }
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        StorageRevision.Bump();
+        return true;
+    }
+
+    /// <summary>Changes only one agent's custom icon reference.</summary>
+    public async Task<bool> UpdateIconPathAsync(
+        string agentId,
+        string? iconPath,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(agentId)) return false;
+        var normalized = string.IsNullOrWhiteSpace(iconPath) ? null : iconPath;
+
+        await using var connection = await AppDatabase.OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE agents
+            SET icon_path = $icon_path
+            WHERE id = $id AND icon_path IS NOT $icon_path;
+            """;
+        AppDatabase.Add(command, "$id", agentId);
+        AppDatabase.Add(command, "$icon_path", normalized);
+        if (await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) == 0)
+            return false;
+
+        StorageRevision.Bump();
+        return true;
+    }
+
+    /// <summary>Deletes an agent, all of its local conversation graphs, and their metadata
+    /// references in one transaction. Usage history is intentionally retained.</summary>
+    public async Task<bool> DeleteAgentAsync(
+        string agentId,
+        string? preferredSelectedAgentId = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(agentId)) return false;
+
+        await using var connection = await AppDatabase.OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        await using (var exists = connection.CreateCommand())
+        {
+            exists.Transaction = transaction;
+            exists.CommandText = "SELECT 1 FROM agents WHERE id = $id LIMIT 1;";
+            AppDatabase.Add(exists, "$id", agentId);
+            if (await exists.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is null)
+                return false;
+        }
+
+        var removedSessionIds = new List<string>();
+        await using (var select = connection.CreateCommand())
+        {
+            select.Transaction = transaction;
+            select.CommandText = "SELECT id FROM sessions WHERE agent_id = $id;";
+            AppDatabase.Add(select, "$id", agentId);
+            await using var reader = await select.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                removedSessionIds.Add(reader.GetString(0));
+        }
+
+        await using (var deleteGraph = connection.CreateCommand())
+        {
+            deleteGraph.Transaction = transaction;
+            deleteGraph.CommandText = """
+                DELETE FROM message_attachments
+                WHERE conversation_id IN (SELECT id FROM sessions WHERE agent_id = $id);
+                DELETE FROM messages
+                WHERE conversation_id IN (SELECT id FROM sessions WHERE agent_id = $id);
+                DELETE FROM trace_events
+                WHERE conversation_id IN (SELECT id FROM sessions WHERE agent_id = $id);
+                DELETE FROM executions
+                WHERE conversation_id IN (SELECT id FROM sessions WHERE agent_id = $id);
+                DELETE FROM sessions WHERE agent_id = $id;
+                DELETE FROM agents WHERE id = $id;
+                """;
+            AppDatabase.Add(deleteGraph, "$id", agentId);
+            await deleteGraph.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await SessionRepository.PruneDeletedSessionReferencesAsync(
+                connection, transaction, removedSessionIds)
+            .ConfigureAwait(false);
+
+        var selected = await AppDatabase.GetMetaAsync(connection, transaction, SelectedAgentMetaKey)
+            .ConfigureAwait(false);
+        if (string.Equals(selected, agentId, StringComparison.Ordinal))
+        {
+            var replacement = await ResolveSelectionReplacementAsync(
+                    connection, transaction, preferredSelectedAgentId, cancellationToken)
+                .ConfigureAwait(false);
+            if (replacement is null)
+            {
+                await AppDatabase.DeleteMetaAsync(connection, transaction, SelectedAgentMetaKey)
+                    .ConfigureAwait(false);
+            }
+            else
+            {
+                await AppDatabase.SetMetaAsync(connection, transaction, SelectedAgentMetaKey, replacement)
+                    .ConfigureAwait(false);
+            }
+        }
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        StorageRevision.Bump();
+        return true;
+    }
+
+    private static async Task<string?> ResolveSelectionReplacementAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string? preferredAgentId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            SELECT id
+            FROM agents
+            ORDER BY CASE WHEN id = $preferred THEN 0 ELSE 1 END,
+                     sort_order, name COLLATE NOCASE, id
+            LIMIT 1;
+            """;
+        AppDatabase.Add(command, "$preferred",
+            string.IsNullOrWhiteSpace(preferredAgentId) ? null : preferredAgentId);
+        return await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) as string;
+    }
+
     /// <summary>Updates only the selected-agent pointer without reconciling every agent row.</summary>
     public async Task SetSelectedAgentAsync(
         string? agentId,
@@ -246,10 +425,11 @@ public sealed class AgentRepository
     }
 
     /// <summary>
-    /// Reconciles the whole agent list. Existing rows are upserted in the caller's order, then
+    /// Reconciles the whole agent list for test seeding. Existing rows are upserted in the caller's order, then
     /// omitted agents are removed after their complete conversation graph has been deleted.
     /// This ordering keeps <c>sessions.agent_id</c> valid throughout the transaction and makes
-    /// repository-level deletion safe even outside the shell's coordinated runtime cleanup.
+    /// repository-level deletion safe. Production code uses targeted writes so a stale snapshot
+    /// cannot overwrite unrelated agent changes.
     /// </summary>
     public async Task SaveAsync(AgentsState state, CancellationToken cancellationToken = default)
     {

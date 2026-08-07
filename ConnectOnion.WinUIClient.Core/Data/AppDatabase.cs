@@ -249,8 +249,17 @@ public static class AppDatabase
     // the migration that earned it (see SchemaMigrator).
 
     public static async Task<string?> GetMetaAsync(SqliteConnection connection, string key)
+        => await GetMetaAsync(connection, null, key).ConfigureAwait(false);
+
+    /// <summary>Reads metadata on the caller's transaction when several related rows must move
+    /// atomically. The two-argument overload remains the ordinary read path.</summary>
+    public static async Task<string?> GetMetaAsync(
+        SqliteConnection connection,
+        SqliteTransaction? transaction,
+        string key)
     {
         await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText = "SELECT value FROM app_meta WHERE key = $key;";
         Add(command, "$key", key);
         var value = await command.ExecuteScalarAsync().ConfigureAwait(false);

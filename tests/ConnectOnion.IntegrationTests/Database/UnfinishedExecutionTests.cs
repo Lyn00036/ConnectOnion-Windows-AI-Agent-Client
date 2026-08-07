@@ -51,6 +51,49 @@ public sealed class UnfinishedExecutionTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task InsertExecution_MissingConversation_PropagatesForeignKeyFailure()
+    {
+        var exception = await Assert.ThrowsAsync<Microsoft.Data.Sqlite.SqliteException>(() =>
+            _repository.InsertExecutionAsync(
+                "missing-execution", "missing-conversation", null, "prompt", "running"));
+
+        Assert.Equal(19, exception.SqliteErrorCode);
+    }
+
+    [Fact]
+    public async Task FinalizeExecution_MissingExecution_CreatesTerminalLedgerRow()
+    {
+        var conversation = await NewConversationAsync("unfinished-missing-finalize");
+
+        await _repository.FinalizeExecutionAsync(
+            "does-not-exist", conversation, "reply", "done", 100);
+
+        Assert.Null(await _repository.GetUnfinishedExecutionAsync(conversation));
+        await using var connection = await AppDatabase.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT result, status, duration_ms FROM executions WHERE id = 'does-not-exist';";
+        await using var reader = await command.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync());
+        Assert.Equal("reply", reader.GetString(0));
+        Assert.Equal("done", reader.GetString(1));
+        Assert.Equal(100, reader.GetDouble(2));
+    }
+
+    [Fact]
+    public async Task FinalizeExecution_ExistingIdForAnotherConversation_ReportsTheInvariantViolation()
+    {
+        var first = await NewConversationAsync("unfinished-finalize-first");
+        var second = await NewConversationAsync("unfinished-finalize-second");
+        await _repository.InsertExecutionAsync("shared-execution", first, null, "prompt", "running");
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _repository.FinalizeExecutionAsync(
+                "shared-execution", second, "reply", "done", 100));
+
+        Assert.Contains("does not belong", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task FindsRunningExecution()
     {
         var conversation = await NewConversationAsync("unfinished-running");

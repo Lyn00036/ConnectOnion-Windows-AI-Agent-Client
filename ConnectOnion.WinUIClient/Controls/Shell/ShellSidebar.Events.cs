@@ -104,9 +104,7 @@ public sealed partial class ShellSidebar
     {
         if ((sender as FrameworkElement)?.Tag is not string agentId) return;
 
-        var agentsState = await AppServices.Agents.LoadAsync();
-        agentsState.SelectedAgentId = agentId;
-        await AppServices.Agents.SaveAsync(agentsState);
+        await AppServices.Agents.SetSelectedAgentAsync(agentId);
         RevealAgentInSidebar(agentId);
         await RefreshAsync();
         RequestNavigation(typeof(Views.AgentDetailPage), forceReload: true);
@@ -151,10 +149,13 @@ public sealed partial class ShellSidebar
             // The commit moved the file, so the finally block below has nothing left to clean up.
             temporaryPath = null;
 
-            agent.IconPath = committedPath;
             try
             {
-                await AppServices.Agents.SaveAsync(agentsState);
+                if (!await AppServices.Agents.UpdateIconPathAsync(agentId, committedPath))
+                {
+                    await DeleteIconQuietlyAsync(committedPath);
+                    return;
+                }
             }
             catch
             {
@@ -196,8 +197,7 @@ public sealed partial class ShellSidebar
             // Clear the reference before touching the file, for the same reason the change path
             // commits before saving: an orphaned file is recoverable, a dangling row is not.
             var previousIconPath = agent.IconPath;
-            agent.IconPath = null;
-            await AppServices.Agents.SaveAsync(agentsState);
+            if (!await AppServices.Agents.UpdateIconPathAsync(agentId, null)) return;
 
             await DeleteIconQuietlyAsync(previousIconPath);
             await RefreshAsync();
@@ -296,88 +296,71 @@ public sealed partial class ShellSidebar
         try
         {
             var agentsState = await AppServices.Agents.LoadAsync();
-        var agent = agentsState.Agents.FirstOrDefault(entry => entry.Id == agentId);
-        if (agent is null) return false;
+            var agent = agentsState.Agents.FirstOrDefault(entry => entry.Id == agentId);
+            if (agent is null) return false;
 
-        if (!await ConfirmDeleteAsync(
-                LocalizedStrings.Format("DeleteAgentTitle", "Delete {0}?", agent.DisplayName),
-                LocalizedStrings.Get(
-                    "DeleteAgentWarning",
-                    "This agent and all of its local sessions will be removed."))) return false;
+            if (!await ConfirmDeleteAsync(
+                    LocalizedStrings.Format("DeleteAgentTitle", "Delete {0}?", agent.DisplayName),
+                    LocalizedStrings.Get(
+                        "DeleteAgentWarning",
+                        "This agent and all of its local sessions will be removed."))) return false;
 
-        // Read before the row goes: once the agent is removed from storage nothing points at its
-        // icon file any more, and the path would be unrecoverable.
-        var iconPath = agent.IconPath;
+            // Read before the row goes: once the agent is removed from storage nothing points at its
+            // icon file any more, and the path would be unrecoverable.
+            var iconPath = agent.IconPath;
 
-        var activeSessionId = await AppServices.Sessions.GetActiveSessionIdAsync();
-        var activeSession = activeSessionId is null
-            ? null
-            : await AppServices.Sessions.GetSessionAsync(activeSessionId);
-        var deletingCurrentSurface =
-            (_currentPageType == typeof(AgentDetailPage)
-                && agentsState.SelectedAgentId == agentId)
-            || (_currentPageType == typeof(ChatPage) && activeSession?.AgentId == agentId);
-        // Tear each of this agent's conversations down completely before its sessions rows go,
-        // and remove the agent only after that transaction succeeds. Deleting the agent first
-        // used to leave invisible orphan sessions whenever a later child cleanup failed.
-        // Releasing the socket/run leaves no live WebSocket behind; deleting the child rows
-        // (messages, attachments, executions, traces) is what actually makes the removal work:
-        // the session FKs declare no ON DELETE cascade, so the "DELETE FROM sessions" below raises
-        // a constraint violation for any conversation that still has message/execution rows. That
-        // throw lands before RefreshAsync below and is swallowed by the catch, leaving the agent
-        // gone from storage but the sidebar never refreshed — the "delete doesn't update the
-        // sidebar" bug. This mirrors DeleteSession_Click's cleanup. The ids are fetched on their
-        // own because that is all this loop needs; it used to filter a full index read.
-        foreach (var removedId in await AppServices.Sessions.ListSessionIdsForAgentAsync(agentId))
-        {
-            ConversationCache.Invalidate(removedId);
-            await AppServices.RunManager.ReleaseConversationAsync(removedId);
-            await AppServices.Conversations.DeleteMessagesAsync(removedId);
-            await AppServices.Conversations.DeleteExecutionsAndTracesAsync(removedId);
-        }
-        // Targeted delete. This used to remove the agent's entries from the loaded list and hand
-        // the remainder to SaveAsync, which reconciles the whole index — correct only for as long
-        // as the list really is the whole index, and outright destructive once it is a page.
-        await AppServices.Sessions.DeleteSessionsForAgentAsync(agentId);
+            var activeSessionId = await AppServices.Sessions.GetActiveSessionIdAsync();
+            var activeSession = activeSessionId is null
+                ? null
+                : await AppServices.Sessions.GetSessionAsync(activeSessionId);
+            var deletingCurrentSurface =
+                (_currentPageType == typeof(AgentDetailPage)
+                    && agentsState.SelectedAgentId == agentId)
+                || (_currentPageType == typeof(ChatPage) && activeSession?.AgentId == agentId);
+            // Runtime sockets cannot participate in a SQLite transaction, so release them first.
+            // The targeted repository delete below then removes every persisted child and the agent
+            // row in one transaction, rolling all of it back if any statement fails.
+            foreach (var removedId in await AppServices.Sessions.ListSessionIdsForAgentAsync(agentId))
+            {
+                ConversationCache.Invalidate(removedId);
+                await AppServices.RunManager.ReleaseConversationAsync(removedId);
+            }
+            // Pick the desired fallback from the current UI state; the repository validates it
+            // against the rows inside the transaction and falls back to the first remaining agent.
+            var preferredAgentId = agentsState.SelectedAgentId == agentId
+                ? (activeSession?.AgentId != agentId
+                    ? activeSession?.AgentId
+                    : agentsState.Agents.FirstOrDefault(entry => entry.Id != agentId)?.Id)
+                : null;
+            if (!await AppServices.Agents.DeleteAgentAsync(agentId, preferredAgentId)) return false;
 
-        // DeleteSessionsForAgentAsync clears the active pointer if it named one of the removed
-        // conversations; choosing the replacement is this caller's decision, not storage's.
-        if (activeSession is not null && activeSession.AgentId == agentId)
-        {
-            var replacements = await AppServices.Sessions.LoadRecentAsync(1);
-            await AppServices.Sessions.SetActiveSessionAsync(
-                replacements.Count > 0 ? replacements[0].Id : null);
-        }
+            // The atomic delete clears the active pointer if it named one of the removed
+            // conversations; choosing the replacement is this caller's decision.
+            if (activeSession is not null && activeSession.AgentId == agentId)
+            {
+                var replacements = await AppServices.Sessions.LoadRecentAsync(1);
+                await AppServices.Sessions.SetActiveSessionAsync(
+                    replacements.Count > 0 ? replacements[0].Id : null);
+            }
 
-        agentsState.Agents.Remove(agent);
-        if (agentsState.SelectedAgentId == agentId)
-        {
-            // Keep the two persisted selections coherent. If another conversation was already
-            // active, that conversation's agent is the natural fallback; otherwise retain a
-            // valid agent selection for New chat without fabricating a session.
-            agentsState.SelectedAgentId = activeSession?.AgentId
-                ?? agentsState.Agents.FirstOrDefault()?.Id;
-        }
-        await AppServices.Agents.SaveAsync(agentsState);
+            // Only now: the row is gone, so deleting the file cannot leave a live agent pointing at
+            // one that no longer exists.
+            await DeleteIconQuietlyAsync(iconPath);
 
-        // Only now: the row is gone, so deleting the file cannot leave a live agent pointing at
-        // one that no longer exists.
-        await DeleteIconQuietlyAsync(iconPath);
+            AppServices.RunManager.ForgetAgent(agentId);
+            AppServices.Presence.Forget(agentId);
+            AppServices.Notifications.NotifyConnectionRestored(agentId);
 
-        AppServices.RunManager.ForgetAgent(agentId);
-        AppServices.Presence.Forget(agentId);
-        AppServices.Notifications.NotifyConnectionRestored(agentId);
-
-        await RefreshAsync();
-        if (deletingCurrentSurface)
-        {
-            // Agent Detail has no valid content once its agent is gone, and ChatPage is likewise
-            // invalid after its active conversation graph is removed. Return to the stable
-            // library root instead of manufacturing an empty chat page, and discard history that
-            // could navigate back to the deleted entity.
-            RequestNavigationReset(typeof(HomePage));
-        }
-        return true;
+            await RefreshAsync();
+            if (deletingCurrentSurface)
+            {
+                // Agent Detail has no valid content once its agent is gone, and ChatPage is likewise
+                // invalid after its active conversation graph is removed. Return to the stable
+                // library root instead of manufacturing an empty chat page, and discard history that
+                // could navigate back to the deleted entity.
+                RequestNavigationReset(typeof(HomePage));
+            }
+            return true;
         }
         catch (Exception exception)
         {
@@ -503,46 +486,41 @@ public sealed partial class ShellSidebar
         try
         {
             var session = await AppServices.Sessions.GetSessionAsync(sessionId);
-        if (session is null) return;
+            if (session is null) return;
 
-        if (!await ConfirmDeleteAsync(
-                LocalizedStrings.Format("DeleteConversationTitle", "Delete {0}?", session.Title),
-                LocalizedStrings.Get(
-                    "DeleteConversationWarning",
-                    "This local conversation will be removed."))) return;
+            if (!await ConfirmDeleteAsync(
+                    LocalizedStrings.Format("DeleteConversationTitle", "Delete {0}?", session.Title),
+                    LocalizedStrings.Get(
+                        "DeleteConversationWarning",
+                        "This local conversation will be removed."))) return;
 
-        var wasActive = await AppServices.Sessions.GetActiveSessionIdAsync() == sessionId;
+            var wasActive = await AppServices.Sessions.GetActiveSessionIdAsync() == sessionId;
 
-        ConversationCache.Invalidate(sessionId);
-        await AppServices.RunManager.ReleaseConversationAsync(sessionId);
-        await AppServices.Conversations.DeleteMessagesAsync(sessionId);
-        await AppServices.Conversations.DeleteExecutionsAndTracesAsync(sessionId);
-        // Children first, then the index row. Targeted, so the rest of the index is untouched —
-        // this used to remove the entry from a loaded list and hand the remainder to SaveAsync.
-        await AppServices.Sessions.DeleteSessionAsync(sessionId);
+            ConversationCache.Invalidate(sessionId);
+            await AppServices.RunManager.ReleaseConversationAsync(sessionId);
+            // Children, index row, pin, and active pointer commit as one unit.
+            await AppServices.Sessions.DeleteSessionAsync(sessionId);
 
-        // No conversations left for this agent — go back to the agent page
-        // instead of silently starting a fresh conversation, so deleting the
-        // last chat doesn't just spawn another one in its place.
-        var remainingForAgent = await AppServices.Sessions.LoadAgentSessionsAsync(session.AgentId, limit: 1);
-        if (remainingForAgent.Sessions.Count == 0)
-        {
-            var agentsState = await AppServices.Agents.LoadAsync();
-            agentsState.SelectedAgentId = session.AgentId;
-            await AppServices.Agents.SaveAsync(agentsState);
+            // No conversations left for this agent — go back to the agent page
+            // instead of silently starting a fresh conversation, so deleting the
+            // last chat doesn't just spawn another one in its place.
+            var remainingForAgent = await AppServices.Sessions.LoadAgentSessionsAsync(session.AgentId, limit: 1);
+            if (remainingForAgent.Sessions.Count == 0)
+            {
+                await AppServices.Agents.SetSelectedAgentAsync(session.AgentId);
+
+                await RefreshAsync();
+                RequestNavigation(typeof(AgentDetailPage), forceReload: true);
+                return;
+            }
+
+            // DeleteSessionAsync already dropped the pointer if it named this conversation; pick the
+            // successor here — the agent's most recent, else the most recent anywhere.
+            // Count > 0 is established above, so the agent's own most recent always exists here.
+            if (wasActive) await AppServices.Sessions.SetActiveSessionAsync(remainingForAgent.Sessions[0].Id);
 
             await RefreshAsync();
-            RequestNavigation(typeof(AgentDetailPage), forceReload: true);
-            return;
-        }
-
-        // DeleteSessionAsync already dropped the pointer if it named this conversation; pick the
-        // successor here — the agent's most recent, else the most recent anywhere.
-        // Count > 0 is established above, so the agent's own most recent always exists here.
-        if (wasActive) await AppServices.Sessions.SetActiveSessionAsync(remainingForAgent.Sessions[0].Id);
-
-        await RefreshAsync();
-        RequestNavigation(typeof(ChatPage), forceReload: true);
+            RequestNavigation(typeof(ChatPage), forceReload: true);
         }
         catch (Exception exception)
         {

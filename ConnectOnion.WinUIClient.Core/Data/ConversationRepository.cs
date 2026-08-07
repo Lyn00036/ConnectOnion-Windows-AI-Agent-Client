@@ -541,47 +541,42 @@ public sealed partial class ConversationRepository
     {
         if (messages.Count == 0) return;
 
-        try
+        await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync().ConfigureAwait(false);
+
+        // One timestamp for the whole batch: a turn's bubbles are conceptually written at
+        // one instant, and sharing it keeps their created_at ordering consistent with
+        // their id ordering.
+        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        // Commands are built once and re-bound per row inside the loop. Rebuilding them
+        // per message would re-prepare the same SQL for every bubble in the turn.
+        await using var upsertMessage = CreateMessageUpsert(connection, transaction);
+        await using var clearAttachments = CreateAttachmentDelete(connection, transaction);
+        await using var insertAttachment = CreateAttachmentInsert(connection, transaction);
+
+        foreach (var message in messages)
         {
-            await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
-            await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync().ConfigureAwait(false);
+            BindMessage(upsertMessage, message, conversationId, now);
+            await upsertMessage.ExecuteNonQueryAsync().ConfigureAwait(false);
 
-            // One timestamp for the whole batch: a turn's bubbles are conceptually written at
-            // one instant, and sharing it keeps their created_at ordering consistent with
-            // their id ordering.
-            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            // Commands are built once and re-bound per row inside the loop. Rebuilding them
-            // per message would re-prepare the same SQL for every bubble in the turn.
-            await using var upsertMessage = CreateMessageUpsert(connection, transaction);
-            await using var clearAttachments = CreateAttachmentDelete(connection, transaction);
-            await using var insertAttachment = CreateAttachmentInsert(connection, transaction);
+            clearAttachments.Parameters["$conversation_id"].Value = conversationId;
+            clearAttachments.Parameters["$message_id"].Value = message.Id;
+            await clearAttachments.ExecuteNonQueryAsync().ConfigureAwait(false);
 
-            foreach (var message in messages)
+            foreach (var attachment in message.Attachments)
             {
-                BindMessage(upsertMessage, message, conversationId, now);
-                await upsertMessage.ExecuteNonQueryAsync().ConfigureAwait(false);
-
-                clearAttachments.Parameters["$conversation_id"].Value = conversationId;
-                clearAttachments.Parameters["$message_id"].Value = message.Id;
-                await clearAttachments.ExecuteNonQueryAsync().ConfigureAwait(false);
-
-                foreach (var attachment in message.Attachments)
-                {
-                    BindAttachment(insertAttachment, attachment, conversationId, message.Id, now);
-                    await insertAttachment.ExecuteNonQueryAsync().ConfigureAwait(false);
-                }
+                BindAttachment(insertAttachment, attachment, conversationId, message.Id, now);
+                await insertAttachment.ExecuteNonQueryAsync().ConfigureAwait(false);
             }
+        }
 
-            await transaction.CommitAsync().ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            // Best-effort: keep the live conversation working if the write fails.
-            LogFailure(nameof(UpsertMessagesAsync), conversationId, ex);
-        }
+        // A transcript is durable state, not a cache. Let a failed commit reach the run registry
+        // so it reports a failed turn and never publishes Completed for history that is not on
+        // disk. The transaction disposal rolls the whole batch back on any exception.
+        await transaction.CommitAsync().ConfigureAwait(false);
         // The sidebar draws each row's preview from the newest message, so a transcript write is
-        // one of the things StorageRevision has to account for. Bumped outside the try: a failed
-        // write leaves nothing new to read, so there is no cache to invalidate.
+        // one of the things StorageRevision has to account for. This runs only after commit, so a
+        // failed write neither advances the revision nor looks successfully persisted.
         StorageRevision.Bump();
     }
 
@@ -590,29 +585,25 @@ public sealed partial class ConversationRepository
     ///
     /// <b>The statement order is load-bearing.</b> The FKs in this schema declare no
     /// <c>ON DELETE</c> behavior, so nothing cascades — children must go before parents by
-    /// hand. Reversing these two lines raises a constraint violation that the catch below
-    /// swallows into a log line, leaving the conversation half-deleted with no visible error.
+    /// hand. Reversing these two lines raises a constraint violation. That failure deliberately
+    /// reaches the caller: transcript deletion is durable user state, not best-effort cleanup.
     /// The same applies one level up in <c>SessionRepository</c>: this method and
     /// <c>DeleteExecutionsAndTracesAsync</c> both have to run before the <c>sessions</c> row.
     /// </summary>
     public async Task DeleteMessagesAsync(string conversationId)
     {
-        try
-        {
-            await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
-            await using var command = connection.CreateCommand();
-            // Attachments reference messages, so they go first.
-            command.CommandText = """
-                DELETE FROM message_attachments WHERE conversation_id = $conversation_id;
-                DELETE FROM messages WHERE conversation_id = $conversation_id;
-                """;
-            AppDatabase.Add(command, "$conversation_id", conversationId);
-            await command.ExecuteNonQueryAsync().ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            LogFailure(nameof(DeleteMessagesAsync), conversationId, ex);
-        }
+        await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync().ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        // Attachments reference messages, so they go first.
+        command.CommandText = """
+            DELETE FROM message_attachments WHERE conversation_id = $conversation_id;
+            DELETE FROM messages WHERE conversation_id = $conversation_id;
+            """;
+        AppDatabase.Add(command, "$conversation_id", conversationId);
+        await command.ExecuteNonQueryAsync().ConfigureAwait(false);
+        await transaction.CommitAsync().ConfigureAwait(false);
     }
 
     /// <summary>
@@ -625,24 +616,20 @@ public sealed partial class ConversationRepository
     /// </summary>
     public async Task DeleteMessageAsync(string conversationId, long messageId)
     {
-        try
-        {
-            await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
-            await using var command = connection.CreateCommand();
-            command.CommandText = """
-                DELETE FROM message_attachments
-                    WHERE conversation_id = $conversation_id AND message_id = $message_id;
-                DELETE FROM messages
-                    WHERE conversation_id = $conversation_id AND id = $message_id;
-                """;
-            AppDatabase.Add(command, "$conversation_id", conversationId);
-            AppDatabase.Add(command, "$message_id", messageId);
-            await command.ExecuteNonQueryAsync().ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            LogFailure(nameof(DeleteMessageAsync), conversationId, ex);
-        }
+        await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync().ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            DELETE FROM message_attachments
+                WHERE conversation_id = $conversation_id AND message_id = $message_id;
+            DELETE FROM messages
+                WHERE conversation_id = $conversation_id AND id = $message_id;
+            """;
+        AppDatabase.Add(command, "$conversation_id", conversationId);
+        AppDatabase.Add(command, "$message_id", messageId);
+        await command.ExecuteNonQueryAsync().ConfigureAwait(false);
+        await transaction.CommitAsync().ConfigureAwait(false);
     }
 
     /// <summary>
@@ -652,30 +639,25 @@ public sealed partial class ConversationRepository
     /// </summary>
     public async Task DeleteExecutionAsync(string runId)
     {
-        try
-        {
-            await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
-            await using var command = connection.CreateCommand();
-            command.CommandText = """
-                DELETE FROM trace_events WHERE execution_id = $run_id;
-                DELETE FROM executions WHERE id = $run_id;
-                """;
-            AppDatabase.Add(command, "$run_id", runId);
-            await command.ExecuteNonQueryAsync().ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            LogFailure(nameof(DeleteExecutionAsync), runId, ex);
-        }
+        await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync().ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            DELETE FROM trace_events WHERE execution_id = $run_id;
+            DELETE FROM executions WHERE id = $run_id;
+            """;
+        AppDatabase.Add(command, "$run_id", runId);
+        await command.ExecuteNonQueryAsync().ConfigureAwait(false);
+        await transaction.CommitAsync().ConfigureAwait(false);
     }
 
     // --- helpers ---
 
     /// <summary>
-    /// Every write here is best-effort: a failed save must not take the live conversation down
-    /// with it. That is a deliberate trade, but a silent one is not — a message the user can see
-    /// on screen and that is quietly missing after a restart should leave a trace to find. The
-    /// The structured logger call survives in Release and is the single diagnostic path.
+    /// Logs failures on explicitly best-effort read/diagnostic paths. Durable transcript and
+    /// execution mutations do not call this helper: their exceptions must reach the coordinator
+    /// so it cannot publish success for state that SQLite did not commit.
     /// </summary>
     private void LogFailure(string operation, string conversationId, Exception ex)
     {
@@ -689,26 +671,19 @@ public sealed partial class ConversationRepository
         string executionId, string conversationId, string? remoteSessionId,
         string prompt, string status)
     {
-        try
-        {
-            await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
-            await using var cmd = connection.CreateCommand();
-            cmd.CommandText = """
-                INSERT INTO executions (id, conversation_id, remote_session_id, prompt, status, created_at)
-                VALUES ($id, $conv, $remote, $prompt, $status, $ts);
-                """;
-            AppDatabase.Add(cmd, "$id", executionId);
-            AppDatabase.Add(cmd, "$conv", conversationId);
-            AppDatabase.Add(cmd, "$remote", remoteSessionId ?? (object)DBNull.Value);
-            AppDatabase.Add(cmd, "$prompt", prompt);
-            AppDatabase.Add(cmd, "$status", status);
-            AppDatabase.Add(cmd, "$ts", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
-            await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            LogFailure(nameof(InsertExecutionAsync), conversationId, ex);
-        }
+        await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO executions (id, conversation_id, remote_session_id, prompt, status, created_at)
+            VALUES ($id, $conv, $remote, $prompt, $status, $ts);
+            """;
+        AppDatabase.Add(cmd, "$id", executionId);
+        AppDatabase.Add(cmd, "$conv", conversationId);
+        AppDatabase.Add(cmd, "$remote", remoteSessionId ?? (object)DBNull.Value);
+        AppDatabase.Add(cmd, "$prompt", prompt);
+        AppDatabase.Add(cmd, "$status", status);
+        AppDatabase.Add(cmd, "$ts", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+        await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
     }
 
     /// <summary>An execution row that was started but never finalized.</summary>
@@ -762,25 +737,30 @@ public sealed partial class ConversationRepository
     public async Task FinalizeExecutionAsync(
         string executionId, string conversationId, string result, string status, double durationMs)
     {
-        try
+        await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO executions
+                (id, conversation_id, remote_session_id, prompt, result, status, duration_ms, created_at)
+            VALUES
+                ($id, $conv, NULL, '', $result, $status, $dur, $ts)
+            ON CONFLICT(id) DO UPDATE SET
+                result = excluded.result,
+                status = excluded.status,
+                duration_ms = excluded.duration_ms
+            WHERE executions.conversation_id = excluded.conversation_id;
+            """;
+        AppDatabase.Add(cmd, "$result", result);
+        AppDatabase.Add(cmd, "$status", status);
+        AppDatabase.Add(cmd, "$dur", durationMs);
+        AppDatabase.Add(cmd, "$id", executionId);
+        AppDatabase.Add(cmd, "$conv", conversationId);
+        AppDatabase.Add(cmd, "$ts", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+        var changed = await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+        if (changed != 1)
         {
-            await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
-            await using var cmd = connection.CreateCommand();
-            cmd.CommandText = """
-                UPDATE executions
-                SET result = $result, status = $status, duration_ms = $dur
-                WHERE id = $id AND conversation_id = $conv;
-                """;
-            AppDatabase.Add(cmd, "$result", result);
-            AppDatabase.Add(cmd, "$status", status);
-            AppDatabase.Add(cmd, "$dur", durationMs);
-            AppDatabase.Add(cmd, "$id", executionId);
-            AppDatabase.Add(cmd, "$conv", conversationId);
-            await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            LogFailure(nameof(FinalizeExecutionAsync), conversationId, ex);
+            throw new InvalidOperationException(
+                $"Execution '{executionId}' does not belong to conversation '{conversationId}'.");
         }
     }
 
@@ -841,20 +821,16 @@ public sealed partial class ConversationRepository
 
     public async Task DeleteExecutionsAndTracesAsync(string conversationId)
     {
-        try
-        {
-            await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
-            await using var cmd = connection.CreateCommand();
-            cmd.CommandText = """
-                DELETE FROM trace_events WHERE conversation_id = $conv;
-                DELETE FROM executions WHERE conversation_id = $conv;
-                """;
-            AppDatabase.Add(cmd, "$conv", conversationId);
-            await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            LogFailure(nameof(DeleteExecutionsAndTracesAsync), conversationId, ex);
-        }
+        await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync().ConfigureAwait(false);
+        await using var cmd = connection.CreateCommand();
+        cmd.Transaction = transaction;
+        cmd.CommandText = """
+            DELETE FROM trace_events WHERE conversation_id = $conv;
+            DELETE FROM executions WHERE conversation_id = $conv;
+            """;
+        AppDatabase.Add(cmd, "$conv", conversationId);
+        await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+        await transaction.CommitAsync().ConfigureAwait(false);
     }
 }

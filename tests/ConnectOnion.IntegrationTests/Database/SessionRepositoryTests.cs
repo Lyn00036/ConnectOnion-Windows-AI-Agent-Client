@@ -235,6 +235,23 @@ public sealed class SessionRepositoryTests : IAsyncLifetime
     public async Task DeleteSessionAsync_RemovesOnlyThatConversation_AndItsPinAndActivePointer()
     {
         await SeedAsync(("keep-a", "2026-01-03T00:00:00Z"), ("drop", "2026-01-02T00:00:00Z"), ("keep-b", "2026-01-01T00:00:00Z"));
+        await _messages.UpsertMessagesAsync("drop", [new ChatMessage
+        {
+            Id = 1,
+            Role = ChatRole.User,
+            Content = "delete the whole graph",
+        }]);
+        await using (var connection = await AppDatabase.OpenAsync())
+        await using (var seedGraph = connection.CreateCommand())
+        {
+            seedGraph.CommandText = """
+                INSERT INTO executions (id, conversation_id, prompt, status, created_at)
+                VALUES ('drop-execution', 'drop', 'prompt', 'done', 1);
+                INSERT INTO trace_events (id, conversation_id, execution_id, type, payload_json)
+                VALUES ('drop-trace', 'drop', 'drop-execution', 'output', '{}');
+                """;
+            await seedGraph.ExecuteNonQueryAsync();
+        }
         await _sessions.SetPinnedAsync("drop", true);
         await _sessions.SetPinnedAsync("keep-a", true);
         await _sessions.SetActiveSessionAsync("drop");
@@ -248,6 +265,61 @@ public sealed class SessionRepositoryTests : IAsyncLifetime
         // The pin list is a JSON blob with no referential integrity of its own, so it is pruned by
         // hand — and only the deleted conversation's pin.
         Assert.Equal(new[] { "keep-a" }, (await _sessions.LoadPinnedAsync()).Select(s => s.Id));
+        Assert.Empty(await _messages.LoadMessagesAsync("drop"));
+        await using var verify = await AppDatabase.OpenAsync();
+        await using var count = verify.CreateCommand();
+        count.CommandText = """
+            SELECT
+                (SELECT COUNT(*) FROM executions WHERE conversation_id = 'drop') +
+                (SELECT COUNT(*) FROM trace_events WHERE conversation_id = 'drop');
+            """;
+        Assert.Equal(
+            0L,
+            Convert.ToInt64(
+                await count.ExecuteScalarAsync(),
+                System.Globalization.CultureInfo.InvariantCulture));
+    }
+
+    [Fact]
+    public async Task DeleteSessionAsync_WhenAChildDeleteFails_RollsBackTheWholeGraph()
+    {
+        await SeedAsync(("rollback-delete", "2026-01-01T00:00:00Z"));
+        await _messages.UpsertMessagesAsync("rollback-delete", [new ChatMessage
+        {
+            Id = 1,
+            Role = ChatRole.User,
+            Content = "keep every row",
+        }]);
+
+        await using (var connection = await AppDatabase.OpenAsync())
+        await using (var trigger = connection.CreateCommand())
+        {
+            trigger.CommandText = """
+                CREATE TRIGGER fail_rollback_message_delete
+                BEFORE DELETE ON messages
+                WHEN OLD.conversation_id = 'rollback-delete'
+                BEGIN
+                    SELECT RAISE(ABORT, 'forced delete failure');
+                END;
+                """;
+            await trigger.ExecuteNonQueryAsync();
+        }
+
+        try
+        {
+            await Assert.ThrowsAsync<Microsoft.Data.Sqlite.SqliteException>(() =>
+                _sessions.DeleteSessionAsync("rollback-delete"));
+        }
+        finally
+        {
+            await using var connection = await AppDatabase.OpenAsync();
+            await using var dropTrigger = connection.CreateCommand();
+            dropTrigger.CommandText = "DROP TRIGGER IF EXISTS fail_rollback_message_delete;";
+            await dropTrigger.ExecuteNonQueryAsync();
+        }
+
+        Assert.NotNull(await _sessions.GetSessionAsync("rollback-delete"));
+        Assert.Single(await _messages.LoadMessagesAsync("rollback-delete"));
     }
 
     [Fact]
