@@ -201,6 +201,29 @@ public sealed class TrimmingGateTests
         RepoFile("ConnectOnion.Protocol", "packages.publish.lock.json");
     }
 
+    /// <summary>The trimmed console harness propagates its RID through both project references
+    /// but does not propagate the app's ILLink graph, so it needs its own lock basename.</summary>
+    [Theory]
+    [InlineData("Invoke-TrimAudit.ps1")]
+    [InlineData("Test-TrimmedRuntime.ps1")]
+    public void TrimSmokePublish_UsesTheDedicatedRidLockGraph(string scriptFile)
+    {
+        var script = RepoFile("scripts", scriptFile);
+        var smokePublish = Regex.Match(
+            script,
+            @"(?:Invoke-Publish|Publish-Trimmed) -Project \$SmokeProject[\s\S]*?-ExtraArgs @\([^)]*\)");
+
+        Assert.True(smokePublish.Success, $"Expected {scriptFile} to publish the trim-smoke harness.");
+        Assert.Contains(
+            "-p:NuGetLockFilePath=packages.trim-smoke.lock.json",
+            smokePublish.Value,
+            StringComparison.Ordinal);
+
+        RepoFile("tests", "ConnectOnion.TrimSmoke", "packages.trim-smoke.lock.json");
+        RepoFile("ConnectOnion.WinUIClient.Core", "packages.trim-smoke.lock.json");
+        RepoFile("ConnectOnion.Protocol", "packages.trim-smoke.lock.json");
+    }
+
     /// <summary>Each publish is preceded by a clean of the same project, so the publish cannot
     /// inherit intermediates the preceding solution build produced under different properties.</summary>
     [Fact]

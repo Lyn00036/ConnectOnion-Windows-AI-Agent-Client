@@ -109,7 +109,9 @@ if ($SmokeExe) {
     Write-Host "  using existing: $SmokeExe"
 } else {
     $dir = Join-Path $OutDir 'smoke'
-    Publish-Trimmed -Project $SmokeProject -Dir $dir -LogPath (Join-Path $OutDir 'smoke-publish.log') -ExtraArgs @()
+    Publish-Trimmed -Project $SmokeProject -Dir $dir `
+        -LogPath (Join-Path $OutDir 'smoke-publish.log') `
+        -ExtraArgs @('-p:NuGetLockFilePath=packages.trim-smoke.lock.json')
     $SmokeExe = Join-Path $dir 'ConnectOnion.TrimSmoke.exe'
 }
 if (-not (Test-Path $SmokeExe)) { throw "Trimmed smoke harness not found: $SmokeExe" }

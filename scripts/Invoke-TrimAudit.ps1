@@ -176,7 +176,8 @@ if (-not $SmokeOnly) {
 Write-Host "`n[3/3] Trimmed smoke harness (persist, restart, verify)" -ForegroundColor Cyan
 $smokeDir = Join-Path $OutDir 'smoke'
 Invoke-Publish -Project $SmokeProject -PublishDir $smokeDir `
-    -LogPath (Join-Path $OutDir 'smoke-publish.log') -ExtraArgs @()
+    -LogPath (Join-Path $OutDir 'smoke-publish.log') `
+    -ExtraArgs @('-p:NuGetLockFilePath=packages.trim-smoke.lock.json')
 
 $smokeExe = Join-Path $smokeDir 'ConnectOnion.TrimSmoke.exe'
 if (-not (Test-Path $smokeExe)) { throw "Smoke harness was not published to $smokeExe." }
