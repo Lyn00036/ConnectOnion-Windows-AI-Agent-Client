@@ -34,7 +34,7 @@ was, answered:
 - the latest nested-layout portable release rehearsal audits clean (466 entries, no forbidden
   content) and is **73.22 MB compressed / 176.85 MB unpacked**; the nested trimmed app itself
   remains the 170.85 MB like-for-like configuration measured below;
-- the root launcher **from that ZIP** starts the nested trimmed executable, which passes the rendering check and all 25 required shell tests;
+- the root launcher **from that ZIP** starts the nested trimmed executable, which passes the rendering check and all 28 required shell tests;
 - and its 10-sample warm start is 606.0 ms with a 153.9 MB idle working set, both better than the
   same-machine untrimmed control.
 
@@ -71,8 +71,8 @@ questions. The runtime still does.
 | No unexplained app-owned `IL2026`/`IL3050` in the experimental trimmed publish | **Met** — 0 app-owned sites (was 16) |
 | Protocol and interactive serialization paths have direct unit or integration coverage | **Met** — see "Coverage" below |
 | Tool Activity and every interactive card survive persist/restart in the trimmed publish | **Met** — `scripts/Test-TrimmedRuntime.ps1`, 2026-08-05. The trimmed smoke harness seeds a data root and the **trimmed app** is launched against it and asked to render the turn; both sides are trimmed binaries. See "Real-window evidence" below |
-| Fake Agent and real-window smoke tests pass against the trimmed executable | **Met** — all 25 required shell tests pass against the trimmed executable, matching the untrimmed control. See the note on `HelpKeyboardShortcuts` below for the earlier 12-test suite issue that had to be fixed first |
-| The **shipped** channel — the self-contained portable ZIP — audits clean and runs trimmed | **Met** — `scripts/Test-PackageContents.ps1` passes on the nested-layout ZIP (466 entries, no forbidden content, 73.22 MB compressed in the latest rehearsal), and the root launcher starts the nested trimmed executable which passes the rendering check and all 25 required shell tests |
+| Fake Agent and real-window smoke tests pass against the trimmed executable | **Met** — all 28 required shell tests pass against the trimmed executable, matching the untrimmed control. See the note on `HelpKeyboardShortcuts` below for the earlier 12-test suite issue that had to be fixed first |
+| The **shipped** channel — the self-contained portable ZIP — audits clean and runs trimmed | **Met** — `scripts/Test-PackageContents.ps1` passes on the nested-layout ZIP (466 entries, no forbidden content, 73.22 MB compressed in the latest rehearsal), and the root launcher starts the nested trimmed executable which passes the rendering check and all 28 required shell tests |
 | Signed MSIX functional matrix passes with trimming enabled | **Deferred, not met** — no MSIX is built, so there is nothing to run it against (`docs/RELEASE.md`). Replaced above by the channel that does ship. Run it against a trimmed package *before* MSIX publishing is restored |
 | No key operation regresses >10% against the same-machine untrimmed baseline | **Met** — worst delta **+2.9%** (managed heap); every other metric improved. Table below |
 | Package-size savings and compatibility risks documented | **Met** — this document |
@@ -275,7 +275,7 @@ launches the **trimmed app** against that root — so neither side of the round 
   tool-activity card *with its steps, arguments and results*, plus the `ask_user` and `plan_review`
   cards with their stamped answers, and correctly omits the settled approval. This is the assertion
   the original regression would have failed: the row was always readable, the card came back empty.
-- **Shell suite**: all 25 required tests pass against the trimmed executable, matching the
+- **Shell suite**: all 28 required tests pass against the trimmed executable, matching the
   untrimmed control; the Explorer-based drag diagnostic remains explicitly skipped.
 
   Getting there required fixing `HelpKeyboardShortcuts_OpensFocusedAndClosesWithEscape`, which
@@ -322,7 +322,7 @@ before turning it off, changing the publish shape, or restoring MSIX.
    persist/verify pair. This is the linker's opinion and the headless round trip.
 2. `pwsh scripts\Test-TrimmedRuntime.ps1` — publishes trimmed+R2R, seeds a data root with the
    trimmed smoke harness, then launches the **trimmed app** against it. Covers the rendering
-   criterion and the current 25-test required shell/chat suite in one run.
+   criterion and the current 28-test required shell/chat suite in one run.
 3. `pwsh scripts\Measure-Performance.ps1 -Exe <trimmed>` against a same-machine untrimmed
    baseline; no key operation may regress more than 10%. **Compare R2R against R2R** — the audit's
    trimmed publish has ReadyToRun off and is not a valid baseline for this.

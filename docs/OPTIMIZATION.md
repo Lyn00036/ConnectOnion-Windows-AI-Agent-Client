@@ -20,8 +20,8 @@ Last updated: 2026-08-07
 - **Analyzer hygiene:** a clean unpackaged x64 application build completes with zero compiler/analyzer warnings. CA1848 is enforced, so *every* logging call site uses a cached `LoggerMessage` delegate, and persisted values use explicit culture semantics.
 - **Atomic benchmark diagnostics:** startup-readiness JSON is written through `AtomicTextFile`, so the performance harness observes either the previous complete report or the next complete report while milestones are being updated, never a partially rewritten document.
 - **Logging reaches the file three ways and no fourth:** constructor-injected `ILogger<T>` for container-created types, a `Configure(ILoggerFactory)` facade for the two `static` entry points in `Core` (`NotificationLog`, `IdentityStore`), and `AppServices.Logging` for framework-created code-behind. `Debug.WriteLine` is `[Conditional("DEBUG")]` and therefore never a failure path's only record — it appears only alongside a real logger call, or for development tracing (per-run-phase lines) that would be noise in a shipped log.
-- **Testing:** the protocol fake server uses an in-process Kestrel WebSocket endpoint on an OS-assigned port, eliminating `HttpListener` ACL and port-reservation races. The FlaUI project discovers 30 tests: 25 required shell/chat tests, one explicitly skipped Explorer drag diagnostic, the trimmed-runtime scenario, and three opt-in diagnostics/audits. Real-window coverage includes page navigation, Agent Detail template/first-send flows, chat send, abnormal-drop resume, retry, mid-turn conversation switching, restart restore, markdown-aware in-chat find, agent rename persistence, cold notification routing, and agent-icon surfaces.
-- **CI:** restore audits vulnerable packages; test runs emit Cobertura coverage and enforce a ratchet against `coverage-baseline.json` (currently 86.12% Protocol / 83.59% Core, 0.25pp tolerance) rather than fixed thresholds; Release publishes use ReadyToRun with trimming enabled (see TRIMMING.md); the isolated-profile 25-test FlaUI gate runs on every push and PR; and a separate manual-only job can exercise a real deployed agent.
+- **Testing:** the protocol fake server uses an in-process Kestrel WebSocket endpoint on an OS-assigned port, eliminating `HttpListener` ACL and port-reservation races. The FlaUI project discovers 33 tests: 28 required shell/chat tests, one explicitly skipped Explorer drag diagnostic, the trimmed-runtime scenario, and three opt-in diagnostics/audits. Real-window coverage includes page navigation, Agent Detail template/first-send flows, chat send, abnormal-drop resume, retry, mid-turn conversation switching, restart restore, markdown-aware in-chat find, agent rename persistence, cold notification routing, and agent-icon surfaces.
+- **CI:** restore audits vulnerable packages; test runs emit Cobertura coverage and enforce a ratchet against `coverage-baseline.json` (currently 86.12% Protocol / 83.59% Core, 0.25pp tolerance) rather than fixed thresholds; Release publishes use ReadyToRun with trimming enabled (see TRIMMING.md); the isolated-profile 28-test FlaUI gate runs on every push and PR; and a separate manual-only job can exercise a real deployed agent.
 
 ## Operational checks
 
@@ -40,7 +40,7 @@ bootstrapper reliably enough for this gate.
 
 ```powershell
 dotnet publish ConnectOnion.WinUIClient/ConnectOnion.WinUIClient.csproj `
-  --configuration Release --runtime win-x64 -p:Platform=x64 `
+  --configuration Release --runtime win-x64 --no-restore -p:Platform=x64 `
   -p:RunUnpackaged=true -p:SelfContained=true -p:WindowsAppSDKSelfContained=true `
   -p:PublishTrimmed=true -p:PublishReadyToRun=true
 $env:CONNECTONION_UI_TEST_EXE = (Resolve-Path 'ConnectOnion.WinUIClient/bin/Release/net10.0-windows10.0.19041.0/win-x64/publish/ConnectOnion.WinUIClient.exe')

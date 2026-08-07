@@ -2,7 +2,7 @@
 
 | Document | What it is | Status |
 |---|---|---|
-| [DEVELOPMENT.md](./DEVELOPMENT.md) | Developer guide: architecture, repository layout, setup, build/test commands, CI, agent endpoints, and implementation status | Living |
+| [DEVELOPMENT.md](./DEVELOPMENT.md) | Developer guide: architecture, repository layout, setup, build/test commands, README screenshot regeneration, CI, agent endpoints, and implementation status | Living |
 | [PROJECT_BRIEF.md](./PROJECT_BRIEF.md) | The original client-supplied requirements (verbatim), plus a requirement → implementation traceability table and the current known limitations | Living — update the table, never the brief |
 | [TEST_PLAN.md](./TEST_PLAN.md) | Layered test strategy, coverage ratchet, current test-count snapshot, 15 target E2E flows, UI-automation standards, and the owned backlog | Living |
 | [SESSION_MESSAGE_STRUCTURE.md](./SESSION_MESSAGE_STRUCTURE.md) | The ConnectOnion wire protocol: core frames, current extension-frame coverage, streaming, reconnect, and session synchronization | Authoritative for the frames specified in §1–31; the implementation dispatch table defines the complete supported extension set; §32–39 are superseded design notes |
@@ -27,7 +27,7 @@
   documents that disagree is worse than one that is slightly out of date.
 - **`ConnectOnion.WinUIClient/Shell/README.md`** and **`ConnectOnion.WinUIClient/Controls/README.md`**
   — folder-local conventions, including why those folders deliberately do not match their namespaces.
-- **[`../README.md`](../README.md)** — the user-facing download, setup, usage, data-safety, update, and troubleshooting guide.
+- **[`../README.md`](../README.md)** — the user-facing UI gallery, download, setup, usage, data-safety, update, and troubleshooting guide.
 - `agent/` and `frontend/` — the vendored ConnectOnion agent examples and the legacy Electron client.
   **Both were deleted in `197a88d`**; the repo is C#-only now. Read them out of git history if you
   need the prior behavior.

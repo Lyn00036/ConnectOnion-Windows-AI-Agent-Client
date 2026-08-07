@@ -28,7 +28,7 @@ User
       -> KeyboardShortcutService for customizable keyboard shortcuts
       -> Attachment pipeline: PickerService / DropService / ValidationService
          / Encoder / ImageCacheService for outgoing + incoming multimodal content
-      -> Speech pipeline: DictationTranscript for speech-to-text input
+      -> Speech pipeline: AudioGraph PCM capture -> OpenOnion VoiceTranscriptionService
       -> Diagnostics: StartupProfiler / StartupTelemetry for performance measurement
       -> Usage heatmap: UsageHeatmapModels / UsageHeatmapView for activity visualization
       -> ConnectOnion.Protocol for WebSocket protocol handling
@@ -161,7 +161,7 @@ connectonion-desktop/
         AgentConnectionRegistry.cs    Per-conversation app-owned WebSockets, idle eviction
       Attachments/                    Validation, encoding, attachment-only prompt fallback
       Notifications/                  Dedup, policy, text shaping (no UI, no OS calls)
-      Speech/                         DictationTranscript for speech-to-text
+      Speech/                         WAV encoding, transcript merge, OpenOnion transcription client
     Diagnostics/                      StartupProfiler for launch-time measurement (WinUI-free)
     ViewModels/                       KeyboardSettings / KeyboardShortcuts (WinUI-free)
     Common/                           ObservableObject base, NameInitial
@@ -275,7 +275,7 @@ connectonion-desktop/
     ConnectOnion.Protocol.Tests/      xunit tests for ConnectOnion.Protocol
     ConnectOnion.WinUIClient.UnitTests/  Headless tests over Core, plus the ArchUnit layer gate
     ConnectOnion.IntegrationTests/    SQLite schema/repository tests against a real database file
-    ConnectOnion.WinUIClient.UITests/ FlaUI: 25 required shell/chat tests + 1 skipped diagnostic + 1 trimmed-runtime scenario + 3 opt-in diagnostics/audits
+    ConnectOnion.WinUIClient.UITests/ FlaUI: 28 required shell/chat tests + 1 skipped diagnostic + 1 trimmed-runtime scenario + 3 opt-in diagnostics/audits
     ConnectOnion.TrimSmoke/           Trimmed serialization/persistence console harness
 
   .github/workflows/ci.yml            Windows/.NET CI workflow
@@ -291,32 +291,9 @@ connectonion-desktop/
 | Requirement | Version | Needed for |
 | --- | --- | --- |
 | Windows | 10 version 1809 (build 17763) or later | Running the app |
-| .NET SDK | 10.0.100 or a newer .NET 10 feature band | Building everything |
+| .NET SDK | 10.0.3xx | Building everything |
 | Windows App SDK runtime | 2.3.1 (matches the `Microsoft.WindowsAppSDK` package reference) | Running framework-dependent development builds |
-| Visual Studio | **2026** (recommended) | XAML debugging, MSIX packaging, F5 loop |
-| Node.js | 22 | Protocol conformance test runner only |
-
-Visual Studio 2026 is the recommended IDE. Visual Studio 2022 (17.14+) can still
-open and build the solution, but 2026 is what the WinUI 3 / .NET 10 toolchain is
-tested against here, so prefer it for new setups.
-
-The repository pins the SDK family through `global.json`:
-
-```json
-{
-  "sdk": {
-    "version": "10.0.100",
-    "rollForward": "latestFeature"
-  }
-}
-```
-
-This means any installed .NET 10 feature-band SDK newer than `10.0.100` can be
-used automatically.
-
-## Installing The Requirements
-
-All commands below run in a normal PowerShell prompt. `winget` ships with
+| Visual …175 tokens truncated… run in a normal PowerShell prompt. `winget` ships with
 Windows 11 and current Windows 10; if it is missing, install **App Installer**
 from the Microsoft Store first.
 
@@ -356,12 +333,12 @@ Open a **new** terminal afterwards (so `PATH` is refreshed) and confirm the
 pinned SDK resolves from the repository root:
 
 ```powershell
-dotnet --list-sdks   # expect a 10.0.1xx entry
+dotnet --list-sdks   # expect a 10.0.3xx entry
 dotnet --version     # run inside the repo; global.json selects the SDK
 ```
 
 If `dotnet --version` errors with a `global.json` message, the installed SDK is
-older than `10.0.100` — install a newer .NET 10 SDK rather than editing
+outside the `10.0.3xx` feature band — install that SDK rather than editing
 `global.json`.
 
 ### 3. Windows App SDK runtime
@@ -510,7 +487,7 @@ The gate is a ratchet against `coverage-baseline.json`, currently **86.12%** for
 `ConnectOnion.Protocol` and **83.59%** for `ConnectOnion.WinUIClient.Core`, with a 0.25 percentage
 point tolerance. The separate absolute floors prevent a deliberate baseline update from drifting
 below the minimum; generated code and test assemblies are excluded.
-The real-window project discovers 30 tests. Its 25 required shell/chat tests run against a published
+The real-window project discovers 33 tests. Its 28 required shell/chat tests run against a published
 unpackaged executable on every push and pull request; the Explorer drag-and-drop diagnostic is
 explicitly skipped because desktop DPI/layout makes its source coordinates nondeterministic. The
 memory and large-history performance audits remain opt-in. See [TEST_PLAN.md](./TEST_PLAN.md)
@@ -552,9 +529,10 @@ The GitHub Actions workflow is `.github/workflows/ci.yml`.
 Current CI behavior:
 
 - Runs on `windows-latest`
-- Installs .NET `10.0.x`
+- Installs .NET `10.0.3xx`
 - Installs Node.js 22 for the JavaScript conformance signer
-- Restores NuGet packages
+- Restores the committed NuGet lock graph in locked mode
+- Verifies C# whitespace formatting and treats build warnings as errors
 - Builds `ConnectOnion.WinUIClient\ConnectOnion.WinUIClient.sln`
 - Uses `Platform=x64`
 - Disables package signing and app package generation for CI builds
@@ -563,11 +541,52 @@ Current CI behavior:
 
 CI also audits dependencies for known vulnerabilities, collects and uploads Cobertura reports,
 enforces the Protocol/Core coverage ratchet, runs the trim-safe serialization harness, and
-publishes a **trimmed, self-contained** ReadyToRun unpackaged build. The 25 required FlaUI shell/chat
+publishes a **trimmed, self-contained** ReadyToRun unpackaged build. The 28 required FlaUI shell/chat
 tests run on every push and pull request, using an isolated data root and uploading TRX/screenshot
 evidence; the drag-and-drop diagnostic is skipped. A separate manual-only job can exercise a real
 deployed agent. Tag-driven portable releases are handled separately by
 `.github/workflows/release.yml`; see [RELEASE.md](./RELEASE.md).
+
+### Refresh README screenshots
+
+The README gallery is generated from four existing FlaUI smoke paths, not from mockups. Capture is
+a no-op unless `CONNECTONION_README_SCREENSHOT_DIR` is set. Publish the unpackaged app and build the
+UI test project first, then run each scenario with a fresh data root so no personal agents,
+identity, or conversation data can enter the images:
+
+```powershell
+dotnet restore ConnectOnion.WinUIClient\ConnectOnion.WinUIClient.sln -p:Platform=x64
+dotnet publish ConnectOnion.WinUIClient\ConnectOnion.WinUIClient.csproj `
+  --configuration Debug --runtime win-x64 --no-restore -p:Platform=x64 `
+  -p:RunUnpackaged=true -p:SelfContained=true -p:WindowsAppSDKSelfContained=true `
+  -p:AppxPackageSigningEnabled=false
+dotnet build tests\ConnectOnion.WinUIClient.UITests\ConnectOnion.WinUIClient.UITests.csproj `
+  --configuration Release --no-restore
+
+$env:CONNECTONION_UI_TEST_EXE = (Resolve-Path `
+  'ConnectOnion.WinUIClient\bin\Debug\net10.0-windows10.0.19041.0\win-x64\publish\ConnectOnion.WinUIClient.exe')
+$env:CONNECTONION_README_SCREENSHOT_DIR = (Resolve-Path 'docs\images')
+
+$screenshotTests = @(
+  'FirstRunHome_ShowsEmptyStateAndReachableAddAgentAction',
+  'SidebarSettingsClick_ShowsSettingsOverlay',
+  'Chat_SendMessage_RendersUserAndAgentBubbles',
+  'Chat_ApprovalCard_AllowsOnceAndSendsTheDecision'
+)
+
+foreach ($test in $screenshotTests) {
+  $env:CONNECTONION_DATA_ROOT = Join-Path $env:TEMP `
+    "ConnectOnionDocs-$test-$([guid]::NewGuid())"
+  dotnet test tests\ConnectOnion.WinUIClient.UITests\ConnectOnion.WinUIClient.UITests.csproj `
+    --configuration Release --no-build --no-restore `
+    --filter "FullyQualifiedName~$test"
+}
+```
+
+This overwrites `docs/images/home.png`, `settings-general.png`, `chat.png`, and
+`approval-request.png` at 1400×900. Inspect all four before committing: the capture profiles are
+isolated by construction, but the visual review also catches clipped content, transient overlays,
+or a stale theme.
 
 ## Connect To An Agent
 
@@ -616,6 +635,7 @@ Development fixtures used during the August 2026 validation:
 >
 > These are historical validation endpoints, not release dependencies or availability guarantees.
 > Confirm the current Share-screen connection with the agent operator before relying on one.
+
 
 ## Implemented
 
