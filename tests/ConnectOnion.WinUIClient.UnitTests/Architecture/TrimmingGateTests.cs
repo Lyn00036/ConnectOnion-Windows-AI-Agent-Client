@@ -185,8 +185,8 @@ public sealed class TrimmingGateTests
 
         // A clean per publish. The counts moving apart is the signal that one was added without
         // the other, which is exactly how the launcher went uncovered the first time.
-        var cleans = Regex.Matches(workflow, @"dotnet clean ").Count;
-        var publishes = Regex.Matches(workflow, @"dotnet publish ").Count;
+        var cleans = Regex.Count(workflow, @"dotnet clean ");
+        var publishes = Regex.Count(workflow, @"dotnet publish ");
         Assert.Equal(publishes, cleans);
     }
 
