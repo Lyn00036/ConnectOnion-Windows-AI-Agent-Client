@@ -46,7 +46,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
 
@@ -69,12 +69,12 @@ jobs:
           "prerelease=$(if ($semver -match '-') { 'true' } else { 'false' })" >> $env:GITHUB_OUTPUT
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: 10.0.3xx
 
       - name: Set up Node.js for protocol conformance
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22
 
@@ -157,6 +157,19 @@ jobs:
           -p:DebugType=None
           -p:AppxPackageSigningEnabled=false
 
+      # Same reasoning as the app clean above, and the launcher needs it more, not less: the
+      # solution build compiled this project WITHOUT AOT, so its RID intermediates were produced
+      # under a different property graph than the one published here. Cleaning first, and letting
+      # publish restore its own asset graph, is what keeps `PublishAot=true` from being satisfied
+      # by stale non-AOT output.
+      - name: Clean portable launcher intermediates
+        shell: pwsh
+        run: >
+          dotnet clean $env:LAUNCHER_PROJECT
+          --configuration $env:CONFIGURATION
+          --runtime win-x64
+          -p:Platform=$env:BUILD_PLATFORM
+
       - name: Publish portable root launcher
         shell: pwsh
         run: >
@@ -164,7 +177,6 @@ jobs:
           --configuration $env:CONFIGURATION
           --runtime win-x64
           --output artifacts/launcher
-          --no-restore
           -p:Platform=$env:BUILD_PLATFORM
           -p:Version=${{ steps.version.outputs.semver }}
           -p:PublishAot=true
@@ -256,7 +268,7 @@ jobs:
       # still has to be diagnosable without re-running the whole build.
       - name: Upload build artifacts
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: release-${{ steps.version.outputs.version }}
           path: artifacts/publish/

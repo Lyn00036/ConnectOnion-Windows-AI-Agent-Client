@@ -55,23 +55,23 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: 10.0.3xx
 
       - name: Set up Node.js for protocol conformance
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22
 
       - name: Cache NuGet packages
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'Directory.Packages.props', 'global.json') }}
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/packages.lock.json', 'Directory.Packages.props', 'Directory.Build.props', 'global.json') }}
           restore-keys: |
             nuget-${{ runner.os }}-
 
@@ -84,6 +84,10 @@ jobs:
       - name: Restore
         shell: pwsh
         run: dotnet restore $env:SOLUTION_PATH -p:Platform=$env:BUILD_PLATFORM
+
+      - name: Verify C# whitespace format
+        shell: pwsh
+        run: dotnet format whitespace $env:SOLUTION_PATH --verify-no-changes --no-restore
 
       - name: Audit NuGet dependencies
         shell: pwsh
@@ -144,7 +148,7 @@ jobs:
       # Runs on every push and PR, not just the weekly schedule and the opt-in checkbox.
       #
       # It was gated because a real-window suite is expensive and desktop-sensitive. The cost is
-      # real but small — 25 required tests (plus one explicitly skipped drag diagnostic) inside
+      # real but small — 28 required tests (plus one explicitly skipped drag diagnostic) inside
       # a 10-minute cap, against a build this job already produced. What tipped the balance is
       # where the changes actually are: over the last 100
       # commits the most-edited files in the repo are ShellSidebar.xaml (16), ShellSidebar.xaml.cs
@@ -174,7 +178,7 @@ jobs:
       # which is precisely the case the previous condition excluded.
       - name: Upload UI smoke evidence
         if: ${{ always() }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: ui-smoke
           path: |
@@ -199,7 +203,7 @@ jobs:
 
       - name: Upload trimming gate report
         if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.run_trim_audit }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: trim-audit
           path: |
@@ -209,7 +213,7 @@ jobs:
 
       - name: Upload coverage
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: coverage
           path: TestResults/**/coverage.cobertura.xml
@@ -244,12 +248,12 @@ jobs:
       CO_INVITE_CODE: ${{ secrets.CONNECTONION_LIVE_INVITE_CODE }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: 10.0.3xx
 
       # This is intentionally its own job: a deployed endpoint is external state, so its signal
       # must not be confused with the deterministic push/PR gate above. Repository variables can

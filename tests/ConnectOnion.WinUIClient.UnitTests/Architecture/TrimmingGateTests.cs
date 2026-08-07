@@ -143,6 +143,53 @@ public sealed class TrimmingGateTests
             "CI workflow");
     }
 
+    /// <summary>
+    /// <b>Every</b> publish in a workflow, not just the first one each check above happens to
+    /// match.
+    ///
+    /// <para>The two tests above use a regex that stops at the first <c>dotnet publish</c> in the
+    /// file, so the release workflow's second publish — the NativeAOT portable launcher — was
+    /// never covered and carried <c>--no-restore</c> unnoticed. It needed the guarantee more than
+    /// the app did, not less: the solution build compiles that project <i>without</i> AOT, so its
+    /// RID intermediates come from a different property graph than the one
+    /// <c>-p:PublishAot=true</c> asks for, and there was no clean step in front of it.</para>
+    ///
+    /// <para>This is the general rule; keep the specific tests above for the messages they give
+    /// when the app's own publish is the one that regressed.</para>
+    /// </summary>
+    [Theory]
+    [InlineData("ci.yml")]
+    [InlineData("release.yml")]
+    public void EveryPublish_RestoresItsOwnAssetGraph(string workflowFile)
+    {
+        var workflow = RepoFile(".github", "workflows", workflowFile);
+
+        var publishes = Regex.Matches(workflow, @"dotnet publish[\s\S]*?(?=\r?\n\s*(?:#|- name:))");
+        Assert.NotEmpty(publishes);
+
+        foreach (var publish in publishes.Cast<Match>())
+        {
+            Assert.DoesNotContain("--no-restore", publish.Value, StringComparison.Ordinal);
+        }
+    }
+
+    /// <summary>Each publish is preceded by a clean of the same project, so the publish cannot
+    /// inherit intermediates the preceding solution build produced under different properties.</summary>
+    [Fact]
+    public void ReleaseWorkflow_CleansBothProjectsItPublishes()
+    {
+        var workflow = RepoFile(".github", "workflows", "release.yml");
+
+        Assert.Contains("Clean portable publish intermediates", workflow, StringComparison.Ordinal);
+        Assert.Contains("Clean portable launcher intermediates", workflow, StringComparison.Ordinal);
+
+        // A clean per publish. The counts moving apart is the signal that one was added without
+        // the other, which is exactly how the launcher went uncovered the first time.
+        var cleans = Regex.Matches(workflow, @"dotnet clean ").Count;
+        var publishes = Regex.Matches(workflow, @"dotnet publish ").Count;
+        Assert.Equal(publishes, cleans);
+    }
+
     private static void AssertPublishStartsFromCleanIntermediates(
         string workflow,
         string cleanStepName,
