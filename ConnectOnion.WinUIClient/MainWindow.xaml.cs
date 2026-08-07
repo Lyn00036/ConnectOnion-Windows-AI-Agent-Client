@@ -7,6 +7,7 @@ using ConnectOnion.WinUIClient.Views;
 using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Windows.System;
 
@@ -123,15 +124,13 @@ public sealed partial class MainWindow : Window
                 var benchmarkConversation =
                     Environment.GetEnvironmentVariable(
                         Diagnostics.StartupProfiler.OpenConversationEnvironmentVariable) == "1";
-                // Restore the chat the user was working in. The active pointer is validated by
-                // LoadAsync, so a deleted/corrupt id falls back to Home instead of opening a
-                // broken chat shell. The benchmark switch still forces Chat for perf runs.
-                var sessions = await _sessionRepository.LoadAsync();
-                var restoreConversation = sessions.ActiveSessionId is not null;
+                // Home is the product's stable cold-start surface. An active conversation can
+                // belong to a different agent than the currently selected one (for example after
+                // opening an agent's detail page), so treating that pointer alone as a restore
+                // signal can open an unrelated empty ChatPage. Only the benchmark fixture opts
+                // into restoring Chat directly.
                 _skipNextNavigationSidebarRefresh = true;
-                NavigateTo(benchmarkConversation || restoreConversation
-                    ? typeof(ChatPage)
-                    : typeof(HomePage));
+                NavigateTo(benchmarkConversation ? typeof(ChatPage) : typeof(HomePage));
                 UpdateNavigationButtons();
                 EnsureInitialFocus();
                 Diagnostics.StartupTelemetry.Mark(Diagnostics.StartupPhases.ShellInitialized);
@@ -268,6 +267,16 @@ public sealed partial class MainWindow : Window
         // The existing title-bar toggle remains the single show/hide interaction.
         if (SidebarLayoutPolicy.IsCompactWindow(windowWidth))
         {
+            // ColumnSpan 2 is load-bearing, not tidiness. The drawer keeps Grid.Column 0 while
+            // that column is collapsed to zero, and a Grid arranges its child into the cell rect:
+            // a zero-wide slot arranges to zero width, and neither HorizontalAlignment.Left nor
+            // the explicit Width below makes it overflow. So the drawer took no space and never
+            // painted, while the dismiss scrim — which already spanned both columns — did. The
+            // symptom was a chat page that dimmed under a scrim with no sidebar over it, and the
+            // toggle apparently doing nothing but darkening the page. Spanning both columns gives
+            // the drawer the full content width to be arranged in; Left plus the explicit Width is
+            // then what actually places it as a drawer.
+            Grid.SetColumnSpan(ShellSidebar, 2);
             ShellSidebarColumn.Width = new GridLength(0);
             ShellSidebar.Width = SidebarLayoutPolicy.ClampOverlayWidth(_sidebarWidth, windowWidth);
             ShellSidebar.HorizontalAlignment = HorizontalAlignment.Left;
@@ -276,6 +285,9 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        // Docked: back to a real column, so the span has to come back with it or the sidebar
+        // would stretch across the content area.
+        Grid.SetColumnSpan(ShellSidebar, 1);
         SidebarDismissLayer.Visibility = Visibility.Collapsed;
         ShellSidebar.ClearValue(FrameworkElement.WidthProperty);
         ShellSidebar.HorizontalAlignment = HorizontalAlignment.Stretch;

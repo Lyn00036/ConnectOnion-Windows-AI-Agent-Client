@@ -642,6 +642,10 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
                 hash.Add(session.Title, StringComparer.Ordinal);
                 hash.Add(session.UpdatedAt, StringComparer.Ordinal);
                 hash.Add(session.IsPinned);
+                // Both values paint visible badges. Clearing them does not change UpdatedAt, so
+                // omitting them makes an opened conversation keep its stale unread/attention UI.
+                hash.Add(session.UnreadCount);
+                hash.Add(session.RequiresAttention);
                 if (_sessionPreviewCache.TryGetValue(session.Id, out var preview))
                     hash.Add(preview.Preview, StringComparer.Ordinal);
             }

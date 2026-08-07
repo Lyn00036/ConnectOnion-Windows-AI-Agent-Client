@@ -42,6 +42,20 @@ public sealed class SidebarSelectionRefreshContractTests
         Assert.True(finalAwait >= 0 && revisionCommit > finalAwait);
     }
 
+    [Fact]
+    public void SidebarRenderSignature_IncludesUnreadAndAttentionBadges()
+    {
+        var source = ReadAppSource("Controls", "Shell", "ShellSidebar.xaml.cs");
+        var addSessionsStart = source.IndexOf(
+            "void AddSessions(IReadOnlyList<SessionSummary> sessions)",
+            StringComparison.Ordinal);
+        Assert.True(addSessionsStart >= 0, "The session render-signature helper was not found.");
+
+        var addSessions = source[addSessionsStart..];
+        Assert.Contains("hash.Add(session.UnreadCount)", addSessions, StringComparison.Ordinal);
+        Assert.Contains("hash.Add(session.RequiresAttention)", addSessions, StringComparison.Ordinal);
+    }
+
     private static string ReadAppSource(params string[] relativeParts)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

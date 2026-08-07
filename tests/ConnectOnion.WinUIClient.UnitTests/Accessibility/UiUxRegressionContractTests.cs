@@ -163,6 +163,22 @@ public sealed class UiUxRegressionContractTests
     }
 
     [Fact]
+    public void Startup_DefaultsToHome_AndOnlyTheBenchmarkOpensAConversation()
+    {
+        var window = Read("ConnectOnion.WinUIClient", "MainWindow.xaml.cs");
+
+        Assert.Contains(
+            "NavigateTo(benchmarkConversation ? typeof(ChatPage) : typeof(HomePage));",
+            window,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("restoreConversation", window, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "var sessions = await _sessionRepository.LoadAsync();",
+            window,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void TrimmedChatSurfaces_UseEventFirstTemplatesAndCompiledSuggestionBindings()
     {
         var selector = Read("ConnectOnion.WinUIClient", "Common", "ChatMessageTemplateSelector.cs");
