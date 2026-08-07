@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Globalization;
 using ConnectOnion.WinUIClient.Models;
 using Microsoft.Data.Sqlite;
@@ -281,7 +280,6 @@ public sealed class UsageRepository
 
     private void LogFailure(string operation, Exception ex)
     {
-        Debug.WriteLine($"[UsageRepository] {operation} failed: {ex}");
         LogDatabaseFailure(_logger, operation, ex);
     }
 }

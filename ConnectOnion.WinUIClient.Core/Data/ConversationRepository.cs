@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text.Json;
 using ConnectOnion.WinUIClient.Models;
 using Microsoft.Data.Sqlite;
@@ -676,11 +675,10 @@ public sealed partial class ConversationRepository
     /// Every write here is best-effort: a failed save must not take the live conversation down
     /// with it. That is a deliberate trade, but a silent one is not — a message the user can see
     /// on screen and that is quietly missing after a restart should leave a trace to find. The
-    /// Debug line is for an attached debugger only; the logger call is what survives in Release.
+    /// The structured logger call survives in Release and is the single diagnostic path.
     /// </summary>
     private void LogFailure(string operation, string conversationId, Exception ex)
     {
-        Debug.WriteLine($"[db] {operation} failed for conversation {conversationId}: {ex}");
         LogDatabaseFailure(_logger, operation, conversationId, ex);
     }
 

@@ -423,7 +423,6 @@ public static class IdentityStore
         WasReset = true;
         ResetReason = reason;
 
-        System.Diagnostics.Debug.WriteLine($"[IdentityStore] identity reset: {reason}");
         if (_logger is { } logger) LogIdentityReset(logger, reason, null);
 
         try { IdentityReset?.Invoke(reason); }
@@ -497,7 +496,6 @@ public static class IdentityStore
             // unreadable-identity path above, it raises no IdentityReset and sets no WasReset flag
             // — so the log line is the only trace, which is why it is a real one and not just a
             // Debug write that a Release build compiles away.
-            System.Diagnostics.Debug.WriteLine($"[IdentityStore] identity persist failed: {ex.Message}");
             if (_logger is { } logger) LogIdentityPersistFailed(logger, ex);
         }
         catch (Exception ex)
