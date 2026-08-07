@@ -200,6 +200,11 @@
                                 <MenuFlyoutItem x:Uid="SidebarAgentDetails" Text="Agent details"
                                                 Click="Agent_Click"
                                                 Tag="{x:Bind Id}" />
+                                <MenuFlyoutItem x:Uid="SidebarRenameAgent"
+                                                AutomationProperties.AutomationId="RenameAgentMenuItem"
+                                                Text="Rename agent"
+                                                Click="RenameAgent_Click"
+                                                Tag="{x:Bind Id}" />
                                 <MenuFlyoutItem x:Uid="MenuChangeAgentIcon"
                                                 AutomationProperties.AutomationId="ChangeAgentIconMenuItem"
                                                 Text="Change icon"

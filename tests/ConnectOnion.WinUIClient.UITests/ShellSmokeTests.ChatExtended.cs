@@ -426,6 +426,58 @@ public sealed partial class ShellSmokeTests
         }
     }
 
+    [Fact]
+    public async Task AgentRename_SettingsPersistsAndRefreshesAfterRestart()
+    {
+        await using var server = new UiFakeAgentServer();
+        if (!PrepareChatProfile(server.BaseUri)) return;
+        const string renamedAgent = "My Automation Agent";
+
+        try
+        {
+            using (var launched = LaunchApp(handleFirstRunDialog: false))
+            {
+                if (launched is null) return;
+                var window = launched.Window;
+                OpenSettings(window);
+                var agentsNav = WaitForDescendant(window, "AgentsNav");
+                Assert.NotNull(agentsNav);
+                agentsNav!.AsRadioButton().Click();
+
+                var rename = WaitForDescendant(window, "RenameAgentButton");
+                Assert.NotNull(rename);
+                rename!.AsButton().Invoke();
+
+                var input = WaitForDescendant(window, "RenameAgentInput");
+                Assert.NotNull(input);
+                input!.AsTextBox().Text = $"  {renamedAgent}  ";
+
+                var save = WaitForAccessibleName(window, "Save", TimeSpan.FromSeconds(5));
+                Assert.NotNull(save);
+                save!.AsButton().Invoke();
+
+                Assert.True(WaitUntil(() => ReadAgentName() == renamedAgent));
+                Assert.NotNull(WaitForAccessibleName(window, renamedAgent, TimeSpan.FromSeconds(10)));
+            }
+
+            using var relaunched = LaunchApp(handleFirstRunDialog: false);
+            if (relaunched is null) return;
+            var persistedAgent = WaitForDescendant(
+                relaunched.Window,
+                "AgentButton",
+                TimeSpan.FromSeconds(15));
+            Assert.NotNull(persistedAgent);
+            Assert.Contains(
+                renamedAgent,
+                persistedAgent!.Properties.Name.ValueOrDefault ?? "",
+                StringComparison.Ordinal);
+        }
+        finally
+        {
+            RemoveChatFixture();
+        }
+    }
+
     private static void OpenAgentDetail(Window window)
     {
         var agent = WaitForDescendant(window, "AgentButton", TimeSpan.FromSeconds(15));
@@ -603,6 +655,18 @@ public sealed partial class ShellSmokeTests
         using var connection = OpenChatFixtureDatabase();
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT icon_path FROM agents WHERE id = $agent;";
+        command.Parameters.AddWithValue("$agent", ChatAgentId);
+        var value = command.ExecuteScalar();
+        return value is null or DBNull
+            ? null
+            : Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private static string? ReadAgentName()
+    {
+        using var connection = OpenChatFixtureDatabase();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT name FROM agents WHERE id = $agent;";
         command.Parameters.AddWithValue("$agent", ChatAgentId);
         var value = command.ExecuteScalar();
         return value is null or DBNull

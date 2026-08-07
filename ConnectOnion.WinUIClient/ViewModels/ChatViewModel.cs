@@ -507,6 +507,25 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         _ = RefreshAcceptedInputsAsync();
     }
 
+    /// <summary>Refreshes only the current agent's presentation after a local rename. A full
+    /// conversation reload would discard composer state and rebuild the transcript unnecessarily.</summary>
+    public async Task RefreshAgentPresentationAsync(
+        string agentId,
+        CancellationToken cancellationToken = default)
+    {
+        if (_agent?.Id != agentId) return;
+
+        var agents = await _agents.LoadAsync(cancellationToken);
+        var refreshed = agents.Agents.FirstOrDefault(agent => agent.Id == agentId);
+        if (refreshed is null) return;
+
+        _agent = refreshed;
+        HeaderText = _session is null
+            ? $"{_agent.DisplayName} - No conversation selected"
+            : $"{_agent.DisplayName} - {_session.Title}";
+        RaiseHeaderProperties();
+    }
+
     /// <summary>
     /// Subscribes to the app-level run and marshals its snapshots onto the UI thread,
     /// <b>coalescing</b> them: at most one drain is queued at a time, and a snapshot arriving

@@ -69,6 +69,13 @@ public sealed partial class AgentsSettingsContent : UserControl
     private void CopyAgent_Click(object sender, RoutedEventArgs e)
         => ClipboardService.CopyText((sender as FrameworkElement)?.Tag as string);
 
+    private async void RenameAgent_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not string agentId) return;
+        var host = MainWindow.FromXamlRoot(XamlRoot);
+        if (host is not null) await host.RenameAgentAsync(agentId);
+    }
+
     private async void DeleteAgent_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.Tag is not string agentId) return;

@@ -176,6 +176,62 @@ public sealed class AgentRepositoryTests
     }
 
     [Fact]
+    public async Task UpdateNameAsync_ChangesOnlyTheTargetName()
+    {
+        var target = new AgentConfig
+        {
+            Id = "rename-target",
+            Name = "Original",
+            Address = "0x1",
+            InfoJson = "{\"model\":\"kept\"}",
+            InfoUpdatedAt = "2026-08-07T00:00:00Z",
+        };
+        var other = new AgentConfig
+        {
+            Id = "rename-other",
+            Name = "Other",
+            Address = "0x2",
+        };
+        await _repository.SaveAsync(new AgentsState
+        {
+            Agents = [target, other],
+            SelectedAgentId = other.Id,
+        });
+
+        Assert.True(await _repository.UpdateNameAsync(target.Id, "  Custom Name  "));
+
+        var loaded = await _repository.LoadAsync();
+        Assert.Equal(other.Id, loaded.SelectedAgentId);
+        var renamed = Assert.Single(loaded.Agents, agent => agent.Id == target.Id);
+        Assert.Equal("Custom Name", renamed.Name);
+        Assert.Equal(target.Address, renamed.Address);
+        Assert.Equal(target.InfoJson, renamed.InfoJson);
+        Assert.Equal(target.InfoUpdatedAt, renamed.InfoUpdatedAt);
+        Assert.Equal("Other", Assert.Single(loaded.Agents, agent => agent.Id == other.Id).Name);
+    }
+
+    [Fact]
+    public async Task UpdateNameAsync_RejectsInvalidNoOpAndMissingTargets()
+    {
+        var agent = new AgentConfig
+        {
+            Id = "rename-guard",
+            Name = "Original",
+            Address = "0x1",
+        };
+        await _repository.SaveAsync(new AgentsState { Agents = [agent] });
+
+        Assert.False(await _repository.UpdateNameAsync(agent.Id, "  Original  "));
+        Assert.False(await _repository.UpdateNameAsync(agent.Id, "   "));
+        Assert.False(await _repository.UpdateNameAsync(
+            agent.Id,
+            new string('x', AgentConfig.MaxNameLength + 1)));
+        Assert.False(await _repository.UpdateNameAsync("missing-agent", "New name"));
+
+        Assert.Equal("Original", Assert.Single((await _repository.LoadAsync()).Agents).Name);
+    }
+
+    [Fact]
     public async Task SaveAsync_RemovingAgent_DeletesItsConversationGraphFirst()
     {
         var agent = new AgentConfig { Id = "agent-with-session", Name = "Agent", Address = "0x1" };
