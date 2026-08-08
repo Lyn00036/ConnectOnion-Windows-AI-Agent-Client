@@ -176,6 +176,8 @@ public sealed partial class ShellSmokeTests
     [Fact]
     public async Task Chat_StopResponse_DisablesImmediatelyAndSettlesExactlyOnce()
     {
+        var turnStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
         var interruptReceived = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseOutput = new TaskCompletionSource(
@@ -190,6 +192,7 @@ public sealed partial class ShellSmokeTests
             await UiFakeAgentServer.ReceiveFrameOfTypeAsync(socket, "INPUT", ct);
             await UiFakeAgentServer.SendTextAsync(socket,
                 "{\"type\":\"thinking\",\"id\":\"stop-thinking\",\"content\":\"Working\"}", ct);
+            turnStarted.TrySetResult();
             await UiFakeAgentServer.ReceiveFrameOfTypeAsync(socket, "INTERRUPT", ct);
             interruptReceived.TrySetResult();
             await releaseOutput.Task.WaitAsync(ct);
@@ -211,6 +214,10 @@ public sealed partial class ShellSmokeTests
             Assert.True(WaitUntil(() => send.IsEnabled));
             send.AsButton().Invoke();
 
+            // Before INPUT leaves, the same button means "take back the queued send" rather
+            // than "interrupt the running turn". Wait until the fake host has accepted INPUT so
+            // this test cannot occasionally click during that short, valid cancellation window.
+            await turnStarted.Task.WaitAsync(TimeSpan.FromSeconds(20));
             var stop = WaitForDescendant(window, "StopResponseButton", TimeSpan.FromSeconds(20));
             Assert.NotNull(stop);
             Assert.True(WaitUntil(() => stop.IsEnabled));
