@@ -545,7 +545,7 @@ public sealed partial class ShellSmokeTests
                 "{\"type\":\"CONNECTED\",\"session_id\":\"ui-remote\",\"status\":\"connected\"}", ct);
             await UiFakeAgentServer.ReceiveFrameOfTypeAsync(socket, "INPUT", ct);
             await UiFakeAgentServer.SendTextAsync(socket,
-                "{\"type\":\"approval_needed\",\"tool\":\"bash\",\"arguments\":{\"command\":\"echo ui-approval\"}}", ct);
+                "{\"type\":\"approval_needed\",\"tool\":\"bash\",\"arguments\":{\"command\":\"rm -f /tmp/nonexistent-test-file && echo 'deleted' || echo 'file was absent'\"}}", ct);
             while (true)
             {
                 var candidate = await UiFakeAgentServer.ReceiveTextAsync(socket, ct);
@@ -584,6 +584,8 @@ public sealed partial class ShellSmokeTests
                         element.Properties.Name.ValueOrDefault)));
             Assert.NotNull(WaitForDescendant(window, "DeclineButton"));
             Assert.NotNull(WaitForDescendant(window, "StopTaskButton"));
+            Assert.Null(window.FindFirstDescendant(
+                query => query.ByAutomationId("ApprovalCommandToggleButton")));
             CaptureDocumentationScreenshot(window, "approval-request.png");
             allow!.AsButton().Invoke();
 

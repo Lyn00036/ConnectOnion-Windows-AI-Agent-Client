@@ -142,17 +142,107 @@ public sealed partial class ShellSmokeTests
             var send = WaitForDescendant(window, "SendMessageButton");
             Assert.NotNull(send);
             Assert.True(WaitUntil(() => send.IsEnabled));
-            send!.Click();
+            // Submit through the focused editor, not the pointer-accessible button. This is the
+            // end-to-end keyboard contract: the same Enter gesture a user relies on must cross
+            // the composer, page, run manager and WebSocket without moving focus.
+            window.SetForeground();
+            input.Click();
+            Assert.True(WaitUntil(() => input.Properties.HasKeyboardFocus.ValueOrDefault));
+            Keyboard.Type(VirtualKeyShort.RETURN);
 
-            var inputJson = await received.Task.WaitAsync(TimeSpan.FromSeconds(20));
+            var completed = await Task.WhenAny(received.Task, Task.Delay(TimeSpan.FromSeconds(10)));
+            Assert.True(
+                ReferenceEquals(completed, received.Task),
+                $"Enter did not submit; composer text is '{input.Text}' and focused={input.Properties.HasKeyboardFocus.ValueOrDefault}.");
+            var inputJson = await received.Task;
             Assert.Contains(prompt, inputJson, StringComparison.Ordinal);
             Assert.NotNull(WaitForDescendant(window, "MessageList", TimeSpan.FromSeconds(20)));
             Assert.NotNull(WaitForAccessibleName(
                 window, "Keyboard reply", TimeSpan.FromSeconds(20)));
+            var chatInput = WaitForDescendant(window, "MessageInput", TimeSpan.FromSeconds(20));
+            Assert.NotNull(chatInput);
+            Assert.True(
+                WaitUntil(() => chatInput!.Properties.HasKeyboardFocus.ValueOrDefault),
+                "the composer did not keep keyboard focus after Enter submitted the message");
             Assert.Equal(2, CountAgentSessions());
         }
         finally
         {
+            holdSocket.TrySetResult();
+            RemoveChatFixture();
+        }
+    }
+
+    [Fact]
+    public async Task Chat_StopResponse_DisablesImmediatelyAndSettlesExactlyOnce()
+    {
+        var interruptReceived = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseOutput = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var holdSocket = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var server = new UiFakeAgentServer(async (_, socket, ct) =>
+        {
+            await UiFakeAgentServer.ReceiveFrameOfTypeAsync(socket, "CONNECT", ct);
+            await UiFakeAgentServer.SendTextAsync(socket,
+                "{\"type\":\"CONNECTED\",\"session_id\":\"stop-session\",\"status\":\"connected\"}", ct);
+            await UiFakeAgentServer.ReceiveFrameOfTypeAsync(socket, "INPUT", ct);
+            await UiFakeAgentServer.SendTextAsync(socket,
+                "{\"type\":\"thinking\",\"id\":\"stop-thinking\",\"content\":\"Working\"}", ct);
+            await UiFakeAgentServer.ReceiveFrameOfTypeAsync(socket, "INTERRUPT", ct);
+            interruptReceived.TrySetResult();
+            await releaseOutput.Task.WaitAsync(ct);
+            await UiFakeAgentServer.SendTextAsync(socket,
+                "{\"type\":\"OUTPUT\",\"result\":\"Stopped safely\"}", ct);
+            await holdSocket.Task.WaitAsync(ct);
+        });
+
+        if (!PrepareChatProfile(server.BaseUri)) return;
+        try
+        {
+            using var launched = LaunchApp(handleFirstRunDialog: false);
+            if (launched is null) return;
+            var window = launched.Window;
+            var input = OpenChat(window);
+            input.Text = "start a task I can stop";
+            var send = WaitForDescendant(window, "SendMessageButton");
+            Assert.NotNull(send);
+            Assert.True(WaitUntil(() => send.IsEnabled));
+            send.AsButton().Invoke();
+
+            var stop = WaitForDescendant(window, "StopResponseButton", TimeSpan.FromSeconds(20));
+            Assert.NotNull(stop);
+            Assert.True(WaitUntil(() => stop.IsEnabled));
+            stop.AsButton().Invoke();
+
+            Assert.True(
+                WaitUntil(() =>
+                {
+                    var current = WaitForDescendant(
+                        window,
+                        "StopResponseButton",
+                        TimeSpan.FromMilliseconds(250));
+                    return current is not null
+                           && !current.IsEnabled
+                           && current.Properties.Name.ValueOrDefault?.Contains(
+                               "Stopping",
+                               StringComparison.OrdinalIgnoreCase) == true;
+                }),
+                "Stop did not enter its disabled intermediate state");
+            await interruptReceived.Task.WaitAsync(TimeSpan.FromSeconds(20));
+
+            releaseOutput.TrySetResult();
+            Assert.NotNull(WaitForAccessibleName(window, "Stopped safely", TimeSpan.FromSeconds(20)));
+            Assert.True(
+                WaitUntil(() => window.FindFirstDescendant(
+                    query => query.ByAutomationId("StopResponseButton")) is null),
+                "Stop remained visible after the terminal frame");
+            server.ThrowIfFaulted();
+        }
+        finally
+        {
+            releaseOutput.TrySetResult();
             holdSocket.TrySetResult();
             RemoveChatFixture();
         }
