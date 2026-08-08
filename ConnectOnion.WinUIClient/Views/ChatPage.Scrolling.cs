@@ -43,7 +43,15 @@ public sealed partial class ChatPage
 
         await Vm.SendAsync(text, attachments);
         QueueScrollToEnd(force: true);
-        Composer.FocusInput();
+        // CanSend/IsProcessing propagate back through a queued PropertyChanged callback. Focusing
+        // synchronously here can therefore target a TextBox that is disabled for one more
+        // dispatcher turn, and WinUI silently drops that focus request. Queue both the final
+        // enabled state and focus restoration together so keyboard users can continue typing.
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            Composer.CanSubmit = Vm.CanSend;
+            if (Vm.CanSend) Composer.FocusInput();
+        });
     }
 
     private void Messages_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)

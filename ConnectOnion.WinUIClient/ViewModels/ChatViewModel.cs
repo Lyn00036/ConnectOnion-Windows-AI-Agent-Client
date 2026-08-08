@@ -517,14 +517,16 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
         // (no agent, no session) can't leave the previous conversation's bubbles on screen.
         Messages.Clear();
 
-        var prefs = await _preferences.LoadAsync(cancellationToken);
+        var prefsTask = _preferences.LoadAsync(cancellationToken);
+        var agentTask = _agents.GetSelectedAgentAsync(cancellationToken);
+        await Task.WhenAll(prefsTask, agentTask);
+        var prefs = prefsTask.Result;
         EnterToSend = prefs.EnterToSend;
         MessageFontSize = MessageFontService.ToPixels(prefs.MessageFontSize);
 
-        var agents = await _agents.LoadAsync(cancellationToken);
         if (generation != _loadGeneration) return;
 
-        _agent = agents.Agents.FirstOrDefault(a => a.Id == agents.SelectedAgentId);
+        _agent = agentTask.Result;
         HasAgent = _agent is not null;
         OnPropertyChanged(nameof(CanSend));
 
@@ -548,15 +550,14 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
             return;
         }
 
-        await _sessions.ClearAttentionAsync(_session.Id, cancellationToken);
+        var clearAttentionTask = _sessions.ClearAttentionAsync(_session.Id, cancellationToken);
+        var restoreTask = RestoreConversationAsync(generation, cancellationToken);
+        await Task.WhenAll(clearAttentionTask, restoreTask);
         if (generation != _loadGeneration) return;
 
         HeaderText = $"{_agent.DisplayName} - {_session.Title}";
         CurrentMode = _session.Mode;
         RaiseHeaderProperties();
-
-        await RestoreConversationAsync(generation, cancellationToken);
-        if (generation != _loadGeneration) return;
 
         // Attach to the app-level run for this conversation. The manager fires the current
         // snapshot immediately, so an in-flight turn is resumed (streaming continues) the
@@ -818,7 +819,6 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
             Messages.InsertRange(0, older);
             _hasMoreHistory = page.HasMoreBefore;
             if (!_hasMoreHistory && Messages[0].Id > 0) _createdAt = Messages[0].Id;
-            if (_runManager.GetActiveRun(sessionId) is null) StoreSessionCache();
             return older.Count;
         }
         finally
@@ -872,9 +872,17 @@ public sealed partial class ChatViewModel : PresenceAwareViewModel, IChatProject
     private void StoreSessionCache()
     {
         if (_session is null || _agent is null) return;
+        var start = Math.Max(0, Messages.Count - ConversationRepository.DefaultPageSize);
+        var cachedMessages = new List<ChatMessage>(Messages.Count - start);
+        for (var index = start; index < Messages.Count; index++) cachedMessages.Add(Messages[index]);
         ConversationCache.Store(
             _session.Id,
-            new ConversationCache.Entry(_agent, _session, Messages.ToList(), _createdAt, _hasMoreHistory));
+            new ConversationCache.Entry(
+                _agent,
+                _session,
+                cachedMessages,
+                cachedMessages.Count > 0 ? cachedMessages[0].Id : _createdAt,
+                _hasMoreHistory || start > 0));
     }
 
 

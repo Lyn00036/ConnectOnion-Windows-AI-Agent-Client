@@ -420,6 +420,28 @@ public sealed partial class ChatComposer : UserControl, IDisposable
     public void FocusInput()
         => InputBox.Focus(FocusState.Programmatic);
 
+    /// <summary>
+    /// Moves focus to the draft when <paramref name="button"/> currently holds it and is about to
+    /// be collapsed.
+    ///
+    /// <para>Hiding the focused element does not leave focus nowhere — the framework relocates it,
+    /// and the nearest preceding tab stop in this composer is the approval-mode drop-down. That is
+    /// how sending a message ended up parking focus on a control that sends <c>mode_change</c>
+    /// frames to the agent when you press Enter on it.</para>
+    ///
+    /// <para>Called <i>before</i> the visibility is applied, on purpose: once the element is
+    /// collapsed the framework has already chosen a new focus target and putting it back would be
+    /// a second visible jump rather than a prevention.</para>
+    /// </summary>
+    private void ReturnFocusToDraftIfLeaving(Control button, bool willBeVisible)
+    {
+        if (willBeVisible || button.Visibility != Visibility.Visible) return;
+        if (XamlRoot is null) return;
+        if (!ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), button)) return;
+
+        InputBox.Focus(FocusState.Programmatic);
+    }
+
     private void InputBox_ContextRequested(UIElement sender, ContextRequestedEventArgs e)
     {
         ComposerEditMenu.ShowAt(InputBox);
@@ -793,18 +815,25 @@ public sealed partial class ChatComposer : UserControl, IDisposable
             var existingCount = PendingAttachments.Count(p => p.Kind == attachment.Kind);
             var error = AttachmentValidationService.Validate(attachment, AcceptedInputs, existingCount);
 
+            // Status is settled *before* the Add, which is the whole point. Adding first fires
+            // CollectionChanged — the only thing that recomputes the send button — while the
+            // status is still Pending (the enum's zero value), and nothing observes the item's
+            // own PropertyChanged afterwards. So an attachment added with an empty draft left
+            // `hasReadyAttachment` reading false and the send button disabled until the user
+            // typed a character. Enter still worked, because SubmitCurrentText re-reads the
+            // collection rather than trusting the button, which is what made it look like a
+            // rendering glitch rather than stale state.
+            attachment.Status = error is null ? AttachmentStatus.Ready : AttachmentStatus.Failed;
+            // Not logged: the rejection reason is already on the chip in front of the user.
+            attachment.Error = error;
+
             PendingAttachments.Add(attachment);
-
-            if (error is not null)
-            {
-                attachment.Status = AttachmentStatus.Failed;
-                // Not logged: the rejection reason is already on the chip in front of the user.
-                attachment.Error = error;
-                continue;
-            }
-
-            attachment.Status = AttachmentStatus.Ready;
         }
+
+        // Belt and braces, and deliberately not redundant: the line above keeps CollectionChanged
+        // truthful, this keeps the method correct even if a future edit reorders it. The restore
+        // path (RestoreSubmission) has always done both.
+        RefreshSendButtonState();
     }
 
     // ---- Drag and drop ----
@@ -1066,6 +1095,20 @@ public sealed partial class ChatComposer : UserControl, IDisposable
         // must never silently disappear or block the rest of the message.
         foreach (var attachment in readyAttachments) PendingAttachments.Remove(attachment);
         RefreshSendButtonState();
+
+        // Claim focus before anything can take it. A click leaves focus on the send button, and
+        // the turn that starts a moment later collapses that button — at which point the
+        // framework has to move focus somewhere and picks the nearest preceding tab stop, which
+        // is the approval-mode drop-down (column 2; send/stop/finish all share column 4). Focus
+        // was being *evicted* rather than assigned, which is why it landed somewhere nobody
+        // chose, and a reflexive Enter there opens the mode menu — a real mode_change to the
+        // agent. Returning the caret to the draft is also just what a chat composer should do.
+        //
+        // Ordered before SubmitRequested deliberately: this is synchronous, while IsBusy flips
+        // through the view model and back via the dispatcher, so by the time the button collapses
+        // focus already lives somewhere that is not going away.
+        FocusInput();
+
         SubmitRequested?.Invoke(this, new ComposerSubmission(text, readyAttachments, Mode));
     }
 
@@ -1091,9 +1134,17 @@ public sealed partial class ChatComposer : UserControl, IDisposable
         SpeechButton.IsEnabled = CanSubmit && !isActive;
 
         // Send and Stop share the slot: a turn is running or it isn't.
-        SendButton.Visibility = isActive || IsBusy || _showStopFeedback
-            ? Visibility.Collapsed
-            : Visibility.Visible;
+        var showSend = !(isActive || IsBusy || _showStopFeedback);
+        var showStopButton = (CanStop || IsStopping || _showStopFeedback) && !isActive;
+
+        // Whichever of them is going away must not take the focus with it. Send is normally
+        // covered by SubmitCurrentText claiming the draft first, but Stop is not: clicking Stop
+        // leaves focus on the stop button, and the button disappears the moment the run settles.
+        // Both then dump focus on the approval-mode drop-down. See SubmitCurrentText.
+        ReturnFocusToDraftIfLeaving(SendButton, showSend);
+        ReturnFocusToDraftIfLeaving(StopButton, showStopButton);
+
+        SendButton.Visibility = showSend ? Visibility.Visible : Visibility.Collapsed;
         SendButton.IsEnabled = canSend && !isActive;
         SendButton.Background = canSend && !isActive
             ? Brush("ComposerPrimaryButtonBackgroundBrush")
@@ -1103,7 +1154,7 @@ public sealed partial class ChatComposer : UserControl, IDisposable
             : Brush("ComposerDisabledButtonForegroundBrush");
 
         var showStop = CanStop || IsStopping || _showStopFeedback;
-        StopButton.Visibility = showStop && !isActive ? Visibility.Visible : Visibility.Collapsed;
+        StopButton.Visibility = showStopButton ? Visibility.Visible : Visibility.Collapsed;
         StopButton.IsEnabled = CanStop && !IsStopping && !_showStopFeedback && !isActive;
         // Match the familiar ChatGPT stop affordance: the square remains a stable target and the
         // ring rotates only while Stop is actionable. Clicking immediately freezes the motion,

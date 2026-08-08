@@ -153,7 +153,11 @@ public sealed partial class ToolActivityProjector
     public ToolStepViewModel ApplyCall(AgentStreamEvent e)
     {
         using var doc = JsonDocument.Parse(e.RawJson);
-        var root = doc.RootElement;
+        return ApplyCall(e, doc.RootElement);
+    }
+
+    internal ToolStepViewModel ApplyCall(AgentStreamEvent e, JsonElement root)
+    {
         var toolName = String(root, "name") ?? String(root, "tool") ?? "tool";
         // A call with no id still gets a step — the user should see that *something* ran — but
         // the synthetic id is intentionally unmatchable, so a later result cannot bind to it.
@@ -191,7 +195,11 @@ public sealed partial class ToolActivityProjector
     public ToolStepViewModel? ApplyResult(AgentStreamEvent e)
     {
         using var doc = JsonDocument.Parse(e.RawJson);
-        var root = doc.RootElement;
+        return ApplyResult(e, doc.RootElement);
+    }
+
+    internal ToolStepViewModel? ApplyResult(AgentStreamEvent e, JsonElement root)
+    {
         var id = CorrelationId(root, e);
         if (string.IsNullOrWhiteSpace(id)) return null; // never guess from the tool name
         var step = Activity.Steps.FirstOrDefault(item => item.Id == id);
@@ -230,7 +238,11 @@ public sealed partial class ToolActivityProjector
     public ToolStepViewModel AddBlocked(AgentStreamEvent e)
     {
         using var doc = JsonDocument.Parse(e.RawJson);
-        var root = doc.RootElement;
+        return AddBlocked(e, doc.RootElement);
+    }
+
+    internal ToolStepViewModel AddBlocked(AgentStreamEvent e, JsonElement root)
+    {
         var toolName = String(root, "tool") ?? String(root, "name") ?? "tool";
         var step = new ToolStepViewModel
         {

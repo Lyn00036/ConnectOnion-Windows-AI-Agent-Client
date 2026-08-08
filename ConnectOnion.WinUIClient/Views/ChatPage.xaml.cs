@@ -354,8 +354,7 @@ public sealed partial class ChatPage : Page, IFindHost, IShutdownDisarmable, IDi
             // starts actually runs under it. SetModeAsync is a no-op when the conversation is
             // already in that mode, which is the common case (Safe).
             await Vm.SetModeAsync(pending.Mode);
-            await Vm.SendAsync(pending.Text, pending.Attachments);
-            QueueScrollToEnd(force: true);
+            await SendAsync(pending.Text, pending.Attachments);
         }
     }
 

@@ -55,7 +55,8 @@ public sealed partial class ChatTurnProjection
     // Inbound agent images are normally buffered until the final output. The one exception is an
     // ask_user frame: agents use an immediately preceding image for QR sign-in and other visual
     // questions, so that image is attached to the live question before the host waits for input.
-    private readonly List<string> _pendingAgentImages = new();
+    private readonly List<PendingAgentImage> _pendingAgentImages = new();
+    private sealed record PendingAgentImage(string Source, string? MimeType, bool IsCached);
     private bool _wasInterrupted;
     // plan_review has no protocol id. Keep the one card emitted by this turn so reconnect
     // replay cannot create a fresh actionable copy after the original was already answered.
@@ -287,7 +288,7 @@ public sealed partial class ChatTurnProjection
     {
         if (_pendingAgentImages.Count == 0) return;
 
-        foreach (var dataUrl in _pendingAgentImages)
+        foreach (var image in _pendingAgentImages)
         {
             // Attached in the Encoding state and handed to the target, which decodes/caches it
             // to disk off this path and then flips the status. The bubble therefore renders a
@@ -298,10 +299,12 @@ public sealed partial class ChatTurnProjection
             {
                 Kind = AttachmentKind.Image,
                 FileName = "image",
-                Status = AttachmentStatus.Encoding,
+                MimeType = image.MimeType,
+                LocalCachePath = image.IsCached ? image.Source : null,
+                Status = image.IsCached ? AttachmentStatus.Sent : AttachmentStatus.Encoding,
             };
             target.Attachments.Add(attachment);
-            _target.ResolveAgentImage(dataUrl, attachment);
+            if (!image.IsCached) _target.ResolveAgentImage(image.Source, attachment);
         }
         _pendingAgentImages.Clear();
     }

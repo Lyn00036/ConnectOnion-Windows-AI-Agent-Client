@@ -1,5 +1,9 @@
 using System;
+using System.Buffers;
+using System.Collections.Generic;
 using System.Net.Http;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using ConnectOnion.Protocol;
@@ -21,11 +25,65 @@ namespace ConnectOnion.WinUIClient.Services.Attachments;
 public static class AttachmentImageCacheService
 {
     private static readonly TimeSpan DownloadTimeout = TimeSpan.FromSeconds(15);
+    private const int MaxCompletedDataUrls = 64;
+    private static readonly object InflightGate = new();
+    private static readonly Dictionary<string, Task<(string LocalPath, string MimeType)?>> Inflight =
+        new(StringComparer.Ordinal);
+    private static readonly object CompletedGate = new();
+    private static readonly Dictionary<string, (string LocalPath, string MimeType)> Completed =
+        new(StringComparer.Ordinal);
+    private static readonly Queue<string> CompletedOrder = new();
 
     public static async Task<(string LocalPath, string MimeType)?> ResolveAndCacheAsync(
         string source, HttpClient http, CancellationToken ct = default)
     {
-        switch (DataUrlCodec.ClassifyImageSource(source))
+        var kind = DataUrlCodec.ClassifyImageSource(source);
+        var key = Fingerprint(source);
+        if (kind == ImageSourceKind.DataUrl)
+        {
+            lock (CompletedGate)
+            {
+                if (Completed.TryGetValue(key, out var cached) && File.Exists(cached.LocalPath))
+                    return cached;
+            }
+        }
+
+        Task<(string LocalPath, string MimeType)?> work;
+        lock (InflightGate)
+        {
+            if (!Inflight.TryGetValue(key, out work!))
+            {
+                work = ResolveCoreAsync(source, http, kind, ct);
+                Inflight[key] = work;
+            }
+        }
+        try
+        {
+            var resolved = await work.ConfigureAwait(false);
+            if (kind == ImageSourceKind.DataUrl && resolved is { } value)
+                RememberCompleted(key, value);
+            return resolved;
+        }
+        finally
+        {
+            lock (InflightGate)
+            {
+                if (Inflight.TryGetValue(key, out var current) && ReferenceEquals(current, work))
+                    Inflight.Remove(key);
+            }
+        }
+    }
+
+    private static async Task<(string LocalPath, string MimeType)?> ResolveCoreAsync(
+        string source,
+        HttpClient http,
+        ImageSourceKind kind,
+        CancellationToken ct)
+    {
+        // Ensure the potentially expensive base64 decode/download does not run while the caller
+        // is still holding InflightGate to publish this shared task.
+        await Task.Yield();
+        switch (kind)
         {
             case ImageSourceKind.DataUrl:
                 byte[] bytes;
@@ -42,6 +100,51 @@ public static class AttachmentImageCacheService
 
             default:
                 return null;
+        }
+    }
+
+    private static void RememberCompleted(string key, (string LocalPath, string MimeType) value)
+    {
+        lock (CompletedGate)
+        {
+            if (Completed.ContainsKey(key)) return;
+            Completed[key] = value;
+            CompletedOrder.Enqueue(key);
+            while (CompletedOrder.Count > MaxCompletedDataUrls)
+            {
+                var expired = CompletedOrder.Dequeue();
+                Completed.Remove(expired);
+            }
+        }
+    }
+
+    private static string Fingerprint(string source)
+    {
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        var encoder = Encoding.UTF8.GetEncoder();
+        var bytes = ArrayPool<byte>.Shared.Rent(4096);
+        try
+        {
+            var offset = 0;
+            while (offset < source.Length)
+            {
+                var take = Math.Min(2048, source.Length - offset);
+                var flush = offset + take == source.Length;
+                encoder.Convert(
+                    source.AsSpan(offset, take),
+                    bytes,
+                    flush,
+                    out var charsUsed,
+                    out var bytesUsed,
+                    out _);
+                hash.AppendData(bytes, 0, bytesUsed);
+                offset += charsUsed;
+            }
+            return Convert.ToHexString(hash.GetHashAndReset());
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(bytes);
         }
     }
 

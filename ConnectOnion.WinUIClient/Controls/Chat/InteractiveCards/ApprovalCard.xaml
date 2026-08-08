@@ -88,18 +88,16 @@
                                 BorderBrush="{ThemeResource BorderSubtleBrush}" BorderThickness="1"
                                 Visibility="{x:Bind Message.HasApprovalCommand, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                             <StackPanel Spacing="6">
-                                <!-- CharacterEllipsis, not Clip. With Clip a command that ran past
-                                     MaxLines was cut mid-character with no mark, so the user could
-                                     approve a command whose tail they had never seen and had no
-                                     way of knowing existed. The toggle below is always offered now
-                                     for the same reason — its old >160-char / >=3-newline
-                                     condition missed a short command that merely wrapped past
-                                     three display lines in a narrow window. -->
-                                <TextBlock Text="{x:Bind Message.ApprovalCommandText, Mode=OneWay}"
+                                <!-- CharacterEllipsis, not Clip. The disclosure button follows
+                                     TextBlock.IsTextTrimmed rather than guessing from character
+                                     count, so it appears exactly when MaxLines hides content. -->
+                                <TextBlock x:Name="ApprovalCommandTextBlock"
+                                           Text="{x:Bind Message.ApprovalCommandText, Mode=OneWay}"
                                            FontFamily="{StaticResource JetBrainsMonoFontFamily}" FontSize="{StaticResource ProductCodeFontSize}" TextWrapping="Wrap"
                                            TextTrimming="CharacterEllipsis"
                                            MaxLines="{x:Bind Message.ApprovalCommandMaxLines, Mode=OneWay}"
                                            IsTextSelectionEnabled="True"
+                                           IsTextTrimmedChanged="ApprovalCommandText_IsTextTrimmedChanged"
                                            AutomationProperties.Name="{x:Bind Message.ApprovalCommandText, Mode=OneWay}" />
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="4">
                                     <Button x:Uid="ToolCopyCommand" Content="Copy command"
@@ -109,11 +107,13 @@
                                             Click="ApprovalCopyCommand_Click"
                                             AutomationProperties.Name="Copy command"
                                             ToolTipService.ToolTip="Copy the complete command" />
-                                    <Button Content="{x:Bind Message.ApprovalCommandToggleLabel, Mode=OneWay}"
+                                    <Button x:Name="ApprovalCommandToggleButton"
+                                            AutomationProperties.AutomationId="ApprovalCommandToggleButton"
+                                            Content="{x:Bind Message.ApprovalCommandToggleLabel, Mode=OneWay}"
                                             Style="{StaticResource InteractiveCardTertiaryButtonStyle}"
                                             IsEnabled="{x:Bind Message.AreApprovalRequestControlsEnabled, Mode=OneWay}"
                                             Command="{x:Bind Message.ToggleApprovalCommandCommand, Mode=OneWay}"
-                                            Visibility="{x:Bind Message.ShowApprovalCommandToggle, Mode=OneWay, Converter={StaticResource BoolToVis}}"
+                                            Visibility="Collapsed"
                                             AutomationProperties.Name="{x:Bind Message.ApprovalCommandToggleLabel, Mode=OneWay}" />
                                 </StackPanel>
                             </StackPanel>

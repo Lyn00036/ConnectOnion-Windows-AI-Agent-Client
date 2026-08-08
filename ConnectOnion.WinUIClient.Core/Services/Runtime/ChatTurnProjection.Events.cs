@@ -54,7 +54,7 @@ public sealed partial class ChatTurnProjection
             // empty activity card out of a stray frame.
             case "tool_call":
                 {
-                    var step = GetToolActivity().ApplyCall(e);
+                    var step = GetToolActivity().ApplyCall(e, root);
                     if (IsWriteFileTool(step.ToolName)
                         && !_diffsByToolId.ContainsKey(step.Id)
                         && !_writeCallsAwaitingDiff.Contains(step.Id, StringComparer.Ordinal))
@@ -66,7 +66,7 @@ public sealed partial class ChatTurnProjection
 
             case "tool_result":
                 {
-                    var step = _toolActivity?.ApplyResult(e);
+                    var step = _toolActivity?.ApplyResult(e, root);
                     if (step is not null && _diffsByToolId.TryGetValue(step.Id, out var diff))
                     {
                         diff.SetDiffState(step.Status switch
@@ -190,7 +190,7 @@ public sealed partial class ChatTurnProjection
                 }
 
             case "tool_blocked":
-                GetToolActivity().AddBlocked(e);
+                GetToolActivity().AddBlocked(e, root);
                 break;
 
             case "agent_image":
@@ -198,8 +198,14 @@ public sealed partial class ChatTurnProjection
                     // Don't render the image yet — buffer it and hang it on the final output when the
                     // turn completes (see FlushPendingImages). Rendering here would drop the image in
                     // above the tool activity, usage summary, and final reply that stream in after it.
-                    if (AttachmentWireEvents.TryGetAgentImageDataUrl(WireMessage.Wrap(root), out var dataUrl))
-                        _pendingAgentImages.Add(dataUrl);
+                    if (Str("cached_path") is { Length: > 0 } cachedPath)
+                    {
+                        _pendingAgentImages.Add(new PendingAgentImage(cachedPath, Str("mime_type"), true));
+                    }
+                    else if (AttachmentWireEvents.TryGetAgentImageDataUrl(WireMessage.Wrap(root), out var dataUrl))
+                    {
+                        _pendingAgentImages.Add(new PendingAgentImage(dataUrl, null, false));
+                    }
                     break;
                 }
 

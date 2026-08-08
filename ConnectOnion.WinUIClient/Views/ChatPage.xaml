@@ -55,12 +55,12 @@
                                 HorizontalAlignment="Left"
                                 Background="{ThemeResource SurfaceSecondaryBrush}"
                                 BorderThickness="0"
-                                Visibility="{Binding IsFailed, Converter={StaticResource BoolToVis}, ConverterParameter=invert}"
+                                Visibility="{Binding IsFailed, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}"
                                 Click="AttachmentOpen_Click"
                                 Tag="{Binding}"
                                 AutomationProperties.Name="Open image attachment"
                                 ToolTipService.ToolTip="Open image">
-                            <Image Source="{Binding LocalCachePath, Converter={StaticResource PathToImage}}"
+                            <Image Source="{Binding LocalCachePath, Mode=OneWay, Converter={StaticResource PathToImage}}"
                                    Stretch="Uniform"
                                    MaxWidth="280"
                                    MaxHeight="280" />
@@ -69,7 +69,7 @@
                                    FontSize="{StaticResource ProductCaptionFontSize}"
                                    FontStyle="Italic"
                                    Foreground="{ThemeResource TextSecondaryBrush}"
-                                   Visibility="{Binding IsFailed, Converter={StaticResource BoolToVis}}" />
+                                   Visibility="{Binding IsFailed, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                     </StackPanel>
 
                     <!-- Generic file: icon + name + size, tap to open, button to save a copy. -->

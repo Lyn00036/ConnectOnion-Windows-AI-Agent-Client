@@ -13,6 +13,8 @@ public sealed class StopUiContractTests
         // decision back up above all of them, mid-conversation.
         var xaml = ReadRepositoryFile(
             "ConnectOnion.WinUIClient", "Controls", "Chat", "InteractiveCards", "ApprovalCard.xaml");
+        var source = ReadRepositoryFile(
+            "ConnectOnion.WinUIClient", "Controls", "Chat", "InteractiveCards", "ApprovalCard.xaml.cs");
 
         Assert.Contains("AllowOnceCommand", xaml, StringComparison.Ordinal);
         Assert.Contains("TrustSessionCommand", xaml, StringComparison.Ordinal);
@@ -21,6 +23,26 @@ public sealed class StopUiContractTests
         Assert.Contains("ExplainCommand", xaml, StringComparison.Ordinal);
         Assert.Contains("Explain why", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("TextBox Header=\"Reason for declining", xaml, StringComparison.Ordinal);
+
+        // The command disclosure is useful only when MaxLines actually trimmed rendered text.
+        // Character-count heuristics cannot account for card width, DPI, or font metrics and left
+        // a no-op "Show full command" button beside already-complete one-line commands.
+        var approvalDocument = XDocument.Parse(xaml);
+        var commandText = approvalDocument.Descendants().Single(element =>
+            element.Attributes().Any(attribute =>
+                attribute.Name.LocalName == "Name"
+                && attribute.Value == "ApprovalCommandTextBlock"));
+        var commandToggle = approvalDocument.Descendants().Single(element =>
+            element.Attributes().Any(attribute =>
+                attribute.Name.LocalName == "Name"
+                && attribute.Value == "ApprovalCommandToggleButton"));
+        Assert.Equal(
+            "ApprovalCommandText_IsTextTrimmedChanged",
+            commandText.Attribute("IsTextTrimmedChanged")?.Value);
+        Assert.Equal("Collapsed", commandToggle.Attribute("Visibility")?.Value);
+        Assert.DoesNotContain("ShowApprovalCommandToggle", xaml, StringComparison.Ordinal);
+        Assert.Contains("sender.IsTextTrimmed", source, StringComparison.Ordinal);
+        Assert.Contains("Message?.IsApprovalCommandExpanded == true", source, StringComparison.Ordinal);
 
         // And it is genuinely gone from the tool card rather than duplicated into both.
         var toolCard = ReadRepositoryFile(

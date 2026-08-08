@@ -42,6 +42,22 @@ public sealed partial class ApprovalCard : UserControl
         Clipboard.SetContent(package);
     }
 
+    /// <summary>
+    /// Shows the disclosure only when the three-line preview actually hides rendered text. A
+    /// character-count estimate cannot account for card width, font metrics, DPI, or localisation,
+    /// and produced a button that did nothing for commands which already fitted in full.
+    /// </summary>
+    private void ApprovalCommandText_IsTextTrimmedChanged(
+        TextBlock sender,
+        IsTextTrimmedChangedEventArgs args)
+    {
+        _ = args;
+        ApprovalCommandToggleButton.Visibility =
+            sender.IsTextTrimmed || Message?.IsApprovalCommandExpanded == true
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+    }
+
     /// <summary>Esc closes whatever disclosure is open — the details panel, the expanded command,
     /// or the stop confirmation. It is deliberately not bound to a decision: Decline is still an
     /// answer sent to the agent, and a key people press reflexively to dismiss things must not

@@ -45,19 +45,6 @@ public sealed partial class ChatMessage
     [JsonIgnore] public bool ShowApprovalNonCommandTarget => HasApprovalTarget && !IsApprovalCommand;
     [JsonIgnore] public string ApprovalCommandText => IsApprovalCommand ? ApprovalTargetInfo.FullTarget : "";
     [JsonIgnore] public bool HasApprovalCommand => ApprovalCommandText.Length > 0;
-    /// <summary>Always offered for a non-trivial command.
-    ///
-    /// <para>The old test — over 160 characters, or three or more newlines — was about the source
-    /// string, but the thing that gets truncated is the <i>rendered</i> line count, and a short
-    /// one-line command wraps past the three-line cap in a narrow window. Those commands were
-    /// clipped with the toggle hidden, so there was no way to see the rest. The view cannot report
-    /// its wrap point back here, so the cheap correct answer is to offer the toggle whenever there
-    /// is plausibly something to reveal and let a fully-visible command have a button that reveals
-    /// nothing.</para></summary>
-    [JsonIgnore]
-    public bool ShowApprovalCommandToggle => ApprovalCommandText.Length > 60
-        || ApprovalCommandText.Contains('\n', StringComparison.Ordinal);
-
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ApprovalCommandMaxLines))]
     [NotifyPropertyChangedFor(nameof(ApprovalCommandToggleLabel))]

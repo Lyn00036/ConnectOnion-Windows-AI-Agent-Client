@@ -613,6 +613,23 @@ public sealed class ChatTurnProjectionTests
     }
 
     [Fact]
+    public void AgentImage_PreparedCachePath_DoesNotDecodeAgainOnEitherProjectionPass()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+
+        projection.Apply(Event("agent_image",
+            "{\"type\":\"agent_image\",\"cached_path\":\"images/hash.png\",\"mime_type\":\"image/png\"}"));
+        projection.AppendCompletedTurn("");
+
+        var attachment = Assert.Single(target.Messages[^1].Attachments);
+        Assert.Equal("images/hash.png", attachment.LocalCachePath);
+        Assert.Equal("image/png", attachment.MimeType);
+        Assert.Equal(AttachmentStatus.Sent, attachment.Status);
+        Assert.Empty(target.ResolvedImages);
+    }
+
+    [Fact]
     public void AgentImage_ImmediatelyBeforeAskUser_AttachesWhileQuestionIsPending()
     {
         var target = new FakeTarget();
