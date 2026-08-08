@@ -330,8 +330,9 @@ dotnet run --project ConnectOnion.Protocol.Conformance\ConnectOnion.Protocol.Con
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Test-Coverage.ps1 -ResultsDirectory TestResults
 ```
 
-Current snapshot: **1,105** headless client unit tests, **189** integration tests, **224** protocol
-tests, and a FlaUI suite that reports **29 passed / 1 skipped** on every push.
+Current snapshot: **1,143** headless client unit tests, **197** integration tests, **225** protocol
+tests, and a FlaUI suite that reports **31 passed / 1 skipped** on every push. One passing entry is
+the opt-in memory probe's intentional no-op, leaving 30 required real-window assertions.
 
 The real-window suite needs a **published** executable — the plain `bin\` build carries no
 unpackaged Windows App SDK bootstrapper, so every test silently skips against it:

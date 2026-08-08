@@ -77,7 +77,7 @@ Current SQLite schema version: **11**. Its 12 logical tables are:
 | Table | Key columns |
 | --- | --- |
 | `app_meta` | key, value |
-| `agents` | id, name, address, direct_url, icon_path, invite_code, info_json, info_updated_at, sort_order |
+| `agents` | id, name, address, direct_url, icon_path, info_json, info_updated_at, sort_order |
 | `sessions` | id, agent_id, title, has_custom_title, remote_session_id, last_processed_event_id, created_at, updated_at, sort_order, mode, unread_count, requires_attention |
 | `preferences` | theme, sidebar_visible, message_font_size, shortcut_overrides_json, microphone_device_id |
 | `messages` | conversation_id, id, role, content, agent_name, event_kind/key/eyebrow/title/detail/meta/args/result/status, is_onboarding, created_at |
@@ -275,7 +275,7 @@ connectonion-desktop/
     ConnectOnion.Protocol.Tests/      xunit tests for ConnectOnion.Protocol
     ConnectOnion.WinUIClient.UnitTests/  Headless tests over Core, plus the ArchUnit layer gate
     ConnectOnion.IntegrationTests/    SQLite schema/repository tests against a real database file
-    ConnectOnion.WinUIClient.UITests/ FlaUI: 28 required shell/chat tests + 1 skipped diagnostic + 1 trimmed-runtime scenario + 3 opt-in diagnostics/audits
+    ConnectOnion.WinUIClient.UITests/ FlaUI: 30 required shell/chat tests + 1 skipped diagnostic + 1 trimmed-runtime scenario + 3 opt-in diagnostics/audits
     ConnectOnion.TrimSmoke/           Trimmed serialization/persistence console harness
 
   .github/workflows/ci.yml            Windows/.NET CI workflow
@@ -487,7 +487,7 @@ The gate is a ratchet against `coverage-baseline.json`, currently **86.12%** for
 `ConnectOnion.Protocol` and **83.59%** for `ConnectOnion.WinUIClient.Core`, with a 0.25 percentage
 point tolerance. The separate absolute floors prevent a deliberate baseline update from drifting
 below the minimum; generated code and test assemblies are excluded.
-The real-window project discovers 33 tests. Its 28 required shell/chat tests run against a published
+The real-window project discovers 35 tests. Its 30 required shell/chat tests run against a published
 unpackaged executable on every push and pull request; the Explorer drag-and-drop diagnostic is
 explicitly skipped because desktop DPI/layout makes its source coordinates nondeterministic. The
 memory and large-history performance audits remain opt-in. See [TEST_PLAN.md](./TEST_PLAN.md)
@@ -541,7 +541,7 @@ Current CI behavior:
 
 CI also audits dependencies for known vulnerabilities, collects and uploads Cobertura reports,
 enforces the Protocol/Core coverage ratchet, runs the trim-safe serialization harness, and
-publishes a **trimmed, self-contained** ReadyToRun unpackaged build. The 28 required FlaUI shell/chat
+publishes a **trimmed, self-contained** ReadyToRun unpackaged build. The 30 required FlaUI shell/chat
 tests run on every push and pull request, using an isolated data root and uploading TRX/screenshot
 evidence; the drag-and-drop diagnostic is skipped. A separate manual-only job can exercise a real
 deployed agent. Tag-driven portable releases are handled separately by

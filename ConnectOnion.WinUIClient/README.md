@@ -289,7 +289,7 @@ Agent hosts must expose:
 | `tests/ConnectOnion.Protocol.Tests` | xunit tests for the wire protocol |
 | `tests/ConnectOnion.WinUIClient.UnitTests` | Headless xunit tests for this app's WinUI-free surfaces |
 | `tests/ConnectOnion.IntegrationTests` | SQLite schema/repository tests against a real database file |
-| `tests/ConnectOnion.WinUIClient.UITests` | 28 required FlaUI shell/chat tests, one skipped Explorer drag diagnostic, plus opt-in memory/performance/layout probes |
+| `tests/ConnectOnion.WinUIClient.UITests` | 30 required FlaUI shell/chat tests, one skipped Explorer drag diagnostic, plus opt-in memory/performance/layout probes |
 | `tests/ConnectOnion.TrimSmoke` | Trim-safe serialization, persistence, and identity restart harness |
 
 ## Repository
