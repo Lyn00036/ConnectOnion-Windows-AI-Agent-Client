@@ -192,6 +192,7 @@ jobs:
           -p:Platform=$env:BUILD_PLATFORM
           -p:Version=${{ steps.version.outputs.semver }}
           -p:PublishAot=true
+          -p:NuGetLockFilePath=packages.publish.lock.json
           -p:SelfContained=true
           -p:PublishSingleFile=true
           -p:DebugSymbols=false

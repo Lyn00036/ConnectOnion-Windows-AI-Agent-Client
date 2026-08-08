@@ -17,15 +17,26 @@ public sealed class PortableLauncherContractTests
     }
 
     [Fact]
-    public void Launcher_IsDependencyFreeNativeAotAndUsesTheProductIcon()
+    public void Launcher_UsesANormalBuildGraphAndADedicatedNativeAotReleaseGraph()
     {
         var project = RepoFile("ConnectOnion.PortableLauncher", "ConnectOnion.PortableLauncher.csproj");
+        var workflow = RepoFile(".github", "workflows", "release.yml");
+        var buildLock = RepoFile("ConnectOnion.PortableLauncher", "packages.lock.json");
+        var publishLock = RepoFile("ConnectOnion.PortableLauncher", "packages.publish.lock.json");
 
         Assert.Contains("<OutputType>WinExe</OutputType>", project, StringComparison.Ordinal);
-        Assert.Contains("<PublishAot>true</PublishAot>", project, StringComparison.Ordinal);
-        Assert.Contains("<SelfContained>true</SelfContained>", project, StringComparison.Ordinal);
-        Assert.Contains("<PublishSingleFile>true</PublishSingleFile>", project, StringComparison.Ordinal);
+        Assert.Contains("<PublishAot>false</PublishAot>", project, StringComparison.Ordinal);
+        Assert.Contains("<SelfContained>false</SelfContained>", project, StringComparison.Ordinal);
+        Assert.Contains("<PublishSingleFile>false</PublishSingleFile>", project, StringComparison.Ordinal);
         Assert.Contains("<ApplicationIcon>..\\ConnectOnion.WinUIClient\\Assets\\app-icon.ico</ApplicationIcon>", project, StringComparison.Ordinal);
+        Assert.Contains("-p:PublishAot=true", workflow, StringComparison.Ordinal);
+        Assert.Contains("-p:SelfContained=true", workflow, StringComparison.Ordinal);
+        Assert.Contains("-p:PublishSingleFile=true", workflow, StringComparison.Ordinal);
+        Assert.Contains("-p:NuGetLockFilePath=packages.publish.lock.json", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("Microsoft.DotNet.ILCompiler", buildLock, StringComparison.Ordinal);
+        Assert.DoesNotContain("Microsoft.NET.ILLink.Tasks", buildLock, StringComparison.Ordinal);
+        Assert.Contains("Microsoft.DotNet.ILCompiler", publishLock, StringComparison.Ordinal);
+        Assert.Contains("Microsoft.NET.ILLink.Tasks", publishLock, StringComparison.Ordinal);
     }
 
     [Fact]

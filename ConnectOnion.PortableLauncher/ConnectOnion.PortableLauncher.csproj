@@ -12,11 +12,12 @@
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 
-    <!-- NativeAOT keeps the user-facing launcher to one small dependency-free executable. The
-         actual self-contained WinUI publish remains unchanged under app/. -->
-    <PublishAot>true</PublishAot>
-    <SelfContained>true</SelfContained>
-    <PublishSingleFile>true</PublishSingleFile>
+    <!-- The solution build uses the ordinary SDK graph. The release workflow explicitly enables
+         NativeAOT with its dedicated packages.publish.lock.json; keeping AOT off here prevents
+         SDK-injected ILCompiler/ILLink packages from contaminating the normal solution lock. -->
+    <PublishAot>false</PublishAot>
+    <SelfContained>false</SelfContained>
+    <PublishSingleFile>false</PublishSingleFile>
     <InvariantGlobalization>true</InvariantGlobalization>
     <StripSymbols>true</StripSymbols>
     <DebugSymbols>false</DebugSymbols>
