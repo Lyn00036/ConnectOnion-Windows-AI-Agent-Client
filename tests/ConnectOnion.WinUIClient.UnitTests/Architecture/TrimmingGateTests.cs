@@ -84,12 +84,7 @@ public sealed class TrimmingGateTests
     public void Ci_PublishesWhatProductionShips()
     {
         var workflow = RepoFile(".github", "workflows", "ci.yml");
-
-        var trimmedSettings = Regex.Matches(workflow, @"-p:PublishTrimmed=(?<value>\w+)");
-
-        Assert.NotEmpty(trimmedSettings);
-        Assert.All(trimmedSettings, match =>
-            Assert.Equal("true", match.Groups["value"].Value.ToLowerInvariant()));
+        AssertAppPublishIsTrimmed(workflow, "CI workflow");
     }
 
     /// <summary>
@@ -101,12 +96,7 @@ public sealed class TrimmingGateTests
     public void Release_PublishesTrimmed()
     {
         var workflow = RepoFile(".github", "workflows", "release.yml");
-
-        var trimmedSettings = Regex.Matches(workflow, @"-p:PublishTrimmed=(?<value>\w+)");
-
-        Assert.NotEmpty(trimmedSettings);
-        Assert.All(trimmedSettings, match =>
-            Assert.Equal("true", match.Groups["value"].Value.ToLowerInvariant()));
+        AssertAppPublishIsTrimmed(workflow, "release workflow");
     }
 
     /// <summary>
@@ -262,6 +252,24 @@ public sealed class TrimmingGateTests
 
         Assert.True(publishCommand.Success, $"Expected the {workflowDescription} to publish the app.");
         Assert.DoesNotContain("--no-restore", publishCommand.Value, StringComparison.Ordinal);
+    }
+
+    private static void AssertAppPublishIsTrimmed(string workflow, string workflowDescription)
+    {
+        // Restore and build deliberately use the normal, untrimmed dependency graph. Only the
+        // app publish command is the production artifact whose trimming decision this gate owns.
+        var appPublish = Regex.Match(
+            workflow,
+            @"dotnet publish (?:ConnectOnion.WinUIClient/ConnectOnion.WinUIClient.csproj|\$env:APP_PROJECT)[\s\S]*?(?=\r?\n\s*(?:#|- name:))");
+
+        Assert.True(appPublish.Success, $"Expected the {workflowDescription} to publish the WinUI app.");
+        var trimmedSettings = Regex.Matches(
+            appPublish.Value,
+            @"-p:PublishTrimmed=(?<value>\w+)");
+
+        Assert.NotEmpty(trimmedSettings);
+        Assert.All(trimmedSettings, match =>
+            Assert.Equal("true", match.Groups["value"].Value.ToLowerInvariant()));
     }
 
     /// <summary>

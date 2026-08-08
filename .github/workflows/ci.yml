@@ -60,7 +60,7 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
-          dotnet-version: 10.0.3xx
+          dotnet-version: 10.0.302
 
       - name: Set up Node.js for protocol conformance
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
@@ -83,7 +83,13 @@ jobs:
 
       - name: Restore
         shell: pwsh
-        run: dotnet restore $env:SOLUTION_PATH -p:Platform=$env:BUILD_PLATFORM
+        # CONFIGURATION is imported by MSBuild as Release. Keep this solution restore on the
+        # ordinary build graph; the trimmed/R2R publish below has its own lock files.
+        run: >
+          dotnet restore $env:SOLUTION_PATH
+          -p:Platform=$env:BUILD_PLATFORM
+          -p:PublishTrimmed=false
+          -p:PublishReadyToRun=false
 
       - name: Verify C# whitespace format
         shell: pwsh
@@ -91,7 +97,7 @@ jobs:
 
       - name: Audit NuGet dependencies
         shell: pwsh
-        run: dotnet list $env:SOLUTION_PATH package --vulnerable --include-transitive
+        run: dotnet list $env:SOLUTION_PATH package --vulnerable --include-transitive --no-restore
 
       - name: Build WinUI solution
         shell: pwsh
@@ -102,6 +108,7 @@ jobs:
           -p:Platform=$env:BUILD_PLATFORM
           -p:AppxPackageSigningEnabled=false
           -p:GenerateAppxPackageOnBuild=false
+          -p:PublishTrimmed=false
           -p:PublishReadyToRun=false
 
       - name: Run protocol unit tests
@@ -259,7 +266,7 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
-          dotnet-version: 10.0.3xx
+          dotnet-version: 10.0.302
 
       # This is intentionally its own job: a deployed endpoint is external state, so its signal
       # must not be confused with the deterministic push/PR gate above. Repository variables can
