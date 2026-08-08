@@ -291,7 +291,7 @@ connectonion-desktop/
 | Requirement | Version | Needed for |
 | --- | --- | --- |
 | Windows | 10 version 1809 (build 17763) or later | Running the app |
-| .NET SDK | 10.0.3xx | Building everything |
+| .NET SDK | 10.0.302 | Building everything; exact match required by the locked dependency graph |
 | Windows App SDK runtime | 2.3.1 (matches the `Microsoft.WindowsAppSDK` package reference) | Running framework-dependent development builds |
 | Visual …175 tokens truncated… run in a normal PowerShell prompt. `winget` ships with
 Windows 11 and current Windows 10; if it is missing, install **App Installer**
@@ -333,12 +333,12 @@ Open a **new** terminal afterwards (so `PATH` is refreshed) and confirm the
 pinned SDK resolves from the repository root:
 
 ```powershell
-dotnet --list-sdks   # expect a 10.0.3xx entry
+dotnet --list-sdks   # expect a 10.0.302 entry
 dotnet --version     # run inside the repo; global.json selects the SDK
 ```
 
 If `dotnet --version` errors with a `global.json` message, the installed SDK is
-outside the `10.0.3xx` feature band — install that SDK rather than editing
+other than `10.0.302` — install that exact SDK rather than editing
 `global.json`.
 
 ### 3. Windows App SDK runtime
@@ -529,7 +529,7 @@ The GitHub Actions workflow is `.github/workflows/ci.yml`.
 Current CI behavior:
 
 - Runs on `windows-latest`
-- Installs .NET `10.0.3xx`
+- Installs .NET `10.0.302`
 - Installs Node.js 22 for the JavaScript conformance signer
 - Restores the committed NuGet lock graph in locked mode
 - Verifies C# whitespace formatting and treats build warnings as errors

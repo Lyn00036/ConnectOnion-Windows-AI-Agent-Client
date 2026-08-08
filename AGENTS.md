@@ -49,7 +49,10 @@ all pre-dating the rule, and threading it through them is a change of its own ra
 on the migration. It imports the root `Directory.Build.props` explicitly; without that the
 nearest-file-wins rule would silently drop the repo's analyzer and audit settings for the tests.
 
-SDK pin: `global.json` locks the 10.0.3xx feature band (`"version": "10.0.300"`, `rollForward: latestPatch`).
+SDK pin: `global.json` locks the exact 10.0.302 SDK (`rollForward: disable`), and every workflow
+installs that same version. This exact pin is load-bearing: NativeAOT and trimming inject
+SDK-versioned ILCompiler/ILLink packages into the NuGet graph, so allowing an SDK patch roll-forward
+makes locked restore disagree with whichever SDK patch last generated the lock files.
 
 ## Commands
 

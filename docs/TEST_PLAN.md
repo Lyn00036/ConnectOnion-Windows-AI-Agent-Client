@@ -306,7 +306,7 @@ There is **no separate MSTest WinUI Unit Test App** in the current solution. UI-
 | Item | Value |
 |---|---|
 | OS | Windows 11 for desktop evidence; CI uses `windows-latest` |
-| SDK | .NET 10; `global.json` pins the `10.0.3xx` feature band (`10.0.300`, `rollForward: latestPatch`) |
+| SDK | .NET 10.0.302; `global.json`, CI, and release all pin the exact patch (`rollForward: disable`) because SDK-injected ILLink/ILCompiler packages participate in locked restore |
 | CI build | `Release`, `x64`, packaging disabled during solution build |
 | UI publish | `win-x64`, unpackaged, ReadyToRun enabled, **trimming enabled** (matches the shipped configuration) |
 | Node | Node.js 22 for Protocol Conformance |

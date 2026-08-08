@@ -218,7 +218,7 @@ This section is the on-ramp. The authoritative architecture description is
 | Requirement | Version | Notes |
 |---|---|---|
 | Windows | 10 version 1809 (build 17763) or newer, x64 | `TargetPlatformMinVersion` is 10.0.17763.0 |
-| .NET SDK | 10.0.3xx | Pinned by [`global.json`](./global.json) (`rollForward: latestPatch`) |
+| .NET SDK | 10.0.302 | Pinned exactly by [`global.json`](./global.json); CI and release install the same patch |
 | Windows App SDK | 1.x (restored via NuGet) | No separate install needed |
 | Node.js | 22 | Only for the protocol conformance gate's reference signer (`ref-sign.js`) |
 | Visual Studio 2022 | 17.x with **.NET Desktop** and **Windows App SDK C# Templates** | Optional, but the most reliable path for XAML debugging |
