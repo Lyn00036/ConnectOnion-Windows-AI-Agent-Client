@@ -154,7 +154,7 @@ jobs:
       # Runs on every push and PR, not just the weekly schedule and the opt-in checkbox.
       #
       # It was gated because a real-window suite is expensive and desktop-sensitive. The cost is
-      # real but small — 28 required tests (plus one explicitly skipped drag diagnostic) inside
+      # real but small — 30 required tests (plus one explicitly skipped drag diagnostic) inside
       # a 10-minute cap, against a build this job already produced. What tipped the balance is
       # where the changes actually are: over the last 100
       # commits the most-edited files in the repo are ShellSidebar.xaml (16), ShellSidebar.xaml.cs
