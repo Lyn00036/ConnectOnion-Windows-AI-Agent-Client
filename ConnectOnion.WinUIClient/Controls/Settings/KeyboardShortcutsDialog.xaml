@@ -21,7 +21,7 @@
         <Rectangle Fill="{ThemeResource SettingsBackdropBrush}" Tapped="Backdrop_Tapped" />
 
         <Border x:Name="ModalContainer" MaxWidth="640" MaxHeight="760" Margin="24"
-                HorizontalAlignment="Center" VerticalAlignment="Center"
+                HorizontalAlignment="Stretch" VerticalAlignment="Center"
                 Background="{ThemeResource SettingsContentBrush}" BorderBrush="{ThemeResource SettingsModalBorderBrush}"
                 BorderThickness="1" CornerRadius="14" Tapped="ModalContainer_Tapped">
             <Border.Shadow><ThemeShadow /></Border.Shadow>

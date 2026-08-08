@@ -1,3 +1,4 @@
+using System;
 using System.Text.Json;
 
 namespace ConnectOnion.Protocol;
@@ -40,6 +41,11 @@ public sealed class WireMessage
     internal static JsonDocument ParseDocument(string json)
         => JsonDocument.Parse(json, JsonOptions);
 
+    /// <summary>Parses the receive loop's UTF-8 buffer directly. Keeping the frame as UTF-8 avoids
+    /// allocating a second, twice-as-large UTF-16 string for large image events.</summary>
+    internal static JsonDocument ParseDocument(ReadOnlyMemory<byte> utf8Json)
+        => JsonDocument.Parse(utf8Json, JsonOptions);
+
     /// <summary>Wraps an element the caller has already parsed, so a reader that holds a live
     /// <see cref="JsonDocument"/> can reuse the typed accessors without paying for a second parse
     /// (and a second copy) of the same payload. The element must stay valid for the wrapper's
@@ -71,4 +77,9 @@ public sealed class WireMessage
 /// </summary>
 /// <param name="EventId">Server-assigned event identifier, used as
 /// <c>last_msg_id</c> on reconnect so the server can replay only missed events.</param>
-public sealed record AgentStreamEvent(string Type, string Description, string? EventId, string RawJson = "{}");
+public sealed record AgentStreamEvent(
+    string Type,
+    string Description,
+    string? EventId,
+    string RawJson = "{}",
+    double? Timestamp = null);

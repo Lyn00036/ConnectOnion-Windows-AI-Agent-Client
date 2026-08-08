@@ -80,9 +80,16 @@ public sealed class ToolActivityMigrationTests
 
         Assert.Same(diff, approval.RelatedDiffPreview);
         Assert.Same(approval, diff.RelatedDiffApproval);
-        Assert.False(approval.IsTranscriptRowVisible);
         Assert.False(diff.ShowRelatedDiffApprovalCard);
+        // The decision is settled, so it shows its own folded row rather than being hosted by the
+        // diff. This is the reload half of the ownership swap: the pairing has to survive so the
+        // restored transcript matches what was on screen while the turn ran.
+        Assert.True(approval.IsTranscriptRowVisible);
+        Assert.False(approval.IsInteractiveCardExpanded);
+        // Unconfirmed is a problem state, so the diff is kept rather than withdrawn.
         Assert.Equal(DiffChangeState.Unconfirmed, diff.DiffState);
+        Assert.False(diff.IsWithdrawnDiffPreview);
+        Assert.True(diff.IsTranscriptRowVisible);
         Assert.Equal(2, restored.Count);
     }
 

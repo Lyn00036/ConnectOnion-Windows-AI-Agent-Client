@@ -228,7 +228,6 @@ public sealed class ChatMessageApprovalTests
 
         Assert.Equal(command, message.ApprovalCommandText);
         Assert.Equal(3, message.ApprovalCommandMaxLines);
-        Assert.True(message.ShowApprovalCommandToggle);
 
         message.ToggleApprovalCommandCommand.Execute(null);
 

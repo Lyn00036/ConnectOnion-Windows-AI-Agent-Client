@@ -32,7 +32,44 @@ public sealed partial class ShellAgentItem : RowStateItem
         => !string.IsNullOrWhiteSpace(Address) ? Address : DirectUrl ?? "";
     public string CopyAccessibilityName => $"Copy address for {DisplayName}";
     public string DeleteAccessibilityName => $"Delete {DisplayName}";
-    public string OpenAccessibilityName => $"Open {DisplayName}";
+    public string OpenAccessibilityName => string.Join(", ", new[]
+        {
+            LocalizedStrings.Format("SidebarOpenAgent", "Open {0}", DisplayName),
+            ShowUnreadRollup
+                ? RequiresAttention
+                    ? LocalizedStrings.Get("SidebarRequiresAttention", "Approval required")
+                    : LocalizedStrings.Format("SidebarUnreadCount", "{0} unread", UnreadCount)
+                : "",
+        }
+        .Where(value => !string.IsNullOrWhiteSpace(value)));
+
+    /// <summary>Unread messages summed across every conversation this agent owns — including the
+    /// ones the sidebar has not loaded. Read from an aggregate query
+    /// (<c>SessionRepository.GetAgentAttentionAsync</c>) rather than from <see cref="Sessions"/>,
+    /// which holds only the pages of an <i>expanded</i> branch.</summary>
+    public int UnreadCount { get; set; }
+
+    /// <summary>True when one of this agent's conversations is blocked on an approval.</summary>
+    public bool RequiresAttention { get; set; }
+
+    /// <summary>
+    /// Whether the agent row draws the rolled-up badge.
+    ///
+    /// <para>Collapsed branches only. An expanded one already shows the badge on the conversation
+    /// row that earned it, and a second copy on the parent would read as two separate unread
+    /// messages. A conversation cannot hide below an expanded branch's page boundary either:
+    /// anything with unread state was just written to, and the branch is ordered by
+    /// <c>updated_at DESC</c>, so it is on the first page by construction.</para>
+    /// </summary>
+    public bool ShowUnreadRollup => !IsExpanded && (UnreadCount > 0 || RequiresAttention);
+
+    public string UnreadBadgeText => UnreadCount > 99
+        ? "99+"
+        : UnreadCount.ToString(System.Globalization.CultureInfo.CurrentCulture);
+
+    /// <summary>Hides the count when the branch is only flagged for approval — an approval with no
+    /// unread reply would otherwise draw a badge reading "0".</summary>
+    public bool ShowUnreadCount => ShowUnreadRollup && UnreadCount > 0;
     public string ToggleAccessibilityName => IsExpanded
         ? LocalizedStrings.Format("SidebarCollapseAgentChats", "Collapse chats for {0}", DisplayName)
         : LocalizedStrings.Format("SidebarExpandAgentChats", "Expand chats for {0}", DisplayName);
@@ -99,6 +136,9 @@ public sealed partial class ShellAgentItem : RowStateItem
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ChevronAngle))]
     [NotifyPropertyChangedFor(nameof(ToggleAccessibilityName))]
+    [NotifyPropertyChangedFor(nameof(ShowUnreadRollup))]
+    [NotifyPropertyChangedFor(nameof(ShowUnreadCount))]
+    [NotifyPropertyChangedFor(nameof(OpenAccessibilityName))]
     public partial bool IsExpanded { get; set; }
 
     [ObservableProperty]

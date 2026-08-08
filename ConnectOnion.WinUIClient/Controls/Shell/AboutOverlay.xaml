@@ -19,8 +19,8 @@
     <Grid x:Name="OverlayRoot" KeyDown="OverlayRoot_KeyDown">
         <Rectangle Fill="{ThemeResource SettingsBackdropBrush}" Tapped="Backdrop_Tapped" />
 
-        <Border x:Name="ModalContainer" Width="400" Margin="24"
-                HorizontalAlignment="Center" VerticalAlignment="Center"
+        <Border x:Name="ModalContainer" MaxWidth="400" Margin="24"
+                HorizontalAlignment="Stretch" VerticalAlignment="Center"
                 Background="{ThemeResource SettingsContentBrush}" BorderBrush="{ThemeResource SettingsModalBorderBrush}"
                 BorderThickness="1" CornerRadius="14" Tapped="ModalContainer_Tapped">
             <Border.Shadow><ThemeShadow /></Border.Shadow>

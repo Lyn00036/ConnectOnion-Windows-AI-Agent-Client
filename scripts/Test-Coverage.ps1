@@ -107,7 +107,11 @@ function Get-MergedLineCoverage {
                 $file = ([string]$class.filename).Replace('/', '\')
                 if ($file -match '(^|\\)obj\\') { continue }
 
-                foreach ($line in @($class.lines.line)) {
+                # Coverlet can emit an empty <lines /> element for compiler-generated async
+                # state-machine classes that contain no executable sequence points. Under
+                # StrictMode, accessing the missing `.line` property throws before the ratchet
+                # can evaluate any coverage. SelectNodes returns an empty collection instead.
+                foreach ($line in @($class.SelectNodes('lines/line'))) {
                     $key = "$file|$($line.number)"
                     $covered = [int]$line.hits -gt 0
                     if (-not $lines.ContainsKey($key) -or $covered) {

@@ -1,4 +1,5 @@
 using System;
+using ConnectOnion.Protocol;
 using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Controls;
 using ConnectOnion.WinUIClient.ViewModels;
@@ -78,6 +79,15 @@ public sealed partial class AgentDetailPage : Page, IReloadablePage, IShutdownDi
     private async void Composer_SubmitRequested(object? sender, ComposerSubmission submission)
         => await StartConversationAsync(submission);
 
+    /// <summary>Records the picked mode locally. Unlike <c>ChatPage</c>'s handler there is nothing
+    /// to send: a <c>mode_change</c> frame is only forwarded while a turn is running, and this page
+    /// has neither a turn nor a conversation. The choice travels on the submission and is applied
+    /// to the conversation the first message creates.</summary>
+    private void Composer_ModeChangeRequested(object? sender, string mode)
+    {
+        if (AgentModes.IsValid(mode)) Vm.CurrentMode = mode;
+    }
+
     private async void OfflineNotice_RecheckRequested(object? sender, EventArgs e)
         => await Vm.RecheckPresenceAsync();
 
@@ -123,7 +133,10 @@ public sealed partial class AgentDetailPage : Page, IReloadablePage, IShutdownDi
         {
             Frame.Navigate(
                 typeof(ChatPage),
-                new ComposerSubmission(initialPrompt, submission.Attachments),
+                // The prompt is re-trimmed here, so the submission is rebuilt rather than passed
+                // through — carry the mode across with it or the new conversation opens at the
+                // default whatever the picker said.
+                new ComposerSubmission(initialPrompt, submission.Attachments, submission.Mode),
                 new DrillInNavigationTransitionInfo());
         }
     }

@@ -100,6 +100,29 @@ public sealed partial class ChatAttachment : Common.ObservableObject
     [JsonIgnore]
     public string SizeLabel => FormatSize(SizeBytes);
 
+    /// <summary>
+    /// A cached local path and a failed status are contradictory: the cache pipeline only marks
+    /// an attachment failed when it produced no path. Normalize either assignment order so stale
+    /// persisted data cannot make WinUI render a thumbnail and a failure label together.
+    /// </summary>
+    partial void OnLocalCachePathChanged(string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value) && Status == AttachmentStatus.Failed)
+        {
+            Status = AttachmentStatus.Sent;
+            Error = null;
+        }
+    }
+
+    partial void OnStatusChanged(AttachmentStatus value)
+    {
+        if (value == AttachmentStatus.Failed && !string.IsNullOrWhiteSpace(LocalCachePath))
+        {
+            Status = AttachmentStatus.Sent;
+            Error = null;
+        }
+    }
+
     public static string FormatSize(long bytes) => bytes switch
     {
         <= 0 => "",

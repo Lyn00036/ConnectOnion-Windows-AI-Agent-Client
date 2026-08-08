@@ -22,7 +22,7 @@
 | 5b | Secure handling of credentials | ✅ | `Data/IdentityStore.cs` — the Ed25519 seed is DPAPI-protected (`CurrentUser`) at rest, never plaintext; an unreadable identity is now reported to the user rather than silently replaced |
 | 6 | Windows desktop UX (layout, keyboard, long responses, settings, light/dark) | ✅ | Custom title bar + `ShellSidebar`; `Services/KeyboardShortcutCatalog` + `KeyboardShortcutsDialog`; `MarkdownTextBlock` for long responses; `SettingsOverlay`; full Light/Dark token system in `Styles/Colors.xaml` + `Styles/Brushes.xaml` |
 | 7 | Reliability: interruption, timeout, failure, invalid config, reconnect | ✅ | Timeouts and `ConnectionLost` in `AgentConnectionService`; failed/cancelled runs persist their partial output plus an error bubble (`AgentSessionManager.PersistFailedAsync`); manual reconnect via `ChatViewModel.ReconnectAsync` |
-| 8 | Testing and documentation | ✅ | Docs: `CLAUDE.md`, this `docs/` folder. CI runs Protocol, Core/architecture, and SQLite suites with a coverage ratchet plus `ConnectOnion.Protocol.Conformance`. A 25-test FlaUI shell/chat suite runs on every push and pull request; see [`TEST_PLAN.md`](./TEST_PLAN.md). |
+| 8 | Testing and documentation | ✅ | Docs: `CLAUDE.md`, this `docs/` folder. CI runs Protocol, Core/architecture, and SQLite suites with a coverage ratchet plus `ConnectOnion.Protocol.Conformance`. A 30-test FlaUI shell/chat suite runs on every push and pull request; see [`TEST_PLAN.md`](./TEST_PLAN.md). |
 
 ### Optional stretch goals
 
@@ -33,11 +33,11 @@
 | Multiple-agent workspace management | ✅ | Multiple agents, each with its own conversations; per-conversation connections isolated by `AgentConnectionRegistry` |
 | File drag-and-drop | ✅ | `Services/Attachments/AttachmentDropService.cs`; `Controls/Chat/ChatComposer` is the drop target |
 | Keyboard shortcuts | ✅ | `MainWindow.{File,Edit,View,Help}Menu.cs`; the catalog is surfaced in-app via Ctrl+Shift+/ |
-| Installer packaging / release-ready build | ⚠️ **Partial** | `.github/workflows/release.yml` publishes a gated x64 self-contained portable ZIP from `v*` tags. Signed MSIX distribution and clean-machine validation remain open. |
+| Installer packaging / release-ready build | ✅ **Portable channel** | `.github/workflows/release.yml` publishes a gated x64 self-contained portable ZIP from `v*` tags. Signed MSIX is a deferred future channel, not a requirement of the current portable release. |
 
 ### Known limitations (as of this commit)
 
-- WinUI coverage above the headless surfaces now includes 25 required FlaUI shell/chat tests on every push and pull request. Explorer drag-and-drop remains skipped because its source coordinates vary with desktop DPI/layout; OS notification delivery/click and direct tray-icon interaction remain manual (see `TEST_PLAN.md`).
+- WinUI coverage above the headless surfaces now includes 30 required FlaUI shell/chat tests on every push and pull request. Explorer drag-and-drop remains skipped because its source coordinates vary with desktop DPI/layout; OS notification delivery/click and direct tray-icon interaction remain manual (see `TEST_PLAN.md`).
 - The portable ZIP release pipeline has published `v1.0.1`. Clean-profile validation remains a
   manual gate for each new release; signed MSIX publishing remains paused.
 - App XAML exposes 145 unique `AutomationId`s; `AutomationContractTests` guards the 53 critical real-window locators and rejects any named interactive control without an ID. Each new real-window flow still adds its app-owned locator to the critical subset.

@@ -13,6 +13,53 @@ public sealed class ConversationRepositoryTests
     public ConversationRepositoryTests(TempDatabaseFixture fixture) => _fixture = fixture;
 
     [Fact]
+    public async Task UpsertMessagesAsync_WhenCommitFails_PropagatesTheFailure()
+    {
+        var exception = await Assert.ThrowsAsync<SqliteException>(() =>
+            _repository.UpsertMessagesAsync(
+                "missing-conversation",
+                new[] { Message(1, "must not look persisted") }));
+
+        Assert.Equal(19, exception.SqliteErrorCode);
+        Assert.Empty(await _repository.LoadMessagesAsync("missing-conversation"));
+    }
+
+    [Fact]
+    public async Task DeleteMessageAsync_WhenSqliteRejectsDelete_PropagatesAndKeepsTheBubble()
+    {
+        const string conversationId = "delete-propagates";
+        const string triggerName = "test_abort_message_delete";
+        await _fixture.CreateSessionAsync(conversationId);
+        await _repository.UpsertMessagesAsync(
+            conversationId,
+            [Message(1, "keep after failure", Attachment("keep-after-failure"))]);
+
+        await ExecuteAsync($"""
+            CREATE TRIGGER {triggerName}
+            BEFORE DELETE ON messages
+            WHEN OLD.conversation_id = '{conversationId}'
+            BEGIN
+                SELECT RAISE(ABORT, 'forced delete failure');
+            END;
+            """);
+
+        try
+        {
+            var exception = await Assert.ThrowsAsync<SqliteException>(() =>
+                _repository.DeleteMessageAsync(conversationId, 1));
+
+            Assert.Equal(19, exception.SqliteErrorCode);
+            var message = Assert.Single(await _repository.LoadMessagesAsync(conversationId));
+            Assert.Equal("keep after failure", message.Content);
+            Assert.Equal("keep-after-failure", Assert.Single(message.Attachments).Id);
+        }
+        finally
+        {
+            await ExecuteAsync($"DROP TRIGGER IF EXISTS {triggerName};");
+        }
+    }
+
+    [Fact]
     public async Task UpsertMessagesAsync_SubsetUpdate_LeavesOtherRowsUnchanged()
     {
         await _fixture.CreateSessionAsync();
@@ -234,6 +281,14 @@ public sealed class ConversationRepositoryTests
         await using var command = connection.CreateCommand();
         command.CommandText = sql;
         return (long)(await command.ExecuteScalarAsync())!;
+    }
+
+    private static async Task ExecuteAsync(string sql)
+    {
+        await using var connection = await AppDatabase.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        await command.ExecuteNonQueryAsync();
     }
 
     [Fact]

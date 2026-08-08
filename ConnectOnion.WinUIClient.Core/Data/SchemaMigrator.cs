@@ -31,7 +31,7 @@ internal static class SchemaMigrator
     private const int BaselineVersion = 1;
 
     /// <summary>The schema version this build expects. Bump when you append to <see cref="Migrations"/>.</summary>
-    internal const int LatestVersion = 11;
+    internal const int LatestVersion = 12;
 
     /// <summary>
     /// Ordered forward migrations. Each runs exactly once, in its own transaction, on databases
@@ -388,6 +388,99 @@ internal static class SchemaMigrator
                 CHECK(unread_count >= 0);
             ALTER TABLE sessions ADD COLUMN requires_attention INTEGER NOT NULL DEFAULT 0
                 CHECK(requires_attention IN (0, 1));
+            """),
+
+        // v12 - remove agents.invite_code.
+        //
+        // The column shipped in the v1 baseline and was never populated by production code: the
+        // only thing that ever assigned AgentConfig.InviteCode was the repository reading it back,
+        // so it was always NULL. It round-tripped correctly and had a passing test for that, which
+        // is precisely why nothing flagged that no caller wrote to it.
+        //
+        // Removed rather than left dormant because an invite code is a *trust credential*. Writing
+        // one here in plaintext would put a usable secret in the same file whose other secret
+        // (identity_keys.private_seed) is DPAPI-protected specifically so that copying the .db
+        // gets an attacker nothing. Leaving a plausible-looking column named invite_code is an
+        // invitation for someone to wire it up later without noticing that asymmetry. The live
+        // value belongs in memory only, on AgentConnectionService.InviteCode, for the lifetime of
+        // one connection.
+        //
+        // This is a table rebuild, not ALTER TABLE ... DROP COLUMN: that syntax needs SQLite
+        // 3.35+, and the client's floor is Windows 10 2004 (TargetFramework 10.0.19041.0), whose
+        // winsqlite3 predates it. The rebuild works on every version.
+        //
+        // Nothing holds a foreign key to `agents` — v4 deliberately chose triggers over an FK (see
+        // its comment) — so there is no dependent-row enforcement to defer and DROP TABLE raises no
+        // constraint violation. What v4 leaves instead is three triggers, and **all three have to
+        // come down before the rebuild**, for two different reasons:
+        //   * `agents_delete_guard` is BEFORE DELETE *on agents*, so DROP TABLE destroys it anyway.
+        //     Dropping it explicitly keeps that from being a silent side effect.
+        //   * `sessions_agent_insert_guard` and `sessions_agent_update_guard` live on `sessions`
+        //     and survive — but their bodies name `agents`. Since SQLite 3.25 an ALTER TABLE RENAME
+        //     re-parses the whole schema, and it fails outright ("error in trigger
+        //     sessions_agent_insert_guard: no such table: main.agents") because at that moment the
+        //     old table is gone and the new one has not been renamed into place yet. Leaving them
+        //     up does not weaken the rebuild, it *aborts* it.
+        // All three are recreated verbatim at the end, so the integrity boundary v4 established is
+        // unchanged either side of this migration.
+        //
+        // The new table is built under a temporary name and renamed into place. The reverse
+        // (renaming `agents` out of the way first) would be wrong: that same 3.25 behaviour
+        // rewrites references to the renamed table, so it would edit the guards to point at the
+        // temporary name.
+        //
+        // Column list is explicit and by name, so the physical order left by v6's
+        // `ALTER TABLE agents ADD COLUMN icon_path` (appended last) does not matter; the rebuild
+        // also takes the opportunity to put icon_path back in its logical position.
+        new(12, """
+            DROP TRIGGER IF EXISTS agents_delete_guard;
+            DROP TRIGGER IF EXISTS sessions_agent_insert_guard;
+            DROP TRIGGER IF EXISTS sessions_agent_update_guard;
+
+            CREATE TABLE agents_v12 (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                address TEXT NOT NULL,
+                direct_url TEXT NULL,
+                icon_path TEXT NULL,
+                info_json TEXT NULL,
+                info_updated_at TEXT NULL,
+                sort_order INTEGER NOT NULL DEFAULT 0
+            );
+
+            INSERT INTO agents_v12 (
+                id, name, address, direct_url, icon_path, info_json, info_updated_at, sort_order)
+            SELECT
+                id, name, address, direct_url, icon_path, info_json, info_updated_at, sort_order
+            FROM agents;
+
+            DROP TABLE agents;
+
+            ALTER TABLE agents_v12 RENAME TO agents;
+
+            CREATE TRIGGER sessions_agent_insert_guard
+            BEFORE INSERT ON sessions
+            FOR EACH ROW
+            WHEN NOT EXISTS (SELECT 1 FROM agents WHERE agents.id = NEW.agent_id)
+            BEGIN
+                SELECT RAISE(ABORT, 'session references a missing agent');
+            END;
+
+            CREATE TRIGGER sessions_agent_update_guard
+            BEFORE UPDATE OF agent_id ON sessions
+            FOR EACH ROW
+            WHEN NOT EXISTS (SELECT 1 FROM agents WHERE agents.id = NEW.agent_id)
+            BEGIN
+                SELECT RAISE(ABORT, 'session references a missing agent');
+            END;
+
+            CREATE TRIGGER agents_delete_guard
+            BEFORE DELETE ON agents
+            FOR EACH ROW
+            WHEN EXISTS (SELECT 1 FROM sessions WHERE sessions.agent_id = OLD.id)
+            BEGIN
+                SELECT RAISE(ABORT, 'delete agent sessions before deleting the agent');
+            END;
             """),
     };
 

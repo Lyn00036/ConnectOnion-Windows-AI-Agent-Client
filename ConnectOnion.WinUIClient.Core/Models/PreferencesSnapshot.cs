@@ -43,6 +43,7 @@ public sealed class PreferencesSnapshot
     private const string ExitValue = "exit";
     private const string WindowZoomKey = "window.zoomFactor";
     private const string InterfaceTextSizeKey = "ui.textSize";
+    private const string VoiceCloudConsentKey = "voice.cloudTranscriptionConsent";
 
     [JsonPropertyName("theme")]
     public ThemeMode Theme { get; set; } = ThemeMode.System;
@@ -59,6 +60,24 @@ public sealed class PreferencesSnapshot
     /// <summary>Selected capture device id, or empty for system default.</summary>
     [JsonPropertyName("microphoneDeviceId")]
     public string MicrophoneDeviceId { get; set; } = "";
+
+    /// <summary>
+    /// Whether the user has acknowledged that voice recordings are sent to OpenOnion for cloud
+    /// transcription. Absence deliberately means false, so first use always asks before upload.
+    /// </summary>
+    [JsonIgnore]
+    public bool VoiceCloudTranscriptionConsent
+    {
+        get => ShortcutOverrides.TryGetValue(VoiceCloudConsentKey, out var value)
+               && string.Equals(value, bool.TrueString, System.StringComparison.OrdinalIgnoreCase);
+        set
+        {
+            if (value)
+                ShortcutOverrides[VoiceCloudConsentKey] = bool.TrueString;
+            else
+                ShortcutOverrides.Remove(VoiceCloudConsentKey);
+        }
+    }
 
     [JsonIgnore]
     public bool EnterToSend

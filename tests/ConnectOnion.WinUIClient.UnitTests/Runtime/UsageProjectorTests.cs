@@ -58,7 +58,8 @@ public sealed class UsageProjectorTests
     {
         var snapshot = Snapshot(
             Event("llm_result", "spent", "{\"model\":\"model\",\"usage\":{\"input_tokens\":12}}"))
-            with { Status = ConversationRunStatus.Failed, ErrorMessage = "failed" };
+            with
+        { Status = ConversationRunStatus.Failed, ErrorMessage = "failed" };
 
         Assert.Equal(12, Assert.Single(UsageProjector.Extract(snapshot, "Agent")).InputTokens);
     }

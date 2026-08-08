@@ -31,7 +31,12 @@
     <NuGetAudit>true</NuGetAudit>
     <NuGetAuditMode>all</NuGetAuditMode>
     <NuGetAuditLevel>moderate</NuGetAuditLevel>
+    <!-- Commit the complete dependency graph and refuse silent graph changes in CI. Developers
+         can intentionally refresh it with dotnet restore's force-evaluate option. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+    <TreatWarningsAsErrors Condition="'$(CI)' == 'true'">true</TreatWarningsAsErrors>
     <Deterministic>true</Deterministic>
   </PropertyGroup>
 </Project>

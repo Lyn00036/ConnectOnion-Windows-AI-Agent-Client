@@ -218,6 +218,11 @@ public sealed partial class ChatPage : Page, IFindHost, IShutdownDisarmable, IDi
                 Composer.IsBusy = Vm.IsProcessing;
             });
         }
+
+        // Deliberately no auto-scroll when a decision arrives. Moving the viewport for the user is
+        // the kind of help that is wrong as often as it is right — it interrupts whatever they were
+        // reading, and the transcript is already where they left it. Going to the card is a user
+        // action: the pending bar above the composer, or Ctrl+Shift+D.
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -345,8 +350,11 @@ public sealed partial class ChatPage : Page, IFindHost, IShutdownDisarmable, IDi
         if (pending is not null && (!string.IsNullOrWhiteSpace(pending.Text) || pending.Attachments.Count > 0))
         {
             _pendingInitialSubmission = null;
-            await Vm.SendAsync(pending.Text, pending.Attachments);
-            QueueScrollToEnd(force: true);
+            // The mode picked on AgentDetailPage, applied before the first send so the turn it
+            // starts actually runs under it. SetModeAsync is a no-op when the conversation is
+            // already in that mode, which is the common case (Safe).
+            await Vm.SetModeAsync(pending.Mode);
+            await SendAsync(pending.Text, pending.Attachments);
         }
     }
 

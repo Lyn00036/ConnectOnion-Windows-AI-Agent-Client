@@ -1,9 +1,10 @@
-﻿using System;
+using System;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Services;
+using ConnectOnion.WinUIClient.Services.Lifecycle;
 using ConnectOnion.WinUIClient.Services.Notifications;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -25,11 +26,15 @@ namespace ConnectOnion.WinUIClient
             "CONNECTONION_UI_NOTIFICATION_AGENT_ID";
         internal const string UiNotificationConversationEnvironmentVariable =
             "CONNECTONION_UI_NOTIFICATION_CONVERSATION_ID";
+        internal const string UiStartupFailureEnvironmentVariable =
+            "CONNECTONION_UI_STARTUP_FAILURE";
 
         private Window? _window;
 
-        private readonly IHost _host;
+        private readonly IHost? _host;
+        private readonly Exception? _bootstrapFailure;
         private int _shutdownStarted;
+        private static readonly DeferredActivationGate ActivationGate = new();
 
         /// <summary>
         /// The application's DI container, built by the Generic Host. This is the composition root
@@ -55,12 +60,6 @@ namespace ConnectOnion.WinUIClient
         /// </summary>
         public static Window? MainWindow { get; private set; }
 
-        /// <summary>Set when a redirected second launch arrived before the main window
-        /// existed (cold start). Flushed once the window is created so the activation is
-        /// honored instead of dropped. Interlocked so it is safe from the non-UI thread
-        /// the <c>AppInstance.Activated</c> event fires on.</summary>
-        private static int _pendingActivation;
-
         /// <summary>
         /// Wakes the existing main window — restore from minimized/tray and bring to the
         /// foreground — without ever creating one. Safe to call from any thread (a
@@ -69,23 +68,17 @@ namespace ConnectOnion.WinUIClient
         /// during cold start), the request is buffered and replayed by
         /// <see cref="FlushPendingActivation"/> once the window is created.
         /// </summary>
-        public static void ActivateMainWindow()
-        {
-            if (MainWindow is not MainWindow main)
-            {
-                System.Threading.Interlocked.Exchange(ref _pendingActivation, 1);
-                return;
-            }
-            _ = main.DispatcherQueue.TryEnqueue(main.BringToForeground);
-        }
+        public static void ActivateMainWindow() => ActivationGate.Request();
 
         /// <summary>Replays a buffered cold-start activation, if any. Called from
         /// <see cref="OnLaunched"/> once the single main window exists.</summary>
         internal static void FlushPendingActivation()
         {
-            if (System.Threading.Interlocked.Exchange(ref _pendingActivation, 0) != 1) return;
             if (MainWindow is MainWindow main)
-                _ = main.DispatcherQueue.TryEnqueue(main.BringToForeground);
+            {
+                ActivationGate.Attach(
+                    () => _ = main.DispatcherQueue.TryEnqueue(main.BringToForeground));
+            }
         }
 
         /// <summary>
@@ -95,66 +88,55 @@ namespace ConnectOnion.WinUIClient
         public App()
         {
             Diagnostics.StartupTelemetry.Mark(Diagnostics.StartupPhases.ManagedEntry);
-            InitializeComponent();
+            try
+            {
+                InitializeComponent();
+                AppStorage.EnsureDirectories();
 
-            AppStorage.EnsureDirectories();
+                // Anything in the temporary avatar directory belongs to an Add Agent form that
+                // never finished, so nothing in the database points at it. Sweep it off the
+                // startup path rather than delaying the first frame.
+                _ = Task.Run(AppStorage.PurgeTemporaryAgentIcons);
 
-            // Anything in the temporary avatar directory belongs to an Add Agent form that never
-            // finished, so nothing in the database points at it. Sweep it off the startup path —
-            // the folder would otherwise grow by one PNG per interrupted pick, forever.
-            _ = Task.Run(AppStorage.PurgeTemporaryAgentIcons);
+                // The framework categories below otherwise bury the application's own events.
+                // The async sink keeps file I/O and its shared-file mutex off the UI thread.
+                Log.Logger = new LoggerConfiguration()
+                    .MinimumLevel.Information()
+                    .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+                    .MinimumLevel.Override("System.Net.Http", LogEventLevel.Warning)
+                    .MinimumLevel.Override("Polly", LogEventLevel.Warning)
+                    .Enrich.FromLogContext()
+                    .WriteTo.Async(
+                        sink => sink.File(
+                            System.IO.Path.Combine(AppStorage.LogsDir, "connectonion-.log"),
+                            formatProvider: System.Globalization.CultureInfo.InvariantCulture,
+                            rollingInterval: RollingInterval.Day,
+                            rollOnFileSizeLimit: true,
+                            fileSizeLimitBytes: 10 * 1024 * 1024,
+                            retainedFileCountLimit: 14,
+                            shared: true),
+                        bufferSize: 20000)
+                    .CreateLogger();
 
-            // The three Override categories are all framework chatter that reports success, not
-            // behaviour. HttpClient logs four lines per request and the resilience pipeline one
-            // per attempt, so every presence probe sweep writes ~30 lines; left at Information
-            // they were 87% of this file and buried the app's own events. At Warning the
-            // interesting half survives — a retry that actually fires still logs.
-            Log.Logger = new LoggerConfiguration()
-                .MinimumLevel.Information()
-                .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
-                .MinimumLevel.Override("System.Net.Http", LogEventLevel.Warning)
-                .MinimumLevel.Override("Polly", LogEventLevel.Warning)
-                .Enrich.FromLogContext()
-                // Wrapped in the async sink so a log call is a queue push, not a disk write.
-                // The file sink is synchronous and `shared: true` additionally takes a
-                // cross-process mutex per write — a cost that was being paid on whatever thread
-                // logged, including the UI thread. `shared` itself has to stay: a toast
-                // activation launches a short-lived second process that writes to the same file.
-                //
-                // The trade is that a hard crash can lose whatever is still queued. That is
-                // acceptable here because the queue drains continuously and `ShutdownAsync`
-                // ends on `Log.CloseAndFlushAsync()`, which the async sink honours — and because
-                // the alternative, `blockWhenFull`, would put the UI thread back on the disk.
-                .WriteTo.Async(
-                    sink => sink.File(
-                        System.IO.Path.Combine(AppStorage.LogsDir, "connectonion-.log"),
-                        formatProvider: System.Globalization.CultureInfo.InvariantCulture,
-                        rollingInterval: RollingInterval.Day,
-                        rollOnFileSizeLimit: true,
-                        fileSizeLimitBytes: 10 * 1024 * 1024,
-                        retainedFileCountLimit: 14,
-                        shared: true),
-                    bufferSize: 20000)
-                .CreateLogger();
+                // Build the composition root before any window/page is created.
+                var builder = Host.CreateApplicationBuilder();
+                builder.Services.AddAppServices();
+                builder.Services.AddSerilog(Log.Logger, dispose: false);
+                _host = builder.Build();
+                Services = _host.Services;
 
-            // Build the composition root before any window/page is created (OnLaunched, and every
-            // view that resolves a view model, runs after this). Registrations live in
-            // ServiceRegistration; hosted services start in OnLaunched.
-            var builder = Host.CreateApplicationBuilder();
-            builder.Services.AddAppServices();
-            builder.Services.AddSerilog(Log.Logger, dispose: false);
-            _host = builder.Build();
-            Services = _host.Services;
-            // The static facades in Core. All three are reached from places with no instance for
-            // the container to inject into, and all three no-op (or fall back to English) until
-            // this runs.
-            var loggerFactory = _host.Services.GetRequiredService<ILoggerFactory>();
-            NotificationLog.Configure(loggerFactory);
-            IdentityStore.Configure(loggerFactory);
-            // Core computes a lot of XAML-bound display text (the approval card, the activity
-            // header, ask_user labels) and cannot hold a ResourceManager — that is Windows App
-            // SDK, which the Core seam exists to keep out. Point it at ours.
-            CoreStrings.Configure(LocalizedStrings.Get);
+                var loggerFactory = _host.Services.GetRequiredService<ILoggerFactory>();
+                NotificationLog.Configure(loggerFactory);
+                IdentityStore.Configure(loggerFactory);
+                CoreStrings.Configure(LocalizedStrings.Get);
+            }
+            catch (Exception exception)
+            {
+                // Keep the Application object alive long enough for OnLaunched to show a native
+                // recovery surface. This includes an unavailable data root, broken log path, or
+                // composition-root failure — all of which previously exited with no visible clue.
+                _bootstrapFailure = exception;
+            }
         }
 
         /// <summary>
@@ -163,8 +145,24 @@ namespace ConnectOnion.WinUIClient
         /// <param name="args">Details about the launch request and process.</param>
         protected override async void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
+            if (_bootstrapFailure is not null)
+            {
+                StartupFailurePresenter.Show(_bootstrapFailure, TryGetLogDirectory());
+                await Log.CloseAndFlushAsync();
+                Exit();
+                return;
+            }
+
             try
             {
+                if (string.Equals(
+                        Environment.GetEnvironmentVariable(UiStartupFailureEnvironmentVariable),
+                        "1",
+                        StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException("UI automation requested a startup failure.");
+                }
+
                 // Deliberately sequential. Starting the host concurrently with window
                 // construction was tried and measured: it changes nothing, because every hosted
                 // service's StartAsync completes synchronously on this thread (the SQLite reads
@@ -173,7 +171,7 @@ namespace ConnectOnion.WinUIClient
                 // and let the window exist before its services had loaded — risk with no payoff.
                 // Making it real would mean pushing host start onto a background thread, which
                 // OS notification registration is not obviously safe for.
-                await _host.StartAsync();
+                await _host!.StartAsync();
                 Diagnostics.StartupTelemetry.Mark(Diagnostics.StartupPhases.HostStarted);
                 _window = new MainWindow();
                 Diagnostics.StartupTelemetry.Mark(Diagnostics.StartupPhases.WindowCreated);
@@ -194,6 +192,7 @@ namespace ConnectOnion.WinUIClient
             catch (Exception ex)
             {
                 Log.Fatal(ex, "Application startup failed");
+                StartupFailurePresenter.Show(ex, TryGetLogDirectory());
                 await ShutdownAsync();
                 Exit();
             }
@@ -203,6 +202,14 @@ namespace ConnectOnion.WinUIClient
         internal async Task ShutdownAsync()
         {
             if (System.Threading.Interlocked.Exchange(ref _shutdownStarted, 1) != 0) return;
+
+            ActivationGate.Detach();
+
+            if (_host is null)
+            {
+                await Log.CloseAndFlushAsync().ConfigureAwait(false);
+                return;
+            }
 
             var total = System.Diagnostics.Stopwatch.StartNew();
             var phase = System.Diagnostics.Stopwatch.StartNew();
@@ -236,6 +243,12 @@ namespace ConnectOnion.WinUIClient
                 Log.Information("Application shutdown completed in {ElapsedMs} ms", total.ElapsedMilliseconds);
                 await Log.CloseAndFlushAsync().ConfigureAwait(false);
             }
+        }
+
+        private static string? TryGetLogDirectory()
+        {
+            try { return AppStorage.LogsDir; }
+            catch { return null; }
         }
 
         /// <summary>

@@ -255,11 +255,12 @@
                                     Click="Agent_Click"
                                     Tag="{x:Bind Id}"
                                     AutomationProperties.AutomationId="AgentButton"
-                                    AutomationProperties.Name="{x:Bind OpenAccessibilityName}">
+                                    AutomationProperties.Name="{x:Bind OpenAccessibilityName, Mode=OneWay}">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
 
@@ -286,7 +287,35 @@
                                                IsHitTestVisible="False"
                                                AutomationProperties.AccessibilityView="Raw" />
 
-                                    <Grid Grid.Column="2"
+                                    <!-- Rolled-up unread for a collapsed branch: its conversation
+                                         rows are absent from the list entirely (expansion is a
+                                         rebuild, not a Visibility flip), so without this the only
+                                         trace of a reply that arrived while the user was elsewhere
+                                         is a toast that has already faded. Raw to automation
+                                         because OpenAccessibilityName already speaks the count —
+                                         the badge would otherwise be announced twice. -->
+                                    <StackPanel Grid.Column="2"
+                                                Orientation="Horizontal"
+                                                Spacing="5"
+                                                Margin="0,0,4,0"
+                                                VerticalAlignment="Center"
+                                                IsHitTestVisible="False"
+                                                AutomationProperties.AccessibilityView="Raw"
+                                                Visibility="{x:Bind ShowUnreadRollup, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                                        <ic:FluentIcon Icon="Alert" IconVariant="Filled" IconSize="Size12"
+                                                       Foreground="{ThemeResource DangerBrush}"
+                                                       Visibility="{x:Bind RequiresAttention, Converter={StaticResource BoolToVis}}" />
+                                        <Border MinWidth="18" Height="18" Padding="5,0" CornerRadius="9"
+                                                Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                                Visibility="{x:Bind ShowUnreadCount, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                                            <TextBlock Text="{x:Bind UnreadBadgeText}"
+                                                       FontSize="{StaticResource ProductMicroFontSize}"
+                                                       Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        </Border>
+                                    </StackPanel>
+
+                                    <Grid Grid.Column="3"
                                           Width="9"
                                           Height="9"
                                           Margin="6,0,5,0"

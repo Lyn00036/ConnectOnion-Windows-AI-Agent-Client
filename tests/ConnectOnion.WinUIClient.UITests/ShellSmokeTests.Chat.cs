@@ -37,6 +37,98 @@ public sealed partial class ShellSmokeTests
     private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
 
     [Fact]
+    public async Task Chat_InputContextMenu_ShowsPasteCommand()
+    {
+        await using var server = new UiFakeAgentServer();
+        if (!PrepareChatProfile(server.BaseUri)) return;
+
+        try
+        {
+            using var launched = LaunchApp(handleFirstRunDialog: false);
+            if (launched is null) return;
+            var input = OpenChat(launched.Window);
+
+            launched.Window.SetForeground();
+            input.Click();
+            Assert.True(WaitUntil(() => input.Properties.HasKeyboardFocus.ValueOrDefault));
+            // UIA can report focus before WinUI's text service is ready for SendInput.
+            Thread.Sleep(300);
+            input.AsTextBox().Text = "paste through context menu";
+            Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_A);
+            Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_C);
+            Thread.Sleep(300);
+            input.AsTextBox().Text = "";
+            input.RightClick();
+
+            var desktop = launched.Automation.GetDesktop();
+            var paste = WaitForElement(desktop, "ComposerPasteMenuItem", TimeSpan.FromSeconds(5));
+            Assert.NotNull(paste);
+            Assert.True(paste!.IsEnabled);
+            // Flyout commands expose InvokePattern. A physical coordinate click can be stolen
+            // when the hosted test runner briefly changes foreground ownership while the
+            // transient menu is open, so invoke the command through UIA.
+            paste.AsMenuItem().Invoke();
+            Thread.Sleep(1_000);
+            Assert.Equal("paste through context menu", input.AsTextBox().Text);
+        }
+        finally
+        {
+            RemoveChatFixture();
+        }
+    }
+
+    [Fact]
+    public async Task Chat_VoiceInput_RequiresFirstUseCloudConsentAndRemembersConsent()
+    {
+        await using var server = new UiFakeAgentServer();
+        if (!PrepareChatProfile(server.BaseUri)) return;
+        SetVoiceCloudConsent(false);
+
+        try
+        {
+            using var launched = LaunchApp(handleFirstRunDialog: false);
+            if (launched is null) return;
+            var window = launched.Window;
+            OpenChat(window);
+
+            var speech = WaitForDescendant(window, "SpeechButton");
+            Assert.NotNull(speech);
+            Assert.True(WaitUntil(() => speech!.IsEnabled));
+            speech!.AsButton().Invoke();
+
+            var dialog = WaitForDescendant(window, "VoiceCloudConsentDialog");
+            Assert.NotNull(dialog);
+            Assert.NotNull(WaitForAccessibleName(
+                dialog!, "OpenOnion", TimeSpan.FromSeconds(5)));
+            FindVoiceConsentButton(dialog!, "Cancel", "取消").AsButton().Invoke();
+            Assert.True(WaitUntil(() =>
+                window.FindFirstDescendant(query => query.ByAutomationId("VoiceCloudConsentDialog")) is null));
+            Assert.False(ReadVoiceCloudConsent());
+
+            speech = WaitForDescendant(window, "SpeechButton");
+            Assert.NotNull(speech);
+            speech!.AsButton().Invoke();
+            dialog = WaitForDescendant(window, "VoiceCloudConsentDialog");
+            Assert.NotNull(dialog);
+            FindVoiceConsentButton(dialog!, "Continue", "继续").AsButton().Invoke();
+
+            Assert.True(WaitUntil(ReadVoiceCloudConsent),
+                "voice consent was not durably stored before microphone capture started");
+
+            // The host may have no microphone or may begin recording. Either outcome is valid;
+            // if capture started, stop it so the smoke test never sends audio.
+            var cancelSpeech = WaitForDescendant(
+                window, "CancelSpeechButton", TimeSpan.FromSeconds(2));
+            if (cancelSpeech?.IsEnabled == true) cancelSpeech.AsButton().Invoke();
+        }
+        finally
+        {
+            SetVoiceCloudConsent(false);
+            RemoveChatFixture();
+        }
+    }
+
+    [Fact]
     public async Task Chat_SendMessage_RendersUserAndAgentBubbles()
     {
         var holdSocket = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -49,7 +141,13 @@ public sealed partial class ShellSmokeTests
             var input = await UiFakeAgentServer.ReceiveFrameOfTypeAsync(socket, "INPUT", ct);
             receivedInput.TrySetResult(input);
             await UiFakeAgentServer.SendTextAsync(socket,
-                "{\"type\":\"OUTPUT\",\"result\":\"Automation reply received\",\"duration_ms\":12}", ct);
+                "{\"type\":\"thinking\",\"id\":\"docs-thinking\",\"content\":\"Reviewing project structure and test coverage\"}", ct);
+            await UiFakeAgentServer.SendTextAsync(socket,
+                "{\"type\":\"tool_call\",\"id\":\"docs-tool\",\"tool\":\"read_file\",\"arguments\":{\"path\":\"README.md\"}}", ct);
+            await UiFakeAgentServer.SendTextAsync(socket,
+                "{\"type\":\"tool_result\",\"id\":\"docs-tool\",\"tool\":\"read_file\",\"status\":\"success\",\"result\":\"README structure and commands verified\"}", ct);
+            await UiFakeAgentServer.SendTextAsync(socket,
+                "{\"type\":\"OUTPUT\",\"result\":\"## Repository review\\n\\nAutomation reply received. The native client has a clean Core seam, locked dependencies, and real-window coverage.\\n\\n- Persistence is transactional\\n- UI automation covers chat and approvals\\n- English and Chinese resources stay aligned\",\"duration_ms\":12}", ct);
             await holdSocket.Task.WaitAsync(ct);
         });
 
@@ -73,6 +171,7 @@ public sealed partial class ShellSmokeTests
 
             Assert.NotNull(WaitForAccessibleName(window, "send this automation prompt", TimeSpan.FromSeconds(15)));
             Assert.NotNull(WaitForAccessibleName(window, "Automation reply received", TimeSpan.FromSeconds(20)));
+            CaptureDocumentationScreenshot(window, "chat.png");
             server.ThrowIfFaulted();
         }
         finally
@@ -431,6 +530,146 @@ public sealed partial class ShellSmokeTests
             Thread.Sleep(150);
         }
         return null;
+    }
+
+    [Fact]
+    public async Task Chat_ApprovalCard_AllowsOnceAndSendsTheDecision()
+    {
+        var approvalResponse = new TaskCompletionSource<string>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var holdSocket = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var server = new UiFakeAgentServer(async (_, socket, ct) =>
+        {
+            await UiFakeAgentServer.ReceiveFrameOfTypeAsync(socket, "CONNECT", ct);
+            await UiFakeAgentServer.SendTextAsync(socket,
+                "{\"type\":\"CONNECTED\",\"session_id\":\"ui-remote\",\"status\":\"connected\"}", ct);
+            await UiFakeAgentServer.ReceiveFrameOfTypeAsync(socket, "INPUT", ct);
+            await UiFakeAgentServer.SendTextAsync(socket,
+                "{\"type\":\"approval_needed\",\"tool\":\"bash\",\"arguments\":{\"command\":\"rm -f /tmp/nonexistent-test-file && echo 'deleted' || echo 'file was absent'\"}}", ct);
+            while (true)
+            {
+                var candidate = await UiFakeAgentServer.ReceiveTextAsync(socket, ct);
+                using var frame = JsonDocument.Parse(candidate);
+                if (!frame.RootElement.TryGetProperty("approved", out var approvedElement)) continue;
+                approvalResponse.TrySetResult(candidate);
+                break;
+            }
+            await UiFakeAgentServer.SendTextAsync(socket,
+                "{\"type\":\"OUTPUT\",\"result\":\"Approval accepted\",\"duration_ms\":8}", ct);
+            await holdSocket.Task.WaitAsync(ct);
+        });
+
+        if (!PrepareChatProfile(server.BaseUri)) return;
+        try
+        {
+            using var launched = LaunchApp(handleFirstRunDialog: false);
+            if (launched is null) return;
+            var window = launched.Window;
+            var input = OpenChat(window);
+            input.Text = "request approval";
+            var send = WaitForDescendant(window, "SendMessageButton");
+            Assert.NotNull(send);
+            Assert.True(WaitUntil(() => send!.IsEnabled));
+            send!.AsButton().Invoke();
+
+            var allow = WaitForDescendant(window, "AllowOnceButton", TimeSpan.FromSeconds(15));
+            Assert.True(allow is not null,
+                "Approval controls never reached UI Automation. Visible tree:\n" +
+                string.Join("\n", window.FindAllDescendants()
+                    .Where(element => !string.IsNullOrWhiteSpace(
+                        element.Properties.AutomationId.ValueOrDefault))
+                    .Take(120)
+                    .Select(element =>
+                        $"{element.Properties.AutomationId.ValueOrDefault}: " +
+                        element.Properties.Name.ValueOrDefault)));
+            Assert.NotNull(WaitForDescendant(window, "DeclineButton"));
+            Assert.NotNull(WaitForDescendant(window, "StopTaskButton"));
+            Assert.Null(window.FindFirstDescendant(
+                query => query.ByAutomationId("ApprovalCommandToggleButton")));
+            CaptureDocumentationScreenshot(window, "approval-request.png");
+            allow!.AsButton().Invoke();
+
+            var responseJson = await approvalResponse.Task.WaitAsync(TimeSpan.FromSeconds(15));
+            using (var response = JsonDocument.Parse(responseJson))
+                Assert.True(response.RootElement.GetProperty("approved").GetBoolean());
+            Assert.NotNull(WaitForAccessibleName(
+                window, "Approval accepted", TimeSpan.FromSeconds(20)));
+            server.ThrowIfFaulted();
+        }
+        finally
+        {
+            holdSocket.TrySetResult();
+            RemoveChatFixture();
+        }
+    }
+
+    private static AutomationElement FindVoiceConsentButton(
+        AutomationElement dialog,
+        params string[] names)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                var match = dialog
+                    .FindAllDescendants(query => query.ByControlType(ControlType.Button))
+                    .FirstOrDefault(element => names.Contains(
+                        element.Properties.Name.ValueOrDefault,
+                        StringComparer.Ordinal));
+                if (match is not null) return match;
+            }
+            catch (COMException) { }
+            Thread.Sleep(100);
+        }
+
+        throw new Xunit.Sdk.XunitException(
+            $"Voice consent button was not found ({string.Join(", ", names)})");
+    }
+
+    private static bool ReadVoiceCloudConsent()
+    {
+        var database = Path.Combine(ResolveDataRoot(), "connectonion.db");
+        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = database,
+            Mode = SqliteOpenMode.ReadWrite,
+        }.ToString());
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT shortcut_overrides_json FROM preferences WHERE id = 1;";
+        var json = command.ExecuteScalar() as string;
+        if (string.IsNullOrWhiteSpace(json)) return false;
+        var values = JsonSerializer.Deserialize<Dictionary<string, string>>(json);
+        return values?.TryGetValue("voice.cloudTranscriptionConsent", out var value) == true
+               && string.Equals(value, bool.TrueString, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void SetVoiceCloudConsent(bool consent)
+    {
+        var database = Path.Combine(ResolveDataRoot(), "connectonion.db");
+        if (!File.Exists(database)) return;
+        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = database,
+            Mode = SqliteOpenMode.ReadWrite,
+        }.ToString());
+        connection.Open();
+
+        using var read = connection.CreateCommand();
+        read.CommandText = "SELECT shortcut_overrides_json FROM preferences WHERE id = 1;";
+        var json = read.ExecuteScalar() as string;
+        if (json is null) return;
+        var values = JsonSerializer.Deserialize<Dictionary<string, string>>(json) ?? [];
+        if (consent)
+            values["voice.cloudTranscriptionConsent"] = bool.TrueString;
+        else
+            values.Remove("voice.cloudTranscriptionConsent");
+
+        using var update = connection.CreateCommand();
+        update.CommandText = "UPDATE preferences SET shortcut_overrides_json = $json WHERE id = 1;";
+        update.Parameters.AddWithValue("$json", JsonSerializer.Serialize(values));
+        update.ExecuteNonQuery();
     }
 
     private static AutomationElement? WaitForAccessibleName(

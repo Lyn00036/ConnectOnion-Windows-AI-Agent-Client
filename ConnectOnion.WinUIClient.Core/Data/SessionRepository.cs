@@ -43,6 +43,13 @@ public sealed record SessionPage(IReadOnlyList<SessionSummary> Sessions, bool Ha
 }
 
 /// <summary>
+/// One agent's rolled-up unread state, across every conversation it owns.
+/// </summary>
+/// <param name="UnreadCount">Total unread across the agent's conversations.</param>
+/// <param name="RequiresAttention">True when any of them is waiting on an approval.</param>
+public readonly record struct AgentAttention(int UnreadCount, bool RequiresAttention);
+
+/// <summary>
 /// Local SQLite persistence for conversation index entries. Port of <c>sessionStorage.ts</c>.
 ///
 /// <para><b>Prefer a targeted read over <see cref="LoadAsync"/>.</b> Most callers want one row by
@@ -173,6 +180,37 @@ public sealed class SessionRepository : IConversationAttentionStore
         if (await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) == 0) return;
         StorageRevision.Bump();
         SessionsChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// Unread totals per agent, for the sidebar's collapsed-branch rollup badge.
+    ///
+    /// <para>An aggregate rather than a sum over loaded rows, because the sidebar fetches
+    /// conversations only for <i>expanded</i> agents — the branches that need this badge most are
+    /// exactly the ones whose rows were never read. Returns only agents that have something to
+    /// report, so the common case of an all-read sidebar is an empty dictionary.</para>
+    /// </summary>
+    public async Task<IReadOnlyDictionary<string, AgentAttention>> GetAgentAttentionAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var totals = new Dictionary<string, AgentAttention>(StringComparer.Ordinal);
+        await using var connection = await AppDatabase.OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT agent_id, SUM(unread_count), MAX(requires_attention)
+            FROM sessions
+            WHERE unread_count > 0 OR requires_attention <> 0
+            GROUP BY agent_id;
+            """;
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            var agentId = reader.GetString(0);
+            if (string.IsNullOrWhiteSpace(agentId)) continue;
+            totals[agentId] = new AgentAttention(reader.GetInt32(1), reader.GetInt64(2) != 0);
+        }
+
+        return totals;
     }
 
     /// <summary>Marks a conversation read when its chat surface is opened.</summary>
@@ -478,17 +516,85 @@ public sealed class SessionRepository : IConversationAttentionStore
         return sessions;
     }
 
+    /// <summary>Bounded shell search across conversation titles and agent names. Unlike the old
+    /// overlay path this never materializes the complete session index merely to filter it on the
+    /// UI thread.</summary>
+    public async Task<IReadOnlyList<SessionSummary>> SearchByTitleOrAgentAsync(
+        string query,
+        int limit = 100,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
+        if (string.IsNullOrWhiteSpace(query)) return Array.Empty<SessionSummary>();
+
+        await using var connection = await AppDatabase.OpenAsync(cancellationToken).ConfigureAwait(false);
+        var pinnedIds = await LoadPinnedIdsAsync(connection).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT s.id, s.agent_id, s.title, s.remote_session_id, s.last_processed_event_id,
+                   s.created_at, s.updated_at, s.mode, s.has_custom_title,
+                   s.unread_count, s.requires_attention
+            FROM sessions AS s
+            LEFT JOIN agents AS a ON a.id = s.agent_id
+            WHERE s.title LIKE $pattern ESCAPE '\'
+               OR a.name LIKE $pattern ESCAPE '\'
+            ORDER BY s.updated_at DESC, s.id DESC
+            LIMIT $limit;
+            """;
+        var escaped = query.Trim()
+            .Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("%", "\\%", StringComparison.Ordinal)
+            .Replace("_", "\\_", StringComparison.Ordinal);
+        AppDatabase.Add(command, "$pattern", $"%{escaped}%");
+        AppDatabase.Add(command, "$limit", limit);
+
+        var sessions = new List<SessionSummary>(limit);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            sessions.Add(ReadSummary(reader, pinnedIds));
+        return sessions;
+    }
+
+    /// <summary>Loads a bounded set of transcript-search hits in one statement, avoiding one
+    /// <c>GetSessionAsync</c> round trip per FTS result.</summary>
+    public async Task<IReadOnlyList<SessionSummary>> LoadSessionsByIdsAsync(
+        IReadOnlyCollection<string> sessionIds,
+        CancellationToken cancellationToken = default)
+    {
+        if (sessionIds.Count == 0) return Array.Empty<SessionSummary>();
+
+        await using var connection = await AppDatabase.OpenAsync(cancellationToken).ConfigureAwait(false);
+        var pinnedIds = await LoadPinnedIdsAsync(connection).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            SELECT {SummaryColumns}
+            FROM sessions
+            WHERE id IN (SELECT value FROM json_each($ids))
+            ORDER BY updated_at DESC, id DESC;
+            """;
+        AppDatabase.Add(
+            command,
+            "$ids",
+            JsonSerializer.Serialize(sessionIds.Distinct(StringComparer.Ordinal).ToList(), AppJsonContext.Default.ListString));
+
+        var sessions = new List<SessionSummary>(sessionIds.Count);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            sessions.Add(ReadSummary(reader, pinnedIds));
+        return sessions;
+    }
+
     /// <summary>
-    /// Removes one conversation's index row, and its pin if it had one.
+    /// Removes one conversation's complete local graph, its pin, and its active pointer in one
+    /// transaction.
     ///
     /// <para>Replaces "load the index, remove one entry, hand the rest to <see cref="SaveAsync"/>",
     /// which reconciled every row to delete one — and which becomes outright destructive the moment
     /// a caller's list is a page rather than the whole index.</para>
     ///
-    /// <para><b>The caller must delete the conversation's children first</b> (messages,
-    /// attachments, executions, traces, via <c>ConversationRepository</c>). The FKs declare no
-    /// <c>ON DELETE</c>, so this raises a constraint violation while any of them remain — the same
-    /// contract <see cref="SaveAsync"/> documents.</para>
+    /// <para>The FKs deliberately do not cascade, so the child-first order below is load-bearing.
+    /// Keeping every statement on this transaction means a failure cannot leave a conversation
+    /// with only some of its history removed.</para>
     /// </summary>
     public async Task DeleteSessionAsync(string sessionId)
     {
@@ -500,18 +606,19 @@ public sealed class SessionRepository : IConversationAttentionStore
         await using (var command = connection.CreateCommand())
         {
             command.Transaction = transaction;
-            command.CommandText = "DELETE FROM sessions WHERE id = $id;";
+            command.CommandText = """
+                DELETE FROM message_attachments WHERE conversation_id = $id;
+                DELETE FROM messages WHERE conversation_id = $id;
+                DELETE FROM trace_events WHERE conversation_id = $id;
+                DELETE FROM executions WHERE conversation_id = $id;
+                DELETE FROM sessions WHERE id = $id;
+                """;
             AppDatabase.Add(command, "$id", sessionId);
             await command.ExecuteNonQueryAsync().ConfigureAwait(false);
         }
 
-        // Nothing enforces referential integrity on a JSON blob in app_meta, so the pin is pruned
-        // by hand or it outlives the conversation it names.
-        var pinnedIds = await LoadPinnedIdsAsync(connection).ConfigureAwait(false);
-        if (pinnedIds.Remove(sessionId))
-            await WritePinnedIdsAsync(connection, transaction, pinnedIds).ConfigureAwait(false);
-
-        await ClearActiveIfMatchesAsync(connection, transaction, sessionId).ConfigureAwait(false);
+        await PruneDeletedSessionReferencesAsync(connection, transaction, [sessionId])
+            .ConfigureAwait(false);
 
         await transaction.CommitAsync().ConfigureAwait(false);
         StorageRevision.Bump();
@@ -519,8 +626,8 @@ public sealed class SessionRepository : IConversationAttentionStore
     }
 
     /// <summary>
-    /// Removes every conversation belonging to one agent, plus their pins. Same child-rows-first
-    /// contract as <see cref="DeleteSessionAsync"/>.
+    /// Removes every conversation graph belonging to one agent, plus their pins and active
+    /// pointer, in one transaction. The agent row itself is retained.
     /// </summary>
     public async Task DeleteSessionsForAgentAsync(string agentId)
     {
@@ -548,17 +655,23 @@ public sealed class SessionRepository : IConversationAttentionStore
         await using (var delete = connection.CreateCommand())
         {
             delete.Transaction = transaction;
-            delete.CommandText = "DELETE FROM sessions WHERE agent_id = $agent_id;";
+            delete.CommandText = """
+                DELETE FROM message_attachments
+                WHERE conversation_id IN (SELECT id FROM sessions WHERE agent_id = $agent_id);
+                DELETE FROM messages
+                WHERE conversation_id IN (SELECT id FROM sessions WHERE agent_id = $agent_id);
+                DELETE FROM trace_events
+                WHERE conversation_id IN (SELECT id FROM sessions WHERE agent_id = $agent_id);
+                DELETE FROM executions
+                WHERE conversation_id IN (SELECT id FROM sessions WHERE agent_id = $agent_id);
+                DELETE FROM sessions WHERE agent_id = $agent_id;
+                """;
             AppDatabase.Add(delete, "$agent_id", agentId);
             await delete.ExecuteNonQueryAsync().ConfigureAwait(false);
         }
 
-        var pinnedIds = await LoadPinnedIdsAsync(connection).ConfigureAwait(false);
-        if (pinnedIds.RemoveWhere(removedIds.Contains) > 0)
-            await WritePinnedIdsAsync(connection, transaction, pinnedIds).ConfigureAwait(false);
-
-        foreach (var removed in removedIds)
-            await ClearActiveIfMatchesAsync(connection, transaction, removed).ConfigureAwait(false);
+        await PruneDeletedSessionReferencesAsync(connection, transaction, removedIds)
+            .ConfigureAwait(false);
 
         await transaction.CommitAsync().ConfigureAwait(false);
         StorageRevision.Bump();
@@ -568,13 +681,22 @@ public sealed class SessionRepository : IConversationAttentionStore
     /// <summary>Drops the active pointer when it names a conversation that has just been deleted,
     /// so nothing is left pointing at a row that no longer exists. Callers choose the replacement;
     /// this only guarantees the stale value does not survive the delete.</summary>
-    private static async Task ClearActiveIfMatchesAsync(
+    internal static async Task PruneDeletedSessionReferencesAsync(
         SqliteConnection connection,
         SqliteTransaction transaction,
-        string sessionId)
+        IReadOnlyCollection<string> removedSessionIds)
     {
-        var active = await AppDatabase.GetMetaAsync(connection, ActiveSessionMetaKey).ConfigureAwait(false);
-        if (string.Equals(active, sessionId, StringComparison.Ordinal))
+        if (removedSessionIds.Count == 0) return;
+
+        var removed = removedSessionIds as HashSet<string>
+            ?? removedSessionIds.ToHashSet(StringComparer.Ordinal);
+        var pinnedIds = await LoadPinnedIdsAsync(connection, transaction).ConfigureAwait(false);
+        if (pinnedIds.RemoveWhere(removed.Contains) > 0)
+            await WritePinnedIdsAsync(connection, transaction, pinnedIds).ConfigureAwait(false);
+
+        var active = await AppDatabase.GetMetaAsync(connection, transaction, ActiveSessionMetaKey)
+            .ConfigureAwait(false);
+        if (active is not null && removed.Contains(active))
             await AppDatabase.DeleteMetaAsync(connection, transaction, ActiveSessionMetaKey).ConfigureAwait(false);
     }
 
@@ -875,9 +997,15 @@ public sealed class SessionRepository : IConversationAttentionStore
             .ConfigureAwait(false);
     }
 
-    private static async Task<HashSet<string>> LoadPinnedIdsAsync(SqliteConnection connection)
+    private static Task<HashSet<string>> LoadPinnedIdsAsync(SqliteConnection connection)
+        => LoadPinnedIdsAsync(connection, null);
+
+    private static async Task<HashSet<string>> LoadPinnedIdsAsync(
+        SqliteConnection connection,
+        SqliteTransaction? transaction)
     {
-        var json = await AppDatabase.GetMetaAsync(connection, PinnedSessionsMetaKey).ConfigureAwait(false);
+        var json = await AppDatabase.GetMetaAsync(connection, transaction, PinnedSessionsMetaKey)
+            .ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(json)) return new HashSet<string>();
 
         try

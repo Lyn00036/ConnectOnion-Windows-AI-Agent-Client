@@ -88,8 +88,13 @@
     </UserControl.Resources>
     <Grid x:Name="OverlayRoot" KeyDown="OverlayRoot_KeyDown">
         <Rectangle Fill="{ThemeResource SettingsBackdropBrush}" Tapped="Backdrop_Tapped" />
+        <!-- Stretch, not Center. The size is the layout system's job: Stretch fills the space the
+             margin leaves and MaxWidth/MaxHeight cap it (WinUI centres a Stretch element once a
+             Max constraint binds), so the card is always exactly "available minus this margin".
+             Center means "size to content" and needed code to force a width, which is what went
+             wrong — see the note on the adaptive states below. -->
         <Border x:Name="ModalContainer" MaxWidth="1100" MaxHeight="760" Margin="32"
-                HorizontalAlignment="Center" VerticalAlignment="Center"
+                HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                 Background="{ThemeResource SettingsContentBrush}" BorderBrush="{ThemeResource SettingsModalBorderBrush}"
                 BorderThickness="1" CornerRadius="14" Tapped="ModalContainer_Tapped">
             <Border.Shadow><ThemeShadow /></Border.Shadow>
@@ -238,6 +243,14 @@
                 </Grid>
             </Grid>
         </Border>
+        <!-- These are the ONLY place the card's adaptive sizing lives. Code used to compute
+             ModalContainer.Width from this control's ActualWidth with the same 860/640 thresholds
+             — but AdaptiveTrigger.MinWindowWidth measures the *window*, while ActualWidth is the
+             window divided by EffectiveContentScale (MainWindow.ViewMenu applies the zoom and OS
+             text scale to FloatingOverlayLayer). At any scale other than 100% the two landed in
+             different buckets: the state could pick Regular (210px nav, 32px margin) while the
+             code sized the card for the Narrow bucket, so Settings opened visibly too narrow.
+             Do not reintroduce a code path that sets Width or Margin here. -->
         <VisualStateManager.VisualStateGroups>
             <VisualStateGroup>
                 <VisualState x:Name="Narrow">

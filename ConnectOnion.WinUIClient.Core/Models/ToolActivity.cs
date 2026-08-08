@@ -98,6 +98,7 @@ public sealed partial class ToolActivityViewModel : Common.ObservableObject
     {
         if (oldValue is not null) oldValue.PropertyChanged -= OnApprovalMessagePropertyChanged;
         if (newValue is not null) newValue.PropertyChanged += OnApprovalMessagePropertyChanged;
+        SyncApprovalSupersededStep();
         OnPresentationChanged();
     }
 
@@ -105,16 +106,63 @@ public sealed partial class ToolActivityViewModel : Common.ObservableObject
     {
         if (e.PropertyName == nameof(ChatMessage.IsApprovalPending))
         {
+            SyncApprovalSupersededStep();
             OnPropertyChanged(nameof(IsAwaitingApproval));
             OnPropertyChanged(nameof(ShowCompletionMarker));
+            OnPropertyChanged(nameof(ShowCollapsedStepCount));
+        }
+    }
+
+    /// <summary>Silences the step row's one-line command preview while the approval below is
+    /// showing the same command in full.
+    ///
+    /// <para>The two are the same string: the step's invocation is read from the tool call's
+    /// arguments and the approval's command block from the approval request's, for the same call.
+    /// So a pending approval put the command on screen twice, a few pixels apart — once trimmed to
+    /// a single line and once complete with a copy button — which reads as two different things
+    /// having been proposed.</para>
+    ///
+    /// <para>Matched on the tool's display name rather than on the command text: the approval's
+    /// <c>EventTitle</c> is <c>ToolActivityProjector.DisplayName(toolName)</c>, exactly what the
+    /// step's <see cref="ToolStepViewModel.DisplayName"/> holds, while the two command strings are
+    /// formatted by different code paths and are not reliably identical. Only a non-terminal step
+    /// qualifies — a finished one is history and its preview is the record of what ran.</para></summary>
+    private void SyncApprovalSupersededStep()
+    {
+        var pendingTool = Approval is { IsApprovalPending: true } approval ? approval.EventTitle : null;
+        foreach (var step in Steps)
+        {
+            step.IsSupersededByApproval = pendingTool is not null
+                && step.Status is ToolStepStatus.Running or ToolStepStatus.Pending
+                && string.Equals(step.DisplayName, pendingTool, StringComparison.Ordinal);
         }
     }
 
     [JsonIgnore] public bool HasApproval => Approval is not null;
-    [JsonIgnore] public string HeaderTitle => HasApproval && !string.IsNullOrWhiteSpace(Approval!.EventTitle)
+
+    /// <summary>"7 steps" on the header while an approval is pending and the timeline is folded.
+    ///
+    /// <para>The header's <see cref="Summary"/> slot is deliberately blank whenever an approval is
+    /// embedded (the approval carries the state instead), and folding the timeline for the decision
+    /// takes the steps off screen too — so without this the card gives no sign that the turn did
+    /// anything before it stopped. It reuses that empty slot rather than adding a row.</para></summary>
+    [JsonIgnore]
+    public string CollapsedStepCountHint => Steps.Count switch
+    {
+        0 => "",
+        1 => Common.CoreStrings.Get("ToolActivityOneStep", "1 step"),
+        var count => Common.CoreStrings.Format("ToolActivityStepCount", "{0} steps", count),
+    };
+
+    [JsonIgnore]
+    public bool ShowCollapsedStepCount
+        => IsAwaitingApproval && !IsExpanded && Steps.Count > 0;
+    [JsonIgnore]
+    public string HeaderTitle => HasApproval && !string.IsNullOrWhiteSpace(Approval!.EventTitle)
         ? Approval.EventTitle
         : Common.CoreStrings.Get("ToolActivityHeader", "Tool activity");
-    [JsonIgnore] public ToolIconKind HeaderIconKind => HasApproval
+    [JsonIgnore]
+    public ToolIconKind HeaderIconKind => HasApproval
         ? ToolIcons.ForTool(Approval!.EventTitle)
         : ToolIconKind.Generic;
 
@@ -146,6 +194,7 @@ public sealed partial class ToolActivityViewModel : Common.ObservableObject
     [NotifyPropertyChangedFor(nameof(AccessibilityName))]
     [NotifyPropertyChangedFor(nameof(ShowCollapsedError))]
     [NotifyPropertyChangedFor(nameof(ChevronAngle))]
+    [NotifyPropertyChangedFor(nameof(ShowCollapsedStepCount))]
     public partial bool IsExpanded { get; set; }
 
     /// <summary>
@@ -248,7 +297,8 @@ public sealed partial class ToolActivityViewModel : Common.ObservableObject
     // resolved approval summary.
     [JsonIgnore] public bool IsTimelineVisible => IsVisible && (IsExpanded || !ShowCardChrome);
     [JsonIgnore] public bool IsDetailed => DisplayMode == ToolDisplayMode.Detailed;
-    [JsonIgnore] public string StatusGlyph => Status switch
+    [JsonIgnore]
+    public string StatusGlyph => Status switch
     {
         ToolActivityStatus.Success => "✓",
         ToolActivityStatus.PartialSuccess => "⚠",
@@ -258,7 +308,8 @@ public sealed partial class ToolActivityViewModel : Common.ObservableObject
         ToolActivityStatus.WaitingForPermission => "⚿",
         _ => "◌",
     };
-    [JsonIgnore] public string CompletionLabel => Status switch
+    [JsonIgnore]
+    public string CompletionLabel => Status switch
     {
         ToolActivityStatus.Success => Common.CoreStrings.Get("ToolStatusDone", "Done"),
         ToolActivityStatus.PartialSuccess
@@ -272,7 +323,8 @@ public sealed partial class ToolActivityViewModel : Common.ObservableObject
             => Common.CoreStrings.Get("ToolStatusWaitingApproval", "Waiting for approval"),
         _ => Common.CoreStrings.Get("ToolStatusWorking", "Working..."),
     };
-    [JsonIgnore] public string AccessibilityName
+    [JsonIgnore]
+    public string AccessibilityName
         => $"{Common.CoreStrings.Get("ToolActivityHeader", "Tool activity")}. {Summary}. " +
            $"{CompletionLabel}. " +
            $"{(IsExpanded ? Common.CoreStrings.Get("DiffCollapse", "Collapse") : Common.CoreStrings.Get("DiffExpand", "Expand"))}";
@@ -318,6 +370,8 @@ public sealed partial class ToolActivityViewModel : Common.ObservableObject
         OnPropertyChanged(nameof(ShowCollapsedError));
         OnPropertyChanged(nameof(IsAwaitingApproval));
         OnPropertyChanged(nameof(ShowCompletionMarker));
+        OnPropertyChanged(nameof(CollapsedStepCountHint));
+        OnPropertyChanged(nameof(ShowCollapsedStepCount));
         OnPropertyChanged(nameof(HeaderTitle));
         OnPropertyChanged(nameof(HeaderIconKind));
     }
@@ -393,7 +447,8 @@ public sealed partial class ToolStepViewModel : Common.ObservableObject
     /// <summary>Whether there is an invocation worth a line. False leaves the row exactly as it
     /// looked before — a tool taking no readable arguments must not gain an empty block.</summary>
     [JsonIgnore] public bool HasInvocation => Invocation.HasValue;
-    [JsonIgnore] public bool CanOpenInvocation
+    [JsonIgnore]
+    public bool CanOpenInvocation
         => Invocation.Kind == ToolInvocationKind.Url
             && Uri.TryCreate(Invocation.Text, UriKind.Absolute, out var uri)
             && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
@@ -402,7 +457,17 @@ public sealed partial class ToolStepViewModel : Common.ObservableObject
     /// Once it is open the labelled block below carries the same value in full, and printing both
     /// left the command on screen twice — the same redundancy the single Result/Error block exists
     /// to avoid.</summary>
-    [JsonIgnore] public bool ShowInlineInvocation => HasInvocation && !IsExpanded;
+    [JsonIgnore]
+    public bool ShowInlineInvocation
+        => HasInvocation && !IsExpanded && !IsSupersededByApproval;
+
+    /// <summary>Set by <c>ToolActivityViewModel.SyncApprovalSupersededStep</c> while a pending
+    /// approval below this row is displaying the same command in full. Presentation only, never
+    /// persisted — an approval is live-only state.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowInlineInvocation))]
+    [JsonIgnore]
+    public partial bool IsSupersededByApproval { get; set; }
     [JsonIgnore] public string InvocationLabel => Invocation.Label;
     /// <summary>The collapsed row's one-line preview. Flattened, not raw — see
     /// <see cref="ToolInvocation.SingleLineText"/>.</summary>
@@ -556,7 +621,8 @@ public sealed partial class ToolStepViewModel : Common.ObservableObject
     /// hover-to-reveal treatment). A missing measurement and a genuine zero both render as nothing
     /// — a column of "0 ms" was pure horizontal-scan noise for tools that report no timing — and a
     /// sub-millisecond call reads as "&lt;1 ms" rather than rounding down into that same blank.</summary>
-    [JsonIgnore] public string DurationLabel => DurationMs switch
+    [JsonIgnore]
+    public string DurationLabel => DurationMs switch
     {
         null or <= 0 => "",
         < 1 => "<1 ms",

@@ -615,7 +615,7 @@ public static class EndpointResolver
             Trust: TryGetString(source, "trust", out var trust) ? trust : null,
             Version: TryGetString(source, "version", out var version) ? version : null,
             Model: TryGetString(source, "model", out var model) ? model : null,
-            AcceptedInputs: ParseAcceptedInputs(source));
+            AcceptedInputs: ParseAcceptedInputsCore(source));
     }
 
     /// <summary>Layers the three metadata sources, field by field, in decreasing authority:
@@ -732,13 +732,17 @@ public static class EndpointResolver
         try
         {
             using var doc = JsonDocument.Parse(infoJson, JsonOptions);
-            return ParseAcceptedInputs(doc.RootElement);
+            return ParseAcceptedInputsCore(doc.RootElement);
         }
         catch
         {
             return null;
         }
     }
+
+    /// <summary>Reads accepted-input capabilities from an already parsed info document.</summary>
+    public static AgentAcceptedInputs? ParseAcceptedInputs(JsonElement info)
+        => ParseAcceptedInputsCore(info);
 
     /// <summary>
     /// Reads the agent's declared skills straight out of a cached <c>/info</c> JSON string, so a
@@ -761,6 +765,10 @@ public static class EndpointResolver
             return [];
         }
     }
+
+    /// <summary>Reads skills from an already parsed info document.</summary>
+    public static IReadOnlyList<SkillInfo> ParseSkills(JsonElement info)
+        => NormalizeSkills(info) ?? [];
 
     /// <summary>
     /// Writes an <see cref="AgentInfo"/> back out in the same <c>/info</c> document shape the
@@ -844,7 +852,7 @@ public static class EndpointResolver
     /// false. Callers must treat unknown as permissive — the server is the real authority, and
     /// refusing to let a user attach an image because an old agent omitted the field would
     /// break working setups. A limit of 0 is likewise treated as unstated rather than as a ban.</summary>
-    private static AgentAcceptedInputs? ParseAcceptedInputs(JsonElement source)
+    private static AgentAcceptedInputs? ParseAcceptedInputsCore(JsonElement source)
     {
         if (!source.TryGetProperty("accepted_inputs", out var inputsEl) ||
             inputsEl.ValueKind != JsonValueKind.Object)

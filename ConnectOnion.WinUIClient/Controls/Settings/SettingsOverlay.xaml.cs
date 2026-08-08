@@ -27,7 +27,6 @@ public sealed partial class SettingsOverlay : UserControl
     {
         InitializeComponent();
         Loaded += SettingsOverlay_Loaded;
-        SizeChanged += (_, e) => UpdateModalSize(e.NewSize.Width, e.NewSize.Height);
     }
 
     /// <summary>Whether the settings modal is currently shown.</summary>
@@ -53,7 +52,6 @@ public sealed partial class SettingsOverlay : UserControl
 
         Visibility = Visibility.Visible;
         IsHitTestVisible = true;
-        UpdateModalSize(ActualWidth, ActualHeight);
         QueueInitialFocus();
     }
 
@@ -69,13 +67,16 @@ public sealed partial class SettingsOverlay : UserControl
     /// <summary>Disarms child controls whose delayed callbacks must not outlive the window.</summary>
     public void Shutdown() => IdentityContent.Shutdown();
 
-    private void UpdateModalSize(double width, double height)
-    {
-        if (width <= 0 || height <= 0) return;
-        var safeMargin = width >= 860 && height >= 640 ? 64d : width >= 640 ? 48d : 16d;
-        ModalContainer.Width = Math.Max(0, Math.Min(1100, width - safeMargin));
-        ModalContainer.Height = Math.Max(0, Math.Min(760, height - safeMargin));
-    }
+    // No UpdateModalSize. The card's size is MaxWidth/MaxHeight plus the per-state Margin in
+    // XAML, which the layout system resolves against the space it actually has.
+    //
+    // The code this replaced computed a width from this control's ActualWidth using the same
+    // 860/640 breakpoints the AdaptiveTriggers use — but those measure the *window*, while
+    // ActualWidth is the window divided by EffectiveContentScale, because MainWindow.ViewMenu
+    // scales FloatingOverlayLayer for zoom and OS text scaling. Away from 100% the two disagreed
+    // and the card was sized for one bucket while its navigation column and margin came from
+    // another. It also read ActualWidth synchronously right after setting Visibility, before the
+    // layout pass that produces it had run, so the first frame used the previous size.
 
     private void SettingsOverlay_Loaded(object sender, RoutedEventArgs e)
     {

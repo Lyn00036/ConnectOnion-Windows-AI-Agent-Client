@@ -325,6 +325,12 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         var pinned = await AppServices.Sessions.LoadPinnedAsync();
         if (IsRefreshSuperseded(refreshGeneration)) return;
 
+        // One aggregate over `sessions`, independent of which branches are open. It has to be:
+        // the agent rows that need a rolled-up badge are the collapsed ones, whose conversations
+        // are deliberately never fetched below. Returns only agents with something to report.
+        var attentionByAgent = await AppServices.Sessions.GetAgentAttentionAsync();
+        if (IsRefreshSuperseded(refreshGeneration)) return;
+
         var loadedByAgent = new Dictionary<string, SessionPage>(StringComparer.Ordinal);
         foreach (var agent in agentsState.Agents)
         {
@@ -361,7 +367,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
         // repeater re-realizing every visible row. That threw away the in-place paint
         // SelectSessionAsync had already done a moment earlier, and it is what made an agent with
         // a custom icon visibly flash (see AgentAvatar's cache note).
-        var structureSignature = ComputeStructureSignature(agentsState, pinned, loadedByAgent);
+        var structureSignature = ComputeStructureSignature(agentsState, pinned, loadedByAgent, attentionByAgent);
         var selectionSignature = ComputeSelectionSignature(agentsState.SelectedAgentId, activeSessionId);
         if (_lastStructureSignature == structureSignature)
         {
@@ -397,6 +403,7 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
 
         foreach (var agent in agentsState.Agents)
         {
+            attentionByAgent.TryGetValue(agent.Id, out var attention);
             var item = new ShellAgentItem
             {
                 Id = agent.Id,
@@ -404,6 +411,8 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
                 Address = agent.Address,
                 DirectUrl = agent.DirectUrl,
                 IconPath = agent.IconPath,
+                UnreadCount = attention.UnreadCount,
+                RequiresAttention = attention.RequiresAttention,
                 IsSelected = IsAgentSelected(agent.Id, agentsState.SelectedAgentId),
                 // First build: open the selected agent so the app doesn't start fully collapsed.
                 // Afterwards the user's own expansion state is authoritative, including "all
@@ -657,7 +666,8 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
     private int ComputeStructureSignature(
         AgentSummaryState agentsState,
         IReadOnlyList<SessionSummary> pinned,
-        IReadOnlyDictionary<string, SessionPage> loadedByAgent)
+        IReadOnlyDictionary<string, SessionPage> loadedByAgent,
+        IReadOnlyDictionary<string, AgentAttention> attentionByAgent)
     {
         var hash = new HashCode();
         hash.Add(IsPinnedExpanded);
@@ -670,6 +680,12 @@ public sealed partial class ShellSidebar : UserControl, INotifyPropertyChanged
             hash.Add(agent.Address, StringComparer.Ordinal);
             hash.Add(agent.DirectUrl, StringComparer.Ordinal);
             hash.Add(agent.IconPath, StringComparer.Ordinal);
+            // The rolled-up badge on a collapsed branch, whose conversation rows are not in this
+            // signature (or in the tree) at all — so without this, a reply arriving for a collapsed
+            // agent changes nothing the signature can see and the badge never appears.
+            attentionByAgent.TryGetValue(agent.Id, out var attention);
+            hash.Add(attention.UnreadCount);
+            hash.Add(attention.RequiresAttention);
         }
         AddSessions(pinned);
         // Iterated in agent order rather than dictionary order: a HashCode is order-sensitive, and

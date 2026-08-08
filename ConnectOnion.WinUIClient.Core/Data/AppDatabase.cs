@@ -128,6 +128,12 @@ public static class AppDatabase
                 value TEXT NOT NULL
             );
 
+            -- This is the frozen v1 baseline shape, not the current one. It still declares
+            -- invite_code (which v12 removes) and still lacks icon_path (which v6 adds), for the
+            -- same reason: migrations evolve *from* this, so editing it would change what an old
+            -- database is upgraded from and desynchronise every recorded user_version.
+            -- A fresh database is created here and then walked through migrations 2..N like any
+            -- other, which is also what keeps those migrations exercised on every clean install.
             CREATE TABLE IF NOT EXISTS agents (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -249,8 +255,17 @@ public static class AppDatabase
     // the migration that earned it (see SchemaMigrator).
 
     public static async Task<string?> GetMetaAsync(SqliteConnection connection, string key)
+        => await GetMetaAsync(connection, null, key).ConfigureAwait(false);
+
+    /// <summary>Reads metadata on the caller's transaction when several related rows must move
+    /// atomically. The two-argument overload remains the ordinary read path.</summary>
+    public static async Task<string?> GetMetaAsync(
+        SqliteConnection connection,
+        SqliteTransaction? transaction,
+        string key)
     {
         await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText = "SELECT value FROM app_meta WHERE key = $key;";
         Add(command, "$key", key);
         var value = await command.ExecuteScalarAsync().ConfigureAwait(false);

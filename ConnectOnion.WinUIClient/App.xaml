@@ -57,6 +57,8 @@
             <presentation:ToolIconConverter x:Key="ToolIcon" />
             <presentation:ToolStatusToIconConverter x:Key="ToolStatusToIcon" />
             <presentation:ApprovalTargetKindToIconConverter x:Key="ApprovalTargetIcon" />
+            <presentation:ResourceStyleConverter x:Key="ResourceStyle" />
+            <presentation:IconNameConverter x:Key="IconName" />
             <presentation:BoolToThicknessConverter x:Key="BoolToThickness" />
             <presentation:LocalPathToImageSourceConverter x:Key="PathToImage" />
             <presentation:RowStateToBackgroundConverter x:Key="RowStateToBackground" />

@@ -367,7 +367,7 @@ public sealed partial class AddAgentForm : UserControl, IDisposable
         catch
         {
             ShowIconError(LocalizedStrings.Get(
-                "AgentIconSaveFailed", "The agent was added, but its icon could not be saved."));
+                "AgentIconSaveAfterAddFailed", "The agent was added, but its icon could not be saved."));
             return null;
         }
     }

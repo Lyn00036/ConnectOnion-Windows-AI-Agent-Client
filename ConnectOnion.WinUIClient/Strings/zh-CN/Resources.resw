@@ -38,6 +38,12 @@
   <data name="ChatAnswer.PlaceholderText" xml:space="preserve"><value>其他回答...</value></data>
   <data name="ChatRetry.Text" xml:space="preserve"><value>重试</value></data>
   <data name="ComposerInput.PlaceholderText" xml:space="preserve"><value>输入任何任务</value></data>
+  <data name="ComposerContextUndo.Text" xml:space="preserve"><value>撤销</value></data>
+  <data name="ComposerContextRedo.Text" xml:space="preserve"><value>重做</value></data>
+  <data name="ComposerContextCut.Text" xml:space="preserve"><value>剪切</value></data>
+  <data name="ComposerContextCopy.Text" xml:space="preserve"><value>复制</value></data>
+  <data name="ComposerContextPaste.Text" xml:space="preserve"><value>粘贴</value></data>
+  <data name="ComposerContextSelectAll.Text" xml:space="preserve"><value>全选</value></data>
   <data name="MenuNewChat.Text" xml:space="preserve"><value>新建聊天</value></data>
   <data name="MenuOpenFolder.Text" xml:space="preserve"><value>打开数据文件夹</value></data>
   <data name="MenuClose.Text" xml:space="preserve"><value>隐藏到托盘</value></data>
@@ -103,7 +109,7 @@
   <data name="SettingsConnectionProblems.Description" xml:space="preserve"><value>当 Agent 持续断开连接一段时间时通知你。</value></data>
   <data name="SettingsPlaySound.Description" xml:space="preserve"><value>显示 Windows 通知时播放声音。</value></data>
   <data name="SettingsMessagePreview.Description" xml:space="preserve"><value>在通知中包含回复摘要。关闭后，通知只提示有新回复。</value></data>
-  <data name="SettingsMicrophone.Description" xml:space="preserve"><value>选择用于语音输入的麦克风。</value></data>
+  <data name="SettingsMicrophone.Description" xml:space="preserve"><value>选择用于语音输入的麦克风。同意后，录音会发送到 OpenOnion 进行云端转写。</value></data>
   <data name="SidebarWorkspace.Text" xml:space="preserve"><value>Agent 工作区</value></data>
   <data name="SidebarAgentsNavigation.ToolTipService.ToolTip" xml:space="preserve"><value>Agent 库</value></data>
   <data name="SidebarAgentsNavigation.AutomationProperties.Name" xml:space="preserve"><value>Agent 库</value></data>
@@ -280,6 +286,28 @@
   <data name="ChatHeader" xml:space="preserve"><value>聊天</value></data>
   <data name="ChatSelectAgent" xml:space="preserve"><value>选择一个 Agent 开始聊天</value></data>
   <data name="VoiceListening" xml:space="preserve"><value>正在聆听...</value></data>
+  <data name="VoiceListeningHint" xml:space="preserve"><value>正在聆听...按 Enter 完成，按 Esc 丢弃</value></data>
+  <data name="VoiceStarting" xml:space="preserve"><value>正在启动麦克风...</value></data>
+  <data name="VoiceTranscribing" xml:space="preserve"><value>正在转写...</value></data>
+  <data name="VoiceRecordingStatus" xml:space="preserve"><value>正在录音 {0}</value></data>
+  <data name="VoiceRecordingInstructions" xml:space="preserve"><value>正在录音。按 Enter 完成，按 Esc 丢弃。</value></data>
+  <data name="VoiceRecordingTimeFormat" xml:space="preserve"><value>{0} / {1}</value></data>
+  <data name="VoiceStopRecording" xml:space="preserve"><value>停止录音</value></data>
+  <data name="VoiceFinishRecording" xml:space="preserve"><value>完成录音并转写（Enter）</value></data>
+  <data name="VoiceCancelInput" xml:space="preserve"><value>取消并丢弃语音输入（Esc）</value></data>
+  <data name="VoiceCancelTranscription" xml:space="preserve"><value>取消转写（Esc）</value></data>
+  <data name="VoiceMicrophoneBlocked" xml:space="preserve"><value>麦克风访问已被阻止。请在“Windows 设置 &gt; 隐私和安全性 &gt; 麦克风”中允许访问，然后重试。</value></data>
+  <data name="VoiceMicrophoneMissing" xml:space="preserve"><value>未找到麦克风。请连接麦克风、在设置中选择设备，或改用键盘输入。</value></data>
+  <data name="VoiceMicrophoneUnavailable" xml:space="preserve"><value>麦克风当前不可用。请关闭其他正在使用麦克风的应用、检查设置，然后重试。</value></data>
+  <data name="VoiceAuthenticationFailure" xml:space="preserve"><value>语音转写无法验证当前身份。请重试或检查“设置 &gt; 身份”。</value></data>
+  <data name="VoiceServiceUnavailable" xml:space="preserve"><value>语音转写服务当前不可用。请检查网络连接后重试。</value></data>
+  <data name="VoiceNoSpeech" xml:space="preserve"><value>未检测到语音。请重试或改用键盘输入。</value></data>
+  <data name="VoiceCloudConsentTitle" xml:space="preserve"><value>将音频发送到云端转写？</value></data>
+  <data name="VoiceCloudConsentBody" xml:space="preserve"><value>你的录音会被安全地发送到 OpenOnion 以生成文字稿。转写完成后，ConnectOnion Desktop 会丢弃音频，也不会将其加入聊天记录。OpenOnion 会依据其隐私政策处理音频。</value></data>
+  <data name="VoiceCloudConsentContinue" xml:space="preserve"><value>继续</value></data>
+  <data name="VoiceConsentSaveFailed" xml:space="preserve"><value>由于无法保存你的同意设置，语音录制未能开始。请重试。</value></data>
+  <data name="VoiceTranscriptionTimeout" xml:space="preserve"><value>语音转写超时。请检查网络连接后重试。</value></data>
+  <data name="VoiceTranscriptionNetworkUnavailable" xml:space="preserve"><value>无法连接语音转写服务。请检查网络连接后重试。</value></data>
   <data name="ComposerDoAnything" xml:space="preserve"><value>输入任何内容</value></data>
   <data name="VoiceInputTitle" xml:space="preserve"><value>语音输入</value></data>
   <data name="CommonOk" xml:space="preserve"><value>确定</value></data>
@@ -290,6 +318,7 @@
   <data name="ComposerAttachmentPickFailure" xml:space="preserve"><value>无法添加该附件，请重试。</value></data>
   <data name="ComposerAttachmentDropFailure" xml:space="preserve"><value>无法读取拖入的文件。</value></data>
   <data name="CommonCancel" xml:space="preserve"><value>取消</value></data>
+  <data name="CommonClose" xml:space="preserve"><value>关闭</value></data>
   <data name="CommonDelete" xml:space="preserve"><value>删除</value></data>
   <data name="SettingsWindow.Text" xml:space="preserve"><value>窗口</value></data>
   <data name="SettingsCloseBehavior.Header" xml:space="preserve"><value>关闭窗口时</value></data>
@@ -352,6 +381,19 @@
   <data name="AskUserAdditionalDetails.Text" xml:space="preserve"><value>补充信息</value></data>
   <data name="AskUserOptionalAnswer.PlaceholderText" xml:space="preserve"><value>添加可选回答或背景信息…</value></data>
   <data name="AskUserSkip.Content" xml:space="preserve"><value>跳过</value></data>
+  <data name="AskUserViewChanges.Content" xml:space="preserve"><value>查看改动</value></data>
+  <data name="ToolStopConfirmTitle.Text" xml:space="preserve"><value>停止整个任务？</value></data>
+  <data name="ToolStopConfirmDetail.Text" xml:space="preserve"><value>助手将就此停止，不只是这条命令。已完成的工作会保留，但不会再继续执行。</value></data>
+  <data name="ToolStopConfirmAction.Content" xml:space="preserve"><value>停止任务</value></data>
+  <data name="ToolApprovalRequiredBadge" xml:space="preserve"><value>需要批准</value></data>
+  <data name="ApprovalRiskReadOnly" xml:space="preserve"><value>该命令只读取内容，不会修改或删除任何东西。</value></data>
+  <data name="ToolActivityOneStep" xml:space="preserve"><value>1 步</value></data>
+  <data name="ToolActivityStepCount" xml:space="preserve"><value>{0} 步</value></data>
+  <data name="ApprovalRiskUnknown" xml:space="preserve"><value>无法识别该命令。请先读一遍再决定是否允许运行。</value></data>
+  <data name="ChatJumpToDecision.Content" xml:space="preserve"><value>前往</value></data>
+  <data name="ChatPendingApproval" xml:space="preserve"><value>助手正在等待你的批准。</value></data>
+  <data name="ChatPendingPlanReview" xml:space="preserve"><value>助手正在等待你审阅它的计划。</value></data>
+  <data name="ChatPendingQuestion" xml:space="preserve"><value>助手正在等待你的回答。</value></data>
   <data name="PlanReviewCard.Title" xml:space="preserve"><value>审查执行计划</value></data>
   <data name="PlanReviewMode.Text" xml:space="preserve"><value>计划模式</value></data>
   <data name="PlanReviewHint.Text" xml:space="preserve"><value>批准前请检查范围、顺序和风险。</value></data>
@@ -416,6 +458,7 @@
   <data name="KeyboardOpenSettings" xml:space="preserve"><value>打开设置</value></data>
   <data name="KeyboardCloseWindow" xml:space="preserve"><value>关闭窗口</value></data>
   <data name="KeyboardCycleChatMode" xml:space="preserve"><value>循环切换审批模式</value></data>
+  <data name="KeyboardGoToPendingDecision" xml:space="preserve"><value>跳到待处理的决策</value></data>
   <data name="KeyboardExit" xml:space="preserve"><value>退出应用</value></data>
   <data name="KeyboardUndo" xml:space="preserve"><value>撤销</value></data>
   <data name="KeyboardRedo" xml:space="preserve"><value>重做</value></data>
@@ -550,10 +593,12 @@
   <data name="ComposerRemoveAttachment.AutomationProperties.Name" xml:space="preserve"><value>移除附件</value></data>
   <data name="ComposerAddAttachment.ToolTipService.ToolTip" xml:space="preserve"><value>添加附件</value></data>
   <data name="ComposerAddAttachment.AutomationProperties.Name" xml:space="preserve"><value>添加附件</value></data>
-  <data name="ComposerVoiceInput.ToolTipService.ToolTip" xml:space="preserve"><value>语音输入</value></data>
-  <data name="ComposerVoiceInput.AutomationProperties.Name" xml:space="preserve"><value>语音输入</value></data>
-  <data name="ComposerStopVoiceInput.ToolTipService.ToolTip" xml:space="preserve"><value>停止语音输入</value></data>
-  <data name="ComposerStopVoiceInput.AutomationProperties.Name" xml:space="preserve"><value>停止语音输入</value></data>
+  <data name="ComposerVoiceInput.ToolTipService.ToolTip" xml:space="preserve"><value>开始语音录制</value></data>
+  <data name="ComposerVoiceInput.AutomationProperties.Name" xml:space="preserve"><value>开始语音录制</value></data>
+  <data name="ComposerCancelVoiceInput.ToolTipService.ToolTip" xml:space="preserve"><value>取消并丢弃语音输入</value></data>
+  <data name="ComposerCancelVoiceInput.AutomationProperties.Name" xml:space="preserve"><value>取消并丢弃语音输入</value></data>
+  <data name="ComposerFinishVoiceInput.ToolTipService.ToolTip" xml:space="preserve"><value>完成录音并转写</value></data>
+  <data name="ComposerFinishVoiceInput.AutomationProperties.Name" xml:space="preserve"><value>完成录音并转写</value></data>
   <data name="ComposerSendMessage.ToolTipService.ToolTip" xml:space="preserve"><value>发送消息</value></data>
   <data name="ComposerSendMessage.AutomationProperties.Name" xml:space="preserve"><value>发送消息</value></data>
   <data name="ToolActivityCopyInput.ToolTipService.ToolTip" xml:space="preserve"><value>复制完整命令、目标、路径或查询</value></data>
@@ -624,6 +669,7 @@
   <data name="AgentIconInvalidImage" xml:space="preserve"><value>应用无法读取该图片文件。</value></data>
   <data name="AgentIconProcessFailed" xml:space="preserve"><value>无法处理所选图片。</value></data>
   <data name="AgentIconSaveFailed" xml:space="preserve"><value>无法保存 Agent 图标。</value></data>
+  <data name="AgentIconSaveAfterAddFailed" xml:space="preserve"><value>Agent 已添加，但无法保存其图标。</value></data>
   <data name="AgentIconDeleteFailed" xml:space="preserve"><value>无法移除 Agent 图标。</value></data>
   <data name="AddAgentIntro.Text" xml:space="preserve"><value>粘贴 Agent“共享”界面提供的连接信息。</value></data>
   <data name="AddAgentInput.PlaceholderText" xml:space="preserve"><value>0x… 或 https://example.com/agent</value></data>
@@ -652,6 +698,9 @@
   <data name="AgentShareCopyAddress.AutomationProperties.Name" xml:space="preserve"><value>复制智能体地址</value></data>
   <data name="AgentShareCopyLink.AutomationProperties.Name" xml:space="preserve"><value>复制智能体网页对话链接</value></data>
   <data name="AskUserSkip.AutomationProperties.Name" xml:space="preserve"><value>跳过此问题</value></data>
+  <data name="AskUserViewChanges.AutomationProperties.Name" xml:space="preserve"><value>查看此次决定所应用的改动</value></data>
+  <data name="ToolStopConfirmAction.AutomationProperties.Name" xml:space="preserve"><value>确认停止整个任务</value></data>
+  <data name="ChatJumpToDecision.AutomationProperties.Name" xml:space="preserve"><value>滚动到助手正在等待的决策</value></data>
   <data name="PlanReviewSections.AutomationProperties.Name" xml:space="preserve"><value>打开完整计划并逐节审阅</value></data>
   <data name="PlanReviewCopy.AutomationProperties.Name" xml:space="preserve"><value>复制执行计划</value></data>
   <data name="ToolApprovalRequired.AutomationProperties.Name" xml:space="preserve"><value>需要批准</value></data>
@@ -908,4 +957,5 @@
   <data name="DeleteConversationFailed" xml:space="preserve"><value>无法删除该会话，请重试。</value></data>
   <data name="SidebarRequiresAttention" xml:space="preserve"><value>需要批准</value></data>
   <data name="SidebarUnreadCount" xml:space="preserve"><value>{0} 条未读</value></data>
+  <data name="SidebarOpenAgent" xml:space="preserve"><value>打开 {0}</value></data>
 </root>

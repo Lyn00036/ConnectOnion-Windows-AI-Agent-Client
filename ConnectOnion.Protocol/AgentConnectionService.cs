@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
@@ -693,12 +694,16 @@ public sealed class AgentConnectionService : IAsyncDisposable
                 frame.Write(buffer, 0, result.Count);
                 if (!result.EndOfMessage) continue;
 
-                // Decode once after the complete frame is present. Decoding each WebSocket
-                // fragment independently corrupts a UTF-8 code point split across fragments.
-                var json = Encoding.UTF8.GetString(
+                // JSON is already UTF-8 on the wire. Parse this buffer in place while it remains
+                // owned by the loop; turning an 80 MiB frame into a UTF-16 string allocated up to
+                // another 160 MiB before JsonDocument copied it back into UTF-8 storage.
+                var json = new ReadOnlyMemory<byte>(
                     frame.GetBuffer(),
                     0,
                     checked((int)frame.Length));
+                _lastActivityUtc = DateTime.UtcNow;
+                await HandleMessageAsync(json, ct).ConfigureAwait(false);
+
                 if (frame.Capacity > RetainedIncomingFrameCapacityBytes)
                 {
                     frame.Dispose();
@@ -708,8 +713,6 @@ public sealed class AgentConnectionService : IAsyncDisposable
                 {
                     frame.SetLength(0);
                 }
-                _lastActivityUtc = DateTime.UtcNow;
-                await HandleMessageAsync(json, ct).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException)
@@ -727,7 +730,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
     }
 
     // Port of _handleMessage: dispatch on the frame's type discriminator.
-    private async Task HandleMessageAsync(string json, CancellationToken ct)
+    private async Task HandleMessageAsync(ReadOnlyMemory<byte> json, CancellationToken ct)
     {
         JsonDocument document;
         try { document = WireMessage.ParseDocument(json); }
@@ -742,28 +745,28 @@ public sealed class AgentConnectionService : IAsyncDisposable
                 return;
 
             case "CONNECTED":
-            {
-                var state = ConnectedState.Parse(msg);
-                LastConnectedState = state;
-                // Raised before the connect promise resolves so a subscriber that reconciles
-                // history has done so by the time the caller's SendInputAsync continues.
-                if (state.ServerNewer) SessionDiverged?.Invoke(state);
-                // The transient receive document is disposed when this handler returns, while
-                // RunContinuationsAsynchronously means EnsureConnectedAsync reads the message
-                // later. CONNECTED is tiny, so clone only this one cross-boundary frame.
-                _connectTcs?.TrySetResult(WireMessage.Parse(msg.Root.GetRawText()));
-                return;
-            }
+                {
+                    var state = ConnectedState.Parse(msg);
+                    LastConnectedState = state;
+                    // Raised before the connect promise resolves so a subscriber that reconciles
+                    // history has done so by the time the caller's SendInputAsync continues.
+                    if (state.ServerNewer) SessionDiverged?.Invoke(state);
+                    // The transient receive document is disposed when this handler returns, while
+                    // RunContinuationsAsynchronously means EnsureConnectedAsync reads the message
+                    // later. CONNECTED is tiny, so clone only this one cross-boundary frame.
+                    _connectTcs?.TrySetResult(WireMessage.Parse(msg.Root.GetRawText()));
+                    return;
+                }
 
             case "OUTPUT":
-            {
-                _awaitingHumanResponse = false;
-                var result = msg.GetString("result") ?? "";
-                if (msg.TryGet("duration_ms", out var d) && d.ValueKind == JsonValueKind.Number)
-                    LastExecutionDurationMs = d.GetDouble();
-                _inputTcs?.TrySetResult(result);
-                return;
-            }
+                {
+                    _awaitingHumanResponse = false;
+                    var result = msg.GetString("result") ?? "";
+                    if (msg.TryGet("duration_ms", out var d) && d.ValueKind == JsonValueKind.Number)
+                        LastExecutionDurationMs = d.GetDouble();
+                    _inputTcs?.TrySetResult(result);
+                    return;
+                }
 
             case "ERROR":
                 // Whatever the agent was parked on is over — don't leave the watchdog suspended.
@@ -793,17 +796,18 @@ public sealed class AgentConnectionService : IAsyncDisposable
             // leave the real ask_user blocked forever. See diff_writer.py `_send_preview`.
             case "diff_preview":
             case "session_sync":
-            {
-                var eventId = msg.GetString("id");
-                if (!string.IsNullOrEmpty(eventId))
-                    LastProcessedEventId = eventId;
-                StreamEvent?.Invoke(new AgentStreamEvent(
-                    msg.Type,
-                    DescribeEvent(msg),
-                    eventId,
-                    BufferedEventJson(msg)));
-                return;
-            }
+                {
+                    var eventId = msg.GetString("id");
+                    if (!string.IsNullOrEmpty(eventId))
+                        LastProcessedEventId = eventId;
+                    StreamEvent?.Invoke(new AgentStreamEvent(
+                        msg.Type,
+                        DescribeEvent(msg),
+                        eventId,
+                        BufferedEventJson(msg),
+                        EventTimestamp(msg.Root)));
+                    return;
+                }
 
             case "ONBOARD_REQUIRED":
                 // A human/onboarding step now owns the connection, so stop the
@@ -853,19 +857,19 @@ public sealed class AgentConnectionService : IAsyncDisposable
                 return;
 
             case "mode_changed":
-            {
-                // Forwarded as a stream event *as well as* a typed one: the stream copy is what
-                // the run buffers and the projection turns into a visible "Mode: plan" card, so a
-                // mode the agent chose for itself is never a silent change.
-                var mode = msg.GetString("mode");
-                if (string.IsNullOrEmpty(mode)) return;
-                var eventId = msg.GetString("id");
-                if (!string.IsNullOrEmpty(eventId)) LastProcessedEventId = eventId;
-                StreamEvent?.Invoke(new AgentStreamEvent(
-                    msg.Type, DescribeEvent(msg), eventId, msg.Root.GetRawText()));
-                ModeChanged?.Invoke(new ModeChangedEvent(mode, msg.GetString("triggered_by")));
-                return;
-            }
+                {
+                    // Forwarded as a stream event *as well as* a typed one: the stream copy is what
+                    // the run buffers and the projection turns into a visible "Mode: plan" card, so a
+                    // mode the agent chose for itself is never a silent change.
+                    var mode = msg.GetString("mode");
+                    if (string.IsNullOrEmpty(mode)) return;
+                    var eventId = msg.GetString("id");
+                    if (!string.IsNullOrEmpty(eventId)) LastProcessedEventId = eventId;
+                    StreamEvent?.Invoke(new AgentStreamEvent(
+                        msg.Type, DescribeEvent(msg), eventId, msg.Root.GetRawText(), EventTimestamp(msg.Root)));
+                    ModeChanged?.Invoke(new ModeChangedEvent(mode, msg.GetString("triggered_by")));
+                    return;
+                }
 
             case "RUNTIME_INPUT_ACK":
                 RuntimeInputAcknowledged?.Invoke();
@@ -890,6 +894,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
     internal static string BufferedEventJson(WireMessage msg)
     {
         if (msg.Type is "llm_call" or "llm_result") return CompactLlmEvent(msg);
+        if (msg.Type == "tool_result") return CompactToolResult(msg);
         if (msg.Type != "session_sync") return msg.Root.GetRawText();
 
         var compact = new Dictionary<string, object?>
@@ -910,6 +915,30 @@ public sealed class AgentConnectionService : IAsyncDisposable
             compact["session"] = sessionState;
         }
 
+        return WireJson.Serialize(compact);
+    }
+
+    private static string CompactToolResult(WireMessage msg)
+    {
+        const int maxRetainedResultChars = 8 * 1024;
+        var compact = new Dictionary<string, object?> { ["type"] = msg.Type };
+        foreach (var name in new[]
+                 {
+                     "id", "ts", "tool_id", "call_id", "name", "tool", "status",
+                     "timing_ms", "duration_ms",
+                 })
+        {
+            CopyScalar(msg.Root, compact, name);
+        }
+
+        foreach (var name in new[] { "result", "message", "error" })
+        {
+            var value = msg.GetString(name);
+            if (value is null) continue;
+            compact[name] = value.Length <= maxRetainedResultChars
+                ? value
+                : value[..maxRetainedResultChars] + "\n… (truncated)";
+        }
         return WireJson.Serialize(compact);
     }
 
@@ -959,6 +988,13 @@ public sealed class AgentConnectionService : IAsyncDisposable
             _ => null,
         };
     }
+
+    private static double? EventTimestamp(JsonElement root)
+        => root.TryGetProperty("ts", out var value)
+           && value.ValueKind == JsonValueKind.Number
+           && value.TryGetDouble(out var timestamp)
+            ? timestamp
+            : null;
 
     private static string DescribeEvent(WireMessage msg) => msg.Type switch
     {
@@ -1113,8 +1149,9 @@ public sealed class AgentConnectionService : IAsyncDisposable
 
     private async Task SendJsonAsync(Dictionary<string, object?> message, CancellationToken ct)
     {
-        var bytes = WireJson.SerializeToUtf8Bytes(message);
-        await _ws!.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, ct)
+        var bytes = new ArrayBufferWriter<byte>();
+        WireJson.WriteTo(bytes, message);
+        await _ws!.SendAsync(bytes.WrittenMemory, WebSocketMessageType.Text, true, ct)
             .ConfigureAwait(false);
     }
 

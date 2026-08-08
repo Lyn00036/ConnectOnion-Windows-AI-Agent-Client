@@ -227,7 +227,7 @@ public sealed partial class IdentitySettingsContent : UserControl, System.IDispo
             // and is localized, so it cannot be re-derived from a literal here.
             var original = button.Content;
             button.IsHitTestVisible = false;
-        button.Content = LocalizedStrings.Get("CommonCopied", "Copied");
+            button.Content = LocalizedStrings.Get("CommonCopied", "Copied");
             var shutdownToken = _shutdownCts.Token;
             try
             {

@@ -257,6 +257,42 @@ public sealed class ChatTurnProjectionTests
         Assert.False(card.IsInteractiveCardExpanded);
     }
 
+    /// <summary>An answered ask_user folds like every other settled card — and, unlike before, can
+    /// be opened again.
+    ///
+    /// <para>It used to report "no body" once answered (<c>ShowBody</c> was the same flag as "still
+    /// waiting"), and <c>InteractiveCard.RefreshDisclosure</c> derives <c>CanCollapse</c> from
+    /// that — so the chevron disappeared, the header left the tab order, and the question the user
+    /// had answered became unreachable, in history too.</para>
+    ///
+    /// <para>Re-opening costs nothing extra: the three input blocks are each gated on
+    /// <c>IsAwaitingResponse</c>, so a settled card shows the question and its attachments and
+    /// never replays a password box.</para></summary>
+    [Fact]
+    public void AnsweredAskUser_FoldsButKeepsItsQuestionReachable()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+
+        projection.Apply(Event("ask_user",
+            "{\"id\":\"ask-1\",\"question\":\"Which environment?\",\"options\":[\"staging\",\"prod\"]}"));
+        var card = Assert.Single(target.Messages);
+        Assert.True(card.IsInteractiveCardExpanded);
+        Assert.True(card.ShowAskUserBody);
+        Assert.True(card.ShowAskUserOptions);
+
+        card.CompleteInteractiveSubmit("Answered: staging");
+
+        Assert.False(card.IsInteractiveCardExpanded);
+        // The body survives, so the disclosure control does too.
+        Assert.True(card.ShowAskUserBody);
+        Assert.Equal("Which environment?", card.AskUserDisplayQuestion);
+        // But the inputs do not come back.
+        Assert.False(card.ShowAskUserOptions);
+        Assert.False(card.ShowAskUserFields);
+        Assert.False(card.ShowAskUserFreeText);
+    }
+
     [Fact]
     public void Apply_LlmCall_OpensThinkingIndicator_AndLlmResultTakesItAway()
     {
@@ -574,6 +610,23 @@ public sealed class ChatTurnProjectionTests
 
         var ids = target.Messages.Select(message => message.Id).ToList();
         Assert.Equal(ids.OrderBy(id => id), ids);
+    }
+
+    [Fact]
+    public void AgentImage_PreparedCachePath_DoesNotDecodeAgainOnEitherProjectionPass()
+    {
+        var target = new FakeTarget();
+        var projection = new ChatTurnProjection(target);
+
+        projection.Apply(Event("agent_image",
+            "{\"type\":\"agent_image\",\"cached_path\":\"images/hash.png\",\"mime_type\":\"image/png\"}"));
+        projection.AppendCompletedTurn("");
+
+        var attachment = Assert.Single(target.Messages[^1].Attachments);
+        Assert.Equal("images/hash.png", attachment.LocalCachePath);
+        Assert.Equal("image/png", attachment.MimeType);
+        Assert.Equal(AttachmentStatus.Sent, attachment.Status);
+        Assert.Empty(target.ResolvedImages);
     }
 
     [Fact]

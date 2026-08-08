@@ -15,23 +15,30 @@ public sealed class NotificationPolicy
         IWindowPresence presence,
         NotificationSettings settings)
     {
+        // The user is already looking at the exact conversation (approval bubbles
+        // render inline there too) — no need to interrupt them, and nothing is unread.
+        //
+        // Checked ahead of the settings switches on purpose: this is the only branch that also
+        // means "do not badge it", so it must not be pre-empted by one that merely means "do not
+        // interrupt me". Reversed, a user with notifications off would accumulate unread counts
+        // for the conversation they are sitting in.
+        if (request.Type == NotificationType.ApprovalRequired)
+        {
+            if (presence.IsViewingApproval(request.ConversationId))
+                return NotificationDecision.AlreadySeen("viewing approval");
+        }
+        else if (presence.IsViewingConversation(request.ConversationId))
+        {
+            return NotificationDecision.AlreadySeen("viewing target conversation");
+        }
+
+        // Both switches below silence the toast only. The sidebar badge is how someone who has
+        // turned notifications off still finds out a reply landed.
         if (!settings.EnableNotifications)
             return NotificationDecision.Suppress("notifications disabled");
 
         if (!IsTypeEnabled(request.Type, settings))
             return NotificationDecision.Suppress("type disabled");
-
-        // The user is already looking at the exact conversation (approval bubbles
-        // render inline there too) — no need to interrupt them.
-        if (request.Type == NotificationType.ApprovalRequired)
-        {
-            if (presence.IsViewingApproval(request.ConversationId))
-                return NotificationDecision.Suppress("viewing approval");
-        }
-        else if (presence.IsViewingConversation(request.ConversationId))
-        {
-            return NotificationDecision.Suppress("viewing target conversation");
-        }
 
         var body = EffectiveBody(request, settings);
         var play = settings.PlayNotificationSound;

@@ -22,6 +22,7 @@ public sealed class AgentTurnExecutor : ITurnExecutor
     private readonly AgentConnectionService _connection;
     private readonly Action<ApprovalRequest>? _onApproval;
     private readonly Action<string>? _onInteractive;
+    private readonly Func<AgentStreamEvent, Task<AgentStreamEvent>>? _prepareEvent;
     private readonly bool _resumeExisting;
 
     /// <param name="onApproval">App-level hook fired when the agent requests approval, so the
@@ -39,43 +40,62 @@ public sealed class AgentTurnExecutor : ITurnExecutor
         AgentConnectionService connection,
         Action<ApprovalRequest>? onApproval = null,
         Action<string>? onInteractive = null,
+        Func<AgentStreamEvent, Task<AgentStreamEvent>>? prepareEvent = null,
         bool resumeExisting = false)
     {
         _connection = connection;
         _onApproval = onApproval;
         _onInteractive = onInteractive;
+        _prepareEvent = prepareEvent;
         _resumeExisting = resumeExisting;
     }
 
     public async Task<string> ExecuteAsync(TurnRequest request, IRunSink sink)
     {
-        void OnInputSent() => sink.SetRunning();
-        void OnStream(AgentStreamEvent e)
+        var eventGate = new object();
+        Task eventTail = Task.CompletedTask;
+
+        void QueueEvent(AgentStreamEvent e)
         {
             sink.SetRunning();
-            sink.Publish(e);
-            if (e.Type == "assistant")
+            lock (eventGate)
             {
-                var content = ExtractString(e.RawJson, "content");
-                if (!string.IsNullOrEmpty(content)) sink.UpdatePartial(content!);
+                eventTail = eventTail.ContinueWith(
+                        async _ =>
+                        {
+                            var prepared = _prepareEvent is null ? e : await _prepareEvent(e).ConfigureAwait(false);
+                            sink.Publish(prepared);
+                            if (prepared.Type == "assistant")
+                            {
+                                var content = ExtractString(prepared.RawJson, "content");
+                                if (!string.IsNullOrEmpty(content)) sink.UpdatePartial(content!);
+                            }
+                        },
+                        CancellationToken.None,
+                        TaskContinuationOptions.ExecuteSynchronously,
+                        TaskScheduler.Default)
+                    .Unwrap();
             }
         }
-        void OnOnboard(OnboardRequest r) => sink.Publish(new AgentStreamEvent(
+
+        void OnInputSent() => sink.SetRunning();
+        void OnStream(AgentStreamEvent e) => QueueEvent(e);
+        void OnOnboard(OnboardRequest r) => QueueEvent(new AgentStreamEvent(
             "ONBOARD_REQUIRED", "Agent requires onboarding", null, BuildOnboardFrame(r)));
         void OnAsk(AskUserRequest r)
         {
-            sink.Publish(new AgentStreamEvent("ask_user", r.Text, r.Id, BuildAskUserFrame(r)));
+            QueueEvent(new AgentStreamEvent("ask_user", r.Text, r.Id, BuildAskUserFrame(r)));
             _onInteractive?.Invoke("ask_user");
         }
         void OnApproval(ApprovalRequest r)
         {
-            sink.Publish(new AgentStreamEvent("approval_needed", r.Tool, null, BuildApprovalFrame(r)));
+            QueueEvent(new AgentStreamEvent("approval_needed", r.Tool, null, BuildApprovalFrame(r)));
             _onInteractive?.Invoke("approval");
             _onApproval?.Invoke(r);
         }
         void OnPlan(PlanReviewRequest r)
         {
-            sink.Publish(new AgentStreamEvent("plan_review", "Plan review", null, BuildPlanFrame(r)));
+            QueueEvent(new AgentStreamEvent("plan_review", "Plan review", null, BuildPlanFrame(r)));
             _onInteractive?.Invoke("plan_review");
         }
 
@@ -119,6 +139,9 @@ public sealed class AgentTurnExecutor : ITurnExecutor
                 files = null;
                 reply = await completion.ConfigureAwait(false);
             }
+            Task pendingEvents;
+            lock (eventGate) pendingEvents = eventTail;
+            await pendingEvents.ConfigureAwait(false);
             if (!string.IsNullOrEmpty(reply)) sink.UpdatePartial(reply);
             return reply;
         }

@@ -380,6 +380,7 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
                     connection,
                     r => NotifyApproval(agent, conversationId, r),
                     kind => _pendingInteractive[conversationId] = kind,
+                    PrepareStreamEventAsync,
                     resumeExisting: true));
         }
         catch (InvalidOperationException)
@@ -550,7 +551,47 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         => new(
             connection,
             r => NotifyApproval(agent, conversationId, r),
-            kind => _pendingInteractive[conversationId] = kind);
+            kind => _pendingInteractive[conversationId] = kind,
+            PrepareStreamEventAsync);
+
+    private async Task<AgentStreamEvent> PrepareStreamEventAsync(AgentStreamEvent streamEvent)
+    {
+        if (!string.Equals(streamEvent.Type, "agent_image", StringComparison.Ordinal))
+            return streamEvent;
+
+        try
+        {
+            using var document = JsonDocument.Parse(streamEvent.RawJson);
+            if (!AttachmentWireEvents.TryGetAgentImageDataUrl(
+                    WireMessage.Wrap(document.RootElement), out var dataUrl))
+            {
+                return streamEvent;
+            }
+
+            var resolved = await AttachmentImageCacheService
+                .ResolveAndCacheAsync(dataUrl, _http)
+                .ConfigureAwait(false);
+            if (resolved is not { } image) return streamEvent;
+
+            return streamEvent with
+            {
+                RawJson = WireJson.Serialize(new Dictionary<string, object?>
+                {
+                    ["type"] = streamEvent.Type,
+                    ["id"] = streamEvent.EventId,
+                    ["ts"] = streamEvent.Timestamp,
+                    ["cached_path"] = image.LocalPath,
+                    ["mime_type"] = image.MimeType,
+                }),
+            };
+        }
+        catch
+        {
+            // Image projection is best effort. Preserve the original event so the existing live
+            // and persistence targets can still attempt their normal fallback path.
+            return streamEvent;
+        }
+    }
 
     public ConversationRunSnapshot? GetActiveRun(string conversationId) => _runs.GetActiveRun(conversationId);
 
@@ -871,10 +912,27 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
                 ExecutionId: snapshot.RunId,
                 SessionId: snapshot.ConversationId,
                 Type: e.Type,
-                PayloadJson: e.RawJson,
-                Ts: TryParseTs(e.RawJson)));
+                PayloadJson: TracePayload(e),
+                Ts: e.Timestamp ?? TryParseTs(e.RawJson)));
         }
         return _conversations.InsertTraceEventsAsync(snapshot.ConversationId, rows);
+    }
+
+    private static string TracePayload(AgentStreamEvent e)
+    {
+        if (!string.Equals(e.Type, "agent_image", StringComparison.Ordinal)) return e.RawJson;
+
+        // The decoded image is already persisted through message_attachments. Keeping the same
+        // multi-megabyte data URL in trace_events duplicates it in SQLite and in the WAL without
+        // adding diagnostic value; retain only the event identity and timestamp.
+        var compact = new Dictionary<string, object?>
+        {
+            ["type"] = e.Type,
+            ["id"] = e.EventId,
+            ["ts"] = e.Timestamp,
+            ["image_payload_omitted"] = true,
+        };
+        return WireJson.Serialize(compact);
     }
 
     private static double? TryParseTs(string rawJson)

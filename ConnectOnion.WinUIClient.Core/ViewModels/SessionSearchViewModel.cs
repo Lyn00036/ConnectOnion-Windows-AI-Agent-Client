@@ -8,13 +8,14 @@ using ConnectOnion.WinUIClient.Models;
 namespace ConnectOnion.WinUIClient.ViewModels;
 
 /// <summary>
-/// Holds the full session catalog for the shell search overlay and exposes a live-filtered,
-/// most-recent-first result list. The overlay only supplies data and writes
+/// Holds a bounded recent/search result window for the shell search overlay and exposes a
+/// live-filtered, most-recent-first result list. The overlay only supplies data and writes
 /// <see cref="SearchText"/>; matching stays headless and unit-testable.
 /// </summary>
 public sealed partial class SessionSearchViewModel : Common.ObservableObject
 {
     private IReadOnlyList<SessionSearchItem> _allItems = [];
+    private IReadOnlyList<SessionSearchItem> _defaultItems = [];
 
     public ObservableCollection<SessionSearchItem> Results { get; } = new();
 
@@ -35,9 +36,10 @@ public sealed partial class SessionSearchViewModel : Common.ObservableObject
     /// <summary>Replaces the catalog and clears any query left by a prior opening.</summary>
     public void Reset(IEnumerable<SessionSearchItem> items)
     {
-        _allItems = items
+        _defaultItems = items
             .OrderByDescending(item => item.UpdatedAt, StringComparer.Ordinal)
             .ToList();
+        _allItems = _defaultItems;
 
         if (SearchText.Length == 0)
             ApplyFilter();
@@ -51,6 +53,7 @@ public sealed partial class SessionSearchViewModel : Common.ObservableObject
         // here rather than when the next batch lands, so results never briefly show an excerpt
         // belonging to a query the user has already moved on from.
         _contentMatches = EmptyMatches;
+        _allItems = _defaultItems;
         ApplyFilter();
     }
 
@@ -65,13 +68,24 @@ public sealed partial class SessionSearchViewModel : Common.ObservableObject
     /// query for <paramref name="query"/> returns; a result for a query the user has already typed
     /// past is dropped rather than merged.
     /// </summary>
-    public void ApplyContentMatches(string query, IReadOnlyDictionary<string, string> matchesBySessionId)
+    public void ApplySearchResults(
+        string query,
+        IEnumerable<SessionSearchItem> items,
+        IReadOnlyDictionary<string, string> matchesBySessionId)
     {
         if (!string.Equals(query.Trim(), SearchText.Trim(), StringComparison.Ordinal)) return;
 
+        _allItems = items
+            .OrderByDescending(item => item.UpdatedAt, StringComparer.Ordinal)
+            .ToList();
         _contentMatches = matchesBySessionId;
         ApplyFilter();
     }
+
+    /// <summary>Compatibility entry point for headless callers that are only folding transcript
+    /// snippets into the current bounded catalog.</summary>
+    public void ApplyContentMatches(string query, IReadOnlyDictionary<string, string> matchesBySessionId)
+        => ApplySearchResults(query, _allItems, matchesBySessionId);
 
     private void ApplyFilter()
     {

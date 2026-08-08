@@ -1,5 +1,14 @@
 root = true
 
+[*]
+insert_final_newline = true
+
+[*.{json,js,md,yml,yaml}]
+end_of_line = lf
+
+[*.{xaml,resw,csproj,props,targets,sln,ps1}]
+end_of_line = crlf
+
 [*.cs]
 charset = utf-8
 end_of_line = crlf

@@ -52,9 +52,9 @@ public sealed partial class ChatViewModel
         if (inviteCode.Length == 0) return;
 
         message.IsOnboardingSubmitted = true;
-            message.Content = LocalizedStrings.Get(
-                "ChatInviteSubmitted",
-                "Invite code submitted. Waiting for the agent to finish onboarding...");
+        message.Content = LocalizedStrings.Get(
+            "ChatInviteSubmitted",
+            "Invite code submitted. Waiting for the agent to finish onboarding...");
         OnPropertyChanged(nameof(Messages));
 
         try
@@ -84,9 +84,9 @@ public sealed partial class ChatViewModel
         if (message.OnboardRequest?.PaymentAmount is not { } amount || amount <= 0) return;
 
         message.IsOnboardingSubmitted = true;
-            message.Content = LocalizedStrings.Get(
-                "ChatPaymentReported",
-                "Payment reported. Waiting for the agent to verify it...");
+        message.Content = LocalizedStrings.Get(
+            "ChatPaymentReported",
+            "Payment reported. Waiting for the agent to verify it...");
         OnPropertyChanged(nameof(Messages));
 
         try
@@ -159,6 +159,7 @@ public sealed partial class ChatViewModel
             await connection.RespondAskUserAsync(answer);
             ConfirmInteractiveAnswer(reservation);
             message.CompleteInteractiveSubmit(outcome);
+            RefreshPendingInteractive();
         }
         catch (Exception ex)
         {
@@ -211,6 +212,7 @@ public sealed partial class ChatViewModel
             await connection.RespondAskUserAsync(SkipAnswer);
             ConfirmInteractiveAnswer(reservation);
             message.CompleteInteractiveSubmit("Skipped");
+            RefreshPendingInteractive();
         }
         catch (Exception ex)
         {
@@ -241,12 +243,12 @@ public sealed partial class ChatViewModel
     {
         var (approved, scope, rejectMode, meta) = action switch
         {
-            ApprovalAction.AllowOnce    => (true,  "once",    ApprovalRejectModes.Hard, "Approved once"),
-            ApprovalAction.TrustSession => (true,  "session", ApprovalRejectModes.Hard, "Approved for session"),
-            ApprovalAction.Reject       => (false, "once",    ApprovalRejectModes.Soft, "Skipped"),
-            ApprovalAction.Stop         => (false, "once",    ApprovalRejectModes.Hard, "Stopped"),
-            ApprovalAction.Explain      => (false, "once",    ApprovalRejectModes.Explain, "Explanation requested"),
-            _                           => (true,  "once",    ApprovalRejectModes.Hard, "Approved once"),
+            ApprovalAction.AllowOnce => (true, "once", ApprovalRejectModes.Hard, "Approved once"),
+            ApprovalAction.TrustSession => (true, "session", ApprovalRejectModes.Hard, "Approved for session"),
+            ApprovalAction.Reject => (false, "once", ApprovalRejectModes.Soft, "Skipped"),
+            ApprovalAction.Stop => (false, "once", ApprovalRejectModes.Hard, "Stopped"),
+            ApprovalAction.Explain => (false, "once", ApprovalRejectModes.Explain, "Explanation requested"),
+            _ => (true, "once", ApprovalRejectModes.Hard, "Approved once"),
         };
 
         var connection = CurrentConnection;
@@ -275,6 +277,9 @@ public sealed partial class ChatViewModel
         message.EventMeta = meta;
         message.Status = action == ApprovalAction.Stop ? EventStatus.Error : EventStatus.Done;
         message.CompleteApproval(action);
+        // The approval's Status is set above rather than by CompleteInteractiveSubmit, so this
+        // path refreshes here instead of beside a shared call.
+        RefreshPendingInteractive();
 
         if (action == ApprovalAction.Stop)
         {
@@ -345,6 +350,7 @@ public sealed partial class ChatViewModel
             await connection.RespondPlanReviewAsync(response.Message);
             ConfirmInteractiveAnswer(reservation);
             message.CompleteInteractiveSubmit(response.Outcome, response.Rejected);
+            RefreshPendingInteractive();
         }
         catch (Exception ex)
         {
@@ -375,9 +381,9 @@ public sealed partial class ChatViewModel
             else
             {
                 attachment.Status = AttachmentStatus.Failed;
-            attachment.Error = LocalizedStrings.Get(
-                "ChatImageCouldNotLoad",
-                "Image could not be loaded.");
+                attachment.Error = LocalizedStrings.Get(
+                    "ChatImageCouldNotLoad",
+                    "Image could not be loaded.");
             }
         });
     }

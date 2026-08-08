@@ -91,7 +91,15 @@
                  #9A6700 is 4.9:1 on SurfacePrimary — passes AA for text, and comfortably
                  clears the 3:1 that the 12px glyphs carrying it actually need. -->
             <Color x:Key="SuccessColor">#FF1B7A4B</Color>
-            <Color x:Key="WarningColor">#FF9A6700</Color>
+            <!-- One amber for "caution", not two. WarningColor and AttentionColor were
+                 #9A6700 and #B26A00 — visually indistinguishable, but handed out by different
+                 code paths for the same state: InteractiveVisualTone.Warning resolved to
+                 Attention while ToolStatusToBrushConverter and the diff problem icon reached for
+                 Warning, so "something needs your attention" was one shade or the other
+                 depending on which card you were looking at. Kept as a separate key because ~40
+                 call sites name it; it is now an alias. Danger stays distinct — that one is a
+                 different signal. -->
+            <Color x:Key="WarningColor">#FFB26A00</Color>
             <Color x:Key="DangerColor">#FFB3261E</Color>
             <Color x:Key="InfoColor">#FF6E6E6C</Color>
 
@@ -265,7 +273,8 @@
                  on near-black, so Danger moves to a desaturated salmon that clears 5.9:1
                  there, and Warning takes the same treatment at 6.8:1. -->
             <Color x:Key="SuccessColor">#FF3DBE7A</Color>
-            <Color x:Key="WarningColor">#FFD29922</Color>
+            <!-- Alias of AttentionColor; see the light-theme note. -->
+            <Color x:Key="WarningColor">#FFE0A44A</Color>
             <Color x:Key="DangerColor">#FFEF7A70</Color>
             <Color x:Key="InfoColor">#FFA8A8A6</Color>
 

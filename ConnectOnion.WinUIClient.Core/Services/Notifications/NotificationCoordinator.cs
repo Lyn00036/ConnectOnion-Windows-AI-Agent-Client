@@ -77,13 +77,16 @@ public sealed class NotificationCoordinator : IDisposable
             }
 
             var decision = _policy.Decide(request, _presence, _settings.Current);
-            NotificationLog.Info($"Decision: channel={decision.Channel} foreground={_presence.IsForeground} type={request.Type} conv={request.ConversationId}");
+            NotificationLog.Info($"Decision: channel={decision.Channel} unread={decision.MarkUnread} foreground={_presence.IsForeground} type={request.Type} conv={request.ConversationId}");
+
+            // Runs ahead of the channel check: a suppressed toast still leaves an unread
+            // conversation unless the user was looking at it. See NotificationDecision.MarkUnread.
+            if (decision.MarkUnread) PersistAttentionIfNeeded(request);
             if (decision.Channel == NotificationChannel.None) return;
 
             // The policy may rewrite the body — it is what strips the message preview when the
             // user has previews off — so its version wins wherever it supplied one.
             var shaped = request with { Body = decision.Body ?? request.Body };
-            PersistAttentionIfNeeded(request);
             var channel = decision.Channel == NotificationChannel.System ? _system : _inApp;
             channel.Show(shaped, decision.PlaySound);
         }
@@ -110,6 +113,15 @@ public sealed class NotificationCoordinator : IDisposable
     {
         try
         {
+            // Re-checked here, not only in the policy. This runs off the publishing thread, so the
+            // user can have opened the conversation in the meantime — typically by clicking the
+            // very toast this call accompanies. The clear that opening performs would then land
+            // *before* this write, leaving a badge on the chat they are reading with nothing left
+            // to clear it. Narrows the window rather than closing it: a genuinely simultaneous
+            // interleave is still possible, and costs one stale badge until the next time the
+            // window is focused, which MainWindow.ClearAttentionForVisibleConversation resolves.
+            if (_presence.IsViewingConversation(conversationId)) return;
+
             await _attentionStore!.MarkUnreadAsync(conversationId, requiresAttention)
                 .ConfigureAwait(false);
         }

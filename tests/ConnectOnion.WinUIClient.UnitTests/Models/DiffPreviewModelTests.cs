@@ -199,17 +199,19 @@ public sealed class DiffPreviewModelTests
     }
 
     [Fact]
-    public void PendingCannotFold_ThenAppliedFoldsAndUserCanReopenIt()
+    public void DiffFoldsThroughItsStates_AndTheUserCanAlwaysOverrideIt()
     {
         var message = DiffMessage();
         message.SetDiffState(DiffChangeState.Pending);
 
+        // Pending opens for review, and — unlike before — can be folded while it waits.
         Assert.True(message.IsDiffExpanded);
-        message.ToggleDiffExpanded();
-        Assert.True(message.IsDiffExpanded);
+        Assert.True(message.CanToggleDiffVisibility);
 
+        // Applying folds: transient, nothing to decide, nothing yet to inspect.
         message.SetDiffState(DiffChangeState.Applying);
-        Assert.True(message.IsDiffExpanded);
+        Assert.False(message.IsDiffExpanded);
+
         message.SetDiffState(DiffChangeState.Applied);
         Assert.False(message.IsDiffExpanded);
         Assert.Equal("Changes applied to test.txt", message.DiffCardTitle);
@@ -217,6 +219,24 @@ public sealed class DiffPreviewModelTests
         message.ToggleDiffExpanded();
         Assert.True(message.IsDiffExpanded);
         Assert.Equal("Hide changes", message.DiffToggleLabel);
+    }
+
+    /// <summary>A diff moves through up to three states in one turn, so state-driven default
+    /// expansion gets several chances to overrule the user. One manual toggle ends that for the
+    /// life of the card — same contract as <c>ToolActivityViewModel.HasUserExpansionOverride</c>.</summary>
+    [Fact]
+    public void ManualFold_IsNotUndoneByLaterStateTransitions()
+    {
+        var message = DiffMessage();
+        message.SetDiffState(DiffChangeState.Pending);
+        message.ToggleDiffExpanded();
+        Assert.False(message.IsDiffExpanded);
+
+        message.SetDiffState(DiffChangeState.Applying);
+        message.SetDiffState(DiffChangeState.Failed);
+
+        // Failed would otherwise re-open the card; the user's choice outranks it.
+        Assert.False(message.IsDiffExpanded);
     }
 
     [Fact]

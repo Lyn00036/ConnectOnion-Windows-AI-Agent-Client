@@ -117,6 +117,12 @@ public sealed partial class MainWindow
         if (modal == _backgroundTabSuppressed) return;
         _backgroundTabSuppressed = modal;
 
+        // The page behind a modal is still loaded and still reporting itself to the notification
+        // layer, so tell that layer the user cannot actually see it. Closing the modal re-exposes
+        // the conversation, which is also when a badge earned while it was up gets cleared.
+        _windowPresence?.SetContentObscured(this, modal);
+        if (!modal) ClearAttentionForVisibleConversation();
+
         foreach (var control in BackgroundFocusRoots())
         {
             if (modal)

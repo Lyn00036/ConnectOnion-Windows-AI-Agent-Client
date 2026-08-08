@@ -128,7 +128,24 @@ public sealed partial class ToolActivityProjector
             or ToolActivityStatus.WaitingForPermission;
         var running = Activity.Status == ToolActivityStatus.Running;
 
-        Activity.IsExpanded = _isLiveView && (running || failed || awaitingUser);
+        // Awaiting the user COLLAPSES, and this is the opposite of what it used to do.
+        //
+        // Expanding on approval looked right — "show them what the tool was about to do" — but the
+        // decision controls sit at the *bottom* of the card, below every step the turn has already
+        // taken. A turn that had run eight tools produced a card over a thousand pixels tall whose
+        // last few hundred pixels were the only actionable part, so the thing the agent was blocked
+        // on was pushed off the bottom of the viewport by its own history. Collapsing puts the
+        // header, the command, the risk line and the buttons together in about a third of that.
+        //
+        // Nothing needed to answer is lost: the header names the tool and carries the "Approval
+        // required" badge, the approval section carries the command and its risk, and the step
+        // count stays on the header (CollapsedStepCountHint). The timeline is context, one click
+        // away, and a user who opens it keeps it open — HasUserExpansionOverride is checked above.
+        //
+        // It also removes a layout jolt. The card used to grow by hundreds of pixels at the moment
+        // an approval arrived, shoving the transcript under anyone who was not pinned to the
+        // bottom; now it shrinks instead.
+        Activity.IsExpanded = _isLiveView && !awaitingUser && (running || failed);
     }
 
     /// <summary>Projects a <c>tool_call</c> frame into a new running step (or returns the
@@ -136,7 +153,11 @@ public sealed partial class ToolActivityProjector
     public ToolStepViewModel ApplyCall(AgentStreamEvent e)
     {
         using var doc = JsonDocument.Parse(e.RawJson);
-        var root = doc.RootElement;
+        return ApplyCall(e, doc.RootElement);
+    }
+
+    internal ToolStepViewModel ApplyCall(AgentStreamEvent e, JsonElement root)
+    {
         var toolName = String(root, "name") ?? String(root, "tool") ?? "tool";
         // A call with no id still gets a step — the user should see that *something* ran — but
         // the synthetic id is intentionally unmatchable, so a later result cannot bind to it.
@@ -174,7 +195,11 @@ public sealed partial class ToolActivityProjector
     public ToolStepViewModel? ApplyResult(AgentStreamEvent e)
     {
         using var doc = JsonDocument.Parse(e.RawJson);
-        var root = doc.RootElement;
+        return ApplyResult(e, doc.RootElement);
+    }
+
+    internal ToolStepViewModel? ApplyResult(AgentStreamEvent e, JsonElement root)
+    {
         var id = CorrelationId(root, e);
         if (string.IsNullOrWhiteSpace(id)) return null; // never guess from the tool name
         var step = Activity.Steps.FirstOrDefault(item => item.Id == id);
@@ -213,7 +238,11 @@ public sealed partial class ToolActivityProjector
     public ToolStepViewModel AddBlocked(AgentStreamEvent e)
     {
         using var doc = JsonDocument.Parse(e.RawJson);
-        var root = doc.RootElement;
+        return AddBlocked(e, doc.RootElement);
+    }
+
+    internal ToolStepViewModel AddBlocked(AgentStreamEvent e, JsonElement root)
+    {
         var toolName = String(root, "tool") ?? String(root, "name") ?? "tool";
         var step = new ToolStepViewModel
         {
@@ -374,35 +403,56 @@ public sealed partial class ToolActivityProjector
     public static string DisplayName(string toolName) => toolName.ToLowerInvariant() switch
     {
         // ---- browser: navigation ----
-        "open_browser" => "Open browser", "go_to" or "navigate" => "Open page", "newtab" => "New tab",
-        "close_tab" => "Close tab", "get_current_url" => "Get URL",
+        "open_browser" => "Open browser",
+        "go_to" or "navigate" => "Open page",
+        "newtab" => "New tab",
+        "close_tab" => "Close tab",
+        "get_current_url" => "Get URL",
         // ---- browser: pointer ----
         "click" or "click_element_by_selector" or "click_element_near_selector" => "Click",
-        "double_click" => "Double-click", "right_click" => "Right-click", "hover" => "Hover",
-        "mouse_click" => "Click at point", "scroll" => "Scroll", "wait" => "Wait",
+        "double_click" => "Double-click",
+        "right_click" => "Right-click",
+        "hover" => "Hover",
+        "mouse_click" => "Click at point",
+        "scroll" => "Scroll",
+        "wait" => "Wait",
         "set_viewport" => "Set viewport",
         // ---- browser: reading ----
-        "get_text" => "Read page text", "extract_data" => "Extract data",
-        "extract_items_by_selector" => "Extract items", "get_links_from_page" => "Extract links",
-        "get_element_text_by_selector" => "Read element", "count_elements_by_selector" => "Count elements",
+        "get_text" => "Read page text",
+        "extract_data" => "Extract data",
+        "extract_items_by_selector" => "Extract items",
+        "get_links_from_page" => "Extract links",
+        "get_element_text_by_selector" => "Read element",
+        "count_elements_by_selector" => "Count elements",
         "find_element_by_description" => "Find element",
         // ---- browser: input ----
         "type_text" or "type" or "type_text_by_selector" or "keyboard_type" => "Type text",
-        "keyboard_press" => "Press key", "select_option" => "Select option", "check_checkbox" => "Check box",
+        "keyboard_press" => "Press key",
+        "select_option" => "Select option",
+        "check_checkbox" => "Check box",
         "upload_file_by_selector" or "upload_file_after_click_by_selector" => "Upload file",
         // ---- browser: capture / scripting ----
-        "take_screenshot" => "Take screenshot", "save_page_context" => "Save page context",
-        "save_state" => "Save login state", "run_page_script" or "run_frame_script" => "Run script",
+        "take_screenshot" => "Take screenshot",
+        "save_page_context" => "Save page context",
+        "save_state" => "Save login state",
+        "run_page_script" or "run_frame_script" => "Run script",
         // ---- shell, files, search ----
-        "search_web" or "web_search" or "search" => "Search web", "grep" => "Search files",
-        "glob" => "Match files", "find" => "Find files",
-        "read" or "read_file" => "Read file", "write" or "write_file" => "Write file", "edit" => "Edit file",
-        "send_email" => "Send email", "delete_file" => "Delete file",
+        "search_web" or "web_search" or "search" => "Search web",
+        "grep" => "Search files",
+        "glob" => "Match files",
+        "find" => "Find files",
+        "read" or "read_file" => "Read file",
+        "write" or "write_file" => "Write file",
+        "edit" => "Edit file",
+        "send_email" => "Send email",
+        "delete_file" => "Delete file",
         "bash" or "shell" or "run" or "run_command" or "execute_command" => "Run command",
         "run_background" => "Run in background",
-        "upload_file" => "Upload file", "download_file" => "Download file",
+        "upload_file" => "Upload file",
+        "download_file" => "Download file",
         // ---- delegated work ----
-        "call_omo_agent" => "Delegate to agent", "background_output" => "Read background output",
+        "call_omo_agent" => "Delegate to agent",
+        "background_output" => "Read background output",
         "background_cancel" => "Cancel background task",
         _ => ToReadableName(toolName),
     };
