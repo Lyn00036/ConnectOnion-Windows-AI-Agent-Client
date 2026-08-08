@@ -128,6 +128,12 @@ public static class AppDatabase
                 value TEXT NOT NULL
             );
 
+            -- This is the frozen v1 baseline shape, not the current one. It still declares
+            -- invite_code (which v12 removes) and still lacks icon_path (which v6 adds), for the
+            -- same reason: migrations evolve *from* this, so editing it would change what an old
+            -- database is upgraded from and desynchronise every recorded user_version.
+            -- A fresh database is created here and then walked through migrations 2..N like any
+            -- other, which is also what keeps those migrations exercised on every clean install.
             CREATE TABLE IF NOT EXISTS agents (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,

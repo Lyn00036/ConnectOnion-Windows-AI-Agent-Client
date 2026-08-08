@@ -66,12 +66,13 @@ public sealed class AgentRepository
             .ConfigureAwait(false);
         await using var insert = connection.CreateCommand();
         insert.Transaction = transaction;
+        // invite_code is deliberately absent — see the column's note in AppDatabase.CreateSchemaAsync.
         insert.CommandText = """
             INSERT OR IGNORE INTO agents (
-                id, name, address, direct_url, icon_path, invite_code,
+                id, name, address, direct_url, icon_path,
                 info_json, info_updated_at, sort_order)
             SELECT
-                $id, $name, $address, $direct_url, $icon_path, $invite_code,
+                $id, $name, $address, $direct_url, $icon_path,
                 $info_json, $info_updated_at,
                 COALESCE((SELECT MAX(sort_order) + 1 FROM agents), 0);
             """;
@@ -81,7 +82,6 @@ public sealed class AgentRepository
         AppDatabase.Add(insert, "$direct_url", agent.DirectUrl);
         AppDatabase.Add(insert, "$icon_path",
             string.IsNullOrWhiteSpace(agent.IconPath) ? null : agent.IconPath);
-        AppDatabase.Add(insert, "$invite_code", agent.InviteCode);
         AppDatabase.Add(insert, "$info_json", agent.InfoJson);
         AppDatabase.Add(insert, "$info_updated_at", agent.InfoUpdatedAt);
 
@@ -380,7 +380,7 @@ public sealed class AgentRepository
             // default to 0) could shuffle between launches. COLLATE NOCASE so the fallback
             // ordering is alphabetical the way a human reads it.
             command.CommandText = """
-                SELECT id, name, address, direct_url, icon_path, invite_code, info_json, info_updated_at
+                SELECT id, name, address, direct_url, icon_path, info_json, info_updated_at
                 FROM agents
                 ORDER BY sort_order, name COLLATE NOCASE, id;
                 """;
@@ -394,9 +394,8 @@ public sealed class AgentRepository
                     Address = reader.GetString(2),
                     DirectUrl = ReadNullableString(reader, 3),
                     IconPath = ReadNullableString(reader, 4),
-                    InviteCode = ReadNullableString(reader, 5),
-                    InfoJson = ReadNullableString(reader, 6),
-                    InfoUpdatedAt = ReadNullableString(reader, 7),
+                    InfoJson = ReadNullableString(reader, 5),
+                    InfoUpdatedAt = ReadNullableString(reader, 6),
                 });
             }
         }
@@ -422,6 +421,61 @@ public sealed class AgentRepository
         }
 
         return state;
+    }
+
+    /// <summary>Loads only the selected agent, including its capability blob. Chat and detail
+    /// navigation need that one record; reading and sorting the entire agent table made every
+    /// page switch scale with unrelated agents.</summary>
+    public async Task<AgentConfig?> GetSelectedAgentAsync(CancellationToken cancellationToken = default)
+    {
+        await using var connection = await AppDatabase.OpenAsync(cancellationToken).ConfigureAwait(false);
+        var selectedId = await AppDatabase.GetMetaAsync(connection, SelectedAgentMetaKey).ConfigureAwait(false);
+        return string.IsNullOrWhiteSpace(selectedId)
+            ? null
+            : await GetAgentAsync(connection, selectedId, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Loads one full agent record by id.</summary>
+    public async Task<AgentConfig?> GetAgentAsync(
+        string agentId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(agentId)) return null;
+        await using var connection = await AppDatabase.OpenAsync(cancellationToken).ConfigureAwait(false);
+        return await GetAgentAsync(connection, agentId, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task<AgentConfig?> GetAgentAsync(
+        SqliteConnection connection,
+        string agentId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT id, name, address, direct_url, icon_path, info_json, info_updated_at
+            FROM agents
+            WHERE id = $id
+            LIMIT 1;
+            """;
+        AppDatabase.Add(command, "$id", agentId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false)) return null;
+
+        var agent = new AgentConfig
+        {
+            Id = reader.GetString(0),
+            Name = reader.GetString(1),
+            Address = reader.GetString(2),
+            DirectUrl = ReadNullableString(reader, 3),
+            IconPath = ReadNullableString(reader, 4),
+            InfoJson = ReadNullableString(reader, 5),
+            InfoUpdatedAt = ReadNullableString(reader, 6),
+        };
+        return !string.IsNullOrWhiteSpace(agent.Name)
+               && agent.Id != "local-agent"
+               && HasConnectionTarget(agent)
+            ? agent
+            : null;
     }
 
     /// <summary>
@@ -451,15 +505,15 @@ public sealed class AgentRepository
 
             await using var insert = connection.CreateCommand();
             insert.Transaction = transaction;
+            // invite_code is deliberately absent — see the column's note in AppDatabase.CreateSchemaAsync.
             insert.CommandText = """
-                INSERT INTO agents (id, name, address, direct_url, icon_path, invite_code, info_json, info_updated_at, sort_order)
-                VALUES ($id, $name, $address, $direct_url, $icon_path, $invite_code, $info_json, $info_updated_at, $sort_order)
+                INSERT INTO agents (id, name, address, direct_url, icon_path, info_json, info_updated_at, sort_order)
+                VALUES ($id, $name, $address, $direct_url, $icon_path, $info_json, $info_updated_at, $sort_order)
                 ON CONFLICT(id) DO UPDATE SET
                     name = excluded.name,
                     address = excluded.address,
                     direct_url = excluded.direct_url,
                     icon_path = excluded.icon_path,
-                    invite_code = excluded.invite_code,
                     info_json = excluded.info_json,
                     info_updated_at = excluded.info_updated_at,
                     sort_order = excluded.sort_order;
@@ -472,7 +526,6 @@ public sealed class AgentRepository
             // caller that cleared the path can never leave an empty string the UI would resolve.
             AppDatabase.Add(insert, "$icon_path",
                 string.IsNullOrWhiteSpace(agent.IconPath) ? null : agent.IconPath);
-            AppDatabase.Add(insert, "$invite_code", agent.InviteCode);
             AppDatabase.Add(insert, "$info_json", agent.InfoJson);
             AppDatabase.Add(insert, "$info_updated_at", agent.InfoUpdatedAt);
             // Position in the caller's list *is* the persisted order — reordering the sidebar

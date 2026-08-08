@@ -84,11 +84,6 @@ public sealed partial class AgentConfig : Common.ObservableObject
     [JsonPropertyName("iconPath")]
     public partial string? IconPath { get; set; }
 
-    /// <summary>Invite code submitted automatically if the agent's trust gate asks for onboarding.</summary>
-    [ObservableProperty]
-    [JsonPropertyName("inviteCode")]
-    public partial string? InviteCode { get; set; }
-
     /// <summary>Cached /info response JSON, persisted across restarts.</summary>
     [JsonPropertyName("infoJson")]
     public string? InfoJson { get; set; }

@@ -226,6 +226,126 @@ public sealed class AppDatabaseSchemaTests(TempDatabaseFixture fixture)
     }
 
     /// <summary>
+    /// v12 rebuilds <c>agents</c> to drop <c>invite_code</c>. A rebuild is the whole-table kind of
+    /// migration this repository treats as its highest risk, so this asserts the three things it
+    /// could plausibly get wrong: losing rows, losing a column the rebuild has to carry forward
+    /// by hand, and losing the <c>agents_delete_guard</c> trigger that <c>DROP TABLE</c> destroys.
+    ///
+    /// <para>The guard matters more than it looks. Nothing holds a foreign key to <c>agents</c> —
+    /// v4 chose triggers instead — so if the rebuild dropped it silently, deleting an agent would
+    /// simply start succeeding and leave exactly the orphaned sessions v4 exists to repair.</para>
+    /// </summary>
+    [Fact]
+    public async Task ApplyAsync_VersionElevenDatabase_DropsInviteCodeAndKeepsAgentsAndTheirGuard()
+    {
+        await using var initialized = await AppDatabase.OpenAsync();
+        await using var connection = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await AppDatabase.CreateSchemaAsync(connection);
+
+        // The v11 shape, replayed: the columns v3/v6/v7/v11 added, plus all three v4 guards. The
+        // two on `sessions` are not incidental detail — their bodies name `agents`, which is what
+        // makes the rebuild's ALTER TABLE RENAME fail if the migration leaves them in place.
+        await ExecuteAsync(connection, """
+            ALTER TABLE sessions ADD COLUMN mode TEXT NOT NULL DEFAULT 'safe';
+            ALTER TABLE agents ADD COLUMN icon_path TEXT NULL;
+            ALTER TABLE sessions ADD COLUMN has_custom_title INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE sessions ADD COLUMN unread_count INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE sessions ADD COLUMN requires_attention INTEGER NOT NULL DEFAULT 0;
+
+            CREATE TRIGGER sessions_agent_insert_guard
+            BEFORE INSERT ON sessions
+            FOR EACH ROW
+            WHEN NOT EXISTS (SELECT 1 FROM agents WHERE agents.id = NEW.agent_id)
+            BEGIN
+                SELECT RAISE(ABORT, 'session references a missing agent');
+            END;
+
+            CREATE TRIGGER sessions_agent_update_guard
+            BEFORE UPDATE OF agent_id ON sessions
+            FOR EACH ROW
+            WHEN NOT EXISTS (SELECT 1 FROM agents WHERE agents.id = NEW.agent_id)
+            BEGIN
+                SELECT RAISE(ABORT, 'session references a missing agent');
+            END;
+
+            CREATE TRIGGER agents_delete_guard
+            BEFORE DELETE ON agents
+            FOR EACH ROW
+            WHEN EXISTS (SELECT 1 FROM sessions WHERE sessions.agent_id = OLD.id)
+            BEGIN
+                SELECT RAISE(ABORT, 'delete agent sessions before deleting the agent');
+            END;
+
+            PRAGMA user_version = 11;
+
+            -- A populated invite_code is the case worth migrating: it is what a database written by
+            -- a build that did wire the column up would hold, and dropping the column is the only
+            -- thing that actually removes that plaintext credential from the file.
+            INSERT INTO agents (id, name, address, direct_url, invite_code, icon_path, info_json, sort_order)
+            VALUES
+                ('agent-b', 'Second', '0xbbb', 'http://b.test', 'SECRET-CODE', 'avatars/b.png', '{"skills":[]}', 1),
+                ('agent-a', 'First', '0xaaa', NULL, NULL, NULL, NULL, 0);
+
+            INSERT INTO sessions (id, agent_id, title, created_at, updated_at, sort_order, mode)
+            VALUES ('session-a', 'agent-a', 'Chat', 'now', 'now', 0, 'safe');
+            """);
+
+        await SchemaMigrator.ApplyAsync(connection);
+
+        Assert.Equal(SchemaMigrator.LatestVersion, (int)await ScalarLongAsync(connection, "PRAGMA user_version;"));
+        Assert.Equal(0, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM pragma_table_info('agents') WHERE name = 'invite_code';"));
+
+        // Every row survives, and every column the rebuild had to name explicitly comes with it —
+        // including icon_path, which v6 appended and a copy written from the v1 column list would
+        // have silently dropped.
+        Assert.Equal(2, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM agents;"));
+        Assert.Equal("avatars/b.png", await ScalarStringAsync(connection, "SELECT icon_path FROM agents WHERE id = 'agent-b';"));
+        Assert.Equal("http://b.test", await ScalarStringAsync(connection, "SELECT direct_url FROM agents WHERE id = 'agent-b';"));
+        Assert.Equal("""{"skills":[]}""", await ScalarStringAsync(connection, "SELECT info_json FROM agents WHERE id = 'agent-b';"));
+        Assert.Equal(1, await ScalarLongAsync(connection, "SELECT sort_order FROM agents WHERE id = 'agent-b';"));
+        Assert.Equal("First", await ScalarStringAsync(connection, "SELECT name FROM agents WHERE id = 'agent-a';"));
+
+        // The primary key still constrains the rebuilt table.
+        Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM pragma_index_list('agents') WHERE origin = 'pk';"));
+
+        // The guard came back, and still fires.
+        await using (var delete = connection.CreateCommand())
+        {
+            delete.CommandText = "DELETE FROM agents WHERE id = 'agent-a';";
+            var error = await Assert.ThrowsAsync<Microsoft.Data.Sqlite.SqliteException>(
+                () => delete.ExecuteNonQueryAsync());
+            Assert.Contains("delete agent sessions", error.Message, StringComparison.Ordinal);
+        }
+
+        // An agent with no conversations is still deletable — the guard must not have become a
+        // blanket refusal.
+        await ExecuteAsync(connection, "DELETE FROM agents WHERE id = 'agent-b';");
+        Assert.Equal(1, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM agents;"));
+
+        // The other half of v4's boundary: the sessions-side guards had to be dropped for the
+        // rename to succeed at all, so prove they were put back rather than quietly lost.
+        await using (var orphan = connection.CreateCommand())
+        {
+            orphan.CommandText = """
+                INSERT INTO sessions (id, agent_id, title, created_at, updated_at, sort_order, mode)
+                VALUES ('session-orphan', 'agent-gone', 'Orphan', 'now', 'now', 0, 'safe');
+                """;
+            var error = await Assert.ThrowsAsync<Microsoft.Data.Sqlite.SqliteException>(
+                () => orphan.ExecuteNonQueryAsync());
+            Assert.Contains("missing agent", error.Message, StringComparison.Ordinal);
+        }
+
+        await using (var repoint = connection.CreateCommand())
+        {
+            repoint.CommandText = "UPDATE sessions SET agent_id = 'agent-gone' WHERE id = 'session-a';";
+            var error = await Assert.ThrowsAsync<Microsoft.Data.Sqlite.SqliteException>(
+                () => repoint.ExecuteNonQueryAsync());
+            Assert.Contains("missing agent", error.Message, StringComparison.Ordinal);
+        }
+    }
+
+    /// <summary>
     /// v7 replaces the <c>^Conversation \d+$</c> title test with a stored flag. The backfill has to
     /// reproduce that predicate exactly, because it decides which existing conversations may still
     /// have their title overwritten by their next message — get it wrong in one direction and a
@@ -252,8 +372,13 @@ public sealed class AppDatabaseSchemaTests(TempDatabaseFixture fixture)
         await using var connection = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:");
         await connection.OpenAsync();
         await AppDatabase.CreateSchemaAsync(connection);
+        // Both columns matter: `mode` is v3's and `icon_path` is v6's own, so a database stamped at
+        // 6 has by definition run both. The fixture used to stamp 6 while skipping icon_path, which
+        // no real database can be — v12's rebuild names that column explicitly and is what surfaced
+        // the gap.
         await ExecuteAsync(connection, """
             ALTER TABLE sessions ADD COLUMN mode TEXT NOT NULL DEFAULT 'safe';
+            ALTER TABLE agents ADD COLUMN icon_path TEXT NULL;
             PRAGMA user_version = 6;
 
             INSERT INTO agents (id, name, address, sort_order)

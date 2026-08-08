@@ -101,6 +101,47 @@ public sealed class SessionRepositoryTests : IAsyncLifetime
         Assert.False(opened.RequiresAttention);
     }
 
+    /// <summary>
+    /// The sidebar's rolled-up badge for a collapsed agent. It has to come from an aggregate
+    /// rather than from the loaded rows, because a collapsed branch's conversations are never
+    /// fetched — which is exactly the case the badge exists for.
+    /// </summary>
+    [Fact]
+    public async Task GetAgentAttentionAsync_RollsUpPerAgent_AndOmitsAgentsWithNothingToReport()
+    {
+        var quiet = Summary("session-quiet", "Quiet", "2026-01-01T00:00:00Z");
+        var unread = Summary("session-unread", "Unread", "2026-01-02T00:00:00Z");
+        var alsoUnread = Summary("session-unread-2", "Unread too", "2026-01-03T00:00:00Z");
+        var otherAgent = Summary("session-other", "Other agent", "2026-01-04T00:00:00Z");
+        otherAgent.AgentId = "agent-2";
+        // The shared fixture seeds only agent-1, and sessions carry a real FK to agents.
+        await InsertAgentAsync("agent-2", "Second agent", "0x2");
+
+        foreach (var session in new[] { quiet, unread, alsoUnread, otherAgent })
+            await _sessions.AppendSessionAsync(session, makeActive: false);
+
+        await _sessions.MarkUnreadAsync(unread.Id, requiresAttention: false);
+        await _sessions.MarkUnreadAsync(unread.Id, requiresAttention: false);
+        await _sessions.MarkUnreadAsync(alsoUnread.Id, requiresAttention: true);
+        await _sessions.MarkUnreadAsync(otherAgent.Id, requiresAttention: false);
+
+        var attention = await _sessions.GetAgentAttentionAsync();
+
+        // Summed across the agent's conversations, and attention is true when *any* of them wants
+        // an approval — the quiet conversation must not dilute either.
+        Assert.Equal(3, attention["agent-1"].UnreadCount);
+        Assert.True(attention["agent-1"].RequiresAttention);
+        Assert.Equal(1, attention["agent-2"].UnreadCount);
+        Assert.False(attention["agent-2"].RequiresAttention);
+
+        // An all-read sidebar is the common case and must cost an empty dictionary, not a row of
+        // zeroes per agent — the rollup badge keys off presence in this map.
+        await _sessions.ClearAttentionAsync(unread.Id);
+        await _sessions.ClearAttentionAsync(alsoUnread.Id);
+        await _sessions.ClearAttentionAsync(otherAgent.Id);
+        Assert.Empty(await _sessions.GetAgentAttentionAsync());
+    }
+
     [Fact]
     public async Task LoadAsync_SameSortOrder_OrdersByUpdatedAtDescending()
     {
@@ -477,6 +518,17 @@ public sealed class SessionRepositoryTests : IAsyncLifetime
         CreatedAt = "2026-01-01T00:00:00Z",
         UpdatedAt = updatedAt,
     };
+
+    private static async Task InsertAgentAsync(string id, string name, string address)
+    {
+        await using var connection = await AppDatabase.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "INSERT INTO agents (id, name, address) VALUES ($id, $name, $address);";
+        AppDatabase.Add(command, "$id", id);
+        AppDatabase.Add(command, "$name", name);
+        AppDatabase.Add(command, "$address", address);
+        await command.ExecuteNonQueryAsync();
+    }
 
     private static async Task InsertSessionAsync(string id, string title, string updatedAt, int sortOrder)
     {

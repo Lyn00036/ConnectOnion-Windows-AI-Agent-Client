@@ -51,6 +51,27 @@ public sealed class AgentRepositoryTests
     }
 
     [Fact]
+    public async Task GetSelectedAgentAsync_LoadsOnlyTheSelectedFullRecord()
+    {
+        await _repository.SaveAsync(new AgentsState
+        {
+            Agents =
+            [
+                new AgentConfig { Id = "selected-one", Name = "Selected", Address = "0x1", InfoJson = "{\"model\":\"chosen\"}" },
+                new AgentConfig { Id = "not-selected", Name = "Other", Address = "0x2", InfoJson = "{\"model\":\"other\"}" },
+            ],
+            SelectedAgentId = "selected-one",
+        });
+
+        var selected = await _repository.GetSelectedAgentAsync();
+
+        Assert.NotNull(selected);
+        Assert.Equal("selected-one", selected.Id);
+        Assert.Contains("chosen", selected.InfoJson!, StringComparison.Ordinal);
+        Assert.Equal("not-selected", (await _repository.GetAgentAsync("not-selected"))!.Id);
+    }
+
+    [Fact]
     public async Task SaveLoadAndDelete_Agent_RoundTripsLifecycleAndAllFields()
     {
         var agent = new AgentConfig
@@ -60,7 +81,6 @@ public sealed class AgentRepositoryTests
             Address = "0x1234",
             DirectUrl = "https://agent.example.test",
             IconPath = "avatars/agent-crud.png",
-            InviteCode = "invite-code",
             InfoJson = "{\"name\":\"remote\"}",
             InfoUpdatedAt = "2026-07-13T00:00:00Z",
         };
@@ -77,7 +97,6 @@ public sealed class AgentRepositoryTests
         Assert.Equal(agent.Address, actual.Address);
         Assert.Equal(agent.DirectUrl, actual.DirectUrl);
         Assert.Equal(agent.IconPath, actual.IconPath);
-        Assert.Equal(agent.InviteCode, actual.InviteCode);
         Assert.Equal(agent.InfoJson, actual.InfoJson);
         Assert.Equal(agent.InfoUpdatedAt, actual.InfoUpdatedAt);
 
@@ -85,6 +104,57 @@ public sealed class AgentRepositoryTests
         var deleted = await _repository.LoadAsync();
         Assert.Empty(deleted.Agents);
         Assert.Null(deleted.SelectedAgentId);
+    }
+
+    /// <summary>
+    /// <c>agents.invite_code</c> was removed by schema v12 and must not come back. An invite code
+    /// is a trust credential; persisting it in plaintext would put a usable secret in the same
+    /// file whose other secret is DPAPI-protected specifically so that copying the database yields
+    /// nothing. It belongs in memory only, on <c>AgentConnectionService.InviteCode</c>.
+    ///
+    /// <para>Asserted rather than left to the migration: the old plumbing round-tripped correctly
+    /// and had a passing test for it, which is exactly why nothing flagged that no production code
+    /// ever populated it. This fails if the column is re-added.</para>
+    /// </summary>
+    [Fact]
+    public async Task InviteCodeColumn_IsAbsentFromTheAgentsTable()
+    {
+        await using var connection = await AppDatabase.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText =
+            "SELECT COUNT(*) FROM pragma_table_info('agents') WHERE name = 'invite_code';";
+        Assert.Equal(0L, Assert.IsType<long>(await command.ExecuteScalarAsync()));
+    }
+
+    /// <summary>
+    /// The v12 rebuild drops and recreates <c>agents</c>, which destroys the BEFORE DELETE trigger
+    /// v4 put there. Losing it would be silent — deletes would simply start succeeding — and the
+    /// result is the orphaned-session state v4 exists to repair.
+    /// </summary>
+    [Fact]
+    public async Task AgentDeleteGuard_SurvivesTheV12TableRebuild()
+    {
+        await _repository.AppendAgentAsync(
+            new AgentConfig { Id = "agent-guarded", Name = "Guarded", Address = "0xguarded" },
+            makeSelected: true);
+        await new SessionRepository().AppendSessionAsync(
+            new SessionSummary
+            {
+                Id = "session-guarded",
+                AgentId = "agent-guarded",
+                Title = "Guarded",
+                CreatedAt = "2026-01-01T00:00:00Z",
+                UpdatedAt = "2026-01-01T00:00:00Z",
+            },
+            makeActive: false);
+
+        await using var connection = await AppDatabase.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM agents WHERE id = 'agent-guarded';";
+
+        var error = await Assert.ThrowsAsync<Microsoft.Data.Sqlite.SqliteException>(
+            () => command.ExecuteNonQueryAsync());
+        Assert.Contains("delete agent sessions", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]

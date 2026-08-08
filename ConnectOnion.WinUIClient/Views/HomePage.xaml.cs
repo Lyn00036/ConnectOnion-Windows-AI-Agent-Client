@@ -24,6 +24,8 @@ public sealed partial class HomeAgentItem : Common.ObservableObject
     public string ShortAddress { get; set; } = "";
     public string FullAddress { get; set; } = "";
     public string ConnectionSummary { get; set; } = "";
+    public string Address { get; set; } = "";
+    public string? DirectUrl { get; set; }
     public string LastUsedLabel { get; set; } = "Not used yet";
     public string? IconPath { get; set; }
     public bool IsSelected { get; set; }
@@ -96,6 +98,7 @@ public sealed partial class HomeAgentItem : Common.ObservableObject
 /// </summary>
 public sealed partial class HomePage : Page, IReloadablePage, IShutdownDisarmable, IDisposable
 {
+    private const int MaxEagerPresenceProbes = 32;
     // The wide content is 1120px plus its 48px margins on both sides. This threshold must use the
     // page viewport, not AdaptiveTrigger's top-level window width: during startup the shell can
     // restore from a wider presenter before the content Frame receives its final size, and in
@@ -216,9 +219,16 @@ public sealed partial class HomePage : Page, IReloadablePage, IShutdownDisarmabl
         var sessionsState = await AppServices.Sessions.LoadAsync(cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         Agents.Clear();
+        var latestSessionByAgent = sessionsState.Sessions
+            .GroupBy(session => session.AgentId, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => group.MaxBy(session => session.UpdatedAt, StringComparer.Ordinal),
+                StringComparer.Ordinal);
 
-        foreach (var agent in state.Agents)
+        for (var index = 0; index < state.Agents.Count; index++)
         {
+            var agent = state.Agents[index];
             var item = new HomeAgentItem
             {
                 Id = agent.Id,
@@ -227,11 +237,10 @@ public sealed partial class HomePage : Page, IReloadablePage, IShutdownDisarmabl
                 ShortAddress = ShortenAddress(agent),
                 FullAddress = GetAddress(agent),
                 ConnectionSummary = BuildConnectionSummary(agent),
+                Address = agent.Address,
+                DirectUrl = agent.DirectUrl,
                 LastUsedLabel = FormatLastUsed(
-                    sessionsState.Sessions
-                        .Where(session => session.AgentId == agent.Id)
-                        .OrderByDescending(session => session.UpdatedAt, StringComparer.Ordinal)
-                        .FirstOrDefault()?.UpdatedAt),
+                    latestSessionByAgent.TryGetValue(agent.Id, out var latest) ? latest?.UpdatedAt : null),
                 IconPath = agent.IconPath,
                 IsInteractionEnabled = true,
                 IsSelected = agent.Id == state.SelectedAgentId,
@@ -239,7 +248,7 @@ public sealed partial class HomePage : Page, IReloadablePage, IShutdownDisarmabl
             ApplyPresence(item);
             Agents.Add(item);
 
-            _ = _presence.EnsureCheckedAsync(agent);
+            if (index < MaxEagerPresenceProbes) _ = _presence.EnsureCheckedAsync(agent);
         }
 
         // Rows created after the last SizeChanged would otherwise sit at their constructed
@@ -247,6 +256,14 @@ public sealed partial class HomePage : Page, IReloadablePage, IShutdownDisarmabl
         ApplyRowDensity(PageRoot.ActualWidth);
 
         Bindings.Update();
+    }
+
+    private void AgentList_ElementPrepared(
+        ItemsRepeater sender,
+        ItemsRepeaterElementPreparedEventArgs args)
+    {
+        if (sender.ItemsSourceView?.GetAt(args.Index) is not HomeAgentItem item) return;
+        _ = _presence.EnsureCheckedAsync(item.Id, item.Address, item.DirectUrl);
     }
 
     private void OnPresenceChanged(string agentId)

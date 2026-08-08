@@ -20,6 +20,7 @@ namespace ConnectOnion.WinUIClient.Controls;
 /// </summary>
 public sealed partial class SessionSearchOverlay : UserControl, IDisposable
 {
+    private const int MaxResults = 100;
     private FrameworkElement? _focusReturnTarget;
 
     /// <summary>Debounce for the transcript search. Stopped in <see cref="Hide"/> — the dispatcher
@@ -83,7 +84,7 @@ public sealed partial class SessionSearchOverlay : UserControl, IDisposable
         UpdateModalSize(ActualWidth, ActualHeight);
         DispatcherQueue.TryEnqueue(() => SearchBox.Focus(FocusState.Programmatic));
 
-        var items = await LoadSearchItemsAsync();
+        var items = await LoadRecentItemsAsync();
         if (!IsOpen) return;
 
         Vm.Reset(items);
@@ -106,13 +107,13 @@ public sealed partial class SessionSearchOverlay : UserControl, IDisposable
         _focusReturnTarget = null;
     }
 
-    private static async Task<IReadOnlyList<SessionSearchItem>> LoadSearchItemsAsync()
+    private static async Task<IReadOnlyList<SessionSearchItem>> LoadRecentItemsAsync()
     {
         try
         {
             // Names only, and never written back — the thin read skips every agent's /info blob.
             var agentsTask = AppServices.Agents.LoadSummariesAsync();
-            var sessionsTask = AppServices.Sessions.LoadAsync();
+            var sessionsTask = AppServices.Sessions.LoadRecentAsync(MaxResults);
             await Task.WhenAll(agentsTask, sessionsTask);
 
             var agentNames = agentsTask.Result.Agents.ToDictionary(
@@ -120,7 +121,7 @@ public sealed partial class SessionSearchOverlay : UserControl, IDisposable
                 agent => agent.Name,
                 StringComparer.Ordinal);
 
-            return sessionsTask.Result.Sessions
+            return sessionsTask.Result
                 .Select(session => new SessionSearchItem
                 {
                     SessionId = session.Id,
@@ -153,15 +154,15 @@ public sealed partial class SessionSearchOverlay : UserControl, IDisposable
 
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
+        _contentSearchCts?.Cancel();
         Vm.SearchText = SearchBox.Text;
         var queryLength = SearchBox.Text.Trim().Length;
         ShortTranscriptSearchHint.Visibility = queryLength is > 0 and < 3
             ? Visibility.Visible
             : Visibility.Collapsed;
         SelectFirstResult();
-        // Titles filter synchronously from the in-memory catalog so the list responds on the
-        // keystroke; searching what was actually *said* needs the database, so it trails behind
-        // on a debounce and folds its results in when they arrive.
+        // The bounded recent window still filters synchronously; the complete title/agent and
+        // transcript search trails behind one shared debounce.
         RestartContentSearchDebounce();
     }
 
@@ -173,7 +174,7 @@ public sealed partial class SessionSearchOverlay : UserControl, IDisposable
     private void RestartContentSearchDebounce()
     {
         _contentSearchDebounce.Stop();
-        if (SearchBox.Text.Trim().Length < 3) return;
+        if (SearchBox.Text.Trim().Length == 0) return;
         _contentSearchDebounce.Start();
     }
 
@@ -191,13 +192,34 @@ public sealed partial class SessionSearchOverlay : UserControl, IDisposable
 
         try
         {
-            var matches = await AppServices.Conversations
-                .SearchMessageContentAsync(query, ct: token)
-                .ConfigureAwait(true);
+            var titleTask = AppServices.Sessions.SearchByTitleOrAgentAsync(query, MaxResults, token);
+            var contentTask = query.Trim().Length >= 3
+                ? AppServices.Conversations.SearchMessageContentAsync(query, MaxResults, token)
+                : Task.FromResult<IReadOnlyDictionary<string, string>>(
+                    new Dictionary<string, string>(StringComparer.Ordinal));
+            await Task.WhenAll(titleTask, contentTask).ConfigureAwait(true);
+
+            var titleSessions = await titleTask.ConfigureAwait(true);
+            var matches = await contentTask.ConfigureAwait(true);
+            var titleIds = titleSessions.Select(session => session.Id).ToHashSet(StringComparer.Ordinal);
+            var missingIds = matches.Keys.Where(id => !titleIds.Contains(id)).Take(MaxResults).ToList();
+            var contentSessions = missingIds.Count == 0
+                ? Array.Empty<ConnectOnion.WinUIClient.Models.SessionSummary>()
+                : await AppServices.Sessions.LoadSessionsByIdsAsync(missingIds, token).ConfigureAwait(true);
+
+            if (token.IsCancellationRequested || !IsOpen) return;
+            var agentNames = (await AppServices.Agents.LoadSummariesAsync(token).ConfigureAwait(true))
+                .Agents.ToDictionary(agent => agent.Id, agent => agent.Name, StringComparer.Ordinal);
+            var items = titleSessions
+                .Concat(contentSessions)
+                .DistinctBy(session => session.Id, StringComparer.Ordinal)
+                .Take(MaxResults)
+                .Select(session => ToSearchItem(session, agentNames))
+                .ToList();
 
             if (token.IsCancellationRequested || !IsOpen) return;
             // The view model re-checks the query against its own SearchText and drops a stale one.
-            Vm.ApplyContentMatches(query, matches);
+            Vm.ApplySearchResults(query, items, matches);
             SelectFirstResult();
         }
         catch (OperationCanceledException)
@@ -205,6 +227,18 @@ public sealed partial class SessionSearchOverlay : UserControl, IDisposable
             // Superseded by a newer keystroke.
         }
     }
+
+    private static SessionSearchItem ToSearchItem(
+        ConnectOnion.WinUIClient.Models.SessionSummary session,
+        IReadOnlyDictionary<string, string> agentNames)
+        => new()
+        {
+            SessionId = session.Id,
+            AgentId = session.AgentId,
+            Title = session.Title,
+            AgentName = agentNames.TryGetValue(session.AgentId, out var name) ? name : "",
+            UpdatedAt = session.UpdatedAt,
+        };
 
     private void SelectFirstResult()
         => ResultsList.SelectedIndex = Vm.Results.Count > 0 ? 0 : -1;

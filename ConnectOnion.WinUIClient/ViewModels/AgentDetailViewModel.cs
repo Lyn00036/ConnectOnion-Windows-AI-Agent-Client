@@ -337,14 +337,16 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
         // taking an early return for a missing agent or a fresh cache hit.
         IsLoading = false;
 
-        var prefs = await _preferences.LoadAsync();
+        var prefsTask = _preferences.LoadAsync();
+        var agentTask = _agents.GetSelectedAgentAsync();
+        await Task.WhenAll(prefsTask, agentTask);
+        var prefs = prefsTask.Result;
         if (generation != _loadGeneration) return;
         EnterToSend = prefs.EnterToSend;
 
-        var agents = await _agents.LoadAsync();
         if (generation != _loadGeneration) return;
 
-        var selected = agents.Agents.FirstOrDefault(a => a.Id == agents.SelectedAgentId);
+        var selected = agentTask.Result;
 
         Agent = selected;
         if (Agent is null) return;
@@ -438,15 +440,16 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
         {
             using var doc = JsonDocument.Parse(json);
             FlattenObject(doc.RootElement, "", InfoFields);
+            AcceptedInputs = EndpointResolver.ParseAcceptedInputs(doc.RootElement);
+            Skills = EndpointResolver.ParseSkills(doc.RootElement);
             RaiseProfileSummaryProperties();
         }
         catch
         {
             // Corrupt cache: leave fields empty, a refresh will fix it.
+            AcceptedInputs = null;
+            Skills = [];
         }
-
-        AcceptedInputs = EndpointResolver.ParseAcceptedInputsFromInfoJson(json);
-        Skills = EndpointResolver.ParseSkillsFromInfoJson(json);
     }
 
     /// <summary>

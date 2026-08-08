@@ -43,6 +43,13 @@ public sealed record SessionPage(IReadOnlyList<SessionSummary> Sessions, bool Ha
 }
 
 /// <summary>
+/// One agent's rolled-up unread state, across every conversation it owns.
+/// </summary>
+/// <param name="UnreadCount">Total unread across the agent's conversations.</param>
+/// <param name="RequiresAttention">True when any of them is waiting on an approval.</param>
+public readonly record struct AgentAttention(int UnreadCount, bool RequiresAttention);
+
+/// <summary>
 /// Local SQLite persistence for conversation index entries. Port of <c>sessionStorage.ts</c>.
 ///
 /// <para><b>Prefer a targeted read over <see cref="LoadAsync"/>.</b> Most callers want one row by
@@ -173,6 +180,37 @@ public sealed class SessionRepository : IConversationAttentionStore
         if (await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) == 0) return;
         StorageRevision.Bump();
         SessionsChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// Unread totals per agent, for the sidebar's collapsed-branch rollup badge.
+    ///
+    /// <para>An aggregate rather than a sum over loaded rows, because the sidebar fetches
+    /// conversations only for <i>expanded</i> agents — the branches that need this badge most are
+    /// exactly the ones whose rows were never read. Returns only agents that have something to
+    /// report, so the common case of an all-read sidebar is an empty dictionary.</para>
+    /// </summary>
+    public async Task<IReadOnlyDictionary<string, AgentAttention>> GetAgentAttentionAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var totals = new Dictionary<string, AgentAttention>(StringComparer.Ordinal);
+        await using var connection = await AppDatabase.OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT agent_id, SUM(unread_count), MAX(requires_attention)
+            FROM sessions
+            WHERE unread_count > 0 OR requires_attention <> 0
+            GROUP BY agent_id;
+            """;
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            var agentId = reader.GetString(0);
+            if (string.IsNullOrWhiteSpace(agentId)) continue;
+            totals[agentId] = new AgentAttention(reader.GetInt32(1), reader.GetInt64(2) != 0);
+        }
+
+        return totals;
     }
 
     /// <summary>Marks a conversation read when its chat surface is opened.</summary>
@@ -472,6 +510,74 @@ public sealed class SessionRepository : IConversationAttentionStore
         AppDatabase.Add(command, "$limit", limit);
 
         var sessions = new List<SessionSummary>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            sessions.Add(ReadSummary(reader, pinnedIds));
+        return sessions;
+    }
+
+    /// <summary>Bounded shell search across conversation titles and agent names. Unlike the old
+    /// overlay path this never materializes the complete session index merely to filter it on the
+    /// UI thread.</summary>
+    public async Task<IReadOnlyList<SessionSummary>> SearchByTitleOrAgentAsync(
+        string query,
+        int limit = 100,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
+        if (string.IsNullOrWhiteSpace(query)) return Array.Empty<SessionSummary>();
+
+        await using var connection = await AppDatabase.OpenAsync(cancellationToken).ConfigureAwait(false);
+        var pinnedIds = await LoadPinnedIdsAsync(connection).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT s.id, s.agent_id, s.title, s.remote_session_id, s.last_processed_event_id,
+                   s.created_at, s.updated_at, s.mode, s.has_custom_title,
+                   s.unread_count, s.requires_attention
+            FROM sessions AS s
+            LEFT JOIN agents AS a ON a.id = s.agent_id
+            WHERE s.title LIKE $pattern ESCAPE '\'
+               OR a.name LIKE $pattern ESCAPE '\'
+            ORDER BY s.updated_at DESC, s.id DESC
+            LIMIT $limit;
+            """;
+        var escaped = query.Trim()
+            .Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("%", "\\%", StringComparison.Ordinal)
+            .Replace("_", "\\_", StringComparison.Ordinal);
+        AppDatabase.Add(command, "$pattern", $"%{escaped}%");
+        AppDatabase.Add(command, "$limit", limit);
+
+        var sessions = new List<SessionSummary>(limit);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            sessions.Add(ReadSummary(reader, pinnedIds));
+        return sessions;
+    }
+
+    /// <summary>Loads a bounded set of transcript-search hits in one statement, avoiding one
+    /// <c>GetSessionAsync</c> round trip per FTS result.</summary>
+    public async Task<IReadOnlyList<SessionSummary>> LoadSessionsByIdsAsync(
+        IReadOnlyCollection<string> sessionIds,
+        CancellationToken cancellationToken = default)
+    {
+        if (sessionIds.Count == 0) return Array.Empty<SessionSummary>();
+
+        await using var connection = await AppDatabase.OpenAsync(cancellationToken).ConfigureAwait(false);
+        var pinnedIds = await LoadPinnedIdsAsync(connection).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            SELECT {SummaryColumns}
+            FROM sessions
+            WHERE id IN (SELECT value FROM json_each($ids))
+            ORDER BY updated_at DESC, id DESC;
+            """;
+        AppDatabase.Add(
+            command,
+            "$ids",
+            JsonSerializer.Serialize(sessionIds.Distinct(StringComparer.Ordinal).ToList(), AppJsonContext.Default.ListString));
+
+        var sessions = new List<SessionSummary>(sessionIds.Count);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             sessions.Add(ReadSummary(reader, pinnedIds));
