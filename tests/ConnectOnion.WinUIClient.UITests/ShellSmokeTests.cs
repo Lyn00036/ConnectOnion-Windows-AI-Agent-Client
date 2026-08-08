@@ -37,6 +37,43 @@ public sealed partial class ShellSmokeTests
         Assert.NotNull(WaitForDescendant(window, "SettingsButton"));
     }
 
+    [Fact]
+    public void Launch_StartupFailure_ShowsRecoveryMessageAndExitsCleanly()
+    {
+        using var launched = LaunchApp(
+            handleFirstRunDialog: false,
+            new Dictionary<string, string>
+            {
+                ["CONNECTONION_UI_STARTUP_FAILURE"] = "1",
+            });
+        if (launched is null) return;
+
+        Assert.Contains("ConnectOnion", launched.Window.Title, StringComparison.OrdinalIgnoreCase);
+        Assert.True(
+            launched.Window.Title.Contains("start", StringComparison.OrdinalIgnoreCase)
+            || launched.Window.Title.Contains("启动", StringComparison.Ordinal),
+            $"unexpected startup recovery title: {launched.Window.Title}");
+
+        var buttons = launched.Window.FindAllDescendants(
+            query => query.ByControlType(FlaUI.Core.Definitions.ControlType.Button));
+        Assert.NotEmpty(buttons);
+        var dismiss = buttons.FirstOrDefault(button =>
+                          string.Equals(
+                              button.Properties.Name.ValueOrDefault,
+                              "No",
+                              StringComparison.OrdinalIgnoreCase)
+                          || string.Equals(
+                              button.Properties.Name.ValueOrDefault,
+                              "否",
+                              StringComparison.Ordinal))
+                      ?? buttons[^1];
+        dismiss.AsButton().Invoke();
+
+        Assert.True(
+            WaitUntil(() => launched.Process.HasExited),
+            "the process did not exit after the startup recovery message was dismissed");
+    }
+
     /// <summary>
     /// Clicking the sidebar's fixed Settings row shows the settings overlay.
     /// </summary>
