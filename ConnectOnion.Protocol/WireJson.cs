@@ -46,11 +46,22 @@ public static class WireJson
         ArgumentNullException.ThrowIfNull(message);
 
         var buffer = new ArrayBufferWriter<byte>();
-        using (var writer = new Utf8JsonWriter(buffer, Options))
-        {
-            WriteObject(writer, message);
-        }
+        WriteTo(buffer, message);
         return buffer.WrittenSpan.ToArray();
+    }
+
+    /// <summary>Writes a frame into caller-owned storage. The WebSocket path uses this overload so
+    /// it can send <see cref="ArrayBufferWriter{T}.WrittenMemory"/> directly instead of copying a
+    /// potentially multi-megabyte attachment frame into a second byte array.</summary>
+    internal static void WriteTo(
+        IBufferWriter<byte> destination,
+        IReadOnlyDictionary<string, object?> message)
+    {
+        ArgumentNullException.ThrowIfNull(destination);
+        ArgumentNullException.ThrowIfNull(message);
+
+        using var writer = new Utf8JsonWriter(destination, Options);
+        WriteObject(writer, message);
     }
 
     /// <summary>

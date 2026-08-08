@@ -39,4 +39,19 @@ public sealed class BufferedEventCompactionTests
         const string json = """{"type":"tool_call","name":"bash","arguments":{"command":"echo ok"}}""";
         Assert.Equal(json, AgentConnectionService.BufferedEventJson(WireMessage.Parse(json)));
     }
+
+    [Fact]
+    public void ToolResult_CapsUnboundedPayload_ButKeepsProjectionFields()
+    {
+        var huge = new string('x', 20_000);
+        var frame = WireMessage.Parse($$"""{"type":"tool_result","tool_id":"one","status":"success","result":"{{huge}}"}""");
+
+        var compact = AgentConnectionService.BufferedEventJson(frame);
+        using var parsed = JsonDocument.Parse(compact);
+
+        Assert.Equal("one", parsed.RootElement.GetProperty("tool_id").GetString());
+        Assert.Equal("success", parsed.RootElement.GetProperty("status").GetString());
+        Assert.True(parsed.RootElement.GetProperty("result").GetString()!.Length < huge.Length);
+        Assert.Contains("truncated", compact, StringComparison.Ordinal);
+    }
 }

@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
@@ -693,12 +694,16 @@ public sealed class AgentConnectionService : IAsyncDisposable
                 frame.Write(buffer, 0, result.Count);
                 if (!result.EndOfMessage) continue;
 
-                // Decode once after the complete frame is present. Decoding each WebSocket
-                // fragment independently corrupts a UTF-8 code point split across fragments.
-                var json = Encoding.UTF8.GetString(
+                // JSON is already UTF-8 on the wire. Parse this buffer in place while it remains
+                // owned by the loop; turning an 80 MiB frame into a UTF-16 string allocated up to
+                // another 160 MiB before JsonDocument copied it back into UTF-8 storage.
+                var json = new ReadOnlyMemory<byte>(
                     frame.GetBuffer(),
                     0,
                     checked((int)frame.Length));
+                _lastActivityUtc = DateTime.UtcNow;
+                await HandleMessageAsync(json, ct).ConfigureAwait(false);
+
                 if (frame.Capacity > RetainedIncomingFrameCapacityBytes)
                 {
                     frame.Dispose();
@@ -708,8 +713,6 @@ public sealed class AgentConnectionService : IAsyncDisposable
                 {
                     frame.SetLength(0);
                 }
-                _lastActivityUtc = DateTime.UtcNow;
-                await HandleMessageAsync(json, ct).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException)
@@ -727,7 +730,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
     }
 
     // Port of _handleMessage: dispatch on the frame's type discriminator.
-    private async Task HandleMessageAsync(string json, CancellationToken ct)
+    private async Task HandleMessageAsync(ReadOnlyMemory<byte> json, CancellationToken ct)
     {
         JsonDocument document;
         try { document = WireMessage.ParseDocument(json); }
@@ -801,7 +804,8 @@ public sealed class AgentConnectionService : IAsyncDisposable
                         msg.Type,
                         DescribeEvent(msg),
                         eventId,
-                        BufferedEventJson(msg)));
+                        BufferedEventJson(msg),
+                        EventTimestamp(msg.Root)));
                     return;
                 }
 
@@ -862,7 +866,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
                     var eventId = msg.GetString("id");
                     if (!string.IsNullOrEmpty(eventId)) LastProcessedEventId = eventId;
                     StreamEvent?.Invoke(new AgentStreamEvent(
-                        msg.Type, DescribeEvent(msg), eventId, msg.Root.GetRawText()));
+                        msg.Type, DescribeEvent(msg), eventId, msg.Root.GetRawText(), EventTimestamp(msg.Root)));
                     ModeChanged?.Invoke(new ModeChangedEvent(mode, msg.GetString("triggered_by")));
                     return;
                 }
@@ -890,6 +894,7 @@ public sealed class AgentConnectionService : IAsyncDisposable
     internal static string BufferedEventJson(WireMessage msg)
     {
         if (msg.Type is "llm_call" or "llm_result") return CompactLlmEvent(msg);
+        if (msg.Type == "tool_result") return CompactToolResult(msg);
         if (msg.Type != "session_sync") return msg.Root.GetRawText();
 
         var compact = new Dictionary<string, object?>
@@ -910,6 +915,30 @@ public sealed class AgentConnectionService : IAsyncDisposable
             compact["session"] = sessionState;
         }
 
+        return WireJson.Serialize(compact);
+    }
+
+    private static string CompactToolResult(WireMessage msg)
+    {
+        const int maxRetainedResultChars = 8 * 1024;
+        var compact = new Dictionary<string, object?> { ["type"] = msg.Type };
+        foreach (var name in new[]
+                 {
+                     "id", "ts", "tool_id", "call_id", "name", "tool", "status",
+                     "timing_ms", "duration_ms",
+                 })
+        {
+            CopyScalar(msg.Root, compact, name);
+        }
+
+        foreach (var name in new[] { "result", "message", "error" })
+        {
+            var value = msg.GetString(name);
+            if (value is null) continue;
+            compact[name] = value.Length <= maxRetainedResultChars
+                ? value
+                : value[..maxRetainedResultChars] + "\n… (truncated)";
+        }
         return WireJson.Serialize(compact);
     }
 
@@ -959,6 +988,13 @@ public sealed class AgentConnectionService : IAsyncDisposable
             _ => null,
         };
     }
+
+    private static double? EventTimestamp(JsonElement root)
+        => root.TryGetProperty("ts", out var value)
+           && value.ValueKind == JsonValueKind.Number
+           && value.TryGetDouble(out var timestamp)
+            ? timestamp
+            : null;
 
     private static string DescribeEvent(WireMessage msg) => msg.Type switch
     {
@@ -1113,8 +1149,9 @@ public sealed class AgentConnectionService : IAsyncDisposable
 
     private async Task SendJsonAsync(Dictionary<string, object?> message, CancellationToken ct)
     {
-        var bytes = WireJson.SerializeToUtf8Bytes(message);
-        await _ws!.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, ct)
+        var bytes = new ArrayBufferWriter<byte>();
+        WireJson.WriteTo(bytes, message);
+        await _ws!.SendAsync(bytes.WrittenMemory, WebSocketMessageType.Text, true, ct)
             .ConfigureAwait(false);
     }
 
