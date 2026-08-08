@@ -51,6 +51,50 @@ public sealed class NotificationPolicyTests
         Assert.Equal("viewing approval", decision.Reason);
     }
 
+    /// <summary>
+    /// <c>MarkUnread</c> is what separates "do not interrupt me" from "do not record this". Only
+    /// the two viewing branches mean the latter; every other suppression must leave the sidebar
+    /// badge intact, which is the whole reason the flag exists.
+    /// </summary>
+    [Theory]
+    [InlineData("notifications disabled")]
+    [InlineData("type disabled")]
+    public void Decide_SuppressedBySettings_StillMarksUnread(string expectedReason)
+    {
+        var settings = Settings(enable: expectedReason == "type disabled");
+        if (expectedReason == "type disabled") settings.NotifyAgentReplies = false;
+
+        var decision = _policy.Decide(Request(), new FakePresence(), settings);
+
+        Assert.Equal(NotificationChannel.None, decision.Channel);
+        Assert.Equal(expectedReason, decision.Reason);
+        Assert.True(decision.MarkUnread);
+    }
+
+    [Fact]
+    public void Decide_ViewingTargetConversation_MarksNothingUnread()
+    {
+        var presence = new FakePresence { ViewedConversationId = "conversation-1" };
+
+        var decision = _policy.Decide(Request(), presence, Settings());
+
+        Assert.False(decision.MarkUnread);
+    }
+
+    /// <summary>Viewing is checked ahead of the settings switches, so a user with notifications
+    /// off does not accumulate unread counts for the conversation they are reading — nothing on
+    /// that page would clear a badge it never earned by being away from it.</summary>
+    [Fact]
+    public void Decide_ViewingTargetWithNotificationsDisabled_PrefersTheViewingVerdict()
+    {
+        var presence = new FakePresence { ViewedConversationId = "conversation-1" };
+
+        var decision = _policy.Decide(Request(), presence, Settings(enable: false));
+
+        Assert.Equal("viewing target conversation", decision.Reason);
+        Assert.False(decision.MarkUnread);
+    }
+
     [Fact]
     public void Decide_ForegroundOnAnotherView_ReturnsInAppNotification()
     {

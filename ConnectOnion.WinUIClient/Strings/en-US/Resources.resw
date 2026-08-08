@@ -957,4 +957,5 @@
   <data name="DeleteConversationFailed" xml:space="preserve"><value>The conversation could not be deleted. Please try again.</value></data>
   <data name="SidebarRequiresAttention" xml:space="preserve"><value>Approval required</value></data>
   <data name="SidebarUnreadCount" xml:space="preserve"><value>{0} unread</value></data>
+  <data name="SidebarOpenAgent" xml:space="preserve"><value>Open {0}</value></data>
 </root>

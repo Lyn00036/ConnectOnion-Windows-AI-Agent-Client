@@ -957,4 +957,5 @@
   <data name="DeleteConversationFailed" xml:space="preserve"><value>无法删除该会话，请重试。</value></data>
   <data name="SidebarRequiresAttention" xml:space="preserve"><value>需要批准</value></data>
   <data name="SidebarUnreadCount" xml:space="preserve"><value>{0} 条未读</value></data>
+  <data name="SidebarOpenAgent" xml:space="preserve"><value>打开 {0}</value></data>
 </root>
