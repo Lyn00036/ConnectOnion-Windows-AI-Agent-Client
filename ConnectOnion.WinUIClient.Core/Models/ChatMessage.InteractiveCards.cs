@@ -50,6 +50,7 @@ public sealed partial class ChatMessage
     /// <para><c>[JsonIgnore]</c> — this is a view preference for the current session, not part
     /// of what a conversation replays as. Defaults to true (see the constructor).</para></summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(InteractiveAccessibilityName))]
     [JsonIgnore]
     public partial bool IsInteractiveCardExpanded { get; set; }
 

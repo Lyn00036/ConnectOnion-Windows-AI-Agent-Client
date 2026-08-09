@@ -31,6 +31,7 @@ public enum EventStatus
 /// </summary>
 public sealed partial class ChatMessage : Common.ObservableObject
 {
+    private const string ConnectionErrorPrefix = "[connection error]";
     private bool _approvalExplainOpen;
 
     public ChatMessage()
@@ -67,6 +68,9 @@ public sealed partial class ChatMessage : Common.ObservableObject
     public ChatRole Role { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsConnectionError))]
+    [NotifyPropertyChangedFor(nameof(IsRegularAgentResponse))]
+    [NotifyPropertyChangedFor(nameof(ConnectionErrorText))]
     [JsonPropertyName("content")]
     public partial string Content { get; set; }
 
@@ -300,6 +304,21 @@ public sealed partial class ChatMessage : Common.ObservableObject
 
     [JsonIgnore]
     public bool IsAgent => Role == ChatRole.Agent;
+
+    /// <summary>A transport failure persisted as an agent bubble so the failed turn remains
+    /// visible in history. The prefix is a wire/storage marker; the view presents a localized
+    /// heading and only the useful detail that follows it.</summary>
+    [JsonIgnore]
+    public bool IsConnectionError => IsAgent
+        && Content.StartsWith(ConnectionErrorPrefix, StringComparison.OrdinalIgnoreCase);
+
+    [JsonIgnore]
+    public bool IsRegularAgentResponse => IsAgent && !IsConnectionError;
+
+    [JsonIgnore]
+    public string ConnectionErrorText => IsConnectionError
+        ? Content[ConnectionErrorPrefix.Length..].TrimStart()
+        : Content;
 
     [JsonIgnore]
     public bool IsEvent => Role == ChatRole.Event;
@@ -636,7 +655,8 @@ public sealed partial class ChatMessage : Common.ObservableObject
 
     [JsonIgnore]
     public string InteractiveAccessibilityName
-        => $"{EventEyebrow}: {EventTitle}. {InteractiveOutcomeText}.";
+        => $"{EventEyebrow}: {EventTitle}. {InteractiveOutcomeText}. "
+           + (IsInteractiveCardExpanded ? "Expanded." : "Collapsed.");
 
 
     /// <summary>

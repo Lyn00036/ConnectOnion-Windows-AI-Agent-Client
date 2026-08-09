@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using CommunityToolkit.Mvvm.Input;
 using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Services;
@@ -9,6 +11,8 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media.Animation;
+using Microsoft.UI.Xaml.Navigation;
 using Windows.System;
 
 namespace ConnectOnion.WinUIClient;
@@ -35,6 +39,8 @@ public sealed partial class MainWindow : Window
     private uint _sidebarResizePointerId;
     private bool _isSidebarResizing;
     private bool _skipNextNavigationSidebarRefresh;
+    private bool _isHistoryNavigationInProgress;
+    private ShellNavigationContext? _currentNavigationContext;
 
     public IRelayCommand OpenWindowCommand { get; }
     public IRelayCommand ExitFromTrayCommand { get; }
@@ -419,20 +425,68 @@ public sealed partial class MainWindow : Window
 
     private void BackCommand()
     {
-        if (ContentFrame.CanGoBack)
-        {
-            ContentFrame.GoBack();
-        }
+        NavigateHistory(backward: true);
     }
 
     private void Forward_Click(object sender, RoutedEventArgs e)
         => ForwardCommand();
 
     private void ForwardCommand()
+        => NavigateHistory(backward: false);
+
+    /// <summary>
+    /// Moves through Frame history after restoring the entity that the destination represented.
+    /// A page type alone is not enough: every conversation is a <see cref="ChatPage"/> and every
+    /// agent uses one cached <see cref="AgentDetailPage"/> instance, while their selected ids live
+    /// in SQLite. Restoring those ids before Frame creates the page keeps the sidebar, header and
+    /// transcript on the same historical destination.
+    /// </summary>
+    private async void NavigateHistory(bool backward)
     {
-        if (ContentFrame.CanGoForward)
+        if (_isHistoryNavigationInProgress) return;
+
+        _isHistoryNavigationInProgress = true;
+        try
         {
-            ContentFrame.GoForward();
+            var outgoingType = ContentFrame.CurrentSourcePageType;
+            var outgoingContext = _currentNavigationContext
+                ?? await CaptureNavigationContextAsync(outgoingType);
+            var history = backward ? ContentFrame.BackStack : ContentFrame.ForwardStack;
+
+            // A non-current agent or conversation can be deleted without resetting the visible
+            // page. Drop such stale history entries instead of reopening an entity-less page.
+            while (history.Count > 0)
+            {
+                var target = history[history.Count - 1];
+                if (!await RestoreNavigationContextAsync(target.SourcePageType, target.Parameter))
+                {
+                    history.RemoveAt(history.Count - 1);
+                    continue;
+                }
+
+                if (backward)
+                {
+                    ContentFrame.GoBack();
+                    ReplaceLatestHistoryEntry(ContentFrame.ForwardStack, outgoingType, outgoingContext);
+                }
+                else
+                {
+                    ContentFrame.GoForward();
+                    ReplaceLatestHistoryEntry(ContentFrame.BackStack, outgoingType, outgoingContext);
+                }
+                _currentNavigationContext = HistoryContext(target.Parameter);
+                return;
+            }
+        }
+        catch
+        {
+            // History is a convenience. A storage race or stale entry must leave the current page
+            // intact rather than surface an async-void exception through the WinUI dispatcher.
+        }
+        finally
+        {
+            _isHistoryNavigationInProgress = false;
+            UpdateNavigationButtons();
         }
     }
 
@@ -552,14 +606,18 @@ public sealed partial class MainWindow : Window
     /// <summary>Two-parameter shape kept because it is what <c>ShellSidebar.NavigationRequested</c>
     /// (an <c>Action&lt;Type, bool&gt;</c>) binds to — a method with an extra optional parameter
     /// does not convert to that delegate.</summary>
-    private void NavigateTo(Type page, bool forceReload = false)
+    internal void NavigateTo(Type page, bool forceReload = false)
         => NavigateTo(page, forceReload, parameter: null);
 
     /// <param name="parameter">Optional navigation parameter, read by the target page in
     /// <c>OnNavigatedTo</c>. Only reaches a page that is actually navigated to — the
     /// <see cref="Views.IReloadablePage"/> fast path below reloads the live page instead, and a
     /// page using this must therefore not depend on it arriving on every call.</param>
-    private async void NavigateTo(Type page, bool forceReload, object? parameter)
+    internal async void NavigateTo(
+        Type page,
+        bool forceReload,
+        object? parameter,
+        NavigationTransitionInfo? transitionInfo = null)
     {
         // Lightweight pages may reload in place. ChatPage intentionally does not implement
         // IReloadablePage: each conversation switch must destroy the old ListView and its native
@@ -568,6 +626,7 @@ public sealed partial class MainWindow : Window
             && ContentFrame.CurrentSourcePageType == page
             && ContentFrame.Content is Views.IReloadablePage reloadable)
         {
+            var targetContext = await CaptureNavigationContextAsync(page);
             CloseFindOverlay();
             // Selection is persisted before navigation is requested. Paint that new selection
             // before reloading the page: AgentDetailPage.ReloadAsync can wait on a remote /info
@@ -575,21 +634,115 @@ public sealed partial class MainWindow : Window
             // the entire request.
             try { await ShellSidebar.RefreshAsync(); }
             catch { /* best-effort sidebar refresh */ }
-            try { await reloadable.ReloadAsync(); }
+            try
+            {
+                await reloadable.ReloadAsync();
+                _currentNavigationContext = targetContext;
+            }
             catch { /* a failed reload leaves the page on its previous selection */ }
             return;
         }
 
         if (forceReload || ContentFrame.CurrentSourcePageType != page)
         {
-            ContentFrame.Navigate(page, parameter);
+            var outgoingType = ContentFrame.CurrentSourcePageType;
+            // Sidebar clicks persist their new selection before raising NavigationRequested. The
+            // repository therefore already describes the target here, not the page still on
+            // screen. Keep the visible page's last captured context for the outgoing history row.
+            var outgoingContext = _currentNavigationContext
+                ?? await CaptureNavigationContextAsync(outgoingType);
+            var targetContext = await CaptureNavigationContextAsync(page, parameter);
 
-            // Navigate pushes the old page onto the BackStack. When
-            // force-reloading, remove it so the old instance (with its
-            // ViewModel, WebSocket, and bindings) can be garbage collected.
-            if (forceReload && ContentFrame.BackStack.Count > 0)
-                ContentFrame.BackStack.RemoveAt(ContentFrame.BackStack.Count - 1);
+            if (transitionInfo is null)
+                ContentFrame.Navigate(page, targetContext);
+            else
+                ContentFrame.Navigate(page, targetContext, transitionInfo);
+
+            // Frame copied the parameter with which the outgoing page was first opened. That can
+            // be stale after an in-place agent reload, so replace the new history entry with a
+            // snapshot of the entity that was actually visible when the user left.
+            ReplaceLatestHistoryEntry(ContentFrame.BackStack, outgoingType, outgoingContext);
+            _currentNavigationContext = targetContext with { Payload = null };
+
+            // Keep the entry that Frame just added to BackStack. ChatPage disables navigation
+            // caching and disposes its native-heavy visual tree from OnNavigatedFrom, so retaining
+            // the lightweight PageStackEntry does not retain the old page. Removing that entry
+            // here used to leave CanGoBack/CanGoForward permanently false because every sidebar
+            // destination is requested with forceReload.
         }
+    }
+
+    private async System.Threading.Tasks.Task<ShellNavigationContext> CaptureNavigationContextAsync(
+        Type? page,
+        object? payload = null)
+    {
+        if (page == typeof(ChatPage))
+        {
+            var conversationId = await AppServices.Sessions.GetActiveSessionIdAsync();
+            var session = conversationId is null
+                ? null
+                : await AppServices.Sessions.GetSessionAsync(conversationId);
+            return new ShellNavigationContext(session?.AgentId, session?.Id, payload);
+        }
+
+        if (page == typeof(AgentDetailPage))
+        {
+            var agents = await AppServices.Agents.LoadSummariesAsync();
+            return new ShellNavigationContext(agents.SelectedAgentId, null, payload);
+        }
+
+        return new ShellNavigationContext(null, null, payload);
+    }
+
+    private static void ReplaceLatestHistoryEntry(
+        IList<PageStackEntry> history,
+        Type? page,
+        ShellNavigationContext context)
+    {
+        if (page is null || history.Count == 0) return;
+
+        var index = history.Count - 1;
+        var oldEntry = history[index];
+        history[index] = new PageStackEntry(page, context, oldEntry.NavigationTransitionInfo);
+    }
+
+    private static ShellNavigationContext HistoryContext(object? parameter)
+        => parameter is ShellNavigationContext context
+            ? context with { Payload = null }
+            : new ShellNavigationContext(null, null, null);
+
+    private async System.Threading.Tasks.Task<bool> RestoreNavigationContextAsync(
+        Type page,
+        object? parameter)
+    {
+        if (page == typeof(HomePage)) return true;
+        if (parameter is not ShellNavigationContext context) return false;
+
+        if (page == typeof(ChatPage))
+        {
+            if (context.ConversationId is null) return false;
+
+            var session = await AppServices.Sessions.GetSessionAsync(context.ConversationId);
+            if (session is null
+                || (context.AgentId is not null && session.AgentId != context.AgentId)) return false;
+
+            await AppServices.Agents.SetSelectedAgentAsync(session.AgentId);
+            await AppServices.Sessions.SetActiveSessionAsync(session.Id);
+            return true;
+        }
+
+        if (page == typeof(AgentDetailPage))
+        {
+            if (context.AgentId is null) return false;
+
+            var agents = await AppServices.Agents.LoadSummariesAsync();
+            if (agents.Agents.All(agent => agent.Id != context.AgentId)) return false;
+
+            await AppServices.Agents.SetSelectedAgentAsync(context.AgentId);
+            return true;
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -605,6 +758,7 @@ public sealed partial class MainWindow : Window
 
         ContentFrame.BackStack.Clear();
         ContentFrame.ForwardStack.Clear();
+        _currentNavigationContext = new ShellNavigationContext(null, null, null);
         UpdateNavigationButtons();
     }
 
@@ -612,19 +766,14 @@ public sealed partial class MainWindow : Window
     internal void ShowAddAgentOverlay(FrameworkElement? opener = null)
         => EnsureAddAgentOverlay().Show(opener);
 
-    private async void AddAgentOverlay_AgentAdded(Models.AgentConfig agent)
+    private void AddAgentOverlay_AgentAdded(Models.AgentConfig agent)
     {
-        try
-        {
-            await ShellSidebar.RefreshAsync();
-            if (_settingsOverlay is not null) await _settingsOverlay.RefreshAgentsAsync();
-            if (ContentFrame.Content is HomePage homePage)
-                await homePage.RefreshAfterAgentAddedAsync(agent.Id);
-        }
-        catch
-        {
-            // Persistence has already succeeded. The sidebar/page will recover on its next load.
-        }
+        // AddAgentViewModel persists the new agent and selects it in one transaction. Close
+        // Settings when that was the entry point so its full-window overlay cannot hide the
+        // destination; NavigateTo refreshes the sidebar before a same-page reload, while an actual
+        // Frame navigation refreshes it from ContentFrame.Navigated.
+        CloseSettingsOverlay();
+        NavigateTo(typeof(AgentDetailPage), forceReload: true);
     }
 
     internal System.Threading.Tasks.Task<bool> DeleteAgentAsync(string agentId)

@@ -360,6 +360,13 @@ public sealed partial class ShellSidebar
                 // could navigate back to the deleted entity.
                 RequestNavigationReset(typeof(HomePage));
             }
+            else if (_currentPageType == typeof(HomePage))
+            {
+                // The sidebar and HomePage own separate projections of the same agent rows. A
+                // same-page navigation is otherwise ignored, so explicitly use the reload path to
+                // remove the deleted row from the already-visible library.
+                RequestNavigation(typeof(HomePage), forceReload: true);
+            }
             return true;
         }
         catch (Exception exception)

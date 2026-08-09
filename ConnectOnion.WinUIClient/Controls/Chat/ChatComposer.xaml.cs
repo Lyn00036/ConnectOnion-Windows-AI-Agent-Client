@@ -684,10 +684,9 @@ public sealed partial class ChatComposer : UserControl, IDisposable
 
     private void Composer_Unloaded(object sender, RoutedEventArgs e)
     {
-        // Cancel, don't Dispose: the page uses NavigationCacheMode.Required so this
-        // composer is reused on re-entry, and Dispose would destroy _lifetimeCts
-        // permanently — every operation using its Token (file picker, drag-drop,
-        // attachment encoding) would throw ObjectDisposedException and silently fail.
+        // Cancel the active work when the control leaves the tree. Full Dispose remains the
+        // explicit shutdown/teardown path; Loaded renews the lifetime token if this control is
+        // temporarily detached and reattached.
         _lifetimeCts.Cancel();
         _waveformTimer.Stop();
         CancelVoiceInput();

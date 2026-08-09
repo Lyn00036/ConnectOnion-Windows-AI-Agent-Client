@@ -81,6 +81,7 @@
   <data name="ComposerDropHint.Text" xml:space="preserve"><value>Drop files to attach</value></data>
   <data name="OfflineTitle.Text" xml:space="preserve"><value>Agent is offline</value></data>
   <data name="OfflineRecheck.Text" xml:space="preserve"><value>Recheck</value></data>
+  <data name="ChatConnectionErrorTitle.Text" xml:space="preserve"><value>Connection error</value></data>
   <data name="ChatImageLoadFailure.Text" xml:space="preserve"><value>Image could not be loaded.</value></data>
   <data name="ChatActivityFailed.Text" xml:space="preserve"><value>Failed</value></data>
   <data name="ChatCustomAnswerDivider.Text" xml:space="preserve"><value>OR PROVIDE CUSTOM ANSWER</value></data>

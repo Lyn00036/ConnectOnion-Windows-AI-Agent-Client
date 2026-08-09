@@ -228,10 +228,13 @@ public sealed partial class ChatPage : Page, IFindHost, IShutdownDisarmable, IDi
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
+        var parameter = e.Parameter is ShellNavigationContext context
+            ? context.Payload
+            : e.Parameter;
         // AgentDetailPage navigates here with a ComposerSubmission (text + any
         // attachments); a plain string is also accepted for robustness against
         // any other caller that only ever had a prompt to pass.
-        _pendingInitialSubmission = e.Parameter switch
+        _pendingInitialSubmission = parameter switch
         {
             ComposerSubmission submission => submission,
             string prompt => new ComposerSubmission(prompt, Array.Empty<PendingAttachment>()),
@@ -317,7 +320,7 @@ public sealed partial class ChatPage : Page, IFindHost, IShutdownDisarmable, IDi
             loadCts.Dispose();
         }
 
-        // Rapid switching can navigate away — and unload this cached page — during the DB load
+        // Rapid switching can navigate away and unload this page during the DB load
         // above. Touching the composer/overlay dependency properties or the message list while
         // this page is detached from the visual tree throws E_UNEXPECTED (0x8000FFFF). Bail if we
         // are no longer loaded; the next OnLoaded re-runs against the current selection.
@@ -327,8 +330,7 @@ public sealed partial class ChatPage : Page, IFindHost, IShutdownDisarmable, IDi
         // so a reply that lands here is suppressed (the user already sees it).
         ReportViewing(active: true);
 
-        // The page is cached and reused across conversations. A previous empty
-        // conversation may have left this panel visible, while history changes
+        // A previous load may have left this panel visible, while history changes
         // raised during LoadAsync are intentionally ignored by
         // Messages_CollectionChanged. Always derive the final state from the
         // conversation that just finished loading instead of only handling the
