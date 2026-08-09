@@ -65,6 +65,17 @@ public sealed class AddAgentViewModelTests
         Assert.True(vm.CanTest);
     }
 
+    [Theory]
+    [InlineData("", "Agent")]
+    [InlineData("https://example.com/agent", "Agent https://")]
+    [InlineData("0xabcdef0123456789", "Agent 0xabcdef")]
+    public void MissingReportedName_UsesStableConnectionFallback(
+        string connection,
+        string expected)
+    {
+        Assert.Equal(expected, AddAgentViewModel.CreateFallbackName(connection));
+    }
+
     private static AddAgentViewModel CreateViewModel()
         => new(
             new AgentRepository(),

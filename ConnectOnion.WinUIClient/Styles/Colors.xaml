@@ -99,7 +99,7 @@
                  depending on which card you were looking at. Kept as a separate key because ~40
                  call sites name it; it is now an alias. Danger stays distinct — that one is a
                  different signal. -->
-            <Color x:Key="WarningColor">#FFB26A00</Color>
+            <Color x:Key="WarningColor">#FF9A6700</Color>
             <Color x:Key="DangerColor">#FFB3261E</Color>
             <Color x:Key="InfoColor">#FF6E6E6C</Color>
 
@@ -114,8 +114,8 @@
                  running *tool* keeps StatusRunning gray, because the user has nothing to do
                  about it; amber here means the turn cannot proceed until they act, which is
                  what makes a pending card findable when scrolling back through a long run.
-                 4.6:1 on SurfacePrimary. -->
-            <Color x:Key="AttentionColor">#FFB26A00</Color>
+                 It shares WarningColor's AA-compliant contrast on SurfacePrimary. -->
+            <Color x:Key="AttentionColor">#FF9A6700</Color>
 
             <!-- Tinted washes for the interactive cards: a pending card's ground, and the
                  hover fill under an affirmative / negative choice. Kept far lighter than

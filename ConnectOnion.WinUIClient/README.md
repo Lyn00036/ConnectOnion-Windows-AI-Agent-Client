@@ -34,7 +34,7 @@ unpackaged, the package's `LocalState\ConnectOnion\logs` when installed.
 - **Visual Studio 2026** (recommended for WinUI debugging and packaging), with the
   **.NET Desktop Development** workload and the **Windows App SDK C# Templates** component
 
-See [Installing The Requirements](../docs/DEVELOPMENT.md#installing-the-requirements) in the
+See [Requirements](../docs/DEVELOPMENT.md#requirements) in the
 developer guide for the `winget` commands that set all of this up.
 
 ## Quick Start
@@ -73,17 +73,23 @@ ConnectOnion.WinUIClient/
 ├── App.xaml / App.xaml.cs              Generic Host build, Serilog, composition root
 ├── Program.cs                          Entry point
 ├── MainWindow.xaml / MainWindow.xaml.cs Shell window, custom title bar, navigation frame
+├── ShellNavigationContext.cs           Agent/conversation identity stored in Frame history
 ├── Package.appxmanifest                 MSIX package manifest
 │
 ├── Shell/                              The rest of the MainWindow partial (see Shell/README.md)
+│   ├── MainWindow.Agents.cs            Window-level agent refresh and deletion routing
 │   ├── MainWindow.FileMenu.cs           File menu handlers
 │   ├── MainWindow.EditMenu.cs           Edit commands against the last focused text box
 │   ├── MainWindow.ViewMenu.cs           Zoom, full screen, sidebar, shared find overlay
+│   ├── MainWindow.ChatShortcuts.cs      Conversation-only shortcuts
 │   ├── MainWindow.HelpMenu.cs           Shortcuts dialog, docs link, About overlay
 │   ├── MainWindow.Shortcuts.cs          Live chords → menu accelerator text
 │   ├── MainWindow.Notifications.cs      In-app toast host, activation routing
+│   ├── MainWindow.Overlays.cs           Lazy overlays and modal focus scope
+│   ├── MainWindow.Placement.cs          Window placement persistence
+│   ├── MainWindow.SessionSearch.cs      Global conversation-search overlay
 │   ├── MainWindow.DragDrop.cs           Window-wide drop hint (not itself a drop target)
-│   └── MainWindow.Tray.cs / .Tray.Interop.cs  H.NotifyIcon tray lifecycle + minimal window hooks
+│   └── MainWindow.Tray.cs / .Tray.Interop.cs / .Tray.Menu.cs  Tray lifecycle and menus
 │
 ├── Views/                              XAML pages
 │   ├── HomePage                         Agent selection (landing)
@@ -215,11 +221,11 @@ Structured local data is stored in one SQLite database. The root depends on depl
 | Packaged / Visual Studio deployed | package `LocalState\ConnectOnion\connectonion.db` |
 | Isolated automation | `%CONNECTONION_DATA_ROOT%\connectonion.db` |
 
-Schema version 11 has the following 12 logical tables:
+Schema version 12 has the following 12 logical tables:
 
 | Table | Purpose |
 | --- | --- |
-| `agents` | Saved agent connections (name, address, Direct URL, invite code) |
+| `agents` | Saved agent connections (name, address, Direct URL, icon path); invite codes are never persisted |
 | `sessions` | Per-agent conversations (title/custom-title flag, timestamps, approval `mode`, unread count and attention state) |
 | `messages` | One row per rendered chat bubble, keyed `(conversation_id, id)` |
 | `message_attachments` | Attachment metadata only (kind, name, mime, size, cache path) — never base64 |
@@ -245,8 +251,8 @@ content's SHA-256 — the database holds the path, never the payload. Saved agen
    - **Custom icon** — optional, under **Customize appearance**
 4. The client resolves the connection, fetches agent information and shows reachability status
 5. The connection response supplies the agent name; the user can rename it locally after adding
-6. If onboarding is required, the client asks for the invite code during that flow
-7. Select an agent → a new session auto-creates → chat begins
+6. If onboarding is required, the client asks for an invite code and keeps it in memory only for that connection
+7. Saving selects the new agent and opens its detail page; starting a chat creates or resolves its session
 
 Agent hosts must expose:
 - `GET /health`
@@ -272,7 +278,7 @@ Agent hosts must expose:
 - **Global chat search** — searches session/agent metadata and indexed transcript content
 - **Light/dark theme** — persisted preference with shell-aware title bar colors
 - **Localization** — English and Simplified Chinese resources with a persisted language selector
-- **Custom title bar** — Mica backdrop, back/forward navigation, sidebar toggle
+- **Custom title bar** — Mica backdrop, context-aware back/forward navigation that skips deleted entities, sidebar toggle
 - **Responsive sidebar** — width adapts to window size; rows are virtualized and expanded
   conversation branches load in keyset-paginated pages
 - **Message copy** — copy any chat bubble content
@@ -286,10 +292,11 @@ Agent hosts must expose:
 | `ConnectOnion.Protocol` | C# protocol library (WebSocket state machine, Ed25519 signing, relay resolution) |
 | `ConnectOnion.Protocol.Conformance` | Cross-language canonical-JSON signing verification (C# vs JS) |
 | `ConnectOnion.Protocol.LiveTest` | Optional live WebSocket integration test |
+| `ConnectOnion.PortableLauncher` | Dependency-free NativeAOT launcher placed at the portable ZIP root |
 | `tests/ConnectOnion.Protocol.Tests` | xunit tests for the wire protocol |
 | `tests/ConnectOnion.WinUIClient.UnitTests` | Headless xunit tests for this app's WinUI-free surfaces |
 | `tests/ConnectOnion.IntegrationTests` | SQLite schema/repository tests against a real database file |
-| `tests/ConnectOnion.WinUIClient.UITests` | 30 required FlaUI shell/chat tests, one skipped Explorer drag diagnostic, plus opt-in memory/performance/layout probes |
+| `tests/ConnectOnion.WinUIClient.UITests` | 36 required FlaUI shell/chat tests, one skipped Explorer drag diagnostic, plus opt-in memory/performance/layout probes |
 | `tests/ConnectOnion.TrimSmoke` | Trim-safe serialization, persistence, and identity restart harness |
 
 ## Repository

@@ -21,10 +21,10 @@
     The .msix / .msixbundle / portable .zip to audit.
 
 .PARAMETER BaselineCompressedMb
-    Override the ratified baseline. Default: 121.43 MB for self-contained MSIX; 118.91 MB for ZIP.
+    Override the ratified baseline. Default: 121.43 MB for self-contained MSIX; 71.29 MB for ZIP.
 
 .PARAMETER BaselineUnpackedMb
-    Override the ratified baseline. Default: 310.07 MB for self-contained MSIX; 309.21 MB for ZIP.
+    Override the ratified baseline. Default: 310.07 MB for self-contained MSIX; 170.71 MB for ZIP.
 
 .PARAMETER BudgetPercent
     Allowed growth over baseline before the gate fails. Default 10, matching the performance
@@ -120,7 +120,11 @@ try {
         $requiredNestedPayload = @(
             'app/ConnectOnion.WinUIClient.exe',
             'app/coreclr.dll',
-            'app/Microsoft.WindowsAppRuntime.dll'
+            'app/Microsoft.WindowsAppRuntime.dll',
+            # Windows App SDK 2.3.1 leaves this in its framework MSIX instead of the
+            # self-contained component folders. AppNotificationManager.Register loads it by
+            # name, so its absence disables every Windows notification with 0x8007007E.
+            'app/Microsoft.WindowsAppRuntime.Insights.Resource.dll'
         )
         $entryNames = @($entries | ForEach-Object { $_.FullName -replace '\\', '/' })
         $missingNestedPayload = @($requiredNestedPayload | Where-Object { $_ -notin $entryNames })

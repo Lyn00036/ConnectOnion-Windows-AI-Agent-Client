@@ -51,12 +51,21 @@ them when a run establishes a new baseline; don't quietly loosen one to make a r
 ## Running it
 
 ```powershell
-# Release + unpackaged: the plain build has no Windows App SDK bootstrapper and dies on launch.
-dotnet build ConnectOnion.WinUIClient\ConnectOnion.WinUIClient.csproj -c Release -p:Platform=x64 -p:RunUnpackaged=true
+# Publish the same self-contained, trimmed, ReadyToRun unpackaged shape used for shipping.
+dotnet publish ConnectOnion.WinUIClient\ConnectOnion.WinUIClient.csproj `
+  --configuration Release --runtime win-x64 -p:Platform=x64 `
+  -p:RunUnpackaged=true -p:SelfContained=true -p:WindowsAppSDKSelfContained=true `
+  -p:AppxPackageSigningEnabled=false
+
+$perfExe = Resolve-Path 'ConnectOnion.WinUIClient\bin\Release\net10.0-windows10.0.19041.0\win-x64\publish\ConnectOnion.WinUIClient.exe'
 
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Measure-Performance.ps1 `
-  -Mode WarmUnpackaged -Iterations 5
+  -Exe $perfExe -Mode WarmUnpackaged -Iterations 5
 ```
+
+Always pass `-Exe` when producing comparable evidence. The script's fallback can find a local
+framework-dependent build, but that binary may require an installed Windows App SDK runtime and
+does not represent the self-contained portable release.
 
 Useful switches:
 

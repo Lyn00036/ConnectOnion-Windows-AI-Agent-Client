@@ -9,6 +9,7 @@ namespace across every file, and `MainWindow.xaml.cs` must stay in the project r
 
 | File | Owns |
 |---|---|
+| `MainWindow.Agents.cs` | Window-level agent refresh and deletion routing |
 | `MainWindow.FileMenu.cs` | File menu commands and their shortcuts |
 | `MainWindow.EditMenu.cs` | Undo/cut/copy/paste against the last focused text box |
 | `MainWindow.ViewMenu.cs` | Zoom, full screen, sidebar toggle, and the shared find overlay |

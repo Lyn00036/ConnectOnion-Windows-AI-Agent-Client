@@ -72,7 +72,7 @@ discarded. There is no legacy JSON → SQLite import path (the Electron client's
 local data is not carried over). Deleting the `.db` file to reset dev state is a
 convenience, not the upgrade path.
 
-Current SQLite schema version: **11**. Its 12 logical tables are:
+Current SQLite schema version: **12**. Its 12 logical tables are:
 
 | Table | Key columns |
 | --- | --- |
@@ -168,21 +168,28 @@ connectonion-desktop/
 
   ConnectOnion.WinUIClient/           The WinUI 3 app: XAML, code-behind, and anything that
                                       needs a window or the Windows App SDK
-    ConnectOnion.WinUIClient.sln      Visual Studio solution (references every other project)
+    ConnectOnion.WinUIClient.sln      Visual Studio solution (excludes LiveTest and TrimSmoke)
     ConnectOnion.WinUIClient.csproj   net10.0-windows
     App.xaml[.cs]                     Generic Host build, Serilog, composition root
     Program.cs                        Entry point
     MainWindow.xaml[.cs]              Shell window, Mica backdrop, custom title bar
+    ShellNavigationContext.cs         Agent/conversation identity stored in Frame history
     Shell/                            The rest of the MainWindow partial (see Shell/README.md)
+      MainWindow.Agents.cs            Window-level agent refresh and deletion routing
       MainWindow.FileMenu.cs          File menu handlers
       MainWindow.EditMenu.cs          Undo/cut/copy/paste against the last focused text box
       MainWindow.ViewMenu.cs          Sidebar toggle, zoom, full screen, shared find overlay
+      MainWindow.ChatShortcuts.cs     Conversation-only shortcuts
       MainWindow.HelpMenu.cs          Shortcuts dialog, docs link, About overlay
       MainWindow.Shortcuts.cs         Pushes live chords into menu accelerator text
       MainWindow.Notifications.cs     In-app toast host, notification activation routing
+      MainWindow.Overlays.cs          Lazy full-window overlays and modal focus scope
+      MainWindow.Placement.cs         Window placement persistence and display clamping
+      MainWindow.SessionSearch.cs     Global conversation-search overlay wiring
       MainWindow.DragDrop.cs          Window-wide "drop it on the composer" hint
       MainWindow.Tray.cs              Tray icon, close dialog, minimize/restore
       MainWindow.Tray.Interop.cs      The Win32 P/Invoke the tray needs
+      MainWindow.Tray.Menu.cs         Dynamic tray agent/conversation menus
     Views/
       HomePage                        Agent selection landing page
       ChatPage                        Real-time chat; split by concern:
@@ -271,11 +278,14 @@ connectonion-desktop/
   ConnectOnion.Protocol.LiveTest/
     Program.cs                        Optional live WebSocket test against a real agent
 
+  ConnectOnion.PortableLauncher/      Dependency-free NativeAOT executable at the ZIP root
+    Program.cs                        Starts app\ConnectOnion.WinUIClient.exe
+
   tests/
     ConnectOnion.Protocol.Tests/      xunit tests for ConnectOnion.Protocol
     ConnectOnion.WinUIClient.UnitTests/  Headless tests over Core, plus the ArchUnit layer gate
     ConnectOnion.IntegrationTests/    SQLite schema/repository tests against a real database file
-    ConnectOnion.WinUIClient.UITests/ FlaUI: 30 required shell/chat tests + 1 skipped diagnostic + 1 trimmed-runtime scenario + 3 opt-in diagnostics/audits
+    ConnectOnion.WinUIClient.UITests/ FlaUI: 36 required shell/chat tests + 1 skipped diagnostic + 1 trimmed-runtime scenario + 3 opt-in diagnostics/audits
     ConnectOnion.TrimSmoke/           Trimmed serialization/persistence console harness
 
   .github/workflows/ci.yml            Windows/.NET CI workflow
@@ -293,9 +303,11 @@ connectonion-desktop/
 | Windows | 10 version 1809 (build 17763) or later | Running the app |
 | .NET SDK | 10.0.302 | Building everything; exact match required by the locked dependency graph |
 | Windows App SDK runtime | 2.3.1 (matches the `Microsoft.WindowsAppSDK` package reference) | Running framework-dependent development builds |
-| Visual …175 tokens truncated… run in a normal PowerShell prompt. `winget` ships with
-Windows 11 and current Windows 10; if it is missing, install **App Installer**
-from the Microsoft Store first.
+| Visual Studio | 2026 with .NET Desktop Development and Windows App SDK C# Templates | Recommended for XAML debugging and packaged deployment |
+| Node.js | 22 | Protocol Conformance reference signer only |
+
+The setup commands below can run in a normal PowerShell prompt. `winget` ships with Windows 11
+and current Windows 10; if it is missing, install **App Installer** from the Microsoft Store first.
 
 ### 1. Visual Studio 2026
 
@@ -457,7 +469,7 @@ dotnet build ConnectOnion.WinUIClient\ConnectOnion.WinUIClient.sln `
 
 ## Tests And Validation
 
-Run the automated test suites (all three run in CI):
+Run the three headless automated suites (all run in CI):
 
 ```powershell
 dotnet test tests\ConnectOnion.Protocol.Tests\ConnectOnion.Protocol.Tests.csproj
@@ -483,11 +495,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Test-Coverage.ps1 `
   -ResultsDirectory TestResults
 ```
 
-The gate is a ratchet against `coverage-baseline.json`, currently **86.12%** for
-`ConnectOnion.Protocol` and **83.59%** for `ConnectOnion.WinUIClient.Core`, with a 0.25 percentage
+The gate is a ratchet against `coverage-baseline.json`, currently **88.67%** for
+`ConnectOnion.Protocol` and **86.27%** for `ConnectOnion.WinUIClient.Core`, with a 0.25 percentage
 point tolerance. The separate absolute floors prevent a deliberate baseline update from drifting
 below the minimum; generated code and test assemblies are excluded.
-The real-window project discovers 35 tests. Its 30 required shell/chat tests run against a published
+The real-window project discovers 41 tests. Its 36 required shell/chat tests run against a published
 unpackaged executable on every push and pull request; the Explorer drag-and-drop diagnostic is
 explicitly skipped because desktop DPI/layout makes its source coordinates nondeterministic. The
 memory and large-history performance audits remain opt-in. See [TEST_PLAN.md](./TEST_PLAN.md)
@@ -541,7 +553,7 @@ Current CI behavior:
 
 CI also audits dependencies for known vulnerabilities, collects and uploads Cobertura reports,
 enforces the Protocol/Core coverage ratchet, runs the trim-safe serialization harness, and
-publishes a **trimmed, self-contained** ReadyToRun unpackaged build. The 30 required FlaUI shell/chat
+publishes a **trimmed, self-contained** ReadyToRun unpackaged build. The 36 required FlaUI shell/chat
 tests run on every push and pull request, using an isolated data root and uploading TRX/screenshot
 evidence; the drag-and-drop diagnostic is skipped. A separate manual-only job can exercise a real
 deployed agent. Tag-driven portable releases are handled separately by
@@ -640,9 +652,10 @@ Development fixtures used during the August 2026 validation:
 ## Implemented
 
 - Native WinUI 3 desktop shell with Mica backdrop and custom title bar
-- Home, Chat, Agent Detail, Sessions, and Settings pages (local identity lives inside Settings)
+- Home, Chat, Agent Detail, and Settings surfaces (sessions live in the sidebar; local identity lives inside Settings)
 - Agent add, edit, delete, select, and connection testing (Direct URL + relay)
-- Sidebar "Add agent" button opens the HomePage add-agent form and scrolls it into view
+- Home/sidebar "Add agent" actions open the shell-owned add-agent overlay; saving selects the new
+  agent and navigates directly to its detail page
 - Agent /info fetch with 5-minute cache and change detection
 - Agent online presence with TTL-based caching and per-agent status indicators
 - App-level run runtime: turns are owned by `AgentSessionManager`, not the page — a turn keeps
@@ -677,7 +690,8 @@ Development fixtures used during the August 2026 validation:
 - Configurable message font size (S/M/L)
 - Keyboard shortcuts (sidebar toggle, new chat, zoom, full screen, find) with user-customizable bindings
 - Responsive sidebar with agent list and session list navigation
-- Back/forward navigation in the title bar
+- Back/forward navigation in the title bar restores the recorded agent/conversation context and
+  skips history entries whose entity was deleted
 - Suggested prompts for new conversations
 - Speech-to-text dictation input in the chat composer
 - System tray icon with left-click restore, right-click menu (Open Window / Exit)
@@ -740,7 +754,6 @@ All project documentation lives in [`docs/`](./README.md):
 | [Project brief](./PROJECT_BRIEF.md) | The original requirements, plus a requirement → implementation traceability table and known limitations |
 | [Test plan](./TEST_PLAN.md) | Layered test strategy, test cases, E2E flows, and the testing backlog |
 | [Session & message structure](./SESSION_MESSAGE_STRUCTURE.md) | The ConnectOnion wire protocol: `CONNECT`/`INPUT`/`OUTPUT`, streaming events, sessions, reconnect |
-| [WinUI 3 migration notes](./WINUI3_NATIVE_MIGRATION.md) | Historical record of the Electron → WinUI migration, and how the result diverged from the plan |
 | [Commit convention](./GIT_COMMIT_CONVENTION.md) | Conventional Commits types and scopes used in this repo |
 | [Optimization notes](./OPTIMIZATION.md) | Implemented architecture, performance, reliability, diagnostics, and localization improvements |
 | [Performance baseline](./PERFORMANCE.md) | Launch-time and memory benchmark: method, budgets, current baseline |

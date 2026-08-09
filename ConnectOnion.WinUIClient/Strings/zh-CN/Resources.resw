@@ -81,6 +81,7 @@
   <data name="ComposerDropHint.Text" xml:space="preserve"><value>拖放文件以添加附件</value></data>
   <data name="OfflineTitle.Text" xml:space="preserve"><value>Agent 已离线</value></data>
   <data name="OfflineRecheck.Text" xml:space="preserve"><value>重新检查</value></data>
+  <data name="ChatConnectionErrorTitle.Text" xml:space="preserve"><value>连接错误</value></data>
   <data name="ChatImageLoadFailure.Text" xml:space="preserve"><value>无法加载图片。</value></data>
   <data name="ChatActivityFailed.Text" xml:space="preserve"><value>失败</value></data>
   <data name="ChatCustomAnswerDivider.Text" xml:space="preserve"><value>或提供自定义回答</value></data>

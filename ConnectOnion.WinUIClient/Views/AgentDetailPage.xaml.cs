@@ -131,13 +131,14 @@ public sealed partial class AgentDetailPage : Page, IReloadablePage, IShutdownDi
 
         if (await Vm.StartConversationAsync(initialPrompt, hasAttachments))
         {
-            Frame.Navigate(
+            MainWindow.FromXamlRoot(XamlRoot)?.NavigateTo(
                 typeof(ChatPage),
+                forceReload: true,
                 // The prompt is re-trimmed here, so the submission is rebuilt rather than passed
                 // through — carry the mode across with it or the new conversation opens at the
                 // default whatever the picker said.
-                new ComposerSubmission(initialPrompt, submission.Attachments, submission.Mode),
-                new DrillInNavigationTransitionInfo());
+                parameter: new ComposerSubmission(initialPrompt, submission.Attachments, submission.Mode),
+                transitionInfo: new DrillInNavigationTransitionInfo());
         }
     }
 }

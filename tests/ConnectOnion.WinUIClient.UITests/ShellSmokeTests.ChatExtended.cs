@@ -48,6 +48,70 @@ public sealed partial class ShellSmokeTests
     }
 
     [Fact]
+    public async Task Navigation_BackForwardRestoresEntities_ClosesFind_AndSurvivesRapidUse()
+    {
+        await using var server = new UiFakeAgentServer();
+        if (!PrepareChatProfile(server.BaseUri)) return;
+
+        try
+        {
+            using var launched = LaunchApp(handleFirstRunDialog: false);
+            if (launched is null) return;
+            var window = launched.Window;
+
+            Assert.NotNull(WaitForDescendant(window, "HomeAddAgentButton"));
+            OpenAgentDetail(window);
+            Assert.NotNull(WaitForDescendant(window, "SuggestionButton"));
+
+            var session = FindSessionByTitle(window, ChatTitle, TimeSpan.FromSeconds(15));
+            Assert.NotNull(session);
+            session!.AsButton().Invoke();
+            Assert.NotNull(WaitForDescendant(window, "MessageList", TimeSpan.FromSeconds(20)));
+
+            Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_F);
+            Assert.NotNull(WaitForDescendant(window, "FindTextBox"));
+
+            var agents = WaitForDescendant(window, "AgentsNavigationButton");
+            Assert.NotNull(agents);
+            agents.AsButton().Invoke();
+            Assert.NotNull(WaitForDescendant(window, "HomeAddAgentButton"));
+            Assert.Null(window.FindFirstDescendant(query => query.ByAutomationId("FindTextBox")));
+
+            var back = WaitForDescendant(window, "BackButton");
+            var forward = WaitForDescendant(window, "ForwardButton");
+            Assert.NotNull(back);
+            Assert.NotNull(forward);
+            Assert.True(WaitUntil(() => back.IsEnabled));
+
+            back.AsButton().Invoke();
+            Assert.NotNull(WaitForDescendant(window, "MessageList", TimeSpan.FromSeconds(20)));
+            back.AsButton().Invoke();
+            Assert.NotNull(WaitForDescendant(window, "SuggestionButton", TimeSpan.FromSeconds(20)));
+            back.AsButton().Invoke();
+            Assert.NotNull(WaitForDescendant(window, "HomeAddAgentButton", TimeSpan.FromSeconds(20)));
+            Assert.True(WaitUntil(() => forward.IsEnabled));
+
+            for (var cycle = 0; cycle < 5; cycle++)
+            {
+                forward.AsButton().Invoke();
+                Assert.NotNull(WaitForDescendant(window, "SuggestionButton", TimeSpan.FromSeconds(10)));
+                Assert.True(WaitUntil(() => back.IsEnabled));
+                back.AsButton().Invoke();
+                Assert.NotNull(WaitForDescendant(window, "HomeAddAgentButton", TimeSpan.FromSeconds(10)));
+                Assert.True(WaitUntil(() => forward.IsEnabled));
+            }
+
+            launched.Process.Refresh();
+            Assert.False(launched.Process.HasExited);
+            Assert.True(launched.Process.Responding);
+        }
+        finally
+        {
+            RemoveChatFixture();
+        }
+    }
+
+    [Fact]
     public async Task AgentDetail_SuggestionTemplate_PopulatesComposerDraft()
     {
         await using var server = new UiFakeAgentServer();
@@ -460,8 +524,15 @@ public sealed partial class ShellSmokeTests
             var messageList = WaitForDescendant(
                 launched.Window, "MessageList", TimeSpan.FromSeconds(20));
             Assert.NotNull(messageList);
-            Assert.NotNull(WaitForAccessibleName(
-                messageList!, "Notification target marker", TimeSpan.FromSeconds(20)));
+            var targetMarker = WaitForAccessibleName(
+                messageList!, "Notification target marker", TimeSpan.FromSeconds(20));
+            Assert.True(
+                targetMarker is not null,
+                "Notification target content did not render. Visible UIA names:\n" +
+                string.Join("\n", messageList!.FindAllDescendants()
+                    .Select(element => element.Properties.Name.ValueOrDefault)
+                    .Where(name => !string.IsNullOrWhiteSpace(name))
+                    .Take(100)));
             Assert.Null(WaitForAccessibleName(
                 messageList!, "Notification decoy marker", TimeSpan.FromSeconds(1)));
             Assert.Equal(ChatSessionId, ReadMeta("active_session_id"));

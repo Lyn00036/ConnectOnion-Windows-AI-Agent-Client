@@ -559,6 +559,63 @@ public sealed partial class ShellSmokeTests
             "About overlay did not close after OK");
     }
 
+    [Theory]
+    [InlineData("settings")]
+    [InlineData("session-search")]
+    [InlineData("shortcuts")]
+    [InlineData("about")]
+    [InlineData("add-agent")]
+    public void ModalOverlay_EscapeClosesAndReturnsFocusToOpener(string overlay)
+    {
+        using var launched = LaunchApp();
+        if (launched is null) return;
+
+        var window = launched.Window;
+        AutomationElement? opener;
+        string overlayContentId;
+        switch (overlay)
+        {
+            case "settings":
+                opener = WaitForDescendant(window, "SettingsButton");
+                Assert.NotNull(opener);
+                opener.AsButton().Invoke();
+                overlayContentId = "GeneralNav";
+                break;
+            case "session-search":
+                opener = WaitForDescendant(window, "SessionSearchButton");
+                Assert.NotNull(opener);
+                opener.AsButton().Invoke();
+                overlayContentId = "SessionSearchBox";
+                break;
+            case "shortcuts":
+                opener = WaitForDescendant(window, "HelpMenuButton");
+                Assert.NotNull(opener);
+                OpenHelpMenuItem(window, "KeyboardShortcutsMenuItem");
+                overlayContentId = "ShortcutsSearchBox";
+                break;
+            case "about":
+                opener = WaitForDescendant(window, "HelpMenuButton");
+                Assert.NotNull(opener);
+                OpenHelpMenuItem(window, "AboutMenuItem");
+                overlayContentId = "AboutOkButton";
+                break;
+            case "add-agent":
+                opener = WaitForDescendant(window, "AddAgentButton");
+                Assert.NotNull(opener);
+                opener.AsButton().Invoke();
+                overlayContentId = "AgentAddressInput";
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(overlay), overlay, null);
+        }
+
+        Assert.NotNull(WaitForDescendant(window, overlayContentId));
+        Keyboard.Press(VirtualKeyShort.ESCAPE);
+        Assert.True(WaitUntil(() => window.FindFirstDescendant(
+            query => query.ByAutomationId(overlayContentId)) is null));
+        Assert.True(WaitUntil(() => opener.Properties.HasKeyboardFocus.ValueOrDefault));
+    }
+
     /// <summary>Invokes the sidebar's fixed Settings command and waits for the modal.</summary>
     internal static void OpenSettings(Window window)
     {
@@ -712,8 +769,7 @@ public sealed partial class ShellSmokeTests
                 .GetProcessesByName("ConnectOnion.WinUIClient")
                 .FirstOrDefault(process =>
                     !existingProcessIds.Contains(process.Id)
-                    && process.MainWindowHandle != IntPtr.Zero
-                    && process.MainWindowTitle.Contains("ConnectOnion", StringComparison.OrdinalIgnoreCase));
+                    && !process.HasExited);
             if (windowProcess is null)
             {
                 Thread.Sleep(200);
@@ -723,7 +779,30 @@ public sealed partial class ShellSmokeTests
         Assert.NotNull(windowProcess);
         var app = Application.Attach(windowProcess.Id);
         var automation = new UIA3Automation();
-        var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(20));
+        Window? window = null;
+        deadline = DateTime.UtcNow.AddSeconds(20);
+        while (DateTime.UtcNow < deadline && window is null)
+        {
+            try
+            {
+                var candidate = app.GetAllTopLevelWindows(automation)
+                    .FirstOrDefault(candidate => candidate.Title.Contains(
+                        "ConnectOnion", StringComparison.OrdinalIgnoreCase));
+                if (candidate is not null && candidate.FindAllDescendants().Length > 0)
+                {
+                    window = candidate;
+                    break;
+                }
+            }
+            catch (COMException)
+            {
+                // WinUI has created its process, but its UIA provider is still publishing the
+                // top-level XAML window. Re-enumerate instead of retaining an empty root object.
+            }
+
+            Thread.Sleep(200);
+        }
+
         Assert.NotNull(window);
 
         if (handleFirstRunDialog

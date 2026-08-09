@@ -313,7 +313,7 @@ public sealed partial class AddAgentViewModel : Common.ObservableObject
             : detail;
     }
 
-    private static string CreateFallbackName(string input)
+    internal static string CreateFallbackName(string input)
         => string.IsNullOrWhiteSpace(input)
             ? "Agent"
             : $"Agent {input[..Math.Min(8, input.Length)]}";

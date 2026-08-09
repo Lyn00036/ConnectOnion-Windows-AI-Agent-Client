@@ -49,7 +49,11 @@ public sealed partial class ShellSmokeTests
             var input = OpenChat(launched.Window);
 
             launched.Window.SetForeground();
-            input.Click();
+            // Use UIA focus plus the standard keyboard context-menu gesture. A physical click
+            // asks UIA for a screen-space clickable point and intermittently fails when another
+            // desktop surface changes z-order between discovery and the click. Shift+F10 opens
+            // the same WinUI TextBox context flyout and also proves its keyboard path.
+            input.Focus();
             Assert.True(WaitUntil(() => input.Properties.HasKeyboardFocus.ValueOrDefault));
             // UIA can report focus before WinUI's text service is ready for SendInput.
             Thread.Sleep(300);
@@ -58,7 +62,7 @@ public sealed partial class ShellSmokeTests
             Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_C);
             Thread.Sleep(300);
             input.AsTextBox().Text = "";
-            input.RightClick();
+            Keyboard.TypeSimultaneously(VirtualKeyShort.SHIFT, VirtualKeyShort.F10);
 
             var desktop = launched.Automation.GetDesktop();
             var paste = WaitForElement(desktop, "ComposerPasteMenuItem", TimeSpan.FromSeconds(5));
@@ -164,6 +168,13 @@ public sealed partial class ShellSmokeTests
             Assert.NotNull(send);
             Assert.True(WaitUntil(() => send.IsEnabled));
             send.AsButton().Invoke();
+
+            Assert.True(
+                WaitUntil(() => string.IsNullOrEmpty(input.Text)),
+                "composer did not clear after send");
+            Assert.True(
+                WaitUntil(() => input.Properties.HasKeyboardFocus.ValueOrDefault),
+                "composer did not regain keyboard focus after send");
 
             var inputJson = await receivedInput.Task.WaitAsync(TimeSpan.FromSeconds(20));
             using (var document = JsonDocument.Parse(inputJson))

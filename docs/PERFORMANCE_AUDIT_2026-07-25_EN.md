@@ -46,14 +46,15 @@ requires completion of the manual gates listed below.
 It should not be rolled out broadly until packaged cold-start, real-agent interaction, speech, and
 notification checks have been signed off.
 
-Raw evidence:
+Raw evidence was captured under the ignored local `TestResults/` tree and is not part of the
+repository. The original relative paths were:
 
-- [Original real-profile startup baseline](../TestResults/perf-audit/baseline-real-profile/report.md)
-- [Final untrimmed ReadyToRun startup rerun](../TestResults/perf-audit/baseline-after-untrimmed-real-profile/report.md)
-- [Five-minute idle summary](../TestResults/perf-audit/idle-5min-real-profile/summary.json)
-- [Original five-scenario, 50-cycle TRX](../TestResults/perf-audit/memory-50-release/memory-leaks.trx)
-- [Final 50-cycle cached-conversation TRX](../TestResults/perf-audit/memory-final-untrimmed-alternating/memory-leaks.trx)
-- [Final large-conversation UI measurements](../TestResults/perf-audit/ui-performance-final-untrimmed.json)
+- `TestResults/perf-audit/baseline-real-profile/report.md`
+- `TestResults/perf-audit/baseline-after-untrimmed-real-profile/report.md`
+- `TestResults/perf-audit/idle-5min-real-profile/summary.json`
+- `TestResults/perf-audit/memory-50-release/memory-leaks.trx`
+- `TestResults/perf-audit/memory-final-untrimmed-alternating/memory-leaks.trx`
+- `TestResults/perf-audit/ui-performance-final-untrimmed.json`
 
 ## 2. Baseline Table
 
@@ -316,12 +317,12 @@ not page instances. The actual `SettingsPage` root was the expected application 
 service → `MainWindow` → `SettingsOverlay` → `SettingsPage` chain. No second, departed Settings
 visual tree was found.
 
-Snapshots:
+Snapshot paths (also ignored local evidence):
 
-- [Baseline gcdump](../TestResults/perf-audit/snapshots-settings/settings-00-baseline.gcdump)
-- [25-cycle gcdump](../TestResults/perf-audit/snapshots-settings/settings-25-cycles.gcdump)
-- [50-cycle gcdump](../TestResults/perf-audit/snapshots-settings/settings-50-cycles.gcdump)
-- [50-cycle heap dump](../TestResults/perf-audit/snapshots-settings/settings-50-cycles.dmp)
+- `TestResults/perf-audit/snapshots-settings/settings-00-baseline.gcdump`
+- `TestResults/perf-audit/snapshots-settings/settings-25-cycles.gcdump`
+- `TestResults/perf-audit/snapshots-settings/settings-50-cycles.gcdump`
+- `TestResults/perf-audit/snapshots-settings/settings-50-cycles.dmp`
 
 No per-snapshot Native Heap, XAML native retained-size, or COM dominator breakdown was available.
 Private Bytes and handle/thread trends are process-level evidence and are not substitutes for a

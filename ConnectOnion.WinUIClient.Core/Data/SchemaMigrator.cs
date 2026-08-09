@@ -406,8 +406,9 @@ internal static class SchemaMigrator
         // one connection.
         //
         // This is a table rebuild, not ALTER TABLE ... DROP COLUMN: that syntax needs SQLite
-        // 3.35+, and the client's floor is Windows 10 2004 (TargetFramework 10.0.19041.0), whose
-        // winsqlite3 predates it. The rebuild works on every version.
+        // 3.35+, while the app supports Windows 10 1809 (TargetPlatformMinVersion 10.0.17763.0)
+        // and cannot assume its system winsqlite3 has that feature. The rebuild works throughout
+        // the supported OS range.
         //
         // Nothing holds a foreign key to `agents` — v4 deliberately chose triggers over an FK (see
         // its comment) — so there is no dependent-row enforcement to defer and DROP TABLE raises no

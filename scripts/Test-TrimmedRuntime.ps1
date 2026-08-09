@@ -99,7 +99,13 @@ if ($TrimmedExe) {
     $TrimmedExe = Join-Path $dir 'ConnectOnion.WinUIClient.exe'
 }
 if (-not (Test-Path $TrimmedExe)) { throw "Trimmed app executable not found: $TrimmedExe" }
+$notificationResource = Join-Path (Split-Path -Parent $TrimmedExe) `
+    'Microsoft.WindowsAppRuntime.Insights.Resource.dll'
+if (-not (Test-Path $notificationResource)) {
+    throw "Trimmed app is missing the native Windows notification resource: $notificationResource"
+}
 $report.trimmedExe = $TrimmedExe
+$report.notificationResource = $notificationResource
 
 # --- 2. Seed a data root with the trimmed smoke harness -----------------------------------------
 

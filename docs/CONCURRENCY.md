@@ -35,9 +35,8 @@ Every mechanism below exists to make some hop of that chain safe.
 
 ## The primitives, and what each one is actually for
 
-Counts across `ConnectOnion.Protocol`, `ConnectOnion.WinUIClient`, and `…Core`:
-53 `lock`, 21 `CancellationTokenSource`, 23 `DispatcherQueue.TryEnqueue`, 14 `Interlocked`,
-13 `ConcurrentDictionary`, 1 `SemaphoreSlim`.
+The inventory changes as features move across the Core seam, so this section documents the
+invariants and owners rather than brittle source-token counts.
 
 ### 1. Run state machine — one lock per run, publish outside it
 
@@ -81,13 +80,13 @@ must change together; nothing here needs that.
 
 | Use | Site |
 |---|---|
-| Idempotent shutdown (run at most once) | `App.ShutdownAsync` (`App.xaml.cs:182`), `MainWindow.DetachWindowServices` (`MainWindow.xaml.cs:97`) |
-| Re-entrancy guard (one reconnect loop at a time) | `AgentConnectionService.cs:829` `CompareExchange` |
-| One-bit cross-thread mailbox (cold-start activation) | `App.xaml.cs:85` / `:95` |
+| Idempotent shutdown (run at most once) | `App.ShutdownAsync`, `MainWindow.DetachWindowServices` |
+| Re-entrancy guard (one reconnect loop at a time) | `AgentConnectionService` `CompareExchange` |
+| One-bit cross-thread mailbox (cold-start activation) | `App` activation buffering |
 
 ### 4. Coalescing mailbox — the UI back-pressure fix
 
-`ChatViewModel.SubscribeToRun` (`ViewModels/ChatViewModel.cs:447`) is the most interesting piece,
+`ChatViewModel.SubscribeToRun` is the most interesting piece,
 and it solves a real memory problem rather than a correctness one.
 
 The executor produces snapshots far faster than the UI thread can apply them. Enqueuing each one
@@ -103,13 +102,19 @@ Dropping intermediate snapshots is safe **because snapshots are cumulative, not 
 every event exactly once. **Terminal snapshots are always queued** — a terminal transition must
 not be swallowed by a run that starts immediately after.
 
-### 5. One-time initialization — `SemaphoreSlim` + double-check
+### 5. Bounded and serialized work — `SemaphoreSlim`
 
-The repo's only semaphore, in `Core/Data/AppDatabase.cs`: schema creation plus migration must
-happen exactly once, while "repositories open connections concurrently from the very first frame".
+Four gates serve different invariants:
 
-The fast path is a **deliberately unsynchronized read** of `_initialized`: a `bool` only ever goes
-`false → true`, cannot be read torn, and the worst case is redundantly taking the gate.
+| Gate | Invariant |
+|---|---|
+| `AppDatabase.InitGate` | Baseline creation and ordered migrations run once even when repositories open concurrently at first frame |
+| `AgentPresenceService.ProbeGate` | At most four presence probes are in flight, preventing an agent library from flooding the network/thread pool |
+| `OpenOnionAccountService._gate` | Account-opening work is single-flight for one service instance |
+| `SidebarStateRepository._saveGate` | Sidebar state writes are serialized so an older save cannot overwrite a newer snapshot |
+
+`AppDatabase` keeps a deliberately unsynchronized fast-path read of `_initialized`: the flag only
+ever moves `false → true`, cannot be read torn, and the worst case is redundantly taking the gate.
 
 ### 6. UI affinity — `DispatcherQueue.TryEnqueue`
 
@@ -129,7 +134,7 @@ inside, no nesting.
 
 ### 8. Cancellation
 
-21 `CancellationTokenSource`s. Page unload cancels conversation restore; tokens flow through view
+Page unload cancels conversation restore; tokens flow through view
 model loading into SQLite reads and writes. `ImageCacheMaintenanceService` holds its own so an app
 closed seconds after launch does not leave a cache sweep running against a torn-down host.
 

@@ -314,12 +314,12 @@ public sealed partial class HomePage : Page, IReloadablePage, IShutdownDisarmabl
 
             if (recentSession is null)
             {
-                Frame.Navigate(typeof(AgentDetailPage));
+                MainWindow.FromXamlRoot(XamlRoot)?.NavigateTo(typeof(AgentDetailPage));
                 return;
             }
 
             await AppServices.Sessions.SetActiveSessionAsync(recentSession.Id, _lifetimeCts.Token);
-            Frame.Navigate(typeof(ChatPage));
+            MainWindow.FromXamlRoot(XamlRoot)?.NavigateTo(typeof(ChatPage));
         }
         catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested)
         {

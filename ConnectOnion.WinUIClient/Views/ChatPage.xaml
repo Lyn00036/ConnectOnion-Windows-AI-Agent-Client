@@ -346,13 +346,53 @@
                          labelled the obvious. ChatMessage.AgentName is still populated and still
                          persisted — notifications title themselves with it, and the CONNECT
                          history import needs it — this only drops the label. -->
-                    <controls:MarkdownTextBlock Markdown="{x:Bind Content, Mode=OneWay}"
+                    <controls:MarkdownTextBlock x:Name="AgentResponseText"
+                                                Visibility="{x:Bind IsRegularAgentResponse, Mode=OneWay, Converter={StaticResource BoolToVis}}"
+                                                Markdown="{x:Bind Content, Mode=OneWay}"
+                                                AutomationProperties.Name="{x:Bind Content, Mode=OneWay}"
                                                 MaxWidth="{StaticResource ChatReadingWidth}"
                                                 HorizontalAlignment="Left"
                                                 SearchQuery="{x:Bind FindQuery, Mode=OneWay}"
                                                 ActiveMatchIndex="{x:Bind ActiveFindMatchIndex, Mode=OneWay}"
                                                 FontSize="{x:Bind MessageFontSize, Mode=OneWay}"
                                                 Foreground="{ThemeResource TextPrimaryBrush}" />
+                    <!-- A persisted transport failure is not an agent answer. Give it one compact,
+                         semantic status surface and hide the storage marker from the user. The
+                         danger wash distinguishes the failed turn from the amber, actionable
+                         reconnect notice beside the composer. -->
+                    <Border x:Name="AgentConnectionErrorCard"
+                            Visibility="{x:Bind IsConnectionError, Mode=OneWay, Converter={StaticResource BoolToVis}}"
+                            MaxWidth="{StaticResource ChatReadingWidth}"
+                            HorizontalAlignment="Left"
+                            Padding="12,10"
+                            CornerRadius="10"
+                            Background="{ThemeResource DangerSubtleBrush}"
+                            BorderBrush="{ThemeResource DangerBrush}"
+                            BorderThickness="3,1,1,1">
+                        <Grid ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <ic:FluentIcon Icon="ErrorCircle"
+                                           IconVariant="Regular"
+                                           IconSize="Size20"
+                                           Foreground="{ThemeResource DangerBrush}"
+                                           VerticalAlignment="Top" />
+                            <StackPanel Grid.Column="1" Spacing="3">
+                                <TextBlock x:Uid="ChatConnectionErrorTitle"
+                                           Text="Connection error"
+                                           FontSize="{StaticResource ProductBodyFontSize}"
+                                           FontWeight="SemiBold"
+                                           Foreground="{ThemeResource DangerBrush}" />
+                                <controls:HighlightedTextBlock Text="{x:Bind ConnectionErrorText, Mode=OneWay}"
+                                                               SearchQuery="{x:Bind FindQuery, Mode=OneWay}"
+                                                               ActiveMatchIndex="{x:Bind ActiveFindMatchIndex, Mode=OneWay}"
+                                                               FontSize="{x:Bind MessageFontSize, Mode=OneWay}"
+                                                               Foreground="{ThemeResource TextPrimaryBrush}" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
                     <StackPanel x:Name="AgentStopMeta"
                                 x:Load="{x:Bind HasEventMeta, Mode=OneWay}"
                                 Orientation="Horizontal"
