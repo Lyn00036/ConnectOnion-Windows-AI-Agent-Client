@@ -5,6 +5,25 @@ namespace ConnectOnion.WinUIClient.UnitTests.Accessibility;
 public sealed class UiUxRegressionContractTests
 {
     [Fact]
+    public void ConnectionFailures_UseDistinctThemeAwareStatusSurfaces()
+    {
+        var chat = Read("ConnectOnion.WinUIClient", "Views", "ChatPage.xaml");
+        var offline = Read(
+            "ConnectOnion.WinUIClient", "Controls", "Chat", "OfflineNoticeBar.xaml");
+
+        Assert.Contains(
+            "Visibility=\"{x:Bind IsConnectionError, Mode=OneWay, Converter={StaticResource BoolToVis}}\"",
+            chat,
+            StringComparison.Ordinal);
+        Assert.Contains("Background=\"{ThemeResource DangerSubtleBrush}\"", chat, StringComparison.Ordinal);
+        Assert.Contains("BorderBrush=\"{ThemeResource DangerBrush}\"", chat, StringComparison.Ordinal);
+        Assert.Contains("Background=\"{ThemeResource AttentionSubtleBrush}\"", offline, StringComparison.Ordinal);
+        Assert.Contains("BorderBrush=\"{ThemeResource AttentionBrush}\"", offline, StringComparison.Ordinal);
+        Assert.Contains("BorderThickness=\"3,1,1,1\"", offline, StringComparison.Ordinal);
+        Assert.Contains("Style=\"{StaticResource AccentButtonStyle}\"", offline, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Composer_OnboardingAndFooter_AdaptInsteadOfDisappearingOrOverflowing()
     {
         var xaml = Read("ConnectOnion.WinUIClient", "Controls", "Chat", "ChatComposer.xaml");

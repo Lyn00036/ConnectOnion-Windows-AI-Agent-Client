@@ -64,6 +64,29 @@ public sealed class MarkdownRendererCoverageTests
         Assert.Contains("_thematicBreaks.Clear()", Renderer);
     }
 
+    [Fact]
+    public void Tables_AdvanceColumnsAlignTextAndOwnHorizontalScrollingOnly()
+    {
+        Assert.Contains("ResolveCellColumnIndex(cell, nextColumnIndex)", Renderer);
+        Assert.Contains("nextColumnIndex = columnIndex + columnSpan", Renderer);
+        Assert.Contains("GetTableTextAlignment(table, columnIndex)", Renderer);
+        Assert.Contains("MaxWidth = 320", Renderer);
+        Assert.Contains("TextWrapping = TextWrapping.WrapWholeWords", Renderer);
+        Assert.Contains("HorizontalScrollMode = ScrollMode.Auto", Renderer);
+        Assert.Contains("VerticalScrollMode = ScrollMode.Disabled", Renderer);
+        Assert.Contains("isHeader ? FontWeights.SemiBold", Renderer);
+    }
+
+    [Fact]
+    public void FencedCodeLanguage_UsesACompactHeaderWithoutChangingPlainBlocks()
+    {
+        Assert.Contains("GetCodeLanguage(block)", Renderer);
+        Assert.Contains("if (!string.IsNullOrEmpty(language))", Renderer);
+        Assert.Contains("var languageHeader = new Border", Renderer);
+        Assert.Contains("Text = language", Renderer);
+        Assert.Contains("WriteCodeBlockLines(block.Lines.ToString())", Renderer);
+    }
+
     private static string Renderer => ReadSource("Rendering", "WinUiMarkdownRenderer.cs");
     private static string RendererDispatch => ReadSource("Rendering", "WinUiMarkdownRenderer.Renderers.cs");
 

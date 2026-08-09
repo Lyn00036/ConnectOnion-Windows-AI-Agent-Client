@@ -65,6 +65,17 @@ public sealed class HighContrastContractTests
         Assert.Contains("AutomationProperties.AutomationId=\"ConnectionStatus\"", composer, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void ApprovalDecisions_UseVisibleTextInAdditionToColorAndIcons()
+    {
+        var approval = File.ReadAllText(PathFor(
+            "ConnectOnion.WinUIClient", "Controls", "Chat", "InteractiveCards", "ApprovalCard.xaml"));
+
+        Assert.Contains("Text=\"Allow once\"", approval, StringComparison.Ordinal);
+        Assert.Contains("Text=\"Allow for session\"", approval, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Decline\"", approval, StringComparison.Ordinal);
+    }
+
     private static string PathFor(params string[] parts)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
