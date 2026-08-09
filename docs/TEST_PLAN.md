@@ -1,6 +1,6 @@
 # ConnectOnion Desktop — Test Plan & Test Cases
 
-> Version 2.1 · Branch `main` · Architecture and test-infrastructure status refreshed 2026-08-07 against the current working tree
+> Version 2.1 · Architecture and test-infrastructure status refreshed 2026-08-10 against the current working tree
 > Test counts are a dated generated snapshot, not a permanent constant. Protocol Conformance and real-window UI tests are reported separately from the headless xUnit total.
 
 ---
@@ -32,7 +32,7 @@
 
 ---
 
-> Verification refresh: 2026-08-07. The Core seam, CommunityToolkit.Mvvm, Generic Host dependency injection, ArchUnitNET boundaries, fake-agent fixtures, SQLite fixtures, the ratcheted coverage gate, and the FlaUI real-window project are implemented. The run runtime now sits inside the Core seam and has behavioural tests, and the shell smoke suite runs on every push and PR. See [AGENTS.md](../AGENTS.md), [PERFORMANCE.md](./PERFORMANCE.md), and [PERFORMANCE_AUDIT_2026-07-25_EN.md](./PERFORMANCE_AUDIT_2026-07-25_EN.md) for the authoritative architecture and measured evidence.
+> Verification refresh: 2026-08-10. The Core seam, CommunityToolkit.Mvvm, Generic Host dependency injection, ArchUnitNET boundaries, fake-agent fixtures, SQLite fixtures, the ratcheted coverage gate, and the FlaUI real-window project are implemented. The run runtime now sits inside the Core seam and has behavioural tests, and the shell smoke suite runs on every push and PR. See [AGENTS.md](../AGENTS.md), [PERFORMANCE.md](./PERFORMANCE.md), and [PERFORMANCE_AUDIT_2026-07-25_EN.md](./PERFORMANCE_AUDIT_2026-07-25_EN.md) for the authoritative architecture and measured evidence.
 
 ## 1. Document Goals
 
@@ -46,7 +46,7 @@
 
 ### 2.1 Main modules
 
-Production projects sit at the repo root, test projects under `tests/`. Everything except the live smoke test is in the `.sln`:
+Production projects sit at the repo root, test projects under `tests/`. The live smoke test and trimmed console harness are intentionally outside the `.sln`:
 
 | Project | In `.sln` | In CI | Responsibility |
 |---|---|---|---|
@@ -55,21 +55,23 @@ Production projects sit at the repo root, test projects under `tests/`. Everythi
 | `ConnectOnion.Protocol` | ✅ | ✅ build | Transport-agnostic protocol library (`net10.0`), zero WinUI dependency → headless-testable |
 | `ConnectOnion.Protocol.Conformance` | ✅ | ✅ **CI gate** | Cross-checks Ed25519 / canonical JSON against the Node.js `ref-sign.js` |
 | `ConnectOnion.Protocol.LiveTest` | ❌ | manual only | Real deployed-agent smoke run only through an explicit workflow dispatch |
+| `ConnectOnion.PortableLauncher` | ✅ | ✅ build + release | Dependency-free NativeAOT launcher at the portable ZIP root |
 | `tests/ConnectOnion.Protocol.Tests` | ✅ | ✅ | xunit unit tests for the wire protocol |
 | `tests/ConnectOnion.WinUIClient.UnitTests` | ✅ | ✅ | Headless xunit tests over `Core`, plus the ArchUnitNET layer-boundary gate |
 | `tests/ConnectOnion.IntegrationTests` | ✅ | ✅ | xunit tests against a real SQLite file (schema, migrations, repositories, identity) |
-| `tests/ConnectOnion.WinUIClient.UITests` | ✅ | ✅ | xUnit + FlaUI (UIA3) real-window tests. The project discovers all 35; 30 required shell/chat tests run on every push/PR, one Explorer drag diagnostic is skipped, the trimmed-runtime scenario has its own gate, and three diagnostics/audits remain opt-in. |
+| `tests/ConnectOnion.WinUIClient.UITests` | ✅ | ✅ | xUnit + FlaUI (UIA3) real-window tests. The project discovers all 41; 36 required shell/chat tests run on every push/PR, one Explorer drag diagnostic is skipped, the trimmed-runtime scenario has its own gate, and three diagnostics/audits remain opt-in. |
+| `tests/ConnectOnion.TrimSmoke` | ❌ | opt-in audit | Trimmed console harness for serialization, persistence, and identity restart paths |
 
 The test projects can't reference the app project (`net10.0-windows` + Windows App SDK won't load in a headless test host), so they take a `ProjectReference` on `ConnectOnion.WinUIClient.Core`, which holds every WinUI-free surface of the client. **Moving a production file into `Core` is how it comes under test.** (This replaces the older `<Compile Include>` link lists — those are gone.)
 
 ### 2.2 Key pages and windows
 
 - **Window**: `MainWindow` — the single top-level window with a custom title bar, split across partials:
-  `MainWindow.xaml.cs` / `.FileMenu.cs` / `.EditMenu.cs` / `.ViewMenu.cs` / `.HelpMenu.cs` / `.DragDrop.cs` / `.Tray.cs` / `.Tray.Interop.cs` / `.Notifications.cs`
+  `MainWindow.xaml.cs` plus `.Agents.cs`, `.FileMenu.cs`, `.EditMenu.cs`, `.ViewMenu.cs`, `.ChatShortcuts.cs`, `.HelpMenu.cs`, `.Shortcuts.cs`, `.Notifications.cs`, `.Overlays.cs`, `.Placement.cs`, `.SessionSearch.cs`, `.DragDrop.cs`, `.Tray.cs`, `.Tray.Interop.cs`, and `.Tray.Menu.cs`
 - **Pages**: `HomePage`, `ChatPage` (+ `ChatPage.Find.cs`), `AgentDetailPage` inside `ContentFrame`; `SettingsPage` hosted directly by `SettingsOverlay` rather than navigated to. `Architecture/NavigationReachabilityTests` fails the build on a page that is neither — which is what `SessionsPage` had become before it was deleted.
 - **In-window modal overlays** (**not separate Windows, not ContentDialogs**):
   `SettingsOverlay`, `KeyboardShortcutsDialog`, `AboutOverlay`, `AddAgentForm`, `SessionSearchOverlay` — all share one shape: dimmed backdrop, centered card, Esc / backdrop / close-button dismissal, focus returned to the opener. Created lazily by `MainWindow.Overlays.cs`; `IsModalOverlayOpen` gates every global accelerator, `UpdateModalFocusScope` takes the background out of the Tab order, and each returns a `ModalOverlayAutomationPeer` so UIA sees a dialog (and so `ByAutomationId` resolves at all).
-- **Custom controls**: `ChatComposer` (+`.Speech`), `ShellSidebar` (+`.Events`), `AddAgentForm`, `AgentAvatar`, `ToolActivityView`, `MarkdownTextBlock`, `HighlightedTextBlock`, `InAppNotificationHost`, `OfflineNoticeBar`, `IconText`, `SettingRow`, `IdentitySettingsContent`
+- **Custom controls**: `ChatComposer` (+`.Speech`), `ShellSidebar` (+`.Events`), `AddAgentForm`, `AgentAvatar`, `AgentShareDialog`, interactive chat cards, `ToolActivityView`, `MarkdownTextBlock`, `HighlightedTextBlock`, `InAppNotificationHost`, `OfflineNoticeBar`, `IconText`, settings panes, and identity dialogs
 
 ### 2.3 Main ViewModels
 
@@ -132,16 +134,16 @@ Write path: `ConversationRepository.UpsertMessagesAsync` is the **only** writer 
 
 ### 2.8 Existing tests and verified snapshot
 
-**Verified snapshot (2026-08-08): 1,565 passing headless xUnit tests.** The three suites are deliberately counted separately so future changes can identify where drift occurred:
+**Verified snapshot (2026-08-10): 1,601 passing headless xUnit tests.** The three suites are deliberately counted separately so future changes can identify where drift occurred:
 
 | Suite | Project | Passing tests | CI behavior |
 |---|---|---:|---|
 | Protocol xUnit | `tests/ConnectOnion.Protocol.Tests` | **225** | Runs on every push and pull request |
-| Core unit + architecture | `tests/ConnectOnion.WinUIClient.UnitTests` | **1,143** | Runs on every push and pull request; includes the ArchUnitNET boundary gate |
+| Core unit + architecture | `tests/ConnectOnion.WinUIClient.UnitTests` | **1,179** | Runs on every push and pull request; includes the ArchUnitNET boundary gate |
 | SQLite integration | `tests/ConnectOnion.IntegrationTests` | **197** | Runs on every push and pull request against temporary real SQLite files |
-| **Headless xUnit total** | — | **1,565** | Sum of the three rows above |
+| **Headless xUnit total** | — | **1,601** | Sum of the three rows above |
 
-`ConnectOnion.Protocol.Conformance` is a separate Release gate. It cross-checks address derivation, canonical JSON, signatures, and verification against the Node.js reference and is **not** included in the 1,565 xUnit total.
+`ConnectOnion.Protocol.Conformance` is a separate Release gate. It cross-checks address derivation, canonical JSON, signatures, and verification against the Node.js reference and is **not** included in the 1,601 xUnit total.
 
 > Agent naming, markdown rendering/layout, diagnostic-output, portable-release, and sidebar
 > selection/cache contracts account for the latest Core/architecture growth, while targeted agent
@@ -149,7 +151,7 @@ Write path: `ConversationRepository.UpsertMessagesAsync` is the **only** writer 
 > keeps one output path per configuration so a platform switch cannot silently report a stale
 > assembly. Re-derive counts with a plain `dotnet test` per project.
 
-The real-window project currently discovers **35 xUnit/FlaUI tests**: 30 required shell/chat tests, one explicitly skipped Explorer drag diagnostic, one trimmed-runtime scenario, and three opt-in diagnostics/audit tests. The CI filter selects 32 because the class-level category also includes the no-op memory probe and skipped diagnostic; the verified run reports 31 passed and one skipped.
+The real-window project currently discovers **41 xUnit/FlaUI tests**: 36 required shell/chat tests, one explicitly skipped Explorer drag diagnostic, one trimmed-runtime scenario, and three opt-in diagnostics/audit tests. The CI filter selects 38 because the class-level category also includes the no-op memory probe and skipped diagnostic; the verified trimmed run reports 37 passed and one skipped.
 
 | File | Test | Execution requirement |
 |---|---|---|
@@ -178,7 +180,7 @@ The real-window project currently discovers **35 xUnit/FlaUI tests**: 30 require
 | `MemoryLeakTests.cs` | `NavigationSurfaces_RepeatedOpenClose_ReachesStableHighWaterMark` | Opt-in: `CONNECTONION_MEMORY_TEST=1`; normally run through `scripts/Test-MemoryLeaks.ps1` |
 | `PerformanceAuditTests.cs` | `ReleaseUiOperations_AreMeasuredAgainstSyntheticLargeHistories` | Opt-in: set `CONNECTONION_UI_PERF_OUT` to an output JSON path |
 
-All 30 required shell/chat tests pass together against a trimmed, self-contained Release ReadyToRun unpackaged executable; the Explorer drag diagnostic is skipped. The portable root launcher and nested `app\` payload remain covered by the release rehearsal. CI executes the shell/chat suite on every push and pull request using an isolated data root and uploads TRX/screenshot evidence unconditionally.
+All 36 required shell/chat tests pass together against a trimmed, self-contained Release ReadyToRun unpackaged executable; the Explorer drag diagnostic is skipped. The portable root launcher and nested `app\` payload remain covered by the release rehearsal. CI executes the shell/chat suite on every push and pull request using an isolated data root and uploads TRX/screenshot evidence unconditionally.
 
 #### Reproducible count snapshot
 
@@ -195,7 +197,7 @@ dotnet test tests\ConnectOnion.WinUIClient.UITests\ConnectOnion.WinUIClient.UITe
 dotnet run --project ConnectOnion.Protocol.Conformance\ConnectOnion.Protocol.Conformance.csproj --configuration Release
 ```
 
-This is a **generated snapshot dated 2026-08-07**. When counts change, update the three suite values, the total, verification date, SDK/build mode, and the evidence commit in the same pull request. Count changes alone are not a quality signal.
+This is a **generated snapshot dated 2026-08-10**. When counts change, update the three suite values, the total, verification date, SDK/build mode, and the evidence commit in the same pull request. Count changes alone are not a quality signal.
 
 CI collects Cobertura data with `coverage.runsettings`, uploads the raw reports, and then runs
 `scripts/Test-Coverage.ps1`. The gate merges source lines by file and line number so Core code
@@ -209,14 +211,14 @@ below the absolute floor in the script's parameters. Raising the baseline is a d
 the measured values, which made any change that added an uncovered branch a CI failure — a gate
 that tight rewards padding tests rather than real ones.
 
-Current baseline: **86.12% `ConnectOnion.Protocol`**, **83.59% `ConnectOnion.WinUIClient.Core`**.
+Current baseline: **88.67% `ConnectOnion.Protocol`**, **86.27% `ConnectOnion.WinUIClient.Core`**.
 Core's figure is lower than the old 88.5% threshold because *more code is now measured*, not
 because less is tested: the ~1,300-line run runtime moved into `Core` from the app project, where
 it had been outside instrumentation entirely. Its still-uncovered socket half is now visible in
 the denominator instead of hidden by exclusion.
 
 The gate additionally reports the size of what it **cannot** measure — `ConnectOnion.WinUIClient`
-is ~23.7k lines of C# and ~9.5k of XAML that no Cobertura report can include, because a headless
+is ~24.8k lines of C# and ~9.9k of XAML that no Cobertura report can include, because a headless
 host cannot load the Windows App SDK and the FlaUI suite runs the app out-of-process. That number
 is source lines and is not comparable to the coverage table.
 
@@ -224,11 +226,11 @@ is source lines and is not comparable to the coverage table.
 
 The test infrastructure itself is implemented: the Core seam, ArchUnitNET boundary tests, fake-agent server, temporary SQLite fixtures, FlaUI project, startup/performance harnesses, and memory-leak gate all exist. The remaining work is expansion and hardening rather than creating those projects from scratch.
 
-- Real-window coverage now includes 30 required shell/chat tests plus one explicitly skipped Explorer drag diagnostic and three opt-in diagnostics/audits. It covers page navigation, Agent Detail template and keyboard-first-send behavior, Stop/interrupt settlement, abnormal-drop reconnect/resume, retry, mid-turn conversation switching, restart restoration, markdown-aware in-chat find, agent rename persistence, cold activation routing, startup-failure recovery, and agent-icon surfaces. Direct tray-icon interaction, OS notification delivery/click, and deterministic Explorer drag/drop remain manual.
+- Real-window coverage now includes 36 required shell/chat tests plus one explicitly skipped Explorer drag diagnostic and three opt-in diagnostics/audits. It covers page navigation and history, all five modal overlays, Agent Detail template and keyboard-first-send behavior, Stop/interrupt settlement, abnormal-drop reconnect/resume, retry, mid-turn conversation switching, restart restoration, markdown-aware in-chat find, agent rename persistence, cold activation routing, startup-failure recovery, and agent-icon surfaces. Direct tray-icon interaction, actual OS notification delivery/click, and deterministic Explorer drag/drop remain manual; the cold-activation test injects the post-click routing arguments and therefore does not display a system toast. The Release trimmed publish now carries `Microsoft.WindowsAppRuntime.Insights.Resource.dll`; startup registration was verified successfully after the previous `0x8007007E` failure, and the portable package audit fails if the DLL is missing.
 - The activation lost-wakeup race has a deterministic 1,000-iteration concurrency contract, and startup recovery has a real-window test. Deeper reconnect and shutdown integration coverage remains open.
 - Large-history UI measurements now fail on explicit shell, first-open, cached-reopen, tool-expand, virtualization, and private-bytes ceilings. Qualified WPR/ETW frame evidence remains manual.
 - High-contrast resource coverage and critical live-region/AutomationId contracts are automated. Narrator reading order, text scaling, and full keyboard traversal still require manual evidence.
-- Release trimming is enabled and guarded by `TrimmingGateTests`; `docs/TRIMMING.md` records the zero-warning audit, trimmed restart/rendering proof, 30-test real-window run, portable-package audit, and the rules for re-deriving the decision.
+- Release trimming is enabled and guarded by `TrimmingGateTests`; `docs/TRIMMING.md` records the original then-current 30-test evidence, and this refresh verifies the expanded 36-test required suite against the same trimmed shape.
 - The startup harness now uses a named event that reaches the real graceful-exit path. Qualified cold-start/WPR evidence still depends on an elevated, policy-enabled desktop runner and remains open.
 - Signed MSIX publishing is deferred unless that distribution channel is restored; the portable ZIP is the current release channel.
 - Hardware/external-state scenarios— real-agent high-throughput streaming, speech, notifications, packaged activation, and native/XAML profiling— remain manual until suitable automation evidence exists.
@@ -295,7 +297,7 @@ MSIX is outside the currently shipped portable channel. If publishing it is rest
 | **B. Core unit + architecture** | xUnit + ArchUnitNET | Headless, no `Microsoft.UI` | View models, projections, policies, caches, services, and enforced layer boundaries |
 | **C. SQLite integration** | xUnit + real temporary SQLite | Headless Windows | Schema, migrations, repositories, persistence, identity, and lifecycle integration |
 | **D. Static UI contracts** | xUnit source/XAML checks | Headless | Automation IDs, shared typography, source contracts, resource and accessibility invariants |
-| **E. Real-window UI / E2E** | xUnit + FlaUI UIA3 | Published unpackaged process in a real desktop session | 30 required shell/chat tests, one skipped Explorer drag diagnostic, a trimmed-runtime check, plus three opt-in diagnostics/audits |
+| **E. Real-window UI / E2E** | xUnit + FlaUI UIA3 | Published unpackaged process in a real desktop session | 36 required shell/chat tests, one skipped Explorer drag diagnostic, a trimmed-runtime check, plus three opt-in diagnostics/audits |
 | **F. Protocol Conformance** | Console release gate + Node reference | Release | Cryptographic/canonical-JSON compatibility; reported separately |
 | **G. Manual** | Checklist and profiler evidence | Real hardware/OS state | Narrator, high contrast, speech/audio, packaged install, notifications, ETW/WPR, real-agent stress |
 
@@ -324,7 +326,7 @@ There is **no separate MSTest WinUI Unit Test App** in the current solution. UI-
 5. Run the Protocol, Core/architecture, and SQLite integration xUnit suites with Cobertura collection.
 6. Compile and discover the UI test project.
 7. Publish a trimmed, self-contained ReadyToRun `win-x64` unpackaged executable.
-8. On every push and pull request, execute the 30 required real-window shell/chat tests against that published executable and an isolated data root; the Explorer drag diagnostic remains skipped.
+8. On every push and pull request, execute the 36 required real-window shell/chat tests against that published executable and an isolated data root; the Explorer drag diagnostic remains skipped.
 9. Upload UI TRX/screenshot evidence when that suite runs, plus coverage artifacts on every run.
 10. Finish with Protocol Conformance as a separate gate.
 
@@ -385,11 +387,11 @@ The Generic Host is the production composition root. Tests normally construct th
 
 | ID | Title | Layer | Pri | Preconditions / Data | Steps | Expected | Auto | Framework | Code location |
 |---|---|---|---|---|---|---|---|---|---|
-| **LC-START-001** | First launch creates DB + directories | D | **P0** | Delete `%AppData%\ConnectOnion` | Launch | Directories and `connectonion.db` created; all 12 logical schema-v11 tables present; WAL on; `foreign_keys=ON`; `synchronous=NORMAL` on each connection | ✅ | xunit | `AppStorage.EnsureDirectories`, `AppDatabase.EnsureInitializedAsync`, `AppDatabaseSchemaTests` |
+| **LC-START-001** | First launch creates DB + directories | D | **P0** | Delete `%AppData%\ConnectOnion` | Launch | Directories and `connectonion.db` created; all 12 logical schema-v12 tables present; WAL on; `foreign_keys=ON`; `synchronous=NORMAL` on each connection | ✅ | xunit | `AppStorage.EnsureDirectories`, `AppDatabase.EnsureInitializedAsync`, `AppDatabaseSchemaTests` |
 | **LC-START-002** | Launch with existing data loses nothing | D | **P0** | Seed DB with 2 agents / 3 sessions | Launch | Schema creation is idempotent; all data readable | ✅ | xunit | `AppDatabase.EnsureInitializedAsync` |
-| **LC-START-003** | DB init failure is logged and does not leave a broken window | C | **P0** | Make `.db` read-only / directory unwritable | Launch | Startup failure is logged, services shut down, and the process exits deterministically; a user-facing recovery message remains desirable | ⚠️ partial | fault injection / manual | `App.OnLaunched` top-level catch; no automated unwritable-profile fixture yet |
+| **LC-START-003** | DB init failure is logged and does not leave a broken window | C | **P0** | Set `CONNECTONION_UI_STARTUP_FAILURE=1`; keep an unwritable-profile check as a manual OS boundary | Launch | A recovery message is shown; after dismissal services shut down and the process exits deterministically | ✅ automated fault injection + manual ACL boundary | FlaUI | `ShellSmokeTests.Launch_StartupFailure_ShowsRecoveryMessageAndExitsCleanly` |
 | **LC-INST-001** | Second instance redirects and exits | E | **P0** | App already running | Launch the exe again | Second process exits; no second window; existing window comes forward | ✅ | FlaUI + process assertions | `Program.Main`, `AppInstance.FindOrRegisterForKey` |
-| **LC-INST-002** | Cold-start activation is buffered and replayed | A | **P1** | — | Call `App.ActivateMainWindow()` *before* the window exists, then create it and `FlushPendingActivation()` | Activation is honored exactly once, not dropped | ⚠️ partial | xUnit/integration test (open) | `App._pendingActivation` / `FlushPendingActivation` — lifecycle integration coverage is still open |
+| **LC-INST-002** | Cold-start activation is buffered and replayed | A | **P1** | — | Race activation and window creation 1,000 times, then flush | Activation is honored exactly once, not dropped | ✅ | xUnit | `DeferredActivationGateTests` |
 | **LC-TRAY-001** | Tray click restores the window | E | P1 | Minimized to tray | Click tray icon | Window restores to foreground | ⚠️ | FlaUI | `Shell/MainWindow.Tray.cs` `RestoreFromTray` |
 | **LC-EXIT-001** | Graceful shutdown drains in-flight runs | C | **P0** | A run is streaming | Call `ShutdownAsync()` | Completes within 8s; all sockets released; no unhandled exception | ✅ | xunit + fake server | `AgentSessionManager.ShutdownAsync` |
 | **LC-EXIT-002** | Shutdown still releases when a run hangs | C | P1 | Fake server never replies | `ShutdownAsync()` | Returns after the 8s bound; sockets disposed anyway | ✅ | xunit | same |
@@ -400,7 +402,7 @@ The Generic Host is the production composition root. Tests normally construct th
 |---|---|---|---|---|---|---|---|---|
 | **UT-AGENT-001** | Empty connection cannot be tested or added | A | **P0** | Open the form with an empty `Agent connection` input | `CanTest` and `CanAdd` remain false; the untouched empty field does not show an error | ✅ | xUnit | `AddAgentViewModelTests.EmptyInput_DoesNotShowValidationError` |
 | **UT-AGENT-002** | Reject add before a successful connection test | A | **P0** | Enter a valid `0x…` address or HTTP(S) URL, skip Test | Test is enabled but Add remains disabled until that exact input passes | ✅ | xUnit | `AddAgentViewModelTests.HttpUrl_IsValidAndEnablesTesting` / `AgentAddress_IsValidAndEnablesTesting` |
-| **UT-AGENT-003** | Missing reported name falls back locally | A | P1 | Successful connection response contains no agent name | Stored name becomes `Agent <first 8 connection characters>`; the add form has no name field | ⚠️ missing direct fallback assertion | xUnit | `AddAgentViewModel.AddAsync`, `CreateFallbackName` |
+| **UT-AGENT-003** | Missing reported name falls back locally | A | P1 | Successful connection response contains no agent name | Stored name uses a stable connection-derived fallback; the add form has no name field | ✅ | xUnit | `AddAgentViewModelTests.MissingReportedName_UsesStableConnectionFallback` |
 | **DB-AGENT-001** | Agent create / read / delete | D | **P0** | CRUD | Round-trips correctly | ✅ | xunit | `AgentRepository` |
 | **DB-AGENT-002** | Deleting an agent cascades to its sessions | D | **P0** | Delete an agent with conversations | `sessions` / `messages` stay consistent; no orphan rows (FK enforced) | ✅ | xunit | `AgentRepository` + FK |
 | **UT-AGENT-004** | Delete an agent that is currently connected | C | **P0** | Agent has an active run | Run is cancelled, socket released, no dangling references | ✅ | xunit + fake | `AgentSessionManager.ReleaseConversationAsync`, `ConversationCache` invalidation |
@@ -450,11 +452,11 @@ The Generic Host is the production composition root. Tests normally construct th
 | **DB-USAGE-003** | A failed / cancelled run still records its usage | C | **P0** | Run fails mid-turn after 2 LLM calls | Both calls appear in the ledger | ✅ | xunit | `AgentSessionManager.PersistFailedAsync` → `PersistUsageAsync` — a ledger that only counts successes does not add up |
 | **UT-USAGE-001** | `UsageProjector` extracts one row per `llm_result` | A | **P0** | Turn using two models | Two rows, correct model attribution | ✅ | xunit | `UsageProjector.Extract` |
 | **UT-USAGE-002** | Malformed / model-less / zero-token events are skipped | A | P1 | Bad frames | No rows, no exception | ✅ | xunit | same |
-| **UT-USAGE-003** | Clear is the only deletion path | A | **P0** | — | No other code path deletes `usage_events` | ✅ code review + grep | `UsageRepository.ClearAsync` |
+| **UT-USAGE-003** | Clear is the only deletion path | A | **P0** | — | No other code path deletes `usage_events` | ✅ | code review + grep | `UsageRepository.ClearAsync` |
 | **DB-CORRUPT-001** | Corrupt database file | D | P1 | Write garbage bytes | Comprehensible error; **must not silently wipe the DB** | ✅ | xunit | `AppDatabase.OpenAsync` |
 | **DB-ID-001** | Identity seed is DPAPI-encrypted at rest | D | **P0** | Generate identity | `private_seed` is not plaintext; round-trips | ✅ | xunit | `IdentityStore` |
 | **DB-ID-002** | Pre-DPAPI plaintext identity migrates in place | D | **P0** | Seed a matching address + 64-hex seed, then load | Address is unchanged; seed is rewritten with CurrentUser DPAPI; no reset is reported | ✅ | xunit | `IdentityStoreTests.EnsureIdentity_PreDpapiPlaintextSeed_IsProtectedWithoutChangingAddress` |
-| **DB-ID-002** | Behavior when the seed cannot be decrypted | D | P1 | Tamper with the seed | **Today: a fresh identity is generated** (no migration) | ✅ | xunit | `IdentityStore` — 🔴 **A silent identity swap loses existing agent authorizations. Needs a product decision: warn the user?** |
+| **DB-ID-003** | Unreadable stored seed resets identity with an explicit warning | D | **P0** | Tamper with the seed | A fresh identity is generated; `WasReset`/`ResetReason` latch, `IdentityReset` fires, and the shell warns that agents must re-authorize | ✅ | xunit + contract | `IdentityStoreTests` and shell identity-reset notification contract |
 | **DB-PREF-001** | Preferences round-trip (single row, `CHECK id = 1`) | D | P2 | Write twice | Still exactly one row | ✅ | xunit | `PreferencesRepository` |
 
 ### 11.5 Chat and sending (CHAT)
@@ -470,8 +472,8 @@ The Generic Host is the production composition root. Tests normally construct th
 | **UT-CHAT-007** | User message appears instantly and persists | C | **P0** | Normal send | Bubble is immediate; user row written before the reply | ✅ | xunit | `AgentSessionManager` (persists the user message on send) |
 | **UT-CHAT-008** | Unicode / Chinese / emoji / multiline / very long | A | P1 | See test data | Preserved verbatim; not truncated or mangled | ✅ | xunit | `InputMessageBuilder` |
 | **UT-CHAT-009** | `CanRetry` / `ShowRetryBar` logic | A | P1 | After a failure | Retry bar appears and is mutually exclusive with the offline notice | ✅ | xunit | `ChatViewModel:119,133` |
-| **UI-CHAT-001** | Composer clears and keeps focus after send | B | P1 | — | Focus remains in the input | ⚠️ | FlaUI real-window test | `ChatComposer.xaml.cs` |
-| **UI-CHAT-002** | Disclosure bubbles animate open and closed | B | P1 | Thought process, interactive cards, tool activity and tool steps | 140 ms fade/vertical transition; header is guarded against repeat clicks; OS animation preference is respected | ⚠️ manual | WinUI | `DisclosureAnimation` |
+| **UI-CHAT-001** | Composer clears and keeps focus after send | B | P1 | — | Focus remains in the input | ✅ | FlaUI against trimmed app | `Chat_SendMessage_RendersUserAndAgentBubbles`; `NewChat_AgentDetailFirstSend_NavigatesToChatAndCompletesTurn` |
+| **UI-CHAT-002** | Disclosure bubbles animate open and closed | B | P1 | Thought process, interactive cards, tool activity and tool steps | 140 ms fade/vertical transition; header is guarded against repeat clicks; OS animation preference is respected | ✅ contract + manual appearance | xUnit contract / WinUI | `TestPlanShellContractTests.DisclosureAnimation_IsBoundedGuardedAndHonoursTheOsPreference` |
 
 ### 11.6 Streaming and projection (STREAM)
 
@@ -494,7 +496,7 @@ The Generic Host is the production composition root. Tests normally construct th
 | **UT-STREAM-015** | Graceful stop uses the latest wire protocol | B | **P0** | Existing socket receives exactly `{ "type": "INTERRUPT" }`; ordinary OUTPUT still completes the turn | ✅ | xunit | `AgentConnectionServiceTests.SendInterruptAsync_*` |
 | **UT-STREAM-016** | Stop during approval uses the FIFO-safe hard rejection | B | **P0** | Exactly `approved=false`, `mode=reject_hard`, `feedback=用户中断`; no `type`/`scope` fields | ✅ | xunit | `AgentConnectionServiceTests.RejectApprovalForStopAsync_*` |
 | **UT-STREAM-017** | Interrupted OUTPUT is marked without an extra activity bubble | A | **P0** | Final agent message has `EventMeta=Stopped`; failed interrupt send leaves it unmarked | ✅ | xunit | `ChatTurnProjectionTests.AppendCompletedTurn_AfterInterrupt*` |
-| **UI-STREAM-001** | Stop enters an idempotent disabled intermediate state | B | **P0** | Button is visible only after INPUT, disabled while `IsStopping`, and disappears on OUTPUT/ERROR/disconnect | ⚠️ | FlaUI real-window test | `ChatComposer.CanStop`, `ChatViewModel.ApplyRunSnapshot` |
+| **UI-STREAM-001** | Stop enters an idempotent disabled intermediate state | B | **P0** | Button is visible only after INPUT, disabled while `IsStopping`, and disappears on OUTPUT/ERROR/disconnect | ✅ | FlaUI against trimmed app | `Chat_StopResponse_DisablesImmediatelyAndSettlesExactlyOnce` |
 
 ### 11.7 Conversation management (SESSION)
 
@@ -513,18 +515,18 @@ The Generic Host is the production composition root. Tests normally construct th
 
 | ID | Title | Layer | Pri | Expected | Auto | Code location |
 |---|---|---|---|---|---|---|
-| **UI-MD-001** | Full syntax renders (headings, bold/italic, strikethrough, lists, quotes, tables, rules) | B | P1 | Correct element types | ⚠️ | FlaUI real-window test · `WinUiMarkdownRenderer` |
-| **UI-MD-002** | Unclosed code fence does not crash | B | **P0** | Degrades gracefully | ⚠️ | `MarkdownTextBlock.RenderMarkdown:123` (fallback paragraph exists) |
-| **UI-MD-003** | **Search highlight inside inline code does not crash** | B | **P0** | No `ArgumentException` | ⚠️ | 🔴 **Regression case (this actually happened)**: `InlineUIContainer` is legal only inside a `RichTextBlock` paragraph · `WinUiMarkdownRenderer.WriteCodeInline` |
-| **UI-MD-004** | Search highlight inside a fenced code block does not crash | B | **P0** | Same | ⚠️ | `WriteCodeBlockLines` |
-| **UI-MD-005** | Search highlight inside a link / bare URL does not crash | B | **P0** | Falls back to the bold+underline path | ⚠️ | `WriteLink` + `_uiContainerBlockedDepth` |
-| **UI-MD-006** | `` [`code`](url) `` does not crash | B | P1 | Inline code degrades to a monospace `Span` | ⚠️ | `WriteCodeInline` (`!CanHostUIContainer` branch) |
+| **UI-MD-001** | Full syntax renders (headings, bold/italic, strikethrough, lists, quotes, tables, rules) | B | P1 | Correct element types | ✅ contract + real-window render | `MarkdownRendererCoverageTests`; `Chat_FindAcrossMarkdownCodeLinksAndUnclosedFence_DoesNotCrash` |
+| **UI-MD-002** | Unclosed code fence does not crash | B | **P0** | Degrades gracefully | ✅ | FlaUI `Chat_FindAcrossMarkdownCodeLinksAndUnclosedFence_DoesNotCrash` |
+| **UI-MD-003** | **Search highlight inside inline code does not crash** | B | **P0** | No `ArgumentException` | ✅ regression | FlaUI `Chat_FindAcrossMarkdownCodeLinksAndUnclosedFence_DoesNotCrash` |
+| **UI-MD-004** | Search highlight inside a fenced code block does not crash | B | **P0** | Same | ✅ regression | same |
+| **UI-MD-005** | Search highlight inside a link / bare URL does not crash | B | **P0** | Falls back to the bold+underline path | ✅ regression | same |
+| **UI-MD-006** | `` [`code`](url) `` does not crash | B | P1 | Inline code degrades to a monospace `Span` | ✅ regression | same + `MarkdownRendererCoverageTests` |
 | **UI-MD-007** | Highlight match count equals the number of highlights | A | **P0** | The fallback path must still increment `matchIndex`, or Ctrl+F's "n of m" desyncs | ✅ | `HighlightedTextBlock.AddHighlightedRuns` |
 | **UI-MD-008** | Code blocks and highlights sit on the text baseline | F | P2 | No upward float | ⚠️ partial | `HighlightedTextBlock.DescentFor` derives font metrics; final appearance remains visual |
 | **UI-MD-009** | Correct colors in both themes | B | P1 | Shared brushes are cached by key and invalidated on `ThemeApplied`; no stale colors after a theme flip | ✅ contract + manual | `ThemeBrushResolver`, `RenderHotPathContractTests` |
-| **UI-MD-010** | Table presentation and alignment | B | P1 | Cells with default/repeated parser column indices advance sequentially without overlap; header has distinct surface/weight; `:---`, `:---:`, `---:` align left/center/right; long cells wrap at a bounded width | ❌ manual/visual | `WinUiMarkdownRenderer.WriteTable` |
-| **UI-MD-011** | Wide table scrolling does not break message-list scrolling | B | **P0** | Table owns horizontal overflow only; mouse wheel and touch continue to scroll the outer virtualized message list vertically | ❌ manual/visual | `WriteTable` horizontal-only `ScrollViewer` |
-| **UI-MD-012** | Fenced code language header | B | P2 | A language info string renders as a compact themed header; blocks without a language keep the simpler layout | ❌ manual/visual | `WriteCodeBlockLines` |
+| **UI-MD-010** | Table presentation and alignment | B | P1 | Cells with default/repeated parser column indices advance sequentially without overlap; header has distinct surface/weight; `:---`, `:---:`, `---:` align left/center/right; long cells wrap at a bounded width | ✅ structural contract + manual visual | `MarkdownRendererCoverageTests.TableLayout_AdvancesColumnsAlignsCellsAndBoundsLongContent` |
+| **UI-MD-011** | Wide table scrolling does not break message-list scrolling | B | **P0** | Table owns horizontal overflow only; mouse wheel and touch continue to scroll the outer virtualized message list vertically | ✅ horizontal-only contract + manual wheel/touch | same (`HorizontalScrollBarVisibility`; vertical disabled) |
+| **UI-MD-012** | Fenced code language header | B | P2 | A language info string renders as a compact themed header; blocks without a language keep the simpler layout | ✅ structural contract + manual visual | `MarkdownRendererCoverageTests.FencedCodeLanguageHeader_IsConditionalAndThemed` |
 | **PERF-MD-001** | Large markdown (10k lines) render time | E | P2 | < 500ms | ✅ | performance test |
 
 ### 11.9 Tool calls (TOOL)
@@ -541,19 +543,19 @@ The Generic Host is the production composition root. Tests normally construct th
 
 | ID | Title | Layer | Pri | Expected | Auto | Code location |
 |---|---|---|---|---|---|---|
-| **UI-OVL-001** | All three overlays close on Esc | B | **P0** | `OverlayRoot_KeyDown` handles Escape | ⚠️ | `SettingsOverlay` / `KeyboardShortcutsDialog` / `AboutOverlay` |
-| **UI-OVL-002** | Backdrop click closes; card click does not | B | P1 | `Backdrop_Tapped` vs. `ModalContainer_Tapped` (`e.Handled = true`) | ⚠️ | same |
-| **UI-OVL-003** | Re-invoking never opens a second instance | B | **P0** | When `IsOpen`, `Show()` only re-focuses | ⚠️ | all three `Show()` |
-| **UI-OVL-004** | Focus returns to the opener (`HelpMenuBarItem`) on close | B | **P0** | Focus lands back on the menu item | ⚠️ | `_focusReturnTarget` |
-| **UI-OVL-005** | Global accelerators are inert while an overlay is open | B | **P0** | `IsModalOverlayOpen` short-circuits the File/Edit/View/Help KeyDown handlers | ⚠️ | `MainWindow.xaml.cs:206` |
+| **UI-OVL-001** | All five overlays close on Esc | B | **P0** | `OverlayRoot_KeyDown` handles Escape | ✅ | FlaUI theory `ModalOverlay_EscapeClosesAndReturnsFocusToOpener`; `OverlayInteractionContractTests` |
+| **UI-OVL-002** | Backdrop click closes; card click does not | B | P1 | `Backdrop_Tapped` vs. `ModalContainer_Tapped` (`e.Handled = true`) | ✅ contract | `OverlayInteractionContractTests.Overlay_EscapeAndBackdropClose_WhileCardTapStaysInside` |
+| **UI-OVL-003** | Re-invoking never opens a second instance | B | **P0** | When `IsOpen`, `Show()` only re-focuses | ✅ contract | `OverlayInteractionContractTests.Shell_CreatesOneInstancePerOverlay_AndCyclesFocusInsideIt` |
+| **UI-OVL-004** | Focus returns to the opener on close | B | **P0** | Focus lands back on the command that opened the overlay | ✅ | five-case FlaUI theory + source contract |
+| **UI-OVL-005** | Global accelerators are inert while an overlay is open | B | **P0** | `IsModalOverlayOpen` short-circuits the File/Edit/View/Help KeyDown handlers | ✅ contract | `OverlayInteractionContractTests.EveryGlobalAcceleratorHandler_StopsBehindAModalOverlay` |
 | **UI-OVL-006** | Opening an overlay does not disturb background runs | C | **P0** | Streaming continues; connections stay up | ✅ | architectural assertion (overlays are a pure UI layer) |
-| **UI-ABOUT-001** | Shows app name, description, icon, copyright | B | P1 | Copy is correct and says "ConnectOnion" | ⚠️ | `AboutOverlay.xaml` |
+| **UI-ABOUT-001** | Shows app name, description, icon, copyright | B | P1 | Copy is correct and says "ConnectOnion" | ✅ contract + real-window open | `TestPlanShellContractTests.AboutOverlay_HasTheRequiredProductCopyAndIcon`; `HelpAbout_OpensFocusedAndOkClosesIt` |
 | **UT-ABOUT-002** | **Version is not hard-coded** | A | **P0** | Packaged → `Package.Current.Id.Version`; unpackaged → `AssemblyInformationalVersion` with any `+sha` stripped; fallback `1.0.0` | ✅ | xunit · `AppVersionService.ResolveDisplayVersion` |
 | **UT-ABOUT-003** | Copyright year is taken from the clock | A | P2 | `© {DateTime.Now.Year} ConnectOnion` | ✅ | `AppVersionService.CopyrightText` |
 | **UI-ABOUT-004** | High DPI (150% / 200%): text is not clipped | F | P2 | Layout adapts | ❌ manual | `AboutOverlay.xaml` (ScrollViewer backstop) |
-| **UT-HELP-001** | Help menu contains Keyboard shortcuts / ConnectOnion Docs / About | B | P1 | All three present, in order | ⚠️ | `MainWindow.xaml` `HelpMenuBarItem` |
-| **UT-HELP-002** | Docs opens the correct URL | A | **P0** | `https://docs.connectonion.com/` | ⚠️ | `Shell/MainWindow.HelpMenu.cs` `DocsUrl` — the implemented `IUriLauncher` abstraction makes this headlessly testable. |
-| **UT-HELP-003** | A failed Docs launch surfaces an error toast (never silent) | A | P1 | `NotificationType.Error` toast | ⚠️ | same (`launched == false` branch) |
+| **UT-HELP-001** | Help menu contains Keyboard shortcuts / ConnectOnion Docs / About | B | P1 | All three present, in order | ✅ | `HelpMenuContractTests.HelpMenu_ContainsExpectedCommandsInOrder` |
+| **UT-HELP-002** | Docs opens the correct URL | A | **P0** | `https://docs.connectonion.com/` | ✅ | `HelpMenuContractTests` canonical-URL contract |
+| **UT-HELP-003** | A failed Docs launch surfaces an error toast (never silent) | A | P1 | `NotificationType.Error` toast | ✅ | `HelpMenuContractTests.HelpMenuCode_FailedDocsLaunchSurfacesAnErrorToast` |
 | **UT-HELP-004** | Docs and About are separate commands | A | P2 | Two independent handlers; no shared event branching on text | ✅ code review | `Shell/MainWindow.HelpMenu.cs` |
 | **UT-KBD-001** | The shortcut catalog matches real handlers | A | **P0** | Every entry in `KeyboardShortcutCatalog` has a corresponding KeyDown handler in `MainWindow.*Menu.cs` | ✅ | xunit (reflection / string comparison) — the file's own comment demands this |
 | **UT-KBD-002** | Ctrl+Shift+/ opens the shortcuts window | B | P1 | A key that produces `/` in the active layout + Ctrl + Shift | ✅ contract + real window | `LayoutKeys.ProducesSlash`, `MainWindow.HelpMenu.cs`; VK 191 is fallback only |
@@ -583,50 +585,50 @@ The Generic Host is the production composition root. Tests normally construct th
 
 | ID | Title | Layer | Pri | Expected | Auto | Code location |
 |---|---|---|---|---|---|---|
-| **UI-NAV-001** | Back/Forward enablement after navigation | B | P1 | `UpdateNavigationButtons` | ⚠️ | `MainWindow.xaml.cs:209` |
-| **UI-NAV-002** | Navigation closes the Find overlay | B | P2 | `CloseFindOverlay()` | ⚠️ | `MainWindow.xaml.cs:43` |
-| **UI-NAV-003** | `forceReload` pops the stale BackStack entry (leak guard) | A | **P0** | The old page instance becomes collectable | ⚠️ | `MainWindow.NavigateTo:232` |
+| **UI-NAV-001** | Back/Forward enablement after navigation | B | P1 | `UpdateNavigationButtons` | ✅ contract + real window | `TestPlanShellContractTests.BackForwardButtonsTrackFrameState_AndNavigationClosesFind`; `Navigation_BackForwardRestoresEntities_ClosesFind_AndSurvivesRapidUse` |
+| **UI-NAV-002** | Navigation closes the Find overlay | B | P2 | `CloseFindOverlay()` | ✅ contract + real window | same |
+| **UI-NAV-003** | Forced navigation preserves Back/Forward history while replacing the outgoing entry's entity context | A | **P0** | Stored agent/conversation selection is restored; deleted entities are pruned; destructive resets alone clear both stacks | ✅ contract + real window | `NavigationHistoryContractTests`; `Navigation_BackForwardRestoresEntities_ClosesFind_AndSurvivesRapidUse` |
 | **UI-NAV-004** | Navigation does not cancel an in-flight run | C | **P0** | The run continues | ✅ | architectural assertion |
-| **UI-NAV-005** | Rapid repeated navigation does not crash | E | P1 | 10 fast page switches | ⚠️ | FlaUI |
+| **UI-NAV-005** | Rapid repeated navigation does not crash | E | P1 | 10 fast page switches | ✅ | FlaUI `Navigation_BackForwardRestoresEntities_ClosesFind_AndSurvivesRapidUse` |
 | **UI-NAV-006** | Custom title bar drag region works | F | P2 | The window can be dragged | ❌ manual | `TitleBarDragRegion` |
 | **UI-NAV-007** | Multi-monitor / DPI change | F | P2 | Layout stays correct | ❌ manual | — |
-| **UI-FIND-001** | Ctrl+F opens Find; `IFindHost` pages respond | B | P1 | Match count correct; next/prev works | ⚠️ | `Shell/MainWindow.ViewMenu.cs` + `ChatPage.Find.cs` |
+| **UI-FIND-001** | Ctrl+F opens Find; `IFindHost` pages respond | B | P1 | Match count correct; next/prev works; navigation closes it | ✅ | FlaUI `Chat_Find_NavigatesMatchesAndCloses`; navigation regression above |
 
 ### 11.13 Keyboard and focus (FOCUS)
 
 | ID | Title | Layer | Pri | Expected | Auto |
 |---|---|---|---|---|---|
 | **A11Y-FOCUS-001** | Initial focus on overlay open | B | **P0** | Settings → first control; Shortcuts → SearchBox; About → OkButton | ✅ FlaUI shell suite |
-| **A11Y-FOCUS-002** | Focus returns to the opener on close | B | **P0** | See UI-OVL-004 | ✅ Settings path; remaining overlays tracked |
-| **A11Y-FOCUS-003** | Tab / Shift+Tab order is sane and skips hidden controls | B | P1 | Collapsed regions are not tabbable | ⚠️ |
-| **A11Y-FOCUS-004** | Disabled controls do not take focus | B | P1 | — | ⚠️ |
+| **A11Y-FOCUS-002** | Focus returns to the opener on close | B | **P0** | See UI-OVL-004 | ✅ five-case FlaUI theory |
+| **A11Y-FOCUS-003** | Tab / Shift+Tab order is sane and skips hidden controls | B | P1 | Collapsed regions are not tabbable; modal background leaves the Tab order; focus cycles inside the overlay | ✅ contract + manual traversal | `OverlayInteractionContractTests.Shell_CreatesOneInstancePerOverlay_AndCyclesFocusInsideIt` |
+| **A11Y-FOCUS-004** | Disabled controls do not take focus | B | P1 | Test/Add remain disabled until their validated states permit action | ✅ contract | `OverlayInteractionContractTests.AddAgent_DisabledActionsFollowTheValidatedViewModelState`; `AddAgentViewModelTests` |
 | **A11Y-FOCUS-005** | Focus visuals are visible (including restyled buttons) | F | P1 | `FocusVisualPrimaryBrush` applies | ❌ manual |
-| **E2E-015** | **Full send-message flow using only the keyboard** | E | **P0** | See §12 | ⚠️ FlaUI |
+| **E2E-015** | **Full send-message flow using only the keyboard** | E | **P0** | See §12 | ✅ FlaUI `NewChat_AgentDetailFirstSend_NavigatesToChatAndCompletesTurn` |
 
 ### 11.14 Accessibility (A11Y)
 
-| ID | Title | Layer | Pri | Expected | Auto |
-|---|---|---|---|---|---|
-| **A11Y-ID-001** | **Named interactive controls carry an `AutomationId`** | B | **P0** | Per the table in §13.1 | ✅ automated | 145 IDs are unique; the 53 critical E2E locators and every named interactive XAML element are guarded by `AutomationContractTests` |
-| **A11Y-NAME-001** | Icon-only buttons carry `AutomationProperties.Name` | B | **P0** | 48 exist; all icon buttons must be covered | ✅ static scan |
-| **A11Y-NAME-002** | Interactive card headers announce their state | B | P1 | `InteractiveAccessibilityName` includes eyebrow, title, outcome, expanded/collapsed | ⚠️ |
-| **A11Y-NAME-003** | Keycaps are not double-announced | B | P2 | Keycaps are `AccessibilityView=Raw`; the group name carries the full combo | ⚠️ | `KeyboardShortcutsDialog.xaml` |
-| **A11Y-COLOR-001** | Color is not the only carrier of meaning | F | P1 | Approve/reject also show text ("Approved" / "Rejected") | ❌ manual |
-| **A11Y-CONTRAST-001** | Text contrast ≥ WCAG AA | F | P1 | Both themes | ❌ Accessibility Insights |
-| **A11Y-HC-001** | High-contrast mode is usable | F | P2 | — | ❌ manual |
-| **A11Y-SCALE-001** | 200% text scaling does not clip | F | P1 | — | ❌ manual |
-| **A11Y-LIVE-001** | State changes are announced | B | P2 | Connection status, error messages | ⚠️ |
+| ID | Title | Layer | Pri | Expected | Auto | Evidence |
+|---|---|---|---|---|---|---|
+| **A11Y-ID-001** | **Named interactive controls carry an `AutomationId`** | B | **P0** | Per the table in §13.1 | ✅ automated | 158 IDs are unique; the 53 critical E2E locators and every named interactive XAML element are guarded by `AutomationContractTests` |
+| **A11Y-NAME-001** | Icon-only buttons carry `AutomationProperties.Name` | B | **P0** | Every icon-only button has an accessible name | ✅ static scan | `AutomationContractTests` |
+| **A11Y-NAME-002** | Interactive card headers announce their state | B | P1 | `InteractiveAccessibilityName` includes eyebrow, title, outcome, expanded/collapsed and raises a change notification | ✅ | `ChatMessageTests.InteractiveAccessibilityName_AnnouncesDisclosureStateAndUpdatesWhenToggled` |
+| **A11Y-NAME-003** | Keycaps are not double-announced | B | P2 | Keycaps are `AccessibilityView=Raw`; the group name carries the full combo | ✅ contract | `HelpMenuContractTests.ShortcutKeycaps_AreRawAndTheGroupAnnouncesTheWholeChord` |
+| **A11Y-COLOR-001** | Color is not the only carrier of meaning | F | P1 | Approve/reject also show visible text | ✅ contract | `HighContrastContractTests.ApprovalDecisions_UseVisibleTextInAdditionToColorAndIcons` |
+| **A11Y-CONTRAST-001** | Text contrast ≥ WCAG AA | F | P1 | Critical foreground/background pairs in both themes meet 4.5:1 | ✅ numeric contract + manual Accessibility Insights | `ThemeContrastContractTests`; light warning/attention color corrected to `#9A6700` |
+| **A11Y-HC-001** | High-contrast mode is usable | F | P2 | — | ❌ manual | — |
+| **A11Y-SCALE-001** | 200% text scaling does not clip | F | P1 | — | ❌ manual | — |
+| **A11Y-LIVE-001** | State changes are announced | B | P2 | Connection status, error messages | ✅ contract | `HighContrastContractTests` live-region assertions |
 
 ### 11.15 Error handling (ERR)
 
-| ID | Title | Layer | Pri | Expected | Auto |
-|---|---|---|---|---|---|
-| **UT-ERR-001** | Network errors are shown and recoverable | C | **P0** | Error bubble + retry bar; UI stays interactive | ✅ headless + FlaUI `Chat_AgentErrorThenRetry_CompletesOnTheNextInput` |
-| **UT-ERR-002** | WebSocket exceptions are not swallowed | C | **P0** | `ConnectionLost` fires | ✅ |
-| **UT-ERR-003** | Database errors are not silent | D | **P0** | Explicit exception | ✅ |
-| **UT-ERR-004** | Markdown render errors degrade | B | **P0** | Fallback paragraph (`RenderMarkdown:123`) | ⚠️ |
-| **UT-ERR-005** | External-link failure is surfaced | A | P1 | See UT-HELP-003 | ⚠️ |
-| **UT-ERR-006** | Errors leak no sensitive data | A | **P0** | No private seed, invite code, or full token in any message | ✅ assertions + code review — 🔴 security |
+| ID | Title | Layer | Pri | Expected | Auto | Evidence |
+|---|---|---|---|---|---|---|
+| **UT-ERR-001** | Network errors are shown and recoverable | C | **P0** | Error bubble + retry bar; UI stays interactive | ✅ | headless + FlaUI `Chat_AgentErrorThenRetry_CompletesOnTheNextInput` |
+| **UT-ERR-002** | WebSocket exceptions are not swallowed | C | **P0** | `ConnectionLost` fires | ✅ | — |
+| **UT-ERR-003** | Database errors are not silent | D | **P0** | Explicit exception | ✅ | — |
+| **UT-ERR-004** | Markdown render errors degrade | B | **P0** | Fallback paragraph (`RenderMarkdown`) | ✅ contract + real-window malformed markdown | `MarkdownRendererCoverageTests`; `Chat_FindAcrossMarkdownCodeLinksAndUnclosedFence_DoesNotCrash` |
+| **UT-ERR-005** | External-link failure is surfaced | A | P1 | See UT-HELP-003 | ✅ | `HelpMenuContractTests.HelpMenuCode_FailedDocsLaunchSurfacesAnErrorToast` |
+| **UT-ERR-006** | Errors leak no sensitive data | A | **P0** | No private seed, invite code, or full token in any message | ✅ | assertions + code review — 🔴 security |
 | **UT-ERR-007** | One bad image does not fail the whole persist | C | P1 | `Task.WhenAll(PendingImages)` is wrapped in try/catch | ✅ | `AgentSessionManager:228` |
 
 ---
@@ -636,7 +638,7 @@ The Generic Host is the production composition root. Tests normally construct th
 > Conventions: all E2E use **FlaUI** and locate app-owned elements by `AutomationId`; platform-generated controls may use a role/name fallback scoped inside an identified dialog. Synchronization uses bounded condition polling, never an unconditional fixed-duration sleep (§13.3).
 > Scheduled CI currently uploads TRX and screenshot evidence. For diagnosis, also retain app logs, the isolated `connectonion.db`, fake-server interaction logs where applicable, and a UIA tree dump.
 >
-> The current suite has 30 required shell/chat tests. In addition to launch, startup-failure recovery, first-run, Settings, agent management, tray restoration, search, Shortcuts, and About, it drives page navigation; Agent Detail template/keyboard-first-send behavior; Stop/interrupt settlement; abnormal-drop resume; error/retry; mid-turn conversation switching; restart restore; markdown-aware in-chat find; agent rename persistence; cold activation routing; and agent-icon surfaces. One Explorer drag-and-drop diagnostic is retained but explicitly skipped because its source coordinates vary with desktop DPI/layout. The broader flows below remain the target catalog.
+> The current suite has 36 required shell/chat tests. In addition to launch, startup-failure recovery, first-run, Settings, agent management, tray restoration, search, Shortcuts, and About, it drives page navigation/history; five modal-overlay Esc/focus-return cases; Agent Detail template/keyboard-first-send behavior; Stop/interrupt settlement; abnormal-drop resume; error/retry; mid-turn conversation switching; restart restore; markdown-aware in-chat find; agent rename persistence; cold activation routing; and agent-icon surfaces. One Explorer drag-and-drop diagnostic is retained but explicitly skipped because its source coordinates vary with desktop DPI/layout. The broader flows below remain the target catalog.
 >
 > Four of those smoke paths also form the reproducible README screenshot harness. Setting
 > `CONNECTONION_README_SCREENSHOT_DIR` makes them capture the real 1400×900 window as
@@ -668,7 +670,7 @@ The Generic Host is the production composition root. Tests normally construct th
 
 ### 13.1 `AutomationId` implementation status
 
-App XAML contains **145 unique IDs**. `Accessibility/AutomationContractTests.cs` verifies global uniqueness, requires an ID on every named interactive XAML element, and separately pins the **53 critical IDs** used by the current real-window suite. Repeated item-template controls use stable role IDs and are scoped through their identified list/container. Add a locator to the critical subset when a new E2E flow starts depending on it. Remaining E2E scenarios and broader accessibility semantics are still open.
+App XAML contains **158 unique IDs**. `Accessibility/AutomationContractTests.cs` verifies global uniqueness, requires an ID on every named interactive XAML element, and separately pins the **53 critical IDs** used by the current real-window suite. Repeated item-template controls use stable role IDs and are scoped through their identified list/container. Add a locator to the critical subset when a new E2E flow starts depending on it. Remaining E2E scenarios and broader accessibility semantics are still open.
 
 | AutomationId | Location | Status |
 |---|---|---|
@@ -837,12 +839,12 @@ In addition to §18:
 
 - [x] The app, portable launcher, Core, Protocol, Conformance project, and all four test projects are wired into the solution as documented.
 - [x] CI restores, audits dependencies, builds Release/x64, runs all three headless suites, collects coverage, compiles/discovers UI tests, publishes the unpackaged executable, and runs Protocol Conformance.
-- [x] Headless snapshot verified on 2026-08-08: 225 Protocol + 1,143 Core/architecture + 197 SQLite integration = 1,565.
-- [x] Thirty required real-window shell/chat tests pass together against the CI-equivalent trimmed Release executable; the portable root launcher is covered by the release rehearsal and the Explorer drag diagnostic is skipped.
+- [x] Headless snapshot verified on 2026-08-10: 225 Protocol + 1,179 Core/architecture + 197 SQLite integration = 1,601.
+- [x] Thirty-six required real-window shell/chat tests pass together against the CI-equivalent trimmed Release executable; the portable root launcher is covered by the release rehearsal and the Explorer drag diagnostic is skipped.
 - [x] Memory and UI performance audit tests have passed separately against a published executable.
-- [x] Coverage is ratcheted in CI against `coverage-baseline.json`: 86.12% Protocol and 83.59% Core merged line coverage, failing on a drop of more than 0.25pp.
+- [x] Coverage is ratcheted in CI against `coverage-baseline.json`: 88.67% Protocol and 86.27% Core merged line coverage, failing on a drop of more than 0.25pp.
 - [ ] If MSIX distribution is restored, signed install/upgrade/uninstall and clean-machine launch pass before shipping that channel.
-- [x] Trimming is enabled and proven across warning analysis, the trimmed persist/restart harness, the trimmed app rendering scenario, the 30-test shell suite, and the shipped portable ZIP; see `TRIMMING.md`.
+- [x] Trimming is enabled and proven across warning analysis, the trimmed persist/restart harness, the trimmed app rendering scenario, the expanded 36-test shell suite, and the shipped portable ZIP; see `TRIMMING.md`.
 - [ ] Qualified cold-start/WPR evidence is captured on an elevated, policy-enabled desktop runner. The graceful-shutdown harness itself is repaired.
 - [ ] Critical reconnect/lifecycle and expanded real-window flows pass.
 - [ ] Accessibility quality gates and a manual Narrator/text-scaling pass are complete.
@@ -859,6 +861,7 @@ connectonion-desktop/
 ├── ConnectOnion.Protocol/                    # protocol library
 ├── ConnectOnion.Protocol.Conformance/        # separate Release gate
 ├── ConnectOnion.Protocol.LiveTest/           # manual-only deployed-agent CI run; not in solution
+├── ConnectOnion.PortableLauncher/            # NativeAOT launcher at portable ZIP root
 ├── scripts/
 │   ├── Measure-Performance.ps1
 │   ├── Test-Coverage.ps1
@@ -866,7 +869,7 @@ connectonion-desktop/
 └── tests/
     ├── Directory.Build.props                  # pins one output path per configuration
     ├── ConnectOnion.Protocol.Tests/           # xUnit; 225 snapshot
-    ├── ConnectOnion.WinUIClient.UnitTests/    # xUnit + ArchUnitNET; 1,143 snapshot
+    ├── ConnectOnion.WinUIClient.UnitTests/    # xUnit + ArchUnitNET; 1,179 snapshot
     │   ├── Accessibility/
     │   ├── Architecture/
     │   ├── Common/
@@ -879,7 +882,8 @@ connectonion-desktop/
     │   ├── Runtime/
     │   │   └── AgentSessionManagerTests.cs    # run-runtime persistence behaviour
     │   └── Services/
-    └── ConnectOnion.WinUIClient.UITests/      # xUnit + FlaUI; 35 discovered tests
+    ├── ConnectOnion.TrimSmoke/                # opt-in trimmed console harness; not in solution
+    └── ConnectOnion.WinUIClient.UITests/      # xUnit + FlaUI; 41 discovered tests
         ├── ShellSmokeTests.cs                 # shared harness and shell smoke cases
         ├── ShellSmokeTests.Chat.cs            # send, reconnect, find, skipped Explorer drag diagnostic
         ├── ShellSmokeTests.ChatExtended.cs    # navigation, first send, retry, switch/restart, activation, icons
@@ -889,7 +893,7 @@ connectonion-desktop/
         └── PerformanceAuditTests.cs           # opt-in large-history UI audit
 ```
 
-The solution is `ConnectOnion.WinUIClient/ConnectOnion.WinUIClient.sln`. `ConnectOnion.Protocol.LiveTest` is the sole project intentionally outside it; the CI workflow invokes it only through an explicit manual dispatch.
+The solution is `ConnectOnion.WinUIClient/ConnectOnion.WinUIClient.sln`. `ConnectOnion.Protocol.LiveTest` and `tests/ConnectOnion.TrimSmoke` are intentionally outside it: the former runs only through explicit workflow dispatch, while the latter is published and run by the trimming audit.
 
 ### Naming conventions
 
@@ -900,7 +904,7 @@ The solution is `ConnectOnion.WinUIClient/ConnectOnion.WinUIClient.sln`. `Connec
 
 ## 21. Implementation Priority and Backlog
 
-Completed infrastructure no longer belongs in the open backlog. The following are already implemented and should be maintained rather than re-proposed: the Core seam, Generic Host DI, CommunityToolkit.Mvvm migration, ArchUnitNET boundaries, fake-agent servers, isolated SQLite fixtures, current CI wiring, FlaUI project, 30 required shell/chat smoke tests, memory-leak gate, performance-budget audit, Protocol Conformance, and the separate manual-only live-protocol job.
+Completed infrastructure no longer belongs in the open backlog. The following are already implemented and should be maintained rather than re-proposed: the Core seam, Generic Host DI, CommunityToolkit.Mvvm migration, ArchUnitNET boundaries, fake-agent servers, isolated SQLite fixtures, current CI wiring, FlaUI project, 36 required shell/chat smoke tests, memory-leak gate, performance-budget audit, Protocol Conformance, and the separate manual-only live-protocol job.
 
 Every unfinished P0/P1 theme is listed below; individual test IDs in §11–§13 may share one theme. This table is the backlog of record for this plan and deliberately carries no tracker numbers — the document ships with the source, which is not necessarily where the work is tracked.
 
@@ -941,4 +945,4 @@ These were never testing problems — they are real design gaps that writing the
 
 ---
 
-*End of document. Snapshot: 1,565 headless xUnit tests (225 Protocol + 1,143 Core/architecture + 197 SQLite integration), 35 discovered real-window UI tests (30 required shell/chat + 1 skipped Explorer drag diagnostic + 1 trimmed-runtime scenario + 3 opt-in diagnostics/audits), Protocol Conformance, and the manual-only live-protocol smoke reported separately. Verified 2026-08-08.*
+*End of document. Snapshot: 1,601 headless xUnit tests (225 Protocol + 1,179 Core/architecture + 197 SQLite integration), 41 discovered real-window UI tests (36 required shell/chat + 1 skipped Explorer drag diagnostic + 1 trimmed-runtime scenario + 3 opt-in diagnostics/audits), Protocol Conformance, and the manual-only live-protocol smoke reported separately. Verified 2026-08-10.*

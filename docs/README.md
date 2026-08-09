@@ -5,8 +5,7 @@
 | [DEVELOPMENT.md](./DEVELOPMENT.md) | Developer guide: architecture, repository layout, setup, build/test commands, README screenshot regeneration, CI, agent endpoints, and implementation status | Living |
 | [PROJECT_BRIEF.md](./PROJECT_BRIEF.md) | The original client-supplied requirements (verbatim), plus a requirement → implementation traceability table and the current known limitations | Living — update the table, never the brief |
 | [TEST_PLAN.md](./TEST_PLAN.md) | Layered test strategy, coverage ratchet, current test-count snapshot, 15 target E2E flows, UI-automation standards, and the owned backlog | Living |
-| [SESSION_MESSAGE_STRUCTURE.md](./SESSION_MESSAGE_STRUCTURE.md) | The ConnectOnion wire protocol: core frames, current extension-frame coverage, streaming, reconnect, and session synchronization | Authoritative for the frames specified in §1–31; the implementation dispatch table defines the complete supported extension set; §32–39 are superseded design notes |
-| [WINUI3_NATIVE_MIGRATION.md](./WINUI3_NATIVE_MIGRATION.md) | How the Electron/React client was replaced by the native WinUI 3 app | **Historical** — the migration is complete; read `CLAUDE.md` for the current architecture |
+| [SESSION_MESSAGE_STRUCTURE.md](./SESSION_MESSAGE_STRUCTURE.md) | The ConnectOnion wire protocol: core frames, current extension-frame coverage, streaming, reconnect, and session synchronization | Authoritative for the frames specified in §1–31; the implementation dispatch table defines the complete supported extension set |
 | [GIT_COMMIT_CONVENTION.md](./GIT_COMMIT_CONVENTION.md) | Conventional Commits types and scopes used in this repo | Living |
 | [OPTIMIZATION.md](./OPTIMIZATION.md) | Implemented architecture, performance, reliability, CI, localization, and diagnostics improvements | Living |
 | [PERFORMANCE.md](./PERFORMANCE.md) | Launch-time and memory benchmark: method, budgets, current baseline, and how to run `scripts/Measure-Performance.ps1` | Living — re-ratify budgets when a run sets a new baseline |
@@ -29,5 +28,6 @@
   — folder-local conventions, including why those folders deliberately do not match their namespaces.
 - **[`../README.md`](../README.md)** — the user-facing UI gallery, download, setup, usage, data-safety, update, and troubleshooting guide.
 - `agent/` and `frontend/` — the vendored ConnectOnion agent examples and the legacy Electron client.
-  **Both were deleted in `197a88d`**; the repo is C#-only now. Read them out of git history if you
-  need the prior behavior.
+  **Both were deleted in `197a88d`**; the repo is C#-only now. The completed WinUI migration plan
+  has also been removed from the current tree. Read them out of git history if you need the prior
+  behavior or migration rationale.

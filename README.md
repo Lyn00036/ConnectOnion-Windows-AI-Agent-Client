@@ -115,9 +115,9 @@ agent operator:
 | Agent connection | The agent's `0x…` ConnectOnion address or its HTTPS/HTTP URL |
 
 The app obtains the agent name from the connection automatically; you can rename it locally after
-adding it. Use **Test connection** to check the endpoint, then select **Add agent**. If the agent
-requires onboarding, the app asks for the invite code during that flow. Choose the agent from the
-sidebar, start a conversation, and send a message.
+adding it. Use **Test connection** to check the endpoint, then select **Add agent**. The new agent
+is selected and its detail page opens. If the agent requires onboarding, the app asks for the
+invite code during that flow; start a conversation from the detail page and send a message.
 
 ## What you can do
 
@@ -219,9 +219,9 @@ This section is the on-ramp. The authoritative architecture description is
 |---|---|---|
 | Windows | 10 version 1809 (build 17763) or newer, x64 | `TargetPlatformMinVersion` is 10.0.17763.0 |
 | .NET SDK | 10.0.302 | Pinned exactly by [`global.json`](./global.json); CI and release install the same patch |
-| Windows App SDK | 1.x (restored via NuGet) | No separate install needed |
+| Windows App SDK | 2.3.1 | Package restored through NuGet; install the matching runtime for framework-dependent `dotnet run` builds (portable releases carry it) |
 | Node.js | 22 | Only for the protocol conformance gate's reference signer (`ref-sign.js`) |
-| Visual Studio 2022 | 17.x with **.NET Desktop** and **Windows App SDK C# Templates** | Optional, but the most reliable path for XAML debugging |
+| Visual Studio 2026 | Current release with **.NET Desktop** and **Windows App SDK C# Templates** | Optional, but the most reliable path for XAML debugging |
 
 `Platform` must be `x64`, `x86`, or `ARM64`. `Any CPU` does not work for the WinUI project.
 
@@ -239,8 +239,9 @@ dotnet build   ConnectOnion.WinUIClient\ConnectOnion.WinUIClient.sln -c Debug --
 dotnet run --project ConnectOnion.WinUIClient\ConnectOnion.WinUIClient.csproj -p:Platform=x64 -p:RunUnpackaged=true
 ```
 
-> The solution file lives at `ConnectOnion.WinUIClient/ConnectOnion.WinUIClient.sln` even though it
-> references every other project by relative path.
+> The solution file lives at `ConnectOnion.WinUIClient/ConnectOnion.WinUIClient.sln`. It contains
+> every production project except `ConnectOnion.Protocol.LiveTest` and all four xUnit projects;
+> `tests/ConnectOnion.TrimSmoke` is also intentionally outside the solution.
 
 For XAML debugging, open that solution in Visual Studio and F5 with **Debug/x64** and *Deploy*
 checked for `ConnectOnion.WinUIClient` in Configuration Manager.
@@ -330,9 +331,9 @@ dotnet run --project ConnectOnion.Protocol.Conformance\ConnectOnion.Protocol.Con
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Test-Coverage.ps1 -ResultsDirectory TestResults
 ```
 
-Current snapshot: **1,143** headless client unit tests, **197** integration tests, **225** protocol
-tests, and a FlaUI suite that reports **31 passed / 1 skipped** on every push. One passing entry is
-the opt-in memory probe's intentional no-op, leaving 30 required real-window assertions.
+Current snapshot: **1,179** headless client unit tests, **197** integration tests, **225** protocol
+tests, and a FlaUI suite that reports **37 passed / 1 skipped** on every push. One passing entry is
+the opt-in memory probe's intentional no-op, leaving 36 required real-window assertions.
 
 The real-window suite needs a **published** executable — the plain `bin\` build carries no
 unpackaged Windows App SDK bootstrapper, so every test silently skips against it:
@@ -382,8 +383,8 @@ See [`docs/TEST_PLAN.md`](./docs/TEST_PLAN.md) for the layered strategy and the 
 
 ## Continuous integration
 
-[`.github/workflows/ci.yml`](./.github/workflows/ci.yml) runs on `windows-latest` for every push
-and pull request:
+[`.github/workflows/ci.yml`](./.github/workflows/ci.yml) runs on `windows-latest` for pushes and
+pull requests targeting the configured main, master, and development branches:
 
 1. Restore, verify C# whitespace formatting, audit NuGet for known vulnerabilities.
 2. Build the solution in Release/x64 with packaging disabled.
@@ -391,7 +392,8 @@ and pull request:
 4. Publish a self-contained ReadyToRun unpackaged build and run the FlaUI shell/chat suite against
    it, uploading TRX and screenshots **unconditionally** — a failing PR is exactly when those
    matter.
-5. Run the trimmed serialization harness and the full trimming audit.
+5. Run the trimmed serialization harness. The full warning/publish audit is available through the
+   `run_trim_audit` manual-dispatch input.
 6. End on the protocol conformance gate.
 
 `ConnectOnion.Protocol.LiveTest` runs only through an explicit manual workflow dispatch, because it

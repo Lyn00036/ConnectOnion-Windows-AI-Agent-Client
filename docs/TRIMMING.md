@@ -71,12 +71,28 @@ questions. The runtime still does.
 | No unexplained app-owned `IL2026`/`IL3050` in the experimental trimmed publish | **Met** — 0 app-owned sites (was 16) |
 | Protocol and interactive serialization paths have direct unit or integration coverage | **Met** — see "Coverage" below |
 | Tool Activity and every interactive card survive persist/restart in the trimmed publish | **Met** — `scripts/Test-TrimmedRuntime.ps1`, 2026-08-05. The trimmed smoke harness seeds a data root and the **trimmed app** is launched against it and asked to render the turn; both sides are trimmed binaries. See "Real-window evidence" below |
-| Fake Agent and real-window smoke tests pass against the trimmed executable | **Met** — all 30 required shell tests pass against the trimmed executable, matching the untrimmed control. See the note on `HelpKeyboardShortcuts` below for the earlier 12-test suite issue that had to be fixed first |
+| Fake Agent and real-window smoke tests pass against the trimmed executable | **Met** — the original then-current 30 required shell tests passed against the trimmed executable, matching the untrimmed control; the 2026-08-09 refresh expands that evidence to 36/36. See the note on `HelpKeyboardShortcuts` below for the earlier 12-test suite issue that had to be fixed first |
 | The **shipped** channel — the self-contained portable ZIP — audits clean and runs trimmed | **Met** — `scripts/Test-PackageContents.ps1` passes on the nested-layout ZIP (466 entries, no forbidden content, 73.22 MB compressed in the latest rehearsal), and the root launcher starts the nested trimmed executable which passes the rendering check and required shell suite |
 | Signed MSIX functional matrix passes with trimming enabled | **Deferred, not met** — no MSIX is built, so there is nothing to run it against (`docs/RELEASE.md`). Replaced above by the channel that does ship. Run it against a trimmed package *before* MSIX publishing is restored |
 | No key operation regresses >10% against the same-machine untrimmed baseline | **Met** — worst delta **+2.9%** (managed heap); every other metric improved. Table below |
 | Package-size savings and compatibility risks documented | **Met** — this document |
 | The setting stays explicit and commented in both configurations, and CI publishes what production ships | **Held** — enforced by `TrimmingGateTests`, which now pins Release trimmed, Debug untrimmed, and both workflows' publishes trimmed |
+
+### Windows notification native resource
+
+Windows App SDK 2.3.1's self-contained component folders omit
+`Microsoft.WindowsAppRuntime.Insights.Resource.dll`, although the same Microsoft-supplied file is
+present in the Runtime NuGet package's framework MSIX. An unpackaged app without that file reports
+`AppNotificationManager.IsSupported() == true`, then fails `Register()` with `0x8007007E` and the
+message `Unable to load resource dll`.
+
+`ConnectOnion.WinUIClient.csproj` extracts the file from the current Runtime package during every
+Windows App SDK self-contained build and copies it beside the executable. The 2026-08-09 Release,
+trimmed, ReadyToRun verification changed startup from that exception to
+`RegisterAndListen: registered for notification activation`. `TrimmingGateTests` pins the build
+rule, and `scripts/Test-PackageContents.ps1` rejects a portable archive that omits the DLL. Remove
+the workaround only after a later Windows App SDK supplies the resource through its normal
+self-contained payload and the trimmed notification registration check still passes.
 
 ## What was actually wrong, and what changed
 
@@ -275,7 +291,7 @@ launches the **trimmed app** against that root — so neither side of the round 
   tool-activity card *with its steps, arguments and results*, plus the `ask_user` and `plan_review`
   cards with their stamped answers, and correctly omits the settled approval. This is the assertion
   the original regression would have failed: the row was always readable, the card came back empty.
-- **Shell suite**: all 30 required tests pass against the trimmed executable, matching the
+- **Shell suite**: all 30 tests in the original gate passed against the trimmed executable, matching the
   untrimmed control; the Explorer-based drag diagnostic remains explicitly skipped.
 
   Getting there required fixing `HelpKeyboardShortcuts_OpensFocusedAndClosesWithEscape`, which
@@ -322,7 +338,7 @@ before turning it off, changing the publish shape, or restoring MSIX.
    persist/verify pair. This is the linker's opinion and the headless round trip.
 2. `pwsh scripts\Test-TrimmedRuntime.ps1` — publishes trimmed+R2R, seeds a data root with the
    trimmed smoke harness, then launches the **trimmed app** against it. Covers the rendering
-   criterion and the current 30-test required shell/chat suite in one run.
+   criterion and the current 36-test required shell/chat suite in one run.
 3. `pwsh scripts\Measure-Performance.ps1 -Exe <trimmed>` against a same-machine untrimmed
    baseline; no key operation may regress more than 10%. **Compare R2R against R2R** — the audit's
    trimmed publish has ReadyToRun off and is not a valid baseline for this.
