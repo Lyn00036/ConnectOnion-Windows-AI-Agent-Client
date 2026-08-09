@@ -76,6 +76,32 @@ public sealed class TrimmingGateTests
     }
 
     /// <summary>
+    /// Windows App SDK 2.3.1 leaves its native Insights resource in the framework MSIX instead of
+    /// the self-contained component folders. AppNotificationManager still loads it during
+    /// Register(), so a portable publish without this extraction passes IsSupported() and then
+    /// loses every Windows notification to ERROR_MOD_NOT_FOUND.
+    /// </summary>
+    [Fact]
+    public void SelfContainedPublish_ExtractsTheNativeNotificationResource()
+    {
+        var csproj = RepoFile("ConnectOnion.WinUIClient", "ConnectOnion.WinUIClient.csproj");
+
+        Assert.Contains("ExtractWindowsAppSdkNotificationResource", csproj, StringComparison.Ordinal);
+        Assert.Contains("Microsoft.WindowsAppRuntime.2.msix", csproj, StringComparison.Ordinal);
+        Assert.Contains(
+            "Microsoft.WindowsAppRuntime.Insights.Resource.dll",
+            csproj,
+            StringComparison.Ordinal);
+        Assert.Contains("CopyToPublishDirectory=\"PreserveNewest\"", csproj, StringComparison.Ordinal);
+
+        var runtimeGate = RepoFile("scripts", "Test-TrimmedRuntime.ps1");
+        Assert.Contains(
+            "Microsoft.WindowsAppRuntime.Insights.Resource.dll",
+            runtimeGate,
+            StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// CI must publish in the same configuration production ships. It previously asserted the
     /// reverse — that every publish was untrimmed — which was right while production was untrimmed
     /// and would now mean the per-PR UI smoke suite exercises a build nobody ever installs.
