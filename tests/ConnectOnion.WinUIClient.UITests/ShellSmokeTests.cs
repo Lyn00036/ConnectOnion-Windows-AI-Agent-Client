@@ -792,6 +792,17 @@ public sealed partial class ShellSmokeTests
         capture.ToFile(Path.Combine(directory, fileName));
     }
 
+    private static readonly TimeSpan LaunchProcessTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan LaunchShellReadyTimeout = TimeSpan.FromSeconds(45);
+    private static readonly string[] ShellReadyAutomationIds =
+    [
+        "MainWindow",
+        "SettingsButton",
+        "HelpMenuButton",
+        "FileMenuButton",
+        "HomeAddAgentButton",
+    ];
+
     /// <summary>
     /// Launches the app and attaches automation to its window, or returns null when the opt-in
     /// environment variable is unset. Opt-in because hosted CI agents often have no interactive
@@ -806,20 +817,46 @@ public sealed partial class ShellSmokeTests
         if (string.IsNullOrWhiteSpace(executable)) return null;
 
         Assert.True(File.Exists(executable), $"UI test executable not found: {executable}");
-        var dataRoot = ResolveDataRoot();
 
         var existingProcessIds = System.Diagnostics.Process
             .GetProcessesByName("ConnectOnion.WinUIClient")
             .Select(process => process.Id)
             .ToHashSet();
 
+        LaunchedApp? launched = null;
+        for (var attempt = 0; attempt < 2 && launched is null; attempt++)
+        {
+            if (attempt > 0)
+            {
+                Thread.Sleep(500);
+            }
+
+            launched = TryLaunchAppOnce(
+                executable,
+                existingProcessIds,
+                environment,
+                handleFirstRunDialog);
+        }
+
+        Assert.True(
+            launched is not null,
+            "ConnectOnion did not publish an automation-ready main window within the launch budget.");
+        return launched;
+    }
+
+    private static LaunchedApp? TryLaunchAppOnce(
+        string executable,
+        HashSet<int> existingProcessIds,
+        IReadOnlyDictionary<string, string>? environment,
+        bool handleFirstRunDialog)
+    {
         using var launchedProcess = StartProcess(executable, environment);
-        Assert.NotNull(launchedProcess);
+        if (launchedProcess is null) return null;
 
         // An unpackaged WinUI executable can hand off to the Windows App SDK host, so the
         // process returned by Start may exit before the real top-level window is created.
         System.Diagnostics.Process? windowProcess = null;
-        var deadline = DateTime.UtcNow.AddSeconds(20);
+        var deadline = DateTime.UtcNow.Add(LaunchProcessTimeout);
         while (DateTime.UtcNow < deadline && windowProcess is null)
         {
             windowProcess = System.Diagnostics.Process
@@ -833,42 +870,81 @@ public sealed partial class ShellSmokeTests
             }
         }
 
-        Assert.NotNull(windowProcess);
-        var app = Application.Attach(windowProcess.Id);
-        var automation = new UIA3Automation();
-        Window? window = null;
-        deadline = DateTime.UtcNow.AddSeconds(20);
-        while (DateTime.UtcNow < deadline && window is null)
+        if (windowProcess is null) return null;
+
+        Application? app = null;
+        UIA3Automation? automation = null;
+        try
+        {
+            app = Application.Attach(windowProcess.Id);
+            automation = new UIA3Automation();
+            Window? window = null;
+            deadline = DateTime.UtcNow.Add(LaunchShellReadyTimeout);
+            while (DateTime.UtcNow < deadline && window is null)
+            {
+                try
+                {
+                    var candidate = app.GetAllTopLevelWindows(automation)
+                        .FirstOrDefault(candidate => candidate.Title.Contains(
+                            "ConnectOnion", StringComparison.OrdinalIgnoreCase));
+                    if (candidate is not null && IsShellAutomationReady(candidate))
+                    {
+                        window = candidate;
+                        break;
+                    }
+                }
+                catch (COMException)
+                {
+                    // WinUI has created its process, but its UIA provider is still publishing the
+                    // top-level XAML window. Re-enumerate instead of retaining an empty root object.
+                }
+
+                Thread.Sleep(200);
+            }
+
+            if (window is null)
+            {
+                try { app.Kill(); } catch { /* already gone */ }
+                automation.Dispose();
+                app.Dispose();
+                return null;
+            }
+
+            if (handleFirstRunDialog
+                && Interlocked.Exchange(ref _profileLaunchHandled, 1) == 0)
+            {
+                DismissFirstRunRecoveryDialog(window);
+            }
+
+            return new LaunchedApp(windowProcess, app, automation, window, executable);
+        }
+        catch
+        {
+            try { app?.Kill(); } catch { /* already gone */ }
+            automation?.Dispose();
+            app?.Dispose();
+            return null;
+        }
+    }
+
+    private static bool IsShellAutomationReady(Window window)
+    {
+        foreach (var automationId in ShellReadyAutomationIds)
         {
             try
             {
-                var candidate = app.GetAllTopLevelWindows(automation)
-                    .FirstOrDefault(candidate => candidate.Title.Contains(
-                        "ConnectOnion", StringComparison.OrdinalIgnoreCase));
-                if (candidate is not null && candidate.FindAllDescendants().Length > 0)
+                if (window.FindFirstDescendant(query => query.ByAutomationId(automationId)) is not null)
                 {
-                    window = candidate;
-                    break;
+                    return true;
                 }
             }
             catch (COMException)
             {
-                // WinUI has created its process, but its UIA provider is still publishing the
-                // top-level XAML window. Re-enumerate instead of retaining an empty root object.
+                // The shell is still materializing; the outer launch loop will retry.
             }
-
-            Thread.Sleep(200);
         }
 
-        Assert.NotNull(window);
-
-        if (handleFirstRunDialog
-            && Interlocked.Exchange(ref _profileLaunchHandled, 1) == 0)
-        {
-            DismissFirstRunRecoveryDialog(window);
-        }
-
-        return new LaunchedApp(windowProcess, app, automation, window, executable);
+        return false;
     }
 
     private static string ResolveDataRoot()
