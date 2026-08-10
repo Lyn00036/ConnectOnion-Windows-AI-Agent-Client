@@ -68,8 +68,7 @@ public sealed partial class ShellSmokeTests
             session!.AsButton().Invoke();
             Assert.NotNull(WaitForDescendant(window, "MessageList", TimeSpan.FromSeconds(20)));
 
-            Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_F);
-            Assert.NotNull(WaitForDescendant(window, "FindTextBox"));
+            OpenFindOverlay(window);
 
             var agents = WaitForDescendant(window, "AgentsNavigationButton");
             Assert.NotNull(agents);

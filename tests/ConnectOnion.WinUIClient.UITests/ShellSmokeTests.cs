@@ -663,6 +663,37 @@ public sealed partial class ShellSmokeTests
         item!.AsMenuItem().Click();
     }
 
+    /// <summary>Opens the shared find overlay with Ctrl+F. Brings the app forward and refocuses
+    /// the composer first — hosted CI agents can steal foreground while a long markdown render
+    /// is settling, and FlaUI's keystrokes only reach the active window.</summary>
+    internal static AutomationElement OpenFindOverlay(Window window)
+    {
+        window.SetForeground();
+        var input = WaitForDescendant(window, "MessageInput", TimeSpan.FromSeconds(5));
+        if (input is not null)
+        {
+            input.Focus();
+            Assert.True(
+                WaitUntil(() => input.Properties.HasKeyboardFocus.ValueOrDefault),
+                "composer did not take focus before opening find");
+        }
+
+        AutomationElement? find = null;
+        var deadline = DateTime.UtcNow.AddSeconds(15);
+        while (DateTime.UtcNow < deadline && find is null)
+        {
+            Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_F);
+            find = WaitForDescendant(window, "FindTextBox", TimeSpan.FromSeconds(2));
+            if (find is null)
+            {
+                Thread.Sleep(200);
+            }
+        }
+
+        Assert.NotNull(find);
+        return find;
+    }
+
     /// <summary>Polls for a descendant, tolerating the transient UIA failures a mutating visual
     /// tree produces.</summary>
     private static AutomationElement? WaitForDescendant(

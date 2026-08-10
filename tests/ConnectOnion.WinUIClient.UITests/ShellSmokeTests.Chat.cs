@@ -317,9 +317,7 @@ public sealed partial class ShellSmokeTests
             var window = launched.Window;
             OpenChat(window);
 
-            Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_F);
-            var find = WaitForDescendant(window, "FindTextBox");
-            Assert.NotNull(find);
+            var find = OpenFindOverlay(window);
             Assert.True(WaitUntil(() => find.Properties.HasKeyboardFocus.ValueOrDefault));
             find.AsTextBox().Text = "needle";
 
@@ -372,9 +370,7 @@ public sealed partial class ShellSmokeTests
             OpenChat(window);
             Assert.NotNull(WaitForAccessibleName(window, "Inline", TimeSpan.FromSeconds(20)));
 
-            Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_F);
-            var find = WaitForDescendant(window, "FindTextBox");
-            Assert.NotNull(find);
+            var find = OpenFindOverlay(window);
             Assert.True(WaitUntil(() => find.Properties.HasKeyboardFocus.ValueOrDefault));
             find.AsTextBox().Text = "needle";
 
