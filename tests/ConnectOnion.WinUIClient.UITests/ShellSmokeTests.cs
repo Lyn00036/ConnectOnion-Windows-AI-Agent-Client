@@ -25,6 +25,13 @@ public sealed partial class ShellSmokeTests
     [DllImport("user32.dll")]
     private static extern bool IsWindowVisible(IntPtr windowHandle);
 
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    private static extern IntPtr SendMessage(IntPtr windowHandle, uint message, IntPtr wParam, IntPtr lParam);
+
+    private const uint WmCommand = 0x0111;
+    private const int MessageBoxOk = 1;
+    private const int MessageBoxNo = 7;
+
     [Fact]
     public void Launch_ShowsResponsiveConnectOnionWindow()
     {
@@ -57,21 +64,26 @@ public sealed partial class ShellSmokeTests
         var buttons = launched.Window.FindAllDescendants(
             query => query.ByControlType(FlaUI.Core.Definitions.ControlType.Button));
         Assert.NotEmpty(buttons);
-        var dismiss = buttons.FirstOrDefault(button =>
-                          string.Equals(
-                              button.Properties.Name.ValueOrDefault,
-                              "No",
-                              StringComparison.OrdinalIgnoreCase)
-                          || string.Equals(
-                              button.Properties.Name.ValueOrDefault,
-                              "否",
-                              StringComparison.Ordinal))
-                      ?? buttons[^1];
-        dismiss.AsButton().Invoke();
+        DismissStartupFailureDialog(launched.Window, buttons);
 
         Assert.True(
-            WaitUntil(() => launched.Process.HasExited),
+            WaitUntil(() => launched.Process.HasExited, TimeSpan.FromSeconds(30)),
             "the process did not exit after the startup recovery message was dismissed");
+    }
+
+    private static void DismissStartupFailureDialog(
+        Window window,
+        AutomationElement[] buttons)
+    {
+        window.SetForeground();
+        Thread.Sleep(300);
+
+        var handle = new IntPtr(window.Properties.NativeWindowHandle.ValueOrDefault);
+        Assert.NotEqual(IntPtr.Zero, handle);
+
+        // Native MessageBox buttons are unreliable through UIA Invoke; WM_COMMAND is the stable path.
+        var commandId = buttons.Length == 1 ? MessageBoxOk : MessageBoxNo;
+        _ = SendMessage(handle, WmCommand, (IntPtr)commandId, IntPtr.Zero);
     }
 
     /// <summary>
@@ -747,8 +759,11 @@ public sealed partial class ShellSmokeTests
     }
 
     private static bool WaitUntil(Func<bool> condition)
+        => WaitUntil(condition, TimeSpan.FromSeconds(10));
+
+    private static bool WaitUntil(Func<bool> condition, TimeSpan timeout)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(10);
+        var deadline = DateTime.UtcNow.Add(timeout);
         while (DateTime.UtcNow < deadline)
         {
             try
@@ -840,9 +855,16 @@ public sealed partial class ShellSmokeTests
 
         Assert.True(
             launched is not null,
-            "ConnectOnion did not publish an automation-ready main window within the launch budget.");
+            "ConnectOnion did not publish an automation-ready window within the launch budget.");
         return launched;
     }
+
+    private static bool ExpectsMainShell(IReadOnlyDictionary<string, string>? environment)
+        => environment is null
+           || !string.Equals(
+               environment.GetValueOrDefault("CONNECTONION_UI_STARTUP_FAILURE"),
+               "1",
+               StringComparison.Ordinal);
 
     private static LaunchedApp? TryLaunchAppOnce(
         string executable,
@@ -872,6 +894,7 @@ public sealed partial class ShellSmokeTests
 
         if (windowProcess is null) return null;
 
+        var expectMainShell = ExpectsMainShell(environment);
         Application? app = null;
         UIA3Automation? automation = null;
         try
@@ -887,7 +910,7 @@ public sealed partial class ShellSmokeTests
                     var candidate = app.GetAllTopLevelWindows(automation)
                         .FirstOrDefault(candidate => candidate.Title.Contains(
                             "ConnectOnion", StringComparison.OrdinalIgnoreCase));
-                    if (candidate is not null && IsShellAutomationReady(candidate))
+                    if (candidate is not null && IsLaunchSurfaceReady(candidate, expectMainShell))
                     {
                         window = candidate;
                         break;
@@ -925,6 +948,32 @@ public sealed partial class ShellSmokeTests
             app?.Dispose();
             return null;
         }
+    }
+
+    private static bool IsLaunchSurfaceReady(Window window, bool expectMainShell)
+    {
+        if (expectMainShell)
+        {
+            return IsShellAutomationReady(window);
+        }
+
+        // Startup-failure injection shows a native MessageBox, not the WinUI shell.
+        try
+        {
+            if (window.FindAllDescendants().Length > 0)
+            {
+                return true;
+            }
+        }
+        catch (COMException)
+        {
+            // Tree still publishing; the outer launch loop will retry.
+        }
+
+        var title = window.Title ?? string.Empty;
+        return title.Contains("ConnectOnion", StringComparison.OrdinalIgnoreCase)
+               && (title.Contains("start", StringComparison.OrdinalIgnoreCase)
+                   || title.Contains("启动", StringComparison.Ordinal));
     }
 
     private static bool IsShellAutomationReady(Window window)

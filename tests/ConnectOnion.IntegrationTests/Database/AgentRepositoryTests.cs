@@ -362,8 +362,10 @@ public sealed class AgentRepositoryTests
                 VALUES ('atomic-execution', 'atomic-session', 'test', 'done', 1);
                 INSERT INTO trace_events (id, conversation_id, execution_id, type, payload_json)
                 VALUES ('atomic-trace', 'atomic-session', 'atomic-execution', 'output', '{}');
-                INSERT INTO app_meta (key, value) VALUES ('active_session_id', 'atomic-session');
-                INSERT INTO app_meta (key, value) VALUES ('pinned_session_ids', '["atomic-session"]');
+                INSERT INTO app_meta (key, value) VALUES ('active_session_id', 'atomic-session')
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value;
+                INSERT INTO app_meta (key, value) VALUES ('pinned_session_ids', '["atomic-session"]')
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value;
                 """;
             await seed.ExecuteNonQueryAsync();
         }
