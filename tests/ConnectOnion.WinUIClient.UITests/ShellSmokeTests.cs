@@ -524,7 +524,7 @@ public sealed partial class ShellSmokeTests
         if (launched is null) return;
 
         var window = launched.Window;
-        OpenHelpMenuItem(window, "KeyboardShortcutsMenuItem");
+        OpenHelpMenuItem(window, "KeyboardShortcutsMenuItem", "ShortcutsSearchBox");
 
         var search = WaitForDescendant(window, "ShortcutsSearchBox");
         Assert.NotNull(search);
@@ -545,7 +545,7 @@ public sealed partial class ShellSmokeTests
         if (launched is null) return;
 
         var window = launched.Window;
-        OpenHelpMenuItem(window, "AboutMenuItem");
+        OpenHelpMenuItem(window, "AboutMenuItem", "AboutOkButton");
 
         var ok = WaitForDescendant(window, "AboutOkButton");
         Assert.NotNull(ok);
@@ -590,13 +590,13 @@ public sealed partial class ShellSmokeTests
             case "shortcuts":
                 opener = WaitForDescendant(window, "HelpMenuButton");
                 Assert.NotNull(opener);
-                OpenHelpMenuItem(window, "KeyboardShortcutsMenuItem");
+                OpenHelpMenuItem(window, "KeyboardShortcutsMenuItem", "ShortcutsSearchBox");
                 overlayContentId = "ShortcutsSearchBox";
                 break;
             case "about":
                 opener = WaitForDescendant(window, "HelpMenuButton");
                 Assert.NotNull(opener);
-                OpenHelpMenuItem(window, "AboutMenuItem");
+                OpenHelpMenuItem(window, "AboutMenuItem", "AboutOkButton");
                 overlayContentId = "AboutOkButton";
                 break;
             case "add-agent":
@@ -643,24 +643,50 @@ public sealed partial class ShellSmokeTests
     /// <para>And the open is retried, because the click is a <i>toggle</i>: if a stray earlier click
     /// already opened the flyout, clicking Help again closes it, and a single attempt then reports
     /// the item as missing when the menu was in the opposite state to the one assumed.</para>
+    ///
+    /// <para>When <paramref name="overlayContentId"/> is set, the whole open is retried until that
+    /// element appears. The shortcuts dialog is constructed lazily on first open and can outlast the
+    /// menu-flyout timeout on a loaded CI agent.</para>
     /// </summary>
-    private static void OpenHelpMenuItem(Window window, string automationId)
+    private static void OpenHelpMenuItem(
+        Window window,
+        string automationId,
+        string? overlayContentId = null)
     {
         var help = WaitForDescendant(window, "HelpMenuButton");
         Assert.NotNull(help);
 
-        AutomationElement? item = null;
-        for (var attempt = 0; attempt < 3 && item is null; attempt++)
+        for (var attempt = 0; attempt < 3; attempt++)
         {
             try { window.SetForeground(); }
             catch (Exception) { /* the window may still be settling; the click below retries */ }
 
             help.AsMenuItem().Click();
-            item = WaitForDescendant(window, automationId, TimeSpan.FromSeconds(5));
+            var item = WaitForDescendant(window, automationId, TimeSpan.FromSeconds(5));
+            if (item is null) continue;
+
+            item.AsMenuItem().Click();
+
+            if (overlayContentId is null) return;
+
+            if (WaitForDescendant(window, overlayContentId, TimeSpan.FromSeconds(15)) is not null)
+                return;
+
+            // Menu item was clicked but the modal never surfaced — reset and try again.
+            Keyboard.Press(VirtualKeyShort.ESCAPE);
+            Thread.Sleep(250);
         }
 
-        Assert.True(item is not null, $"the Help menu never revealed '{automationId}'");
-        item!.AsMenuItem().Click();
+        if (overlayContentId is not null)
+        {
+            var overlay = WaitForDescendant(window, overlayContentId, TimeSpan.FromSeconds(15));
+            Assert.True(
+                overlay is not null,
+                $"Help menu item '{automationId}' was clicked but '{overlayContentId}' never appeared.");
+            return;
+        }
+
+        Assert.Fail($"the Help menu never revealed '{automationId}'");
     }
 
     /// <summary>Opens the shared find overlay with Ctrl+F. Brings the app forward and refocuses
