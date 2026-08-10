@@ -42,7 +42,7 @@ var signature = identity.Sign(canonical);
 
 var reference = RunNodeReference(seedHex);
 
-Console.WriteLine("field       | C#" );
+Console.WriteLine("field       | C#");
 Console.WriteLine("------------+--------------------------------------------------");
 Console.WriteLine($"address     | {identity.Address}");
 Console.WriteLine($"  node      | {reference.Address}");

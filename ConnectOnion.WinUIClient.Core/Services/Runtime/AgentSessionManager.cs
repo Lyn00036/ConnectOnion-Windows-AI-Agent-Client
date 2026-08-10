@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
@@ -12,6 +11,7 @@ using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services.Attachments;
+using ConnectOnion.WinUIClient.Services.Notifications;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -36,6 +36,7 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
             "Could not persist outgoing image {FileName} in the content cache; using its source path");
 
     private readonly ILogger<AgentSessionManager> _logger;
+    private readonly NotificationCoordinator? _notifications;
     private readonly HttpClient _http;
     private readonly ConversationRepository _conversations;
     private readonly UsageRepository _usage;
@@ -90,20 +91,28 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
 
     /// <param name="usage">Optional so existing callers and tests that don't care about accounting
     /// can omit it; a default instance is used when it isn't supplied.</param>
+    /// <param name="notifications">Optional for the same reason, but it is what keeps this type on
+    /// the testable side of the Core seam. Turn-completed and approval-required toasts are an
+    /// app-level concern, and this used to reach them through the static <c>AppServices</c>
+    /// locator — a reverse dependency on the app project that no headless test host can load, so
+    /// the whole run runtime sat outside the coverage gate for the sake of three call sites. The
+    /// coordinator itself already lives in Core; only the lookup did not. Null means "nothing is
+    /// listening", which is exactly a headless test's situation, not a degraded mode.</param>
     public AgentSessionManager(
         HttpClient http,
         ConversationRepository conversations,
         UsageRepository? usage = null,
-        ILogger<AgentSessionManager>? logger = null)
+        ILogger<AgentSessionManager>? logger = null,
+        NotificationCoordinator? notifications = null)
     {
         _http = http;
         _conversations = conversations;
         _usage = usage ?? new UsageRepository();
         _logger = logger ?? NullLogger<AgentSessionManager>.Instance;
+        _notifications = notifications;
         _connections = new AgentConnectionRegistry(http);
-        _runs = new ConversationRunRegistry(this, new DebugRunLogger(), onError: ex =>
+        _runs = new ConversationRunRegistry(this, onError: ex =>
         {
-            Debug.WriteLine($"[run] error: {ex}");
             LogRunFailure(_logger, ex);
         });
     }
@@ -371,6 +380,7 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
                     connection,
                     r => NotifyApproval(agent, conversationId, r),
                     kind => _pendingInteractive[conversationId] = kind,
+                    PrepareStreamEventAsync,
                     resumeExisting: true));
         }
         catch (InvalidOperationException)
@@ -541,7 +551,47 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         => new(
             connection,
             r => NotifyApproval(agent, conversationId, r),
-            kind => _pendingInteractive[conversationId] = kind);
+            kind => _pendingInteractive[conversationId] = kind,
+            PrepareStreamEventAsync);
+
+    private async Task<AgentStreamEvent> PrepareStreamEventAsync(AgentStreamEvent streamEvent)
+    {
+        if (!string.Equals(streamEvent.Type, "agent_image", StringComparison.Ordinal))
+            return streamEvent;
+
+        try
+        {
+            using var document = JsonDocument.Parse(streamEvent.RawJson);
+            if (!AttachmentWireEvents.TryGetAgentImageDataUrl(
+                    WireMessage.Wrap(document.RootElement), out var dataUrl))
+            {
+                return streamEvent;
+            }
+
+            var resolved = await AttachmentImageCacheService
+                .ResolveAndCacheAsync(dataUrl, _http)
+                .ConfigureAwait(false);
+            if (resolved is not { } image) return streamEvent;
+
+            return streamEvent with
+            {
+                RawJson = WireJson.Serialize(new Dictionary<string, object?>
+                {
+                    ["type"] = streamEvent.Type,
+                    ["id"] = streamEvent.EventId,
+                    ["ts"] = streamEvent.Timestamp,
+                    ["cached_path"] = image.LocalPath,
+                    ["mime_type"] = image.MimeType,
+                }),
+            };
+        }
+        catch
+        {
+            // Image projection is best effort. Preserve the original event so the existing live
+            // and persistence targets can still attempt their normal fallback path.
+            return streamEvent;
+        }
+    }
 
     public ConversationRunSnapshot? GetActiveRun(string conversationId) => _runs.GetActiveRun(conversationId);
 
@@ -619,8 +669,8 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         return run is { IsTerminal: false } ? connection.SetModeAsync(mode) : Task.CompletedTask;
     }
 
-    private static void NotifyApproval(AgentConfig agent, string conversationId, ApprovalRequest r)
-        => AppServices.Notifications.PublishApprovalRequired(
+    private void NotifyApproval(AgentConfig agent, string conversationId, ApprovalRequest r)
+        => _notifications?.PublishApprovalRequired(
             agent.Id, agent.Name, conversationId, r.Tool, r.Description, r.ArgumentsJson);
 
     /// <summary>Releases everything tied to a deleted conversation: cancels its active run (if
@@ -715,8 +765,8 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         // page open); the coordinator suppresses it when a window already shows this chat.
         if (agentName is not null)
         {
-            AppServices.Notifications.NotifyConnectionRestored(snapshot.AgentId);
-            AppServices.Notifications.PublishAgentTurnCompleted(
+            _notifications?.NotifyConnectionRestored(snapshot.AgentId);
+            _notifications?.PublishAgentTurnCompleted(
                 snapshot.AgentId, agentName, snapshot.ConversationId, snapshot.RunId,
                 finalReply, projection.TurnToolCallsCount, projection.TurnDurationMs);
         }
@@ -862,10 +912,27 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
                 ExecutionId: snapshot.RunId,
                 SessionId: snapshot.ConversationId,
                 Type: e.Type,
-                PayloadJson: e.RawJson,
-                Ts: TryParseTs(e.RawJson)));
+                PayloadJson: TracePayload(e),
+                Ts: e.Timestamp ?? TryParseTs(e.RawJson)));
         }
         return _conversations.InsertTraceEventsAsync(snapshot.ConversationId, rows);
+    }
+
+    private static string TracePayload(AgentStreamEvent e)
+    {
+        if (!string.Equals(e.Type, "agent_image", StringComparison.Ordinal)) return e.RawJson;
+
+        // The decoded image is already persisted through message_attachments. Keeping the same
+        // multi-megabyte data URL in trace_events duplicates it in SQLite and in the WAL without
+        // adding diagnostic value; retain only the event identity and timestamp.
+        var compact = new Dictionary<string, object?>
+        {
+            ["type"] = e.Type,
+            ["id"] = e.EventId,
+            ["ts"] = e.Timestamp,
+            ["image_payload_omitted"] = true,
+        };
+        return WireJson.Serialize(compact);
     }
 
     private static double? TryParseTs(string rawJson)
@@ -978,7 +1045,7 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
             else
             {
                 attachment.Status = AttachmentStatus.Failed;
-                attachment.Error = LocalizedStrings.Get(
+                attachment.Error = CoreStrings.Get(
                     "ImageLoadFailed",
                     "Image could not be loaded.");
             }
@@ -989,11 +1056,4 @@ public sealed class AgentSessionManager : IAgentSessionManager, IRunPersistence
         public void ReportUsage(TurnUsage usage) { }
     }
 
-    private sealed class DebugRunLogger : IRunLogger
-    {
-        public void Log(ConversationRunSnapshot s, string phase, TimeSpan elapsed) => Debug.WriteLine(
-            $"[run] {phase} run={s.RunId[..Math.Min(8, s.RunId.Length)]} conv={s.ConversationId} " +
-            $"agent={s.AgentId} status={s.Status} seq={s.Sequence} elapsed={elapsed.TotalMilliseconds:0}ms" +
-            (s.ErrorMessage is null ? "" : $" error={s.ErrorMessage}"));
-    }
 }

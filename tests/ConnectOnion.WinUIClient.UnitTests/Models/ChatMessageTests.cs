@@ -5,6 +5,26 @@ namespace ConnectOnion.WinUIClient.UnitTests.Models;
 public sealed class ChatMessageTests
 {
     [Fact]
+    public void ConnectionError_UsesMarkerForPresentationButExposesOnlyReadableDetail()
+    {
+        var error = new ChatMessage
+        {
+            Role = ChatRole.Agent,
+            Content = "[connection error] Unable to connect to the remote server",
+        };
+
+        Assert.True(error.IsConnectionError);
+        Assert.False(error.IsRegularAgentResponse);
+        Assert.Equal("Unable to connect to the remote server", error.ConnectionErrorText);
+
+        error.Content = "The agent replied normally.";
+
+        Assert.False(error.IsConnectionError);
+        Assert.True(error.IsRegularAgentResponse);
+        Assert.Equal(error.Content, error.ConnectionErrorText);
+    }
+
+    [Fact]
     public void MessageActions_RemainDiscoverableAndStrengthenOnHoverOrFocus()
     {
         var message = new ChatMessage
@@ -183,6 +203,21 @@ public sealed class ChatMessageTests
 
         Assert.Equal("Skipped", message.InteractiveOutcome);
         Assert.False(message.ShowAskUserFreeText);
+    }
+
+    [Fact]
+    public void InteractiveAccessibilityName_AnnouncesDisclosureStateAndUpdatesWhenToggled()
+    {
+        var message = InteractiveMessage(EventStatus.Running);
+        var notifications = new List<string?>();
+        message.PropertyChanged += (_, e) => notifications.Add(e.PropertyName);
+
+        Assert.Contains("Expanded", message.InteractiveAccessibilityName, StringComparison.Ordinal);
+
+        message.IsInteractiveCardExpanded = false;
+
+        Assert.Contains("Collapsed", message.InteractiveAccessibilityName, StringComparison.Ordinal);
+        Assert.Contains(nameof(ChatMessage.InteractiveAccessibilityName), notifications);
     }
 
     [Fact]

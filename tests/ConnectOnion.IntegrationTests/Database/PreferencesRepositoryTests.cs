@@ -21,6 +21,7 @@ public sealed class PreferencesRepositoryTests
         Assert.Equal(InterfaceTextSize.Medium, preferences.InterfaceTextSize);
         Assert.Empty(preferences.ShortcutOverrides);
         Assert.Equal("", preferences.MicrophoneDeviceId);
+        Assert.False(preferences.VoiceCloudTranscriptionConsent);
         Assert.True(preferences.EnterToSend);
     }
 
@@ -39,6 +40,7 @@ public sealed class PreferencesRepositoryTests
                 ["custom"] = "value",
             },
             InterfaceTextSize = InterfaceTextSize.Large,
+            VoiceCloudTranscriptionConsent = true,
         };
 
         await _repository.SaveAsync(expected);
@@ -50,6 +52,7 @@ public sealed class PreferencesRepositoryTests
         Assert.Equal(expected.InterfaceTextSize, actual.InterfaceTextSize);
         Assert.Equal(expected.MicrophoneDeviceId, actual.MicrophoneDeviceId);
         Assert.Equal(expected.ShortcutOverrides, actual.ShortcutOverrides);
+        Assert.True(actual.VoiceCloudTranscriptionConsent);
         Assert.False(actual.EnterToSend);
     }
 

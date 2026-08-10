@@ -64,9 +64,24 @@ public sealed class LocalPathToImageSourceConverter : IValueConverter
     {
         try
         {
+            // Convert runs on the UI thread and does not await this, so everything before the
+            // first suspension point runs synchronously inside the binding — and File.OpenRead is
+            // a blocking syscall. The chat list virtualizes, so that was one synchronous file open
+            // per recycled container, during measure/arrange, on every scroll frame past an image.
+            //
+            // Task.Run rather than a bare `await Task.Yield()`: this method starts on the UI
+            // thread, so a yield resumes right back on it (the dispatcher is the captured
+            // synchronization context) and would move nothing off. Only the open is offloaded —
+            // ConfigureAwait(true) then returns to the UI thread, which the BitmapImage work below
+            // requires, since a BitmapImage has thread affinity and both DecodePixelWidth and
+            // SetSourceAsync must be touched from the thread that created it.
+            //
             // A raw FileStream (rather than StorageFile) keeps this working for both the cached
-            // images under AppData and files the user picked from anywhere on disk.
-            await using var file = File.OpenRead(path);
+            // images under AppData and files the user picked from anywhere on disk. useAsync so
+            // the decoder's reads below do not block a pool thread either.
+            await using var file = await Task.Run(() => new FileStream(
+                path, FileMode.Open, FileAccess.Read, FileShare.Read,
+                bufferSize: 4096, useAsync: true)).ConfigureAwait(true);
             using var stream = file.AsRandomAccessStream();
 
             var decoder = await BitmapDecoder.CreateAsync(stream);

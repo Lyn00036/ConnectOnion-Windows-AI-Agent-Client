@@ -40,8 +40,24 @@ public sealed class ChatPageLifetimeGuardTests
         Assert.DoesNotContain("<canvas:CanvasAnimatedControl", composerXaml);
         Assert.Contains("<Canvas x:Name=\"WaveformCanvas\"", composerXaml);
 
+        // This used to assert the indicator called Canvas.RemoveFromVisualTree(), which guarded
+        // the wrong thing: it only ever ran from Dispose(), and Dispose() is reached by walking
+        // ChatPage's live visual tree — so it could not see the instances x:Load had already
+        // detached. Unlike the composer's one-per-page canvas, this control is realized inside a
+        // virtualized ListView item template, and every realization leaked its D3D device, swap
+        // chain and render thread: ~55 threads and ~23 MB per chat turn, taking a 40-turn
+        // text-only conversation from 133 MB to 984 MB. The fix is that there is no canvas here
+        // at all. See docs/MEMORY_LEAK_INVESTIGATION.md.
+        var indicatorXaml = ReadSource("Controls", "Primitives", "ThinkingIndicator.xaml");
+        // The element form, matching the composer assertion above: the file's own comment names
+        // the type to explain why it is gone, and a bare substring match would trip on that.
+        Assert.DoesNotContain("<canvas:CanvasAnimatedControl", indicatorXaml);
+        Assert.Contains("<Storyboard x:Key=\"SpinnerStoryboard\"", indicatorXaml);
+
         var indicator = ReadSource("Controls", "Primitives", "ThinkingIndicator.xaml.cs");
-        Assert.Contains("Canvas.RemoveFromVisualTree();", indicator);
+        Assert.DoesNotContain("Microsoft.Graphics.Canvas", indicator);
+        // Stop, not Pause: a recycled row must leave no animation clock running behind it.
+        Assert.Contains("_spinner.Stop()", indicator);
 
         var markdown = ReadSource("Controls", "Primitives", "MarkdownTextBlock.cs");
         Assert.Contains("Unloaded += (_, _) => ReleaseDocumentTree()", markdown);

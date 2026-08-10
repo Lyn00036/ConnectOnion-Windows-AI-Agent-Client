@@ -4,7 +4,6 @@ using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Models;
 using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Definitions;
-using Xunit.Abstractions;
 
 namespace ConnectOnion.WinUIClient.UITests;
 
@@ -139,26 +138,30 @@ public sealed class MemoryLeakTests(ITestOutputHelper output)
             {
                 ShellSmokeTests.OpenSettings(window);
                 InvokeByName(window, "Close settings");
-            },
+            }
+            ,
             "add-agent" => () =>
             {
                 InvokeByAutomationId(window, "AddAgentButton");
                 InvokeByName(window, "ConnectOnion home");
-            },
+            }
+            ,
             "agent-detail" => () =>
             {
                 var button = FindAgentButton(window);
                 Assert.NotNull(button);
                 Invoke(button);
                 InvokeByName(window, "ConnectOnion home");
-            },
+            }
+            ,
             "conversation" => () =>
             {
                 var button = FindConversationButton(window);
                 Assert.NotNull(button);
                 Invoke(button);
                 InvokeByName(window, "ConnectOnion home");
-            },
+            }
+            ,
             "conversation-alternating" => AlternatingConversationAction(window),
             _ => throw new InvalidOperationException($"Unknown memory scenario: {scenario}"),
         };

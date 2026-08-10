@@ -57,4 +57,54 @@ public sealed class FriendlyAgentNameTests
         Assert.Equal("remote-admin-agent", agent.Name);
         Assert.Equal("Remote Admin Agent", agent.DisplayName);
     }
+
+    [Fact]
+    public void AgentConfig_TryRename_TrimsAndAppliesLocalDisplayName()
+    {
+        var agent = new AgentConfig { Name = "remote-admin-agent" };
+
+        Assert.True(agent.TryRename("  My Admin  "));
+        Assert.Equal("My Admin", agent.Name);
+        Assert.Equal("My Admin", agent.DisplayName);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void AgentConfig_TryRename_RejectsBlankNames(string? name)
+    {
+        var agent = new AgentConfig { Name = "Original" };
+
+        Assert.False(agent.TryRename(name));
+        Assert.Equal("Original", agent.Name);
+    }
+
+    [Fact]
+    public void AgentConfig_TryRename_RejectsNamesOverTheLimit()
+    {
+        var agent = new AgentConfig { Name = "Original" };
+
+        Assert.False(agent.TryRename(new string('x', AgentConfig.MaxNameLength + 1)));
+        Assert.Equal("Original", agent.Name);
+    }
+
+    [Fact]
+    public void AgentConfig_TryRename_AcceptsTheExactLimit()
+    {
+        var agent = new AgentConfig { Name = "Original" };
+        var name = new string('x', AgentConfig.MaxNameLength);
+
+        Assert.True(agent.TryRename(name));
+        Assert.Equal(name, agent.Name);
+    }
+
+    [Fact]
+    public void AgentConfig_TryRename_RejectsAnUnchangedTrimmedName()
+    {
+        var agent = new AgentConfig { Name = "Original" };
+
+        Assert.False(agent.TryRename("  Original  "));
+        Assert.Equal("Original", agent.Name);
+    }
 }

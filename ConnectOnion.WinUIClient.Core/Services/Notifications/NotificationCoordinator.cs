@@ -20,6 +20,7 @@ public sealed class NotificationCoordinator : IDisposable
     private readonly INotificationScheduler _scheduler;
     private readonly NotificationPolicy _policy;
     private readonly Action<string, Exception>? _onError;
+    private readonly IConversationAttentionStore? _attentionStore;
 
     // Guards the three collections below. Held only across their mutations — never across a
     // channel Show or a policy decision, both of which can reach into UI code and would turn
@@ -51,7 +52,8 @@ public sealed class NotificationCoordinator : IDisposable
         INotificationSettingsProvider settings,
         INotificationScheduler scheduler,
         NotificationPolicy? policy = null,
-        Action<string, Exception>? onError = null)
+        Action<string, Exception>? onError = null,
+        IConversationAttentionStore? attentionStore = null)
     {
         _system = systemChannel;
         _inApp = inAppChannel;
@@ -60,6 +62,7 @@ public sealed class NotificationCoordinator : IDisposable
         _scheduler = scheduler;
         _policy = policy ?? new NotificationPolicy();
         _onError = onError;
+        _attentionStore = attentionStore;
     }
 
     /// <summary>Core entry point: de-dup, decide, and route a request.</summary>
@@ -74,7 +77,11 @@ public sealed class NotificationCoordinator : IDisposable
             }
 
             var decision = _policy.Decide(request, _presence, _settings.Current);
-            NotificationLog.Info($"Decision: channel={decision.Channel} foreground={_presence.IsForeground} type={request.Type} conv={request.ConversationId}");
+            NotificationLog.Info($"Decision: channel={decision.Channel} unread={decision.MarkUnread} foreground={_presence.IsForeground} type={request.Type} conv={request.ConversationId}");
+
+            // Runs ahead of the channel check: a suppressed toast still leaves an unread
+            // conversation unless the user was looking at it. See NotificationDecision.MarkUnread.
+            if (decision.MarkUnread) PersistAttentionIfNeeded(request);
             if (decision.Channel == NotificationChannel.None) return;
 
             // The policy may rewrite the body — it is what strips the message preview when the
@@ -87,6 +94,40 @@ public sealed class NotificationCoordinator : IDisposable
         {
             // A notification failure must never bubble into the chat/save path.
             _onError?.Invoke("Publish failed", ex);
+        }
+    }
+
+    private void PersistAttentionIfNeeded(NotificationRequest request)
+    {
+        if (_attentionStore is null || string.IsNullOrWhiteSpace(request.ConversationId)) return;
+        if (request.Type is not (NotificationType.AgentReply
+            or NotificationType.TaskCompleted
+            or NotificationType.ApprovalRequired)) return;
+
+        _ = PersistAttentionAsync(
+            request.ConversationId,
+            request.Type == NotificationType.ApprovalRequired);
+    }
+
+    private async Task PersistAttentionAsync(string conversationId, bool requiresAttention)
+    {
+        try
+        {
+            // Re-checked here, not only in the policy. This runs off the publishing thread, so the
+            // user can have opened the conversation in the meantime — typically by clicking the
+            // very toast this call accompanies. The clear that opening performs would then land
+            // *before* this write, leaving a badge on the chat they are reading with nothing left
+            // to clear it. Narrows the window rather than closing it: a genuinely simultaneous
+            // interleave is still possible, and costs one stale badge until the next time the
+            // window is focused, which MainWindow.ClearAttentionForVisibleConversation resolves.
+            if (_presence.IsViewingConversation(conversationId)) return;
+
+            await _attentionStore!.MarkUnreadAsync(conversationId, requiresAttention)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _onError?.Invoke("Persisting conversation attention failed", ex);
         }
     }
 

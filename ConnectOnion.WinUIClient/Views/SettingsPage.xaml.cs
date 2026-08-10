@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using ConnectOnion.WinUIClient.Common;
 using ConnectOnion.WinUIClient.Models;
 using ConnectOnion.WinUIClient.Services;
+using ConnectOnion.WinUIClient.Services.Notifications;
 using ConnectOnion.WinUIClient.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -64,42 +65,42 @@ public sealed partial class SettingsPage : Page
         {
             await _vm.LoadAsync();
 
-        // Everything between here and the reset must stay assignment-only — any call that
-        // could await would let a real user toggle land while the guard is up and be dropped.
-        ThemeChoice.SelectedIndex = _vm.Theme switch
-        {
-            ThemeMode.Light => 1,
-            ThemeMode.Dark => 2,
-            _ => 0,
-        };
-        InterfaceTextSizeChoice.SelectedIndex = _vm.InterfaceTextSize switch
-        {
-            InterfaceTextSize.Small => 0,
-            InterfaceTextSize.Large => 2,
-            _ => 1,
-        };
-        LanguageChoice.SelectedIndex =
-            AppServices.LanguagePreference.Current == LanguagePreferenceStore.SimplifiedChinese
-                ? 1
-                : 0;
-        FontChoice.SelectedIndex = _vm.MessageFontSize switch
-        {
-            MessageFontSize.Sm => 0,
-            MessageFontSize.Lg => 2,
-            _ => 1,
-        };
-        EnterToSendSwitch.IsOn = _vm.EnterToSend;
-        CloseBehaviorChoice.SelectedIndex = _vm.CloseBehavior switch
-        {
-            WindowCloseBehavior.HideToTray => 1,
-            WindowCloseBehavior.Exit => 2,
-            _ => 0,
-        };
+            // Everything between here and the reset must stay assignment-only — any call that
+            // could await would let a real user toggle land while the guard is up and be dropped.
+            ThemeChoice.SelectedIndex = _vm.Theme switch
+            {
+                ThemeMode.Light => 1,
+                ThemeMode.Dark => 2,
+                _ => 0,
+            };
+            InterfaceTextSizeChoice.SelectedIndex = _vm.InterfaceTextSize switch
+            {
+                InterfaceTextSize.Small => 0,
+                InterfaceTextSize.Large => 2,
+                _ => 1,
+            };
+            LanguageChoice.SelectedIndex =
+                AppServices.LanguagePreference.Current == LanguagePreferenceStore.SimplifiedChinese
+                    ? 1
+                    : 0;
+            FontChoice.SelectedIndex = _vm.MessageFontSize switch
+            {
+                MessageFontSize.Sm => 0,
+                MessageFontSize.Lg => 2,
+                _ => 1,
+            };
+            EnterToSendSwitch.IsOn = _vm.EnterToSend;
+            CloseBehaviorChoice.SelectedIndex = _vm.CloseBehavior switch
+            {
+                WindowCloseBehavior.HideToTray => 1,
+                WindowCloseBehavior.Exit => 2,
+                _ => 0,
+            };
 
-        MicChoice.ItemsSource = _vm.Microphones;
-        MicChoice.SelectedIndex = _vm.SelectedMicIndex;
+            MicChoice.ItemsSource = _vm.Microphones;
+            MicChoice.SelectedIndex = _vm.SelectedMicIndex;
 
-        LoadNotificationSettings();
+            LoadNotificationSettings();
 
         }
         catch (Exception ex)
@@ -120,6 +121,7 @@ public sealed partial class SettingsPage : Page
     private void LoadNotificationSettings()
     {
         var s = AppServices.NotificationSettings.Current;
+        SystemNotificationsUnavailableInfoBar.IsOpen = !AppNotificationCapability.IsAvailable;
         EnableNotificationsSwitch.IsOn = s.EnableNotifications;
         NotifyAgentRepliesSwitch.IsOn = s.NotifyAgentReplies;
         NotifyTaskCompletionSwitch.IsOn = s.NotifyTaskCompletion;

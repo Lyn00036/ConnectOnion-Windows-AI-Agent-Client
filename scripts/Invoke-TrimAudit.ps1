@@ -3,22 +3,22 @@
     Reproduces the trimming gate evidence for issue #13.
 
 .DESCRIPTION
-    Trimming stays OFF in production and CI until the gate in docs/TRIMMING.md passes. This
-    script produces the evidence that gate is judged on, so the numbers in that document can be
-    re-derived rather than believed:
+    Trimming is ON in production and CI. This script reproduces the mechanical evidence tracked
+    by the gate in docs/TRIMMING.md, so the warning inventory and runtime checks can be re-derived
+    rather than believed:
 
       1. An untrimmed ReadyToRun publish of the app  — the shipping configuration, for size.
-      2. An experimental trimmed publish of the app  — warning inventory and size.
+      2. A trimmed publish of the app  — warning inventory and size.
       3. A trimmed publish of tests/ConnectOnion.TrimSmoke, run as two processes (persist, then
          verify) so a real restart separates writing the turn from restoring it.
 
     Warnings are classified app-owned vs third-party by where ILLink says they come from: a line
-    beginning with a repo source path is ours, a line beginning with "ILLink :" is generated code
-    inside a dependency (in practice CsWinRT's ABI marshalling, which warns in the thousands and
-    which this repo cannot annotate). Only the first kind blocks the gate.
+    beginning with a repo source path is ours, while a line beginning with "ILLink :" is generated
+    code inside a dependency. CsWinRT's ABI marshalling was the historical example; the currently
+    pinned targeting pack emits none. Only the first kind blocks the gate.
 
-    Nothing here changes the build configuration. Enabling trimming is a deliberate, separate
-    edit to ConnectOnion.WinUIClient.csproj, gated on docs/TRIMMING.md.
+    Nothing here changes the build configuration. Any change to the trimming configuration is a
+    deliberate, separate edit to ConnectOnion.WinUIClient.csproj, gated on docs/TRIMMING.md.
 
 .PARAMETER OutDir
     Where publishes, logs and the report are written. Defaults to artifacts/trim-audit.
@@ -147,10 +147,10 @@ if (-not $SmokeOnly -and -not $SkipUntrimmed) {
     Write-Host ("  size: {0} MB" -f $report.untrimmedSizeMb)
 }
 
-# --- 2. Experimental trimmed publish ---------------------------------------------------------
+# --- 2. Trimmed warning-inventory publish ----------------------------------------------------
 
 if (-not $SmokeOnly) {
-    Write-Host "`n[2/3] Experimental trimmed publish (warning inventory)" -ForegroundColor Cyan
+    Write-Host "`n[2/3] Trimmed publish (warning inventory)" -ForegroundColor Cyan
     $dir = Join-Path $OutDir 'trimmed'
     $log = Join-Path $OutDir 'trimmed-publish.log'
     Invoke-Publish -Project $AppProject -PublishDir $dir -LogPath $log `
@@ -176,7 +176,8 @@ if (-not $SmokeOnly) {
 Write-Host "`n[3/3] Trimmed smoke harness (persist, restart, verify)" -ForegroundColor Cyan
 $smokeDir = Join-Path $OutDir 'smoke'
 Invoke-Publish -Project $SmokeProject -PublishDir $smokeDir `
-    -LogPath (Join-Path $OutDir 'smoke-publish.log') -ExtraArgs @()
+    -LogPath (Join-Path $OutDir 'smoke-publish.log') `
+    -ExtraArgs @('-p:NuGetLockFilePath=packages.trim-smoke.lock.json')
 
 $smokeExe = Join-Path $smokeDir 'ConnectOnion.TrimSmoke.exe'
 if (-not (Test-Path $smokeExe)) { throw "Smoke harness was not published to $smokeExe." }

@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Globalization;
 using ConnectOnion.WinUIClient.Models;
 using Microsoft.Data.Sqlite;
@@ -116,6 +115,13 @@ public sealed class UsageRepository
         {
             await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
             await using var cmd = connection.CreateCommand();
+            var source = sinceUnixMs is not null
+                ? "usage_events INDEXED BY ix_usage_created"
+                : "usage_events";
+            var filters = new List<string>(2);
+            if (sinceUnixMs is not null) filters.Add("created_at >= $since");
+            if (agentId is not null) filters.Add("agent_id = $agent");
+            var where = filters.Count == 0 ? "" : $"WHERE {string.Join(" AND ", filters)}";
             cmd.CommandText = $"""
                 SELECT model,
                        COUNT(*)                       AS calls,
@@ -124,20 +130,17 @@ public sealed class UsageRepository
                        SUM(cached_tokens)             AS cached_tokens,
                        SUM(cache_write_tokens)        AS cache_write_tokens,
                        COALESCE(SUM(duration_ms), 0)  AS duration_ms
-                FROM usage_events
-                WHERE ($since IS NULL OR created_at >= $since)
-                  AND ($agent IS NULL OR agent_id = $agent)
+                FROM {source}
+                {where}
                 GROUP BY model
                 ORDER BY (SUM(input_tokens) + SUM(output_tokens)) DESC;
                 """;
-            // The "$x IS NULL OR col = $x" idiom keeps one statement for all four filter
-            // combinations (all time / windowed × all agents / one agent) instead of
-            // assembling a WHERE clause by string building.
-            //
+            // The four fixed filter combinations are assembled from constant clauses so a
+            // windowed query remains a real created_at range seek instead of an optional-OR scan.
             // Ranked by input+output only: cached and cache-write tokens are reported but do
             // not decide the order, since they are not what the user is being billed for.
-            AppDatabase.Add(cmd, "$since", sinceUnixMs);
-            AppDatabase.Add(cmd, "$agent", agentId);
+            if (sinceUnixMs is not null) AppDatabase.Add(cmd, "$since", sinceUnixMs);
+            if (agentId is not null) AppDatabase.Add(cmd, "$agent", agentId);
 
             await using var reader = await cmd.ExecuteReaderAsync().ConfigureAwait(false);
             while (await reader.ReadAsync().ConfigureAwait(false))
@@ -193,17 +196,21 @@ public sealed class UsageRepository
         {
             await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
             await using var cmd = connection.CreateCommand();
-            cmd.CommandText = """
+            var source = sinceUnixMs is null
+                ? "usage_events"
+                : "usage_events INDEXED BY ix_usage_created";
+            var where = sinceUnixMs is null ? "" : "WHERE created_at >= $since";
+            cmd.CommandText = $"""
                 SELECT date((created_at + $offset_ms) / 1000, 'unixepoch') AS day,
                        SUM(input_tokens)  AS input_tokens,
                        SUM(output_tokens) AS output_tokens,
                        COUNT(*)           AS calls
-                FROM usage_events
-                WHERE ($since IS NULL OR created_at >= $since)
+                FROM {source}
+                {where}
                 GROUP BY day
                 ORDER BY day;
                 """;
-            AppDatabase.Add(cmd, "$since", sinceUnixMs);
+            if (sinceUnixMs is not null) AppDatabase.Add(cmd, "$since", sinceUnixMs);
             AppDatabase.Add(
                 cmd, "$offset_ms", (long)DateTimeOffset.Now.Offset.TotalMilliseconds);
 
@@ -269,8 +276,10 @@ public sealed class UsageRepository
         {
             await using var connection = await AppDatabase.OpenAsync().ConfigureAwait(false);
             await using var cmd = connection.CreateCommand();
-            cmd.CommandText = "DELETE FROM usage_events WHERE ($since IS NULL OR created_at >= $since);";
-            AppDatabase.Add(cmd, "$since", sinceUnixMs);
+            cmd.CommandText = sinceUnixMs is null
+                ? "DELETE FROM usage_events;"
+                : "DELETE FROM usage_events WHERE created_at >= $since;";
+            if (sinceUnixMs is not null) AppDatabase.Add(cmd, "$since", sinceUnixMs);
             await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -281,7 +290,6 @@ public sealed class UsageRepository
 
     private void LogFailure(string operation, Exception ex)
     {
-        Debug.WriteLine($"[UsageRepository] {operation} failed: {ex}");
         LogDatabaseFailure(_logger, operation, ex);
     }
 }

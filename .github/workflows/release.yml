@@ -39,13 +39,14 @@ jobs:
       DOTNET_CLI_TELEMETRY_OPTOUT: true
       SOLUTION_PATH: ConnectOnion.WinUIClient/ConnectOnion.WinUIClient.sln
       APP_PROJECT: ConnectOnion.WinUIClient/ConnectOnion.WinUIClient.csproj
+      LAUNCHER_PROJECT: ConnectOnion.PortableLauncher/ConnectOnion.PortableLauncher.csproj
       CONFIGURATION: Release
       # See ci.yml for why this is not called PLATFORM.
       BUILD_PLATFORM: x64
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
 
@@ -68,12 +69,12 @@ jobs:
           "prerelease=$(if ($semver -match '-') { 'true' } else { 'false' })" >> $env:GITHUB_OUTPUT
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: 10.0.302
 
       - name: Set up Node.js for protocol conformance
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22
 
@@ -85,11 +86,17 @@ jobs:
 
       - name: Restore
         shell: pwsh
-        run: dotnet restore $env:SOLUTION_PATH -p:Platform=$env:BUILD_PLATFORM
+        # CONFIGURATION is imported by MSBuild as Release. Keep this solution restore on the
+        # ordinary build graph; the shipping trimmed/R2R publish has separate lock files below.
+        run: >
+          dotnet restore $env:SOLUTION_PATH
+          -p:Platform=$env:BUILD_PLATFORM
+          -p:PublishTrimmed=false
+          -p:PublishReadyToRun=false
 
       - name: Audit NuGet dependencies
         shell: pwsh
-        run: dotnet list $env:SOLUTION_PATH package --vulnerable --include-transitive
+        run: dotnet list $env:SOLUTION_PATH package --vulnerable --include-transitive --no-restore
 
       - name: Build solution
         shell: pwsh
@@ -101,8 +108,8 @@ jobs:
           -p:Version=${{ steps.version.outputs.semver }}
           -p:AppxPackageSigningEnabled=false
           -p:GenerateAppxPackageOnBuild=false
-          -p:PublishReadyToRun=false
           -p:PublishTrimmed=false
+          -p:PublishReadyToRun=false
 
       - name: Run protocol unit tests
         shell: pwsh
@@ -126,13 +133,27 @@ jobs:
 
       # ---- Gate 2: build the self-contained portable release -----------------------------------
 
+      # The solution build and trim audit intentionally exercise different publish shapes in the
+      # same job. Clear the app's RID intermediates before the shipping publish so MSBuild cannot
+      # reuse an untrimmed publish graph whose inputs differ only by global properties. The size
+      # audit would catch that mix-up later, but the publish step itself should be deterministic.
+      # The app and its project references use packages.publish.lock.json here because one NuGet
+      # lock file cannot represent both this RID/ILLink graph and the normal solution graph.
+      - name: Clean portable publish intermediates
+        shell: pwsh
+        run: >
+          dotnet clean $env:APP_PROJECT
+          --configuration $env:CONFIGURATION
+          --runtime win-x64
+          -p:Platform=$env:BUILD_PLATFORM
+          -p:BuildProjectReferences=false
+
       - name: Publish self-contained portable build
         shell: pwsh
         run: >
           dotnet publish $env:APP_PROJECT
           --configuration $env:CONFIGURATION
           --runtime win-x64
-          --no-restore
           --output artifacts/portable
           -p:Platform=$env:BUILD_PLATFORM
           -p:Version=${{ steps.version.outputs.semver }}
@@ -140,11 +161,42 @@ jobs:
           -p:SelfContained=true
           -p:WindowsAppSDKSelfContained=true
           -p:PublishSingleFile=false
-          -p:PublishTrimmed=false
+          -p:PublishTrimmed=true
           -p:PublishReadyToRun=true
+          -p:RuntimeIdentifiers=win-x64
+          -p:NuGetLockFilePath=packages.publish.lock.json
           -p:DebugSymbols=false
           -p:DebugType=None
           -p:AppxPackageSigningEnabled=false
+
+      # Same reasoning as the app clean above, and the launcher needs it more, not less: the
+      # solution build compiled this project WITHOUT AOT, so its RID intermediates were produced
+      # under a different property graph than the one published here. Cleaning first, and letting
+      # publish restore its own asset graph, is what keeps `PublishAot=true` from being satisfied
+      # by stale non-AOT output.
+      - name: Clean portable launcher intermediates
+        shell: pwsh
+        run: >
+          dotnet clean $env:LAUNCHER_PROJECT
+          --configuration $env:CONFIGURATION
+          --runtime win-x64
+          -p:Platform=$env:BUILD_PLATFORM
+
+      - name: Publish portable root launcher
+        shell: pwsh
+        run: >
+          dotnet publish $env:LAUNCHER_PROJECT
+          --configuration $env:CONFIGURATION
+          --runtime win-x64
+          --output artifacts/launcher
+          -p:Platform=$env:BUILD_PLATFORM
+          -p:Version=${{ steps.version.outputs.semver }}
+          -p:PublishAot=true
+          -p:NuGetLockFilePath=packages.publish.lock.json
+          -p:SelfContained=true
+          -p:PublishSingleFile=true
+          -p:DebugSymbols=false
+          -p:DebugType=None
 
       - name: Stage portable release
         id: collect
@@ -152,10 +204,10 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force artifacts/publish | Out-Null
 
-          # The portable release is one self-contained directory, not one executable:
-          # Windows App SDK and the .NET runtime are loose files and must stay together. Archive
-          # the directory contents at the ZIP root so extracting it exposes the executable
-          # directly instead of adding an otherwise-useless publish/ nesting level.
+          # The portable release is a self-contained loose-file application. Stage the complete
+          # publish under app/ so the ZIP root remains easy to scan; a small launcher at the root
+          # starts the real executable without moving DLLs away from the probing paths .NET and
+          # the Windows App SDK require.
           $portableRoot = 'artifacts/portable'
           $portableExe = Join-Path $portableRoot 'ConnectOnion.WinUIClient.exe'
           if (-not (Test-Path $portableExe)) {
@@ -168,12 +220,39 @@ jobs:
             throw "Portable publish is not Windows App SDK self-contained: Microsoft.WindowsAppRuntime.dll is missing."
           }
 
+          $launcher = 'artifacts/launcher/ConnectOnion.WinUIClient.exe'
+          if (-not (Test-Path $launcher)) {
+            throw "Portable launcher publish did not produce $launcher."
+          }
+          $launcherPayload = @(Get-ChildItem 'artifacts/launcher' -File -Recurse)
+          if ($launcherPayload.Count -ne 1) {
+            throw "Portable launcher must be one dependency-free executable; found $($launcherPayload.Count) files."
+          }
+
+          $stagedRoot = 'artifacts/staged-portable'
+          $stagedApp = Join-Path $stagedRoot 'app'
+          New-Item -ItemType Directory -Force $stagedApp | Out-Null
+          Copy-Item (Join-Path $portableRoot '*') $stagedApp -Recurse
+          Copy-Item $launcher (Join-Path $stagedRoot 'ConnectOnion.WinUIClient.exe')
+
           $portable = "artifacts/publish/ConnectOnion.Desktop-${{ steps.version.outputs.version }}-x64-portable.zip"
-          Compress-Archive -Path (Join-Path $portableRoot '*') `
+          Compress-Archive -Path (Join-Path $stagedRoot '*') `
             -DestinationPath $portable -CompressionLevel Optimal
           "portable=$portable" >> $env:GITHUB_OUTPUT
 
           Get-ChildItem artifacts/publish | ForEach-Object { Write-Host "staged: $($_.Name)" }
+
+      - name: Smoke-test portable root launcher
+        shell: pwsh
+        env:
+          CONNECTONION_UI_TEST_EXE: ${{ github.workspace }}\artifacts\staged-portable\ConnectOnion.WinUIClient.exe
+          CONNECTONION_DATA_ROOT: ${{ runner.temp }}\ConnectOnionPortableLauncher-${{ github.run_id }}-${{ github.run_attempt }}
+        run: >
+          dotnet test tests/ConnectOnion.WinUIClient.UITests/ConnectOnion.WinUIClient.UITests.csproj
+          --configuration $env:CONFIGURATION
+          --no-restore
+          --no-build
+          --filter "FullyQualifiedName~Launch_ShowsResponsiveConnectOnionWindow"
 
       # ---- Gate 3: the archive is publishable --------------------------------------------------
 
@@ -202,7 +281,7 @@ jobs:
       # still has to be diagnosable without re-running the whole build.
       - name: Upload build artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: release-${{ steps.version.outputs.version }}
           path: artifacts/publish/
@@ -237,8 +316,9 @@ jobs:
             "",
             "### Run",
             "",
-            "Download the `-portable.zip`, extract the whole archive, then run",
-            "`ConnectOnion.WinUIClient.exe`. Keep the extracted files together. This unpackaged",
+            "Download the `-portable.zip`, extract the whole archive, then run the root-level",
+            "`ConnectOnion.WinUIClient.exe`. Keep its `app` folder beside it. The application",
+            "runtime and DLLs stay inside that folder instead of filling the archive root. This unpackaged",
             "self-contained build does not need a separate .NET or Windows App SDK installation.",
             "It does not install or participate in MSIX upgrades.",
             "",

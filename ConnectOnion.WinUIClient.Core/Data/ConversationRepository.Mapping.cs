@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text.Json;
 using ConnectOnion.WinUIClient.Models;
 using Microsoft.Data.Sqlite;
@@ -54,10 +53,12 @@ public sealed partial class ConversationRepository
         // when their durable outcome is Failed, Pending, or another state that expands while a
         // live runtime is still handling it.
         if (m.IsDiffPreviewEvent) m.IsDiffExpanded = false;
-        // Plan disclosure is also presentation-only. A freshly received plan remains expanded
-        // so the user can review it immediately, while a row restored into history starts
-        // compact and can still be reopened from its header.
-        if (m.IsPlanReviewEvent) m.IsInteractiveCardExpanded = false;
+        // Interactive disclosure is also presentation-only. A freshly received card remains
+        // expanded so the user can act on it immediately, while a row restored into history
+        // starts compact and can still be reopened from its header. Applies to every interactive
+        // kind, not only plan_review — an answered ask_user restored from SQLite is history in
+        // exactly the same sense.
+        if (m.IsInteractiveEvent) m.IsInteractiveCardExpanded = false;
 
         // Tool activity is stored in the existing event_args payload column. This keeps the
         // schema backward compatible while making the aggregate durable across page teardown
@@ -77,7 +78,6 @@ public sealed partial class ConversationRepository
                 // rethrowing: the turn genuinely happened, and one unreadable payload must not
                 // cost the user the surrounding conversation. The visible title says so
                 // instead of silently rendering an empty card.
-                Debug.WriteLine($"[db] tool activity payload for message {m.Id} could not be restored: {ex}");
                 LogToolActivityPayloadUnreadable(_logger, m.Id, ex);
                 m.EventKind = "activity";
                 m.EventTitle = "Tool execution history could not be restored";
@@ -114,7 +114,6 @@ public sealed partial class ConversationRepository
         {
             // Same bargain as the tool-activity payload above: one unreadable blob must not cost
             // the user the conversation. The caller falls back to the event_detail single step.
-            Debug.WriteLine($"[db] thought steps payload could not be restored: {ex}");
             LogThoughtStepsPayloadUnreadable(_logger, ex);
             return null;
         }

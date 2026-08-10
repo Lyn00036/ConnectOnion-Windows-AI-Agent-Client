@@ -103,7 +103,7 @@ public sealed partial class ChatPage
         if (sender is Button { Content: IconText iconText })
         {
             var original = iconText.Text;
-        iconText.Text = Common.LocalizedStrings.Get("CommonCopied", "Copied");
+            iconText.Text = Common.LocalizedStrings.Get("CommonCopied", "Copied");
             await ShowCopyFeedbackAsync((Button)sender, () => iconText.Text = original);
         }
     }

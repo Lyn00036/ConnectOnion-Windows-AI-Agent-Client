@@ -9,6 +9,45 @@ namespace ConnectOnion.WinUIClient.UnitTests.Services;
 public sealed class OpenOnionAccountServiceTests
 {
     [Fact]
+    public async Task GetApiKeyAsync_AuthenticatesWithoutLoadingTheProfile_AndCachesTheToken()
+    {
+        var identity = AgentIdentity.FromSeed(new byte[32]);
+        var requests = new List<HttpRequestMessage>();
+        using var http = new HttpClient(new StubHandler(async request =>
+        {
+            requests.Add(await CloneAsync(request));
+            return Json(HttpStatusCode.OK, """{"token":"voice-token"}""");
+        }));
+        using var service = new OpenOnionAccountService(
+            http, () => identity, () => DateTimeOffset.UnixEpoch);
+
+        var first = await service.GetApiKeyAsync();
+        var cached = await service.GetApiKeyAsync();
+
+        Assert.Equal("voice-token", first);
+        Assert.Equal(first, cached);
+        Assert.Single(requests);
+        Assert.Equal(HttpMethod.Post, requests[0].Method);
+        Assert.Equal("https://oo.openonion.ai/api/v1/auth", requests[0].RequestUri?.AbsoluteUri);
+        Assert.Null(service.Profile);
+    }
+
+    [Fact]
+    public async Task GetApiKeyAsync_ForceAuthentication_ReplacesTheCachedToken()
+    {
+        var identity = AgentIdentity.FromSeed(new byte[32]);
+        var postCount = 0;
+        using var http = new HttpClient(new StubHandler(_ => Task.FromResult(
+            Json(HttpStatusCode.OK, $$"""{"token":"token-{{++postCount}}"}"""))));
+        using var service = new OpenOnionAccountService(
+            http, () => identity, () => DateTimeOffset.UnixEpoch);
+
+        Assert.Equal("token-1", await service.GetApiKeyAsync());
+        Assert.Equal("token-2", await service.GetApiKeyAsync(forceAuthentication: true));
+        Assert.Equal("token-2", service.ApiKey);
+    }
+
+    [Fact]
     public async Task RefreshAsync_SignsIdentity_AuthenticatesAndLoadsProfile()
     {
         var identity = AgentIdentity.FromSeed(Enumerable.Range(1, 32).Select(i => (byte)i).ToArray());

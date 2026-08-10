@@ -26,6 +26,11 @@ public sealed partial class AskUserCard : UserControl
     }
     private void Submit_Click(object sender, RoutedEventArgs e) => SubmitRequested?.Invoke(this, e);
     private void Skip_Click(object sender, RoutedEventArgs e) => SkipRequested?.Invoke(this, e);
+
+    /// <summary>Brings back the diff this decision retired. Purely local presentation — it answers
+    /// nothing and touches no socket — so it stays in the control rather than routing out through
+    /// the page like Submit and Skip do.</summary>
+    private void RecallDiff_Click(object sender, RoutedEventArgs e) => Message?.RecallRelatedDiff();
     private void SecretPasswordBox_Loaded(object sender, RoutedEventArgs e)
     {
         if (sender is PasswordBox { Tag: AskUserFieldEntry field } passwordBox

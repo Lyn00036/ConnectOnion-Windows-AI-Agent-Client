@@ -100,9 +100,9 @@ public sealed class AgentConnectionRegistryTests : IAsyncLifetime
         Assert.Null(registry.Get("conversation-b"));
     }
 
-    public Task InitializeAsync() => Task.CompletedTask;
+    public ValueTask InitializeAsync() => ValueTask.CompletedTask;
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         foreach (var registry in _registries)
             await registry.DisposeAllAsync();

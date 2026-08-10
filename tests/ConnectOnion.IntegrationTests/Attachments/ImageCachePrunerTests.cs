@@ -13,13 +13,13 @@ public sealed class ImageCachePrunerTests : IAsyncLifetime
 
     public ImageCachePrunerTests(TempDatabaseFixture fixture) => _fixture = fixture;
 
-    public Task InitializeAsync() => Task.CompletedTask;
+    public ValueTask InitializeAsync() => ValueTask.CompletedTask;
 
     /// <summary>The whole collection shares one database, and <c>SessionRepository</c> persists
     /// the session index as a whole-table snapshot — so sessions left behind here surface as
     /// phantom rows in <c>SessionRepositoryTests</c>' assertions. Clean up after ourselves:
     /// children first, since the foreign keys declare no <c>ON DELETE</c>.</summary>
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         await using var connection = await AppDatabase.OpenAsync();
         await using var command = connection.CreateCommand();

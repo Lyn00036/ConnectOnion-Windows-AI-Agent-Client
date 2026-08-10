@@ -218,15 +218,23 @@ public sealed partial class ChatPage : Page, IFindHost, IShutdownDisarmable, IDi
                 Composer.IsBusy = Vm.IsProcessing;
             });
         }
+
+        // Deliberately no auto-scroll when a decision arrives. Moving the viewport for the user is
+        // the kind of help that is wrong as often as it is right — it interrupts whatever they were
+        // reading, and the transcript is already where they left it. Going to the card is a user
+        // action: the pending bar above the composer, or Ctrl+Shift+D.
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
+        var parameter = e.Parameter is ShellNavigationContext context
+            ? context.Payload
+            : e.Parameter;
         // AgentDetailPage navigates here with a ComposerSubmission (text + any
         // attachments); a plain string is also accepted for robustness against
         // any other caller that only ever had a prompt to pass.
-        _pendingInitialSubmission = e.Parameter switch
+        _pendingInitialSubmission = parameter switch
         {
             ComposerSubmission submission => submission,
             string prompt => new ComposerSubmission(prompt, Array.Empty<PendingAttachment>()),
@@ -236,9 +244,10 @@ public sealed partial class ChatPage : Page, IFindHost, IShutdownDisarmable, IDi
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
-        // This callback runs while the old visual tree is still reachable. Dispose the Win2D
-        // controls here rather than waiting for GC/Unloaded, where their native swap chains can
-        // already have escaped deterministic teardown.
+        // This callback runs while the old visual tree is still reachable. Dispose the controls
+        // that own native resources here rather than waiting for GC/Unloaded, where the
+        // composer's audio graph and speech recognizer can already have escaped deterministic
+        // teardown.
         SaveScrollPosition();
         ReportViewing(active: false);
         Dispose();
@@ -311,7 +320,7 @@ public sealed partial class ChatPage : Page, IFindHost, IShutdownDisarmable, IDi
             loadCts.Dispose();
         }
 
-        // Rapid switching can navigate away — and unload this cached page — during the DB load
+        // Rapid switching can navigate away and unload this page during the DB load
         // above. Touching the composer/overlay dependency properties or the message list while
         // this page is detached from the visual tree throws E_UNEXPECTED (0x8000FFFF). Bail if we
         // are no longer loaded; the next OnLoaded re-runs against the current selection.
@@ -321,8 +330,7 @@ public sealed partial class ChatPage : Page, IFindHost, IShutdownDisarmable, IDi
         // so a reply that lands here is suppressed (the user already sees it).
         ReportViewing(active: true);
 
-        // The page is cached and reused across conversations. A previous empty
-        // conversation may have left this panel visible, while history changes
+        // A previous load may have left this panel visible, while history changes
         // raised during LoadAsync are intentionally ignored by
         // Messages_CollectionChanged. Always derive the final state from the
         // conversation that just finished loading instead of only handling the
@@ -344,8 +352,11 @@ public sealed partial class ChatPage : Page, IFindHost, IShutdownDisarmable, IDi
         if (pending is not null && (!string.IsNullOrWhiteSpace(pending.Text) || pending.Attachments.Count > 0))
         {
             _pendingInitialSubmission = null;
-            await Vm.SendAsync(pending.Text, pending.Attachments);
-            QueueScrollToEnd(force: true);
+            // The mode picked on AgentDetailPage, applied before the first send so the turn it
+            // starts actually runs under it. SetModeAsync is a no-op when the conversation is
+            // already in that mode, which is the common case (Safe).
+            await Vm.SetModeAsync(pending.Mode);
+            await SendAsync(pending.Text, pending.Attachments);
         }
     }
 

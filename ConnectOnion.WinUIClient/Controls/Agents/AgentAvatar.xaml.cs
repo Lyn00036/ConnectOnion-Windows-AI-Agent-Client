@@ -27,10 +27,31 @@ public sealed partial class AgentAvatar : UserControl
     private const int MaxCachedImages = 16;
 
     // The sidebar rebuilds its rows on every refresh, so the same handful of files are decoded
-    // again and again. Weak references let the bitmaps go once no avatar is showing them, which
-    // matters because each one owns a native surface (see the memory notes in CLAUDE.md).
+    // again and again.
+    //
+    // Strong references, deliberately — this used to hold WeakReference<BitmapImage>. The only
+    // strong reference to a cached bitmap was then the Source of a realized Image, so a rebuild
+    // that returned rows to the recycle pool plus any GC in between collected it. The next
+    // realization missed the cache and fell into LoadImageAsync, and a freshly realized avatar
+    // starts on the initial (CustomAvatarImage is Collapsed in the XAML) — so the agent's face
+    // visibly flashed letter -> picture on every conversation switch, and only for agents that
+    // had an icon at all. A cache that evaporates exactly when it is about to be used is not a
+    // cache.
+    //
+    // Correct to hold because a path is never reused for different content: AgentIconService mints
+    // a fresh GUID for both the temporary pick (agent-icon-{guid}.png) and the committed file
+    // (agent-{agentId}-{guid}.png), so choosing a new picture always produces a new key. There is
+    // therefore no invalidation to write — but if that naming ever becomes stable, this cache
+    // starts serving a stale face and would need one.
+    //
+    // Safe to hold because both dimensions are bounded and small: at most MaxCachedImages entries,
+    // each decoded down to MaxDecodePixels, so the whole cache is ~16 x 96 x 96 x 4B ≈ 0.6 MB of
+    // native surface however many agents exist. That is the opposite situation to
+    // LocalPathToImageSourceConverter, which is weak on purpose: it caches chat attachment
+    // thumbnails at 280px with no bound on how many distinct images a transcript contains.
+    //
     // All access is from the UI thread, so a plain dictionary + FIFO queue is enough.
-    private static readonly Dictionary<string, WeakReference<BitmapImage>> ImageCache =
+    private static readonly Dictionary<string, BitmapImage> ImageCache =
         new(StringComparer.OrdinalIgnoreCase);
 
     private static readonly Queue<string> ImageCacheOrder = new();
@@ -116,7 +137,9 @@ public sealed partial class AgentAvatar : UserControl
             return;
         }
 
-        if (ImageCache.TryGetValue(absolutePath, out var cached) && cached.TryGetTarget(out var cachedImage))
+        // Synchronous, in the same frame as the rebind. This is the path that has to be hit on a
+        // recycled row: anything asynchronous here is a visible flash.
+        if (ImageCache.TryGetValue(absolutePath, out var cachedImage))
         {
             ShowImage(cachedImage);
             return;
@@ -195,7 +218,7 @@ public sealed partial class AgentAvatar : UserControl
     private static void Cache(string absolutePath, BitmapImage image)
     {
         var isNewPath = !ImageCache.ContainsKey(absolutePath);
-        ImageCache[absolutePath] = new WeakReference<BitmapImage>(image);
+        ImageCache[absolutePath] = image;
         if (isNewPath) ImageCacheOrder.Enqueue(absolutePath);
 
         while (ImageCacheOrder.Count > MaxCachedImages && ImageCacheOrder.TryDequeue(out var evicted))

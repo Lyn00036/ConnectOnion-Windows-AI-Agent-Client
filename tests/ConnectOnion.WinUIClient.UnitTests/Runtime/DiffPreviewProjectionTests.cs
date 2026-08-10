@@ -68,9 +68,12 @@ public class DiffPreviewProjectionTests
         Assert.True(diff.ShowRelatedDiffApprovalCard);
         Assert.False(ask.IsTranscriptRowVisible);
 
+        // Applying folds immediately. It is a transient "the write is in flight" marker with
+        // nothing to decide and nothing yet to inspect; leaving it open is what stranded a
+        // full-height diff on the transcript the moment its approval card unloaded.
         ask.EventMeta = "Answered: Yes, apply this change";
         Assert.Equal(DiffChangeState.Applying, diff.DiffState);
-        Assert.True(diff.IsDiffExpanded);
+        Assert.False(diff.IsDiffExpanded);
 
         projection.Apply(Event("tool_result",
             """{"tool_id":"write-1","status":"success","result":"File written successfully."}"""));
@@ -79,23 +82,94 @@ public class DiffPreviewProjectionTests
         Assert.Equal("Changes applied to test.txt", diff.DiffCardTitle);
     }
 
+    /// <summary>The ownership swap. A pending decision is hosted by its diff; a settled one always
+    /// shows its own folded card, and the diff withdraws once the file reaches a clean terminal
+    /// state. Neither message ever leaves the projection — they still anchor answer alignment and
+    /// persistence, and the diff row is what <c>ToolActivityMigration</c> re-pairs against on
+    /// reload.</summary>
     [Fact]
-    public void ResolvedWriteApproval_DisappearsFromDiffWithoutRemovingProtocolMessage()
+    public void ResolvedWriteApproval_TakesOverItsOwnRowAndRetiresTheDiff()
     {
-        var (_, target, diff, ask) = ProjectWriteApproval();
+        var (projection, target, diff, ask) = ProjectWriteApproval();
 
         ask.CompleteInteractiveSubmit("Answered: Yes, apply this change");
 
+        // The embedded copy is gone and the ask_user now stands on its own, folded.
         Assert.False(diff.ShowRelatedDiffApprovalCard);
-        Assert.False(ask.IsTranscriptRowVisible);
+        Assert.True(ask.IsTranscriptRowVisible);
+        Assert.False(ask.IsInteractiveCardExpanded);
         Assert.Contains(ask, target.Messages);
+
+        // Still Applying, so the diff has not withdrawn yet — only folded.
         Assert.Equal(DiffChangeState.Applying, diff.DiffState);
+        Assert.False(diff.IsWithdrawnDiffPreview);
+        Assert.True(diff.IsTranscriptRowVisible);
+        Assert.False(diff.IsDiffExpanded);
+
+        projection.Apply(Event("tool_result",
+            """{"tool_id":"write-1","status":"success","result":"File written successfully."}"""));
+
+        Assert.Equal(DiffChangeState.Applied, diff.DiffState);
+        Assert.True(diff.IsWithdrawnDiffPreview);
+        Assert.False(diff.IsTranscriptRowVisible);
+        Assert.Contains(diff, target.Messages);
+
+        // And the settled card is the way back to it.
+        Assert.True(ask.CanRecallDiff);
+        ask.RecallRelatedDiff();
+        Assert.True(diff.IsTranscriptRowVisible);
+        Assert.True(diff.IsDiffExpanded);
+        Assert.False(ask.CanRecallDiff);
     }
 
+    /// <summary>The case a visibility-coupled rule got wrong. A write the user approved but which
+    /// then failed keeps its diff on screen — that is where DiffProblemText lives — and the
+    /// approval must be on screen too, because "who approved this, and to what" is exactly the
+    /// question a failed write raises.</summary>
     [Fact]
-    public void RejectedWrite_FoldsButKeepsFullDiffAvailable()
+    public void FailedWrite_ShowsBothTheDiffAndTheDecisionThatAuthorizedIt()
     {
-        var (projection, target, diff, ask) = ProjectWriteApproval();
+        var (projection, _, diff, ask) = ProjectWriteApproval();
+        ask.CompleteInteractiveSubmit("Answered: Yes, apply this change");
+        projection.Apply(Event("tool_result",
+            """{"tool_id":"write-1","status":"error","error":"permission denied"}"""));
+
+        Assert.Equal(DiffChangeState.Failed, diff.DiffState);
+        Assert.False(diff.IsWithdrawnDiffPreview);
+        Assert.True(diff.IsTranscriptRowVisible);
+        Assert.True(diff.IsDiffExpanded);
+        Assert.True(ask.IsTranscriptRowVisible);
+        // Nothing to recall — the diff never left.
+        Assert.False(ask.CanRecallDiff);
+    }
+
+    /// <summary>A rejected change retires the same way an applied one does: the decision is made,
+    /// nothing is going to happen to the file, and the outcome is on the settled card.</summary>
+    [Fact]
+    public void RejectedWrite_RetiresTheDiffAndKeepsItRecallable()
+    {
+        var (_, _, diff, ask) = ProjectWriteApproval();
+
+        ask.CompleteInteractiveSubmit("Answered: No, reject and give feedback", rejected: true);
+
+        Assert.Equal(DiffChangeState.Rejected, diff.DiffState);
+        Assert.True(diff.IsWithdrawnDiffPreview);
+        Assert.False(diff.IsTranscriptRowVisible);
+        Assert.True(ask.IsTranscriptRowVisible);
+
+        ask.RecallRelatedDiff();
+        Assert.True(diff.IsTranscriptRowVisible);
+        Assert.Contains("+new", diff.DiffPreview.RawText);
+    }
+
+    /// <summary>The answer can also arrive as a bare <c>EventMeta</c> write — that is how the
+    /// persist path stamps a resolved card back on. It moves the diff's state without settling the
+    /// approval, so the diff folds but does not withdraw.</summary>
+    [Fact]
+    public void RejectedViaEventMeta_FoldsButKeepsFullDiffAvailable()
+    {
+        var (_, _, diff, _) = ProjectWriteApproval();
+        var ask = diff.RelatedDiffApproval!;
         ask.EventMeta = "Answered: No, reject and give feedback";
 
         Assert.Equal(DiffChangeState.Rejected, diff.DiffState);
@@ -107,35 +181,51 @@ public class DiffPreviewProjectionTests
         Assert.Contains("+new", diff.DiffPreview.RawText);
     }
 
+    /// <summary>Folding a pending diff is the one thing the user most needs and used to be the one
+    /// state where it was forbidden: a long proposal pushes the buttons that answer it off the
+    /// bottom of the viewport, and the control that could shorten it was hidden.</summary>
     [Fact]
-    public void FailedWrite_RemainsExpandedAndNeverClaimsApplied()
+    public void PendingDiff_CanBeFoldedWhileItStillAwaitsApproval()
     {
-        var (projection, _, diff, ask) = ProjectWriteApproval();
-        ask.EventMeta = "Answered: Yes, apply this change";
-        projection.Apply(Event("tool_result",
-            """{"tool_id":"write-1","status":"error","error":"permission denied"}"""));
+        var (_, _, diff, ask) = ProjectWriteApproval();
 
-        Assert.Equal(DiffChangeState.Failed, diff.DiffState);
-        Assert.True(diff.IsDiffExpanded);
-        Assert.True(diff.ShowDiffProblem);
-        Assert.NotEqual("Changes applied to test.txt", diff.DiffCardTitle);
+        Assert.Equal(DiffChangeState.Pending, diff.DiffState);
+        Assert.True(diff.CanToggleDiffVisibility);
+
+        diff.ToggleDiffExpanded();
+        Assert.False(diff.IsDiffExpanded);
+
+        // And the fold survives the state transitions the rest of the turn brings, because a
+        // manual toggle takes the card off state-driven default expansion for good.
+        ask.EventMeta = "Answered: Yes, apply this change";
+        Assert.False(diff.IsDiffExpanded);
     }
 
+    /// <summary>A turn that ends without ever confirming the write leaves the file in an unknown
+    /// state, so the diff stays open and stays on the transcript — the body plus DiffProblemText
+    /// are the only report that what is on disk may not match what was shown. This is the case a
+    /// blanket "fold every diff at turn end" sweep used to get wrong.</summary>
     [Fact]
-    public void CompletedWithoutToolResult_IsUnconfirmedAndFolded()
+    public void CompletedWithoutToolResult_IsUnconfirmedAndStaysOpen()
     {
         var (projection, _, diff, ask) = ProjectWriteApproval();
-        ask.EventMeta = "Answered: Yes, apply this change";
+        ask.CompleteInteractiveSubmit("Answered: Yes, apply this change");
 
         projection.AppendCompletedTurn("");
 
         Assert.Equal(DiffChangeState.Unconfirmed, diff.DiffState);
-        Assert.False(diff.IsDiffExpanded);
+        Assert.True(diff.IsDiffExpanded);
+        Assert.True(diff.ShowDiffProblem);
+        Assert.False(diff.IsWithdrawnDiffPreview);
+        Assert.True(diff.IsTranscriptRowVisible);
         Assert.DoesNotContain("Changes applied", diff.DiffCardTitle, StringComparison.Ordinal);
     }
 
+    /// <summary>An informational preview (<c>remote_diff_preview</c>) has no approval and no
+    /// result contract, so no rule here applies to it: it neither folds nor withdraws at turn
+    /// end, and the user's own disclosure choice is the only thing that moves it.</summary>
     [Fact]
-    public void CompletedTurn_FoldsInformationalPreview()
+    public void CompletedTurn_LeavesInformationalPreviewAlone()
     {
         var target = new FakeTarget();
         var projection = new ChatTurnProjection(target);
@@ -148,9 +238,12 @@ public class DiffPreviewProjectionTests
         projection.AppendCompletedTurn("");
 
         Assert.Equal(DiffChangeState.Preview, diff.DiffState);
-        Assert.False(diff.IsDiffExpanded);
-        diff.ToggleDiffExpanded();
         Assert.True(diff.IsDiffExpanded);
+        Assert.False(diff.IsWithdrawnDiffPreview);
+        Assert.True(diff.IsTranscriptRowVisible);
+
+        diff.ToggleDiffExpanded();
+        Assert.False(diff.IsDiffExpanded);
     }
 
     [Fact]

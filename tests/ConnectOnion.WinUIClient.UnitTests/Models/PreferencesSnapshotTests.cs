@@ -5,6 +5,29 @@ namespace ConnectOnion.WinUIClient.UnitTests.Models;
 public sealed class PreferencesSnapshotTests
 {
     [Fact]
+    public void VoiceCloudTranscriptionConsent_DefaultsToFalseAndRoundTripsInSharedMap()
+    {
+        var preferences = new PreferencesSnapshot
+        {
+            ShortcutOverrides = new Dictionary<string, string> { ["other"] = "keep" },
+        };
+
+        Assert.False(preferences.VoiceCloudTranscriptionConsent);
+
+        preferences.VoiceCloudTranscriptionConsent = true;
+
+        Assert.True(preferences.VoiceCloudTranscriptionConsent);
+        Assert.Equal("True", preferences.ShortcutOverrides["voice.cloudTranscriptionConsent"]);
+        Assert.Equal("keep", preferences.ShortcutOverrides["other"]);
+
+        preferences.VoiceCloudTranscriptionConsent = false;
+
+        Assert.False(preferences.VoiceCloudTranscriptionConsent);
+        Assert.False(preferences.ShortcutOverrides.ContainsKey("voice.cloudTranscriptionConsent"));
+        Assert.Equal("keep", preferences.ShortcutOverrides["other"]);
+    }
+
+    [Fact]
     public void InterfaceTextSize_DefaultsToMediumWithoutStoredOverride()
     {
         var preferences = new PreferencesSnapshot();

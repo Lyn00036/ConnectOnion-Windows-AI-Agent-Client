@@ -21,6 +21,7 @@ public sealed partial class AddAgentForm : UserControl, IDisposable
 {
     private CancellationTokenSource? _operationCts;
     private FrameworkElement? _focusReturnTarget;
+    private bool _initialFocusPending;
     private int _disposed;
 
     /// <summary>The processed-but-uncommitted icon. It lives in the temporary directory until the
@@ -47,7 +48,19 @@ public sealed partial class AddAgentForm : UserControl, IDisposable
         => new ModalOverlayAutomationPeer(this);
 
 
-    public AddAgentForm() => InitializeComponent();
+    public AddAgentForm()
+    {
+        InitializeComponent();
+        Loaded += AddAgentForm_Loaded;
+        SizeChanged += (_, _) => UpdateModalHeight();
+    }
+
+    private void UpdateModalHeight()
+    {
+        // Keep the centered card inside the viewport. The ScrollViewer then owns overflow caused
+        // by large text, a short window, or the expanded appearance section.
+        ModalContainer.MaxHeight = Math.Min(720, Math.Max(240, ActualHeight - 48));
+    }
 
     public string LocalizedTestButtonText(bool isTesting)
         => isTesting
@@ -130,7 +143,7 @@ public sealed partial class AddAgentForm : UserControl, IDisposable
             IsHitTestVisible = true;
         }
 
-        DispatcherQueue.TryEnqueue(() => InputBox.Focus(FocusState.Programmatic));
+        QueueInitialFocus();
     }
 
     public void Hide()
@@ -142,9 +155,46 @@ public sealed partial class AddAgentForm : UserControl, IDisposable
         IsHitTestVisible = false;
         Vm.Reset();
         ResetIcon();
+        _initialFocusPending = false;
 
         _focusReturnTarget?.Focus(FocusState.Programmatic);
         _focusReturnTarget = null;
+    }
+
+    private void AddAgentForm_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (_initialFocusPending) QueueInitialFocus();
+    }
+
+    private void QueueInitialFocus()
+    {
+        _initialFocusPending = true;
+        if (!IsLoaded) return;
+
+        // A lazily-created overlay becomes visible before its first measure/arrange pass. A normal
+        // priority callback can therefore call Focus while the TextBox still has no focusable
+        // presentation source. Run after layout and retry once if WinUI reports that exact race.
+        DispatcherQueue.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            () =>
+            {
+                if (!IsOpen)
+                {
+                    _initialFocusPending = false;
+                    return;
+                }
+
+                _initialFocusPending = !InputBox.Focus(FocusState.Programmatic);
+                if (!_initialFocusPending) return;
+
+                DispatcherQueue.TryEnqueue(
+                    Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+                    () =>
+                    {
+                        if (IsOpen) InputBox.Focus(FocusState.Programmatic);
+                        _initialFocusPending = false;
+                    });
+            });
     }
 
     public void CancelPendingOperation()
@@ -165,6 +215,7 @@ public sealed partial class AddAgentForm : UserControl, IDisposable
         Visibility = Visibility.Collapsed;
         IsHitTestVisible = false;
         _focusReturnTarget = null;
+        _initialFocusPending = false;
         AgentAdded = null;
     }
 
@@ -316,7 +367,7 @@ public sealed partial class AddAgentForm : UserControl, IDisposable
         catch
         {
             ShowIconError(LocalizedStrings.Get(
-                "AgentIconSaveFailed", "The agent was added, but its icon could not be saved."));
+                "AgentIconSaveAfterAddFailed", "The agent was added, but its icon could not be saved."));
             return null;
         }
     }

@@ -16,12 +16,13 @@ public sealed class NotificationCoordinatorTests
         public FakeWindowPresence Presence { get; } = new();
         public FakeSettingsProvider Settings { get; } = new();
         public ManualScheduler Scheduler { get; } = new();
+        public RecordingAttentionStore Attention { get; } = new();
         public NotificationCoordinator Coordinator { get; }
 
         public Harness()
         {
             Coordinator = new NotificationCoordinator(
-                System, InApp, Presence, Settings, Scheduler);
+                System, InApp, Presence, Settings, Scheduler, attentionStore: Attention);
         }
     }
 
@@ -36,6 +37,7 @@ public sealed class NotificationCoordinatorTests
 
         Assert.Equal(0, h.System.Count);
         Assert.Equal(0, h.InApp.Count);
+        Assert.Empty(h.Attention.Calls);
     }
 
     [Fact]
@@ -50,6 +52,7 @@ public sealed class NotificationCoordinatorTests
         Assert.Equal(1, h.InApp.Count);
         Assert.Equal(0, h.System.Count);
         Assert.Equal(NotificationType.AgentReply, h.InApp.Last!.Type);
+        Assert.Equal((ConvId, false), Assert.Single(h.Attention.Calls));
     }
 
     [Fact]
@@ -121,6 +124,7 @@ public sealed class NotificationCoordinatorTests
 
         Assert.Equal(1, h.System.Count);
         Assert.Equal(NotificationType.ApprovalRequired, h.System.Last!.Type);
+        Assert.Equal((ConvId, true), Assert.Single(h.Attention.Calls));
     }
 
     [Fact]
@@ -187,10 +191,17 @@ public sealed class NotificationCoordinatorTests
         Assert.Equal(0, h.Scheduler.PendingCount);
         Assert.Equal(0, h.System.Count);
         Assert.Equal(0, h.InApp.Count);
+        Assert.Empty(h.Attention.Calls);
     }
 
+    /// <summary>
+    /// Turning notifications off silences the toast and nothing else. It used to also stop the
+    /// conversation being marked unread, because the persist ran after the channel check — so a
+    /// user who did not want to be interrupted also lost the sidebar badge that was the only other
+    /// way to find out a reply had arrived.
+    /// </summary>
     [Fact]
-    public void PublishAgentTurnCompleted_NotificationsDisabled_SuppressesNotification()
+    public void PublishAgentTurnCompleted_NotificationsDisabled_SuppressesToastButStillMarksUnread()
     {
         var h = new Harness();
         h.Settings.Current = new NotificationSettings { EnableNotifications = false };
@@ -200,6 +211,57 @@ public sealed class NotificationCoordinatorTests
 
         Assert.Equal(0, h.System.Count);
         Assert.Equal(0, h.InApp.Count);
+        Assert.Equal([(ConvId, false)], h.Attention.Calls);
+    }
+
+    /// <summary>Same split for the per-type switches, which are the ones a user actually reaches
+    /// for when only one kind of notification is bothering them.</summary>
+    [Fact]
+    public void PublishAgentTurnCompleted_TypeDisabled_SuppressesToastButStillMarksUnread()
+    {
+        var h = new Harness();
+        h.Settings.Current = new NotificationSettings { NotifyAgentReplies = false };
+        h.Presence.IsForeground = false;
+
+        h.Coordinator.PublishAgentTurnCompleted(AgentId, AgentName, ConvId, "turn-1", "hi", 0, 100);
+
+        Assert.Equal(0, h.System.Count);
+        Assert.Equal(0, h.InApp.Count);
+        Assert.Equal([(ConvId, false)], h.Attention.Calls);
+    }
+
+    /// <summary>The one suppression that really does mean "nothing to record": the reply landed in
+    /// the conversation already on screen, so there is no unread message to badge. Pinned here
+    /// because it is what stops the two changes above from becoming "always mark unread".</summary>
+    [Fact]
+    public void PublishAgentTurnCompleted_ViewingConversation_MarksNothingUnread()
+    {
+        var h = new Harness();
+        h.Presence.IsForeground = true;
+        h.Presence.ViewingConversationId = ConvId;
+
+        h.Coordinator.PublishAgentTurnCompleted(AgentId, AgentName, ConvId, "turn-1", "hi", 0, 100);
+
+        Assert.Equal(0, h.System.Count);
+        Assert.Equal(0, h.InApp.Count);
+        Assert.Empty(h.Attention.Calls);
+    }
+
+    /// <summary>Viewing wins over a disabled switch, which is why the presence check runs first.
+    /// Reversed, a user with notifications off would collect unread counts for the very
+    /// conversation they were reading, and nothing on that page clears a badge it never earned.
+    /// </summary>
+    [Fact]
+    public void PublishAgentTurnCompleted_ViewingConversationWithNotificationsDisabled_MarksNothingUnread()
+    {
+        var h = new Harness();
+        h.Settings.Current = new NotificationSettings { EnableNotifications = false };
+        h.Presence.IsForeground = true;
+        h.Presence.ViewingConversationId = ConvId;
+
+        h.Coordinator.PublishAgentTurnCompleted(AgentId, AgentName, ConvId, "turn-1", "hi", 0, 100);
+
+        Assert.Empty(h.Attention.Calls);
     }
 
     [Fact]
@@ -235,5 +297,19 @@ public sealed class NotificationCoordinatorTests
     {
         public void Show(NotificationRequest request, bool playSound)
             => throw new InvalidOperationException("boom");
+    }
+
+    private sealed class RecordingAttentionStore : IConversationAttentionStore
+    {
+        public List<(string ConversationId, bool RequiresAttention)> Calls { get; } = [];
+
+        public Task MarkUnreadAsync(
+            string conversationId,
+            bool requiresAttention,
+            CancellationToken cancellationToken = default)
+        {
+            Calls.Add((conversationId, requiresAttention));
+            return Task.CompletedTask;
+        }
     }
 }

@@ -3,9 +3,19 @@ using ConnectOnion.WinUIClient.Data;
 namespace ConnectOnion.IntegrationTests.Database;
 
 [Collection(DatabaseCollection.Name)]
-public sealed class SidebarStateRepositoryTests
+public sealed class SidebarStateRepositoryTests : IDisposable
 {
     private readonly SidebarStateRepository _repository = new();
+
+    /// <summary>
+    /// The blanket CA1001 suppression in <c>.editorconfig</c> is justified on test classes
+    /// releasing disposables through xUnit's <c>IAsyncLifetime</c> — which this class does not
+    /// implement, so the justification never covered it. <see cref="SidebarStateRepository"/> owns
+    /// a <see cref="SemaphoreSlim"/>, and xUnit constructs one instance per test method, so
+    /// without this every test in the class leaked a semaphore. It is the only repository in
+    /// <c>Core</c> that is disposable, which is why it is the only class here that needs this.
+    /// </summary>
+    public void Dispose() => _repository.Dispose();
 
     [Fact]
     public async Task LoadAsync_NoStoredState_ReturnsFirstRunDefaults()

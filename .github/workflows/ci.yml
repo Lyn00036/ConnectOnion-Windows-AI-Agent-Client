@@ -14,18 +14,21 @@ on:
       - main
       - master
       - developSprint3
-  # The real-window suite is too expensive and desktop-sensitive for every PR, but it must not
-  # depend on someone remembering a checkbox forever. Run it weekly on the default branch too.
+  # The real-window suite now runs on PRs as well (see the step below for why). The weekly run
+  # stays: it is what catches a break caused by a runner-image change rather than by a commit,
+  # which a PR-triggered run cannot distinguish.
   schedule:
     - cron: '0 16 * * 1'
   workflow_dispatch:
     inputs:
-      run_ui_smoke:
-        description: Run the interactive WinUI shell smoke test
-        type: boolean
-        default: false
+      # run_ui_smoke was removed rather than left in place: the shell suite now runs on every
+      # event, so a checkbox offering to enable it would control nothing.
       run_trim_audit:
         description: Run the trimming gate audit (experimental trimmed publish + smoke harness)
+        type: boolean
+        default: false
+      run_live_protocol:
+        description: Run the deployed-agent protocol smoke test
         type: boolean
         default: false
 
@@ -52,23 +55,23 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: 10.0.302
 
       - name: Set up Node.js for protocol conformance
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22
 
       - name: Cache NuGet packages
-        uses: actions/cache@v4
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'Directory.Packages.props', 'global.json') }}
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/packages*.lock.json', 'Directory.Packages.props', 'Directory.Build.props', 'global.json') }}
           restore-keys: |
             nuget-${{ runner.os }}-
 
@@ -80,11 +83,21 @@ jobs:
 
       - name: Restore
         shell: pwsh
-        run: dotnet restore $env:SOLUTION_PATH -p:Platform=$env:BUILD_PLATFORM
+        # CONFIGURATION is imported by MSBuild as Release. Keep this solution restore on the
+        # ordinary build graph; the trimmed/R2R publish below has its own lock files.
+        run: >
+          dotnet restore $env:SOLUTION_PATH
+          -p:Platform=$env:BUILD_PLATFORM
+          -p:PublishTrimmed=false
+          -p:PublishReadyToRun=false
+
+      - name: Verify C# whitespace format
+        shell: pwsh
+        run: dotnet format whitespace $env:SOLUTION_PATH --verify-no-changes --no-restore
 
       - name: Audit NuGet dependencies
         shell: pwsh
-        run: dotnet list $env:SOLUTION_PATH package --vulnerable --include-transitive
+        run: dotnet list $env:SOLUTION_PATH package --vulnerable --include-transitive --no-restore
 
       - name: Build WinUI solution
         shell: pwsh
@@ -95,8 +108,8 @@ jobs:
           -p:Platform=$env:BUILD_PLATFORM
           -p:AppxPackageSigningEnabled=false
           -p:GenerateAppxPackageOnBuild=false
-          -p:PublishReadyToRun=false
           -p:PublishTrimmed=false
+          -p:PublishReadyToRun=false
 
       - name: Run protocol unit tests
         shell: pwsh
@@ -114,21 +127,52 @@ jobs:
         shell: pwsh
         run: dotnet test tests/ConnectOnion.WinUIClient.UITests/ConnectOnion.WinUIClient.UITests.csproj --configuration $env:CONFIGURATION
 
+      # The solution build above and this RID-specific publish use different global-property
+      # graphs. Clear the app intermediates and let publish restore its own graph so the UI suite
+      # always launches the same deterministic trimmed/R2R shape as the release workflow. The
+      # publish graph has its own committed lock file in each participating project: a NuGet lock
+      # file must match one exact graph, so the normal no-RID solution graph cannot also encode
+      # the RID and ILLink references propagated to Core and Protocol by this publish.
+      - name: Clean UI smoke publish intermediates
+        shell: pwsh
+        run: >
+          dotnet clean ConnectOnion.WinUIClient/ConnectOnion.WinUIClient.csproj
+          --configuration $env:CONFIGURATION
+          --runtime win-x64
+          -p:Platform=$env:BUILD_PLATFORM
+          -p:BuildProjectReferences=false
+
       - name: Publish ReadyToRun unpackaged build
         shell: pwsh
         run: >
           dotnet publish ConnectOnion.WinUIClient/ConnectOnion.WinUIClient.csproj
           --configuration $env:CONFIGURATION
           --runtime win-x64
-          --no-restore
           -p:Platform=$env:BUILD_PLATFORM
           -p:RunUnpackaged=true
-          -p:PublishTrimmed=false
+          -p:SelfContained=true
+          -p:WindowsAppSDKSelfContained=true
+          -p:PublishTrimmed=true
           -p:PublishReadyToRun=true
+          -p:RuntimeIdentifiers=win-x64
+          -p:NuGetLockFilePath=packages.publish.lock.json
           -p:AppxPackageSigningEnabled=false
 
+      # Runs on every push and PR, not just the weekly schedule and the opt-in checkbox.
+      #
+      # It was gated because a real-window suite is expensive and desktop-sensitive. The cost is
+      # real but small — 36 required tests (plus one explicitly skipped drag diagnostic) inside
+      # a 10-minute cap, against a build this job already produced. What tipped the balance is
+      # where the changes actually are: over the last 100
+      # commits the most-edited files in the repo are ShellSidebar.xaml (16), ShellSidebar.xaml.cs
+      # (15), ShellSidebar.Events.cs (15), ChatPage.xaml (13) and AgentDetailPage.xaml (13). All
+      # UI, and all covered by nothing else — the headless suites cannot load a XAML type at all.
+      # So the most frequently changed code in the project had the weakest gate, and a break in it
+      # would sit on the default branch for up to a week.
+      #
+      # If this proves flaky, the fix is to stabilise or delete the offending test, not to put the
+      # whole suite back behind a checkbox nobody ticks.
       - name: Run interactive UI smoke test
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_ui_smoke) || github.event_name == 'schedule' }}
         timeout-minutes: 10
         shell: pwsh
         env:
@@ -143,14 +187,17 @@ jobs:
           --results-directory TestResults/ui-smoke
           --logger "trx;LogFileName=ui-smoke.trx"
 
+      # always(), with no event filter: the run that most needs its screenshots is the failing PR,
+      # which is precisely the case the previous condition excluded.
       - name: Upload UI smoke evidence
-        if: ${{ always() && ((github.event_name == 'workflow_dispatch' && inputs.run_ui_smoke) || github.event_name == 'schedule') }}
-        uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: ui-smoke
           path: |
             TestResults/ui-smoke/*.trx
             artifacts/ui-smoke/*.png
+            ${{ runner.temp }}\ConnectOnionUiSmoke-${{ github.run_id }}-${{ github.run_attempt }}\logs\*.log
           if-no-files-found: warn
 
       # The cheap half of the trimming gate, on every run: it publishes only the small console
@@ -169,7 +216,7 @@ jobs:
 
       - name: Upload trimming gate report
         if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.run_trim_audit }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: trim-audit
           path: |
@@ -179,13 +226,16 @@ jobs:
 
       - name: Upload coverage
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: coverage
           path: TestResults/**/coverage.cobertura.xml
           if-no-files-found: warn
 
-      - name: Enforce coverage thresholds
+      # Ratcheted against coverage-baseline.json: fails on a drop below the recorded high-water
+      # mark, not against a hand-set number sitting a few lines above the measured value. Never
+      # pass -UpdateBaseline here; advancing the ratchet is a deliberate, reviewable commit.
+      - name: Enforce coverage ratchet
         shell: pwsh
         run: ./scripts/Test-Coverage.ps1 -ResultsDirectory TestResults
 
@@ -196,3 +246,34 @@ jobs:
           --project ConnectOnion.Protocol.Conformance/ConnectOnion.Protocol.Conformance.csproj
           --configuration $env:CONFIGURATION
           --no-build
+
+  live-protocol:
+    name: Live deployed-agent protocol
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_live_protocol }}
+    runs-on: windows-latest
+    timeout-minutes: 5
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+      CONNECTONION_LIVE_DIRECT_URL: ${{ vars.CONNECTONION_LIVE_DIRECT_URL }}
+      CONNECTONION_LIVE_AGENT_ADDRESS: ${{ vars.CONNECTONION_LIVE_AGENT_ADDRESS }}
+      CONNECTONION_LIVE_PROMPT: ${{ vars.CONNECTONION_LIVE_PROMPT }}
+      CO_INVITE_CODE: ${{ secrets.CONNECTONION_LIVE_INVITE_CODE }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: 10.0.302
+
+      # This is intentionally its own job: a deployed endpoint is external state, so its signal
+      # must not be confused with the deterministic push/PR gate above. Repository variables can
+      # replace the checked-in development target; an invite code stays in Actions secrets.
+      - name: Run live protocol smoke test
+        shell: pwsh
+        run: >
+          dotnet run
+          --project ConnectOnion.Protocol.LiveTest/ConnectOnion.Protocol.LiveTest.csproj
+          --configuration Release

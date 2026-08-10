@@ -216,9 +216,8 @@ public sealed partial class AddAgentViewModel : Common.ObservableObject
                 agent.IconPath = await commitIcon(agent.Id, cancellationToken);
             }
 
-            agentsState.Agents.Add(agent);
-            agentsState.SelectedAgentId = agent.Id;
-            await _agents.SaveAsync(agentsState, cancellationToken);
+            if (!await _agents.AppendAgentAsync(agent, makeSelected: true, cancellationToken))
+                throw new InvalidOperationException("The agent could not be inserted.");
             return agent;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -314,7 +313,7 @@ public sealed partial class AddAgentViewModel : Common.ObservableObject
             : detail;
     }
 
-    private static string CreateFallbackName(string input)
+    internal static string CreateFallbackName(string input)
         => string.IsNullOrWhiteSpace(input)
             ? "Agent"
             : $"Agent {input[..Math.Min(8, input.Length)]}";

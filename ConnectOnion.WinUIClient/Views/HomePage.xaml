@@ -200,6 +200,7 @@
                             Visibility="{x:Bind HasAgents, Mode=OneTime, Converter={StaticResource BoolToVis}}">
                         <ItemsRepeater x:Name="AgentList"
                                        ItemsSource="{x:Bind Agents, Mode=OneWay}"
+                                       ElementPrepared="AgentList_ElementPrepared"
                                        HorizontalAlignment="Stretch">
                             <ItemsRepeater.Layout>
                                 <StackLayout Spacing="0" />

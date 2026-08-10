@@ -4,6 +4,7 @@ using ConnectOnion.WinUIClient.Data;
 using ConnectOnion.WinUIClient.Services.Attachments;
 using ConnectOnion.WinUIClient.Services.Notifications;
 using ConnectOnion.WinUIClient.Services.Runtime;
+using ConnectOnion.WinUIClient.Services.Speech;
 using ConnectOnion.WinUIClient.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Http.Resilience;
@@ -24,6 +25,7 @@ public static class ServiceRegistration
 {
     /// <summary>Name of the resilient HttpClient every agent HTTP call flows through.</summary>
     private const string AgentHttpClient = "agent";
+    private const string VoiceTranscriptionHttpClient = "voice-transcription";
 
     public static IServiceCollection AddAppServices(this IServiceCollection services)
     {
@@ -52,8 +54,16 @@ public static class ServiceRegistration
         // chain the factory builds for the named client above.
         services.AddSingleton<HttpClient>(sp =>
             sp.GetRequiredService<IHttpClientFactory>().CreateClient(AgentHttpClient));
+        // A transcription can legitimately take longer than an agent metadata probe, and retrying
+        // a paid POST behind the user's back can charge twice. Keep this client bounded but without
+        // the agent client's retry pipeline.
+        services.AddHttpClient(VoiceTranscriptionHttpClient, client =>
+            client.Timeout = TimeSpan.FromSeconds(60));
         services.AddSingleton<IUriLauncher, SystemUriLauncher>();
         services.AddSingleton<OpenOnionAccountService>();
+        services.AddSingleton(sp => new VoiceTranscriptionService(
+            sp.GetRequiredService<IHttpClientFactory>().CreateClient(VoiceTranscriptionHttpClient),
+            sp.GetRequiredService<OpenOnionAccountService>()));
         services.AddSingleton<ConnectionTester>();
         services.AddSingleton<IAgentIconService, AgentIconService>();
 
@@ -80,7 +90,12 @@ public static class ServiceRegistration
 
         // ---- Presence + runtime ----
         services.AddSingleton<AgentPresenceService>();
-        // AgentSessionManager(HttpClient, ConversationRepository, UsageRepository?) — auto-wired.
+        // AgentSessionManager(HttpClient, ConversationRepository, UsageRepository?, ILogger?,
+        // NotificationCoordinator?) — auto-wired. The optional parameters are filled from the
+        // container when the type is registered and fall back to their defaults when it isn't,
+        // which is what lets a headless test construct this with two arguments. The coordinator is
+        // registered below; order does not matter to the container, and there is no cycle back to
+        // this type.
         services.AddSingleton<AgentSessionManager>();
 
         // ---- Notification subsystem ----
@@ -97,7 +112,8 @@ public static class ServiceRegistration
             presence: sp.GetRequiredService<WindowPresenceService>(),
             settings: sp.GetRequiredService<NotificationSettingsStore>(),
             scheduler: sp.GetRequiredService<INotificationScheduler>(),
-            onError: NotificationLog.Warn));
+            onError: NotificationLog.Warn,
+            attentionStore: sp.GetRequiredService<SessionRepository>()));
         services.AddSingleton<ConversationNavigationService>();
         services.AddSingleton<NotificationActivationRouter>();
 

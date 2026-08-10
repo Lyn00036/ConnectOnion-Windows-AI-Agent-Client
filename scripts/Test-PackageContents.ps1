@@ -21,10 +21,10 @@
     The .msix / .msixbundle / portable .zip to audit.
 
 .PARAMETER BaselineCompressedMb
-    Override the ratified baseline. Default: 121.43 MB for self-contained MSIX; 118.91 MB for ZIP.
+    Override the ratified baseline. Default: 121.43 MB for self-contained MSIX; 71.29 MB for ZIP.
 
 .PARAMETER BaselineUnpackedMb
-    Override the ratified baseline. Default: 310.07 MB for self-contained MSIX; 309.21 MB for ZIP.
+    Override the ratified baseline. Default: 310.07 MB for self-contained MSIX; 170.71 MB for ZIP.
 
 .PARAMETER BudgetPercent
     Allowed growth over baseline before the gate fails. Default 10, matching the performance
@@ -59,11 +59,21 @@ $isMsix = [IO.Path]::GetExtension($PackagePath) -in '.msix', '.appx'
 
 # Both forms carry .NET and Windows App SDK. Packaging overhead differs, so each release form has
 # its own ratified baseline. Explicit parameters still override these defaults.
+#
+# The portable baseline was re-ratified on 2026-08-05 when trimming was enabled for Release
+# (docs/TRIMMING.md): 118.91 -> 71.29 MB compressed, 309.21 -> 170.71 MB unpacked. Re-ratifying is
+# not bookkeeping — this gate is an upper bound, so leaving the untrimmed numbers in place would
+# have left roughly 60 MB of headroom below the limit, and the accidental second copy of the
+# runtime this exists to catch would have sailed through it.
+#
+# The MSIX numbers are NOT re-ratified: no MSIX is built (see docs/RELEASE.md), so they still
+# describe an untrimmed package. Re-measure them against a real trimmed package if that path is
+# ever restored, rather than scaling these by eye.
 if (-not $PSBoundParameters.ContainsKey('BaselineCompressedMb')) {
-    $BaselineCompressedMb = if ($isMsix) { 121.43 } else { 118.91 }
+    $BaselineCompressedMb = if ($isMsix) { 121.43 } else { 71.29 }
 }
 if (-not $PSBoundParameters.ContainsKey('BaselineUnpackedMb')) {
-    $BaselineUnpackedMb = if ($isMsix) { 310.07 } else { 309.21 }
+    $BaselineUnpackedMb = if ($isMsix) { 310.07 } else { 170.71 }
 }
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -97,6 +107,43 @@ try {
     $entryCount    = $entries.Count
 
     $violations = @()
+    if (-not $isMsix) {
+        $rootFiles = @($entries | Where-Object { $_.FullName -notmatch '[/\\]' })
+        if ($rootFiles.Count -ne 1 -or
+            $rootFiles[0].FullName -ne 'ConnectOnion.WinUIClient.exe') {
+            $violations += [pscustomobject]@{
+                Rule = 'Portable root contains only the launcher'
+                Files = @($rootFiles | Select-Object -ExpandProperty FullName)
+            }
+        }
+
+        $requiredNestedPayload = @(
+            'app/ConnectOnion.WinUIClient.exe',
+            'app/coreclr.dll',
+            'app/Microsoft.WindowsAppRuntime.dll',
+            # Windows App SDK 2.3.1 leaves this in its framework MSIX instead of the
+            # self-contained component folders. AppNotificationManager.Register loads it by
+            # name, so its absence disables every Windows notification with 0x8007007E.
+            'app/Microsoft.WindowsAppRuntime.Insights.Resource.dll'
+        )
+        $entryNames = @($entries | ForEach-Object { $_.FullName -replace '\\', '/' })
+        $missingNestedPayload = @($requiredNestedPayload | Where-Object { $_ -notin $entryNames })
+        if ($missingNestedPayload.Count -gt 0) {
+            $violations += [pscustomobject]@{
+                Rule = 'Nested self-contained application payload'
+                Files = $missingNestedPayload
+            }
+        }
+
+        $rootDlls = @($rootFiles | Where-Object { $_.FullName -like '*.dll' })
+        if ($rootDlls.Count -gt 0) {
+            $violations += [pscustomobject]@{
+                Rule = 'DLLs must stay under app/'
+                Files = @($rootDlls | Select-Object -ExpandProperty FullName)
+            }
+        }
+    }
+
     foreach ($rule in $forbidden) {
         $hits = @($entries | Where-Object { & $rule.Match $_.FullName } | Select-Object -ExpandProperty FullName)
         if ($hits.Count -gt 0) {
@@ -204,7 +251,7 @@ if ($env:GITHUB_OUTPUT) {
 
 if ($env:GITHUB_STEP_SUMMARY) {
     $baselineKind = if ($isMsix) { 'self-contained MSIX' } else { 'portable ZIP' }
-    $baselineEntries = if ($isMsix) { 632 } else { 621 }
+    $baselineEntries = if ($isMsix) { 632 } else { 466 }
     @(
         "### Package audit",
         "",
@@ -235,7 +282,8 @@ if ($sizeBreaches.Count -gt 0) {
     else {
         Write-Host "`nFAIL: size regression — $($sizeBreaches -join '; ')." -ForegroundColor Red
         Write-Host "Find the payload, or re-ratify the baseline in docs/RELEASE.md deliberately." -ForegroundColor Red
-        Write-Host "Do NOT enable trimming to get back under budget; that is gated separately by docs/TRIMMING.md." -ForegroundColor Red
+        Write-Host "Trimming is already on, so it is not a lever to get back under budget — a breach here" -ForegroundColor Red
+        Write-Host "means real new payload. See docs/TRIMMING.md before touching that setting." -ForegroundColor Red
         $failed = $true
     }
 }

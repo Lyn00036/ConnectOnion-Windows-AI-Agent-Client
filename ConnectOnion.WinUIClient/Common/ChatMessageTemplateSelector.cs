@@ -25,6 +25,7 @@ public sealed partial class ChatMessageTemplateSelector : DataTemplateSelector
     public DataTemplate? Activity { get; set; }
     public DataTemplate? ToolActivity { get; set; }
     public DataTemplate? AskUser { get; set; }
+    public DataTemplate? Approval { get; set; }
     public DataTemplate? PlanReview { get; set; }
     public DataTemplate? DiffPreview { get; set; }
 
@@ -41,7 +42,9 @@ public sealed partial class ChatMessageTemplateSelector : DataTemplateSelector
         if (item is not ChatMessage message) return Empty;
 
         if (message.IsUser) return User;
-        if (message.IsAgent) return Agent;
+        // Persisted event rows from older builds can carry Role=Agent. EventKind is the more
+        // specific discriminator and must win; checking IsAgent first silently turns restored
+        // tool timelines and interactive cards into generic assistant bubbles.
         if (message.IsTurnUsageEvent) return Usage;
         if (message.IsActivityEvent) return Activity;
         if (message.IsToolActivityEvent) return ToolActivity;
@@ -50,12 +53,15 @@ public sealed partial class ChatMessageTemplateSelector : DataTemplateSelector
         // collection for protocol response and persistence alignment.
         if (message.IsAskUserEvent)
             return message.RelatedDiffPreview is null ? AskUser : Empty;
-        // Every approval is rendered by its owning ToolActivityView. The message remains in the
-        // list for answer/persistence alignment but never owns a standalone fallback card; that
-        // legacy route produced a second, visually incompatible approval UI when ownership lagged.
-        if (message.IsApprovalEvent) return Empty;
+        // An approval owns its own row. It used to be rendered by the turn's ToolActivityView,
+        // which anchors at the turn's FIRST tool call — so a turn that had since appended a plan,
+        // a question or a diff drew the live decision back up above all of them, mid-conversation.
+        // The tool card still shows "Approval required" through ToolActivityViewModel.Approval;
+        // it just no longer draws the decision.
+        if (message.IsApprovalEvent) return Approval;
         if (message.IsPlanReviewEvent) return PlanReview;
         if (message.IsDiffPreviewEvent) return DiffPreview;
+        if (message.IsAgent) return Agent;
 
         return Empty;
     }

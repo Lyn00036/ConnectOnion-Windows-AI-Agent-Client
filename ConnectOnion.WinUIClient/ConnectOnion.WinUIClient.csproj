@@ -102,6 +102,83 @@
   </ItemGroup>
 
   <!--
+    Windows App SDK 2.3.1's self-contained payload omits this native resource DLL from its
+    runtimes-framework folders even though AppNotificationManager.Register loads it. The file is
+    present in the Runtime NuGet package's framework MSIX, so extract that Microsoft-supplied
+    payload during self-contained builds instead of checking a binary copy into this repository.
+
+    Without it an unpackaged publish reports AppNotificationManager.IsSupported() == true and
+    then fails Register() with 0x8007007E (ERROR_MOD_NOT_FOUND), leaving system notifications
+    disabled. Keep this workaround until the SDK ships the file as a normal self-contained asset.
+  -->
+  <UsingTask TaskName="ExtractWindowsAppSdkZipEntry"
+             TaskFactory="RoslynCodeTaskFactory"
+             AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <SourceArchive ParameterType="System.String" Required="true" />
+      <EntryName ParameterType="System.String" Required="true" />
+      <DestinationFile ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.IO.Compression" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        var destinationDirectory = Path.GetDirectoryName(DestinationFile);
+        if (!string.IsNullOrEmpty(destinationDirectory))
+        {
+            Directory.CreateDirectory(destinationDirectory);
+        }
+
+        using (var archiveStream = File.OpenRead(SourceArchive))
+        using (var archive = new ZipArchive(archiveStream, ZipArchiveMode.Read))
+        {
+            var entry = archive.GetEntry(EntryName);
+            if (entry == null)
+            {
+                Log.LogError("Windows App SDK payload '{0}' does not contain '{1}'.", SourceArchive, EntryName);
+                return false;
+            }
+
+            using (var source = entry.Open())
+            using (var destination = File.Create(DestinationFile))
+            {
+                source.CopyTo(destination);
+            }
+        }
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
+  <Target Name="ExtractWindowsAppSdkNotificationResource"
+          Condition="'$(WindowsAppSDKSelfContained)' == 'true'"
+          DependsOnTargets="GetWindowsAppSDKNativePlatform">
+    <PropertyGroup>
+      <_WindowsAppSdkNotificationResourceArchive>$(MicrosoftWindowsAppSDKPackageDir)tools\MSIX\win10-$(NativePlatform)\Microsoft.WindowsAppRuntime.2.msix</_WindowsAppSdkNotificationResourceArchive>
+      <_WindowsAppSdkNotificationResourceFile>$(SelfContainedIntermediateOutputPath)NotificationResources\Microsoft.WindowsAppRuntime.Insights.Resource.dll</_WindowsAppSdkNotificationResourceFile>
+    </PropertyGroup>
+    <Error Condition="!Exists('$(_WindowsAppSdkNotificationResourceArchive)')"
+           Text="Windows App SDK notification resource archive was not found: $(_WindowsAppSdkNotificationResourceArchive)" />
+    <ExtractWindowsAppSdkZipEntry
+        SourceArchive="$(_WindowsAppSdkNotificationResourceArchive)"
+        EntryName="Microsoft.WindowsAppRuntime.Insights.Resource.dll"
+        DestinationFile="$(_WindowsAppSdkNotificationResourceFile)" />
+  </Target>
+
+  <Target Name="AddWindowsAppSdkNotificationResource"
+          Condition="'$(WindowsAppSDKSelfContained)' == 'true'"
+          BeforeTargets="AssignTargetPaths;CoreCompile"
+          DependsOnTargets="ExtractWindowsAppSdkNotificationResource">
+    <Error Condition="!Exists('$(_WindowsAppSdkNotificationResourceFile)')"
+           Text="Windows App SDK notification resource was not extracted: $(_WindowsAppSdkNotificationResourceFile)" />
+    <ItemGroup>
+      <None Include="$(_WindowsAppSdkNotificationResourceFile)"
+            Link="Microsoft.WindowsAppRuntime.Insights.Resource.dll"
+            CopyToOutputDirectory="PreserveNewest"
+            CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
+
+  <!--
     Defining the "HasPackageAndPublishMenuAddedByProject" property here allows the Solution
     Explorer "Package and Publish" context menu entry to be enabled for this project even if
     the Windows App SDK Nuget package has not yet been restored.
@@ -134,21 +211,37 @@
       with the wrong decimal separator.
     -->
 
+    <!--
+      Debug stays untrimmed and always will: trimming only affects `publish`, and paying its cost
+      on the inner loop would buy nothing. It is declared rather than left to default so the two
+      configurations sit next to each other and neither can be changed by accident.
+    -->
     <PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>
     <!--
       LOAD-BEARING. Not a leftover default.
 
       Trimming sets JsonSerializerIsReflectionEnabledByDefault=false, which turns every
       reflection-based JsonSerializer call into a runtime failure rather than a risk. The
-      2026-07-25 release audit found that as a Tool Activity timeline that restored empty in
-      Release and worked perfectly in Debug. Those call sites are now trim-safe and a trimmed
-      smoke harness proves they survive a publish + restart, but the criteria that need a signed
-      MSIX, a real window and a same-machine performance comparison are still open.
+      2026-07-25 release audit found exactly that: a Tool Activity timeline that restored empty in
+      Release and worked perfectly in Debug.
 
-      Turning this on is gated on docs/TRIMMING.md, and tests/ConnectOnion.WinUIClient.UnitTests/
-      Architecture/TrimmingGateTests.cs fails the build if it changes before then.
+      Enabled 2026-08-05 against the evidence in docs/TRIMMING.md, which is the gate — read it
+      before changing this. In short: 0 app-owned IL warnings; the serialization paths are
+      source-generated and a trimmed console harness proves them across a real process restart; the
+      trimmed *app* renders a turn written by that harness (tool-activity steps, arguments, results
+      and the interactive cards); the required shell/chat suite passes 36/36 against the trimmed executable; and
+      the latest staged portable ZIP audits clean at 73.22 MB against a 71.29 MB trimmed baseline with
+      no key operation regressing more than +2.9%.
+
+      What is NOT proved is the MSIX path, because this repo does not build one — the release
+      workflow ships a self-contained portable ZIP. That is the only distribution channel this
+      setting affects today, and it is the one that was validated. If MSIX publishing is ever
+      restored, run the functional matrix against a trimmed package before shipping it.
+
+      tests/ConnectOnion.WinUIClient.UnitTests/Architecture/TrimmingGateTests.cs pins this, so
+      changing it back is also a decision rather than an edit.
     -->
-    <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">False</PublishTrimmed>
+    <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">True</PublishTrimmed>
     <GenerateAppInstallerFile>False</GenerateAppInstallerFile>
     <!--
       Local packaging is deliberately unsigned. A PackageCertificateThumbprint resolves against

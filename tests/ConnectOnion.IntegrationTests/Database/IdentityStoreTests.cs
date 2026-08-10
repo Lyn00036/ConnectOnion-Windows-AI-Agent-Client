@@ -54,6 +54,34 @@ public sealed class IdentityStoreTests
     }
 
     [Fact]
+    public async Task EnsureIdentity_PreDpapiPlaintextSeed_IsProtectedWithoutChangingAddress()
+    {
+        var seed = Convert.FromHexString(
+            "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff");
+        var legacy = AgentIdentity.FromSeed(seed);
+        var plaintext = Convert.ToHexString(seed).ToLowerInvariant();
+        await WriteStoredIdentityAsync(legacy.Address, plaintext);
+        ResetStaticState();
+
+        var migrated = IdentityStore.EnsureIdentity();
+        var stored = await ReadStoredSeedAsync();
+
+        Assert.False(IdentityStore.WasReset, IdentityStore.ResetReason);
+        Assert.Equal(legacy.Address, migrated.Address);
+        Assert.Equal(seed, migrated.PrivateSeed.ToArray());
+        Assert.NotNull(stored);
+        Assert.NotEqual(plaintext, stored);
+        Assert.Equal(seed, UnprotectSeed(stored!));
+
+        // The rewrite survives a real store restart and remains a seed-only identity: a recovery
+        // phrase cannot be reverse-derived without changing the address.
+        ResetStaticState();
+        var reloaded = IdentityStore.EnsureIdentity();
+        Assert.Equal(legacy.Address, reloaded.Address);
+        Assert.False(IdentityStore.ExportBackup().HasMnemonic);
+    }
+
+    [Fact]
     public async Task EnsureIdentity_FirstRun_MintsAPhraseThatRestoresTheSameAddress()
     {
         await DeleteStoredIdentityAsync();
@@ -251,6 +279,13 @@ public sealed class IdentityStoreTests
         var entropy = System.Text.Encoding.UTF8.GetBytes("ConnectOnion.IdentityStore.v1");
         return Convert.ToBase64String(
             ProtectedData.Protect(seed, entropy, DataProtectionScope.CurrentUser));
+    }
+
+    private static byte[] UnprotectSeed(string stored)
+    {
+        var entropy = System.Text.Encoding.UTF8.GetBytes("ConnectOnion.IdentityStore.v1");
+        return ProtectedData.Unprotect(
+            Convert.FromBase64String(stored), entropy, DataProtectionScope.CurrentUser);
     }
 
     private static void ResetStaticState()

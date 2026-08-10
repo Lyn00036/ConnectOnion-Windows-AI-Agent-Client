@@ -28,6 +28,7 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
 
                                 <Grid Width="38"
@@ -64,7 +65,22 @@
                                                ToolTipService.ToolTip="{x:Bind ConnectionTarget}" />
                                 </StackPanel>
 
-                                <Button x:Uid="AgentSettingsCopyAddress" Grid.Column="2"
+                                <Button x:Uid="AgentSettingsRenameAgent" Grid.Column="2"
+                                        Width="36"
+                                        Height="36"
+                                        Style="{StaticResource SmallIconButtonStyle}"
+                                        Tag="{x:Bind Id}"
+                                        Click="RenameAgent_Click"
+                                        AutomationProperties.AutomationId="RenameAgentButton"
+                                        AutomationProperties.Name="Rename agent"
+                                        ToolTipService.ToolTip="Rename agent">
+                                    <ic:FluentIcon Icon="Edit"
+                                                   IconVariant="Regular"
+                                                   IconSize="Size16"
+                                                   Foreground="{ThemeResource TextSecondaryBrush}" />
+                                </Button>
+
+                                <Button x:Uid="AgentSettingsCopyAddress" Grid.Column="3"
                                         Width="36"
                                         Height="36"
                                         Style="{StaticResource SmallIconButtonStyle}"
@@ -78,7 +94,7 @@
                                                    Foreground="{ThemeResource TextSecondaryBrush}" />
                                 </Button>
 
-                                <Button x:Uid="AgentSettingsDeleteAgent" Grid.Column="3"
+                                <Button x:Uid="AgentSettingsDeleteAgent" Grid.Column="4"
                                         Width="36"
                                         Height="36"
                                         Style="{StaticResource SmallIconButtonStyle}"
@@ -92,7 +108,7 @@
                                                    Foreground="{ThemeResource DangerBrush}" />
                                 </Button>
 
-                                <Rectangle Grid.ColumnSpan="4"
+                                <Rectangle Grid.ColumnSpan="5"
                                            Height="1"
                                            Margin="0,0,0,-10"
                                            VerticalAlignment="Bottom"

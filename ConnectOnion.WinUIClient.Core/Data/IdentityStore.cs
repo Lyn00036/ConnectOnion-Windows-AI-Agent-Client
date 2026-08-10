@@ -277,28 +277,47 @@ public static class IdentityStore
     /// </summary>
     private static (AgentIdentity? Identity, string? Mnemonic, string? Fault) Load()
     {
+        string storedAddress;
         string storedSeed;
         string? storedMnemonic;
 
         try
         {
-            // Blocking is safe only because AppDatabase.OpenAsync awaits with
-            // ConfigureAwait(false) the whole way down, so no continuation captures the UI
-            // context EnsureIdentity is called on. Keep that true or make this async.
+            // Blocking here is safe, but NOT for the reason this comment used to give.
+            //
+            // It said "AppDatabase.OpenAsync awaits with ConfigureAwait(false) the whole way
+            // down". That is not true and cannot easily be made true: the explicit awaits do carry
+            // it, but the `await using` declarations in that chain await DisposeAsync at scope
+            // exit *without* it, and there is no readable syntax that fixes that while keeping the
+            // connection usably typed. CA2007 flags 30 such sites in AppDatabase alone.
+            //
+            // What actually makes this safe is that no await in the chain ever yields.
+            // Microsoft.Data.Sqlite's async methods are synchronous internally — SQLite has no
+            // async I/O — and DbConnection.DisposeAsync's default implementation calls Dispose and
+            // returns a completed ValueTask. Nothing is ever posted back to the captured context,
+            // so the blocked thread is never the thread a continuation is waiting on.
+            //
+            // The distinction is not academic. Under the old claim, "are the ConfigureAwait calls
+            // still there?" looked like a sufficient check, and it never was. The real invariant is
+            // narrower and worth stating plainly: **this chain must not gain a genuinely
+            // asynchronous await.** A real network or file operation in schema init would deadlock
+            // first-run startup on the UI thread, and adding ConfigureAwait(false) to it would not
+            // help — only making this method async would. See IdentityStoreBlockingContractTests.
 #pragma warning disable VSTHRD002
             using var connection = AppDatabase.OpenAsync().GetAwaiter().GetResult();
 #pragma warning restore VSTHRD002
             using var command = connection.CreateCommand();
             command.CommandText = """
-                SELECT private_seed, mnemonic
+                SELECT address, private_seed, mnemonic
                 FROM identity_keys
                 WHERE id = 1;
                 """;
             using var reader = command.ExecuteReader();
             if (!reader.Read()) return (null, null, null);          // first run — nothing stored
 
-            storedSeed = reader.GetString(0);
-            storedMnemonic = reader.IsDBNull(1) ? null : reader.GetString(1);
+            storedAddress = reader.GetString(0);
+            storedSeed = reader.GetString(1);
+            storedMnemonic = reader.IsDBNull(2) ? null : reader.GetString(2);
             if (string.IsNullOrEmpty(storedSeed))
                 return (null, null, "the stored identity was empty");
         }
@@ -321,9 +340,47 @@ public static class IdentityStore
         }
         catch (Exception ex)
         {
+            // Builds before DPAPI stored exactly 32 seed bytes as 64 hexadecimal characters.
+            // Recognise only that historical shape and verify its derived address before
+            // re-protecting it. A copied DPAPI blob, corrupt base64, or arbitrary hand-edited text
+            // must still take the visible reset path below rather than being treated as a key.
+            if (TryMigratePlaintextSeed(storedAddress, storedSeed, out var migrated))
+                return (migrated, null, null);
+
             // DPAPI is scoped to the Windows user + machine. The usual causes are a copied .db file,
-            // a restored user profile, or a database written before seeds were encrypted at all.
+            // or a restored user profile. Historical plaintext rows are migrated above.
             return (null, null, $"the stored identity could not be decrypted ({ex.Message})");
+        }
+    }
+
+    private static bool TryMigratePlaintextSeed(
+        string storedAddress,
+        string storedSeed,
+        out AgentIdentity? identity)
+    {
+        identity = null;
+        if (storedSeed.Length != 64 || !storedSeed.All(Uri.IsHexDigit)) return false;
+
+        byte[] seed;
+        try { seed = Convert.FromHexString(storedSeed); }
+        catch (FormatException) { return false; }
+
+        try
+        {
+            var candidate = AgentIdentity.FromSeed(seed);
+            if (!string.Equals(candidate.Address, storedAddress, StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            // Keep using the recovered identity even if the best-effort rewrite fails. That leaves
+            // the legacy row available for another migration attempt on the next launch instead of
+            // replacing an address every saved agent has already authorized.
+            Persist(candidate, mnemonic: null, throwOnFailure: false);
+            identity = candidate;
+            return true;
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(seed);
         }
     }
 
@@ -366,7 +423,6 @@ public static class IdentityStore
         WasReset = true;
         ResetReason = reason;
 
-        System.Diagnostics.Debug.WriteLine($"[IdentityStore] identity reset: {reason}");
         if (_logger is { } logger) LogIdentityReset(logger, reason, null);
 
         try { IdentityReset?.Invoke(reason); }
@@ -440,7 +496,6 @@ public static class IdentityStore
             // unreadable-identity path above, it raises no IdentityReset and sets no WasReset flag
             // — so the log line is the only trace, which is why it is a real one and not just a
             // Debug write that a Release build compiles away.
-            System.Diagnostics.Debug.WriteLine($"[IdentityStore] identity persist failed: {ex.Message}");
             if (_logger is { } logger) LogIdentityPersistFailed(logger, ex);
         }
         catch (Exception ex)

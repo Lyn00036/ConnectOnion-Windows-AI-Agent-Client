@@ -51,12 +51,21 @@ them when a run establishes a new baseline; don't quietly loosen one to make a r
 ## Running it
 
 ```powershell
-# Release + unpackaged: the plain build has no Windows App SDK bootstrapper and dies on launch.
-dotnet build ConnectOnion.WinUIClient\ConnectOnion.WinUIClient.csproj -c Release -p:Platform=x64 -p:RunUnpackaged=true
+# Publish the same self-contained, trimmed, ReadyToRun unpackaged shape used for shipping.
+dotnet publish ConnectOnion.WinUIClient\ConnectOnion.WinUIClient.csproj `
+  --configuration Release --runtime win-x64 -p:Platform=x64 `
+  -p:RunUnpackaged=true -p:SelfContained=true -p:WindowsAppSDKSelfContained=true `
+  -p:AppxPackageSigningEnabled=false
+
+$perfExe = Resolve-Path 'ConnectOnion.WinUIClient\bin\Release\net10.0-windows10.0.19041.0\win-x64\publish\ConnectOnion.WinUIClient.exe'
 
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Measure-Performance.ps1 `
-  -Mode WarmUnpackaged -Iterations 5
+  -Exe $perfExe -Mode WarmUnpackaged -Iterations 5
 ```
+
+Always pass `-Exe` when producing comparable evidence. The script's fallback can find a local
+framework-dependent build, but that binary may require an installed Windows App SDK runtime and
+does not represent the self-contained portable release.
 
 Useful switches:
 
@@ -151,7 +160,29 @@ If elevation, profile availability, or machine policy blocks capture—including
 dispatched `release-performance.yml` workflow targets a prepared, elevated, real-desktop
 self-hosted runner and retains aggregate JSON, Markdown, raw samples, and ETL for 30 days.
 
-## Baseline — 2026-07-20
+## Current shipping baseline — 2026-08-05
+
+Release x64 unpackaged, self-contained (including Windows App SDK), trimmed + ReadyToRun, Windows
+11 Pro 10.0.26200, 32 cores, 31.6 GB RAM, 10 warm iterations, memory sampled 15 s after all
+required readiness milestones. This is the current portable release shape.
+
+| Metric | Median | Min | Max | P95 | Budget status |
+|---|---:|---:|---:|---:|---|
+| Warm start to first frame | 606.0 ms | 584.1 ms | 618.2 ms | 618.2 ms | PASS |
+| First interactive | 632.0 ms | 609.9 ms | 644.5 ms | 644.5 ms | informational |
+| Idle working set | 153.9 MB | 153.3 MB | 154.2 MB | 154.2 MB | PASS |
+| Idle private bytes | 104.3 MB | 103.2 MB | 105.5 MB | 105.5 MB | PASS |
+| Managed heap at first frame | 3.6 MB | 3.6 MB | 3.6 MB | 3.6 MB | PASS |
+| Graceful shutdown | 118.5 ms | 109 ms | 134 ms | 134 ms | PASS |
+
+The same-machine untrimmed + ReadyToRun control measured 624.7 ms warm start and 173.2 MB idle
+working set. Trimming therefore did not impose a runtime regression in this run; the complete
+like-for-like comparison and compatibility evidence live in [TRIMMING.md](./TRIMMING.md).
+
+This run makes no cold-cache claim. A current cold baseline still requires an elevated,
+policy-enabled run whose standby-list purge succeeds before every sample.
+
+## Historical baseline — 2026-07-20
 
 Release x64 unpackaged, Windows 11 Pro 10.0.26200, 32 cores, 31.6 GB RAM, 5 iterations, memory
 sampled 15 s after first frame, standby list not purged.

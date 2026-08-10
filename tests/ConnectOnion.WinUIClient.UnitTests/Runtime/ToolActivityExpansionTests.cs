@@ -208,13 +208,17 @@ public sealed class ToolActivityExpansionTests
     }
 
     [Fact]
-    public void WaitingOnTheUser_OpensTheCard_OnlyOnALiveView()
+    public void WaitingOnTheUser_FoldsTheCard()
     {
-        // The turn cannot proceed until the user acts, and what the tool was about to do is what
-        // the decision hinges on — so an approval opens the card the same way a failure does.
+        // This used to open the card, on the reasoning that what the tool was about to do is what
+        // the decision hinges on. The decision controls sit at the *bottom* of the card though,
+        // below every step the turn has already run — so opening it pushed the one actionable part
+        // off the viewport behind its own history, and grew the card by hundreds of pixels at the
+        // moment an approval arrived. The command and its risk are in the approval section, which
+        // is a sibling of the timeline and stays either way.
         var live = new ToolActivityViewModel();
         new ToolActivityProjector(live, isLiveView: true).WaitForConfirmation();
-        Assert.True(live.IsExpanded);
+        Assert.False(live.IsExpanded);
 
         var persisted = new ToolActivityViewModel();
         new ToolActivityProjector(persisted).WaitForConfirmation();
@@ -222,18 +226,34 @@ public sealed class ToolActivityExpansionTests
     }
 
     [Fact]
-    public void AnsweredApproval_CollapsesAgainOnASuccessfulCompletion()
+    public void AnsweredApproval_StaysFoldedOnASuccessfulCompletion()
     {
         var activity = new ToolActivityViewModel();
         var projector = new ToolActivityProjector(activity, isLiveView: true);
         projector.ApplyCall(Event("{\"tool_id\":\"one\",\"name\":\"send_email\",\"args\":{}}"));
         projector.WaitForConfirmation();
-        Assert.True(activity.IsExpanded);
+        Assert.False(activity.IsExpanded);
 
         projector.Complete();
 
         // The decision is made and the tool succeeded; the card has nothing left to demand.
         Assert.False(activity.IsExpanded);
+    }
+
+    /// <summary>A turn that is still working reopens once the decision is out of the way — folding
+    /// is tied to the wait, not to having had an approval at some point.</summary>
+    [Fact]
+    public void AfterTheDecision_AResumedTurnReopensTheTimeline()
+    {
+        var activity = new ToolActivityViewModel();
+        var projector = new ToolActivityProjector(activity, isLiveView: true);
+        projector.ApplyCall(Event("{\"tool_id\":\"one\",\"name\":\"send_email\",\"args\":{}}"));
+        projector.WaitForConfirmation();
+        Assert.False(activity.IsExpanded);
+
+        projector.ApplyCall(Event("{\"tool_id\":\"two\",\"name\":\"send_email\",\"args\":{}}"));
+
+        Assert.True(activity.IsExpanded);
     }
 
     [Fact]

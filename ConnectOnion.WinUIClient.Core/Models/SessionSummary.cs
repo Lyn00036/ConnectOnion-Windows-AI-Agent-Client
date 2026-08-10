@@ -52,6 +52,14 @@ public sealed partial class SessionSummary : Common.ObservableObject
     [JsonPropertyName("isPinned")]
     public partial bool IsPinned { get; set; }
 
+    [ObservableProperty]
+    [JsonPropertyName("unreadCount")]
+    public partial int UnreadCount { get; set; }
+
+    [ObservableProperty]
+    [JsonPropertyName("requiresAttention")]
+    public partial bool RequiresAttention { get; set; }
+
     /// <summary>
     /// False while <see cref="Title"/> is still the "Conversation N" placeholder that
     /// <see cref="NewConversation"/> stamped on it; true once the title has been settled — either
@@ -147,8 +155,24 @@ public sealed partial class SessionSummary : Common.ObservableObject
         string agentId,
         IEnumerable<SessionSummary> existing,
         string? titleFormat = null)
+        => NewConversation(agentId, existing.Count(s => s.AgentId == agentId), titleFormat);
+
+    /// <summary>
+    /// The same, given the agent's conversation count directly.
+    ///
+    /// <para>The overload above is the only thing the whole session index was ever needed for at
+    /// these call sites — it reduces the list to one integer. Callers that can get that integer
+    /// from <c>SessionRepository.CountForAgentAsync</c> should, rather than reading every
+    /// conversation the user has in order to count a subset of them.</para>
+    /// </summary>
+    /// <param name="existingCountForAgent">How many conversations the agent already has. The new
+    /// conversation is numbered one past it.</param>
+    public static SessionSummary NewConversation(
+        string agentId,
+        int existingCountForAgent,
+        string? titleFormat = null)
     {
-        var count = existing.Count(s => s.AgentId == agentId) + 1;
+        var count = Math.Max(0, existingCountForAgent) + 1;
         var timestamp = DateTime.UtcNow.ToString("o");
         var format = string.IsNullOrWhiteSpace(titleFormat) ? DefaultTitleFormat : titleFormat;
         return new SessionSummary

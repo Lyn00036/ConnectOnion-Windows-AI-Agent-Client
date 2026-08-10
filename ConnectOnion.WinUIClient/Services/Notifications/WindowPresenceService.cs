@@ -15,6 +15,7 @@ public sealed class WindowPresenceService : IWindowPresence
     {
         public bool Active;
         public bool Visible = true;
+        public bool Obscured;
         public string? AgentId;
         public string? ConversationId;
     }
@@ -61,6 +62,35 @@ public sealed class WindowPresenceService : IWindowPresence
         }
     }
 
+    /// <summary>
+    /// Reports that a full-window modal is covering the content area.
+    ///
+    /// <para>The shell's overlays (Settings, About, shortcuts, Add Agent, session search) are
+    /// <c>UserControl</c>s in a floating layer, not navigations — the <c>ChatPage</c> underneath
+    /// stays loaded and keeps reporting itself as the conversation on screen. Without this the
+    /// policy concluded the user was reading a chat they could not see, and a reply that landed
+    /// while Settings was open produced no toast <i>and</i> no unread badge.</para>
+    /// </summary>
+    public void SetContentObscured(IChatWindow window, bool obscured)
+    {
+        lock (_gate) { if (ReferenceEquals(_window, window)) _state.Obscured = obscured; }
+    }
+
+    /// <summary>The conversation the window is showing to the user right now, or null when it is
+    /// on another page or a modal is covering it. This is the "are they already reading it"
+    /// question — distinct from <see cref="FindViewing"/>, which asks which window <i>hosts</i> a
+    /// conversation so a clicked notification can be routed there.</summary>
+    public string? VisibleConversationId
+    {
+        get
+        {
+            lock (_gate)
+                return _window is not null && _state.Active && _state.Visible && !_state.Obscured
+                    ? _state.ConversationId
+                    : null;
+        }
+    }
+
     public bool IsForeground
     {
         get { lock (_gate) return _window is not null && _state.Active && _state.Visible; }
@@ -70,7 +100,7 @@ public sealed class WindowPresenceService : IWindowPresence
     {
         if (string.IsNullOrEmpty(conversationId)) return false;
         lock (_gate)
-            return _window is not null && _state.Active && _state.Visible
+            return _window is not null && _state.Active && _state.Visible && !_state.Obscured
                 && _state.ConversationId == conversationId;
     }
 

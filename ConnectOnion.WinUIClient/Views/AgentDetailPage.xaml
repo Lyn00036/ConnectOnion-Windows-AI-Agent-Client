@@ -314,6 +314,9 @@
                                PlaceholderText="{x:Bind Vm.ComposerPlaceholder, Mode=OneWay}"
                                ShowSuggestions="True"
                                SuggestionPrompts="{x:Bind Vm.SkillOffers, Mode=OneWay}"
+                               ShowModeSelector="True"
+                               Mode="{x:Bind Vm.CurrentMode, Mode=OneWay}"
+                               ModeChangeRequested="Composer_ModeChangeRequested"
                                SubmitRequested="Composer_SubmitRequested"
                                Visibility="{x:Bind Vm.HasAgent, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
     </Grid>

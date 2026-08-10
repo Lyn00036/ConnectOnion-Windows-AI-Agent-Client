@@ -85,25 +85,14 @@ public sealed class PackageIdentityTests
         Assert.Contains("<DisplayName>ConnectOnion Desktop</DisplayName>", manifest, StringComparison.Ordinal);
     }
 
-    /// <summary>
-    /// The release build passes <c>PublishTrimmed=false</c> explicitly. Shrinking the package is
-    /// not a reason to enable trimming — that is gated separately by <c>docs/TRIMMING.md</c>, and
-    /// a size-budget breach is the most likely moment for someone to reach for it.
-    /// </summary>
-    [Fact]
-    public void ReleaseWorkflow_KeepsTrimmingDisabled()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "global.json")))
-        {
-            directory = directory.Parent;
-        }
-        var workflow = File.ReadAllText(
-            Path.Combine(directory!.FullName, ".github", "workflows", "release.yml"));
-
-        Assert.Contains("PublishTrimmed=false", workflow, StringComparison.Ordinal);
-        Assert.DoesNotContain("PublishTrimmed=true", workflow, StringComparison.Ordinal);
-    }
+    // The release workflow's PublishTrimmed setting used to be asserted here as well, pinned to
+    // false. It moved out rather than being flipped: TrimmingGateTests is the designated guard for
+    // that flag and now pins it in four places (Release, Debug, and both workflows' publishes), and
+    // two tests asserting the same contract from different files is how they end up disagreeing —
+    // which is exactly what happened when trimming was enabled on 2026-08-05 and this copy still
+    // demanded the opposite. The concern that put it here (someone reaching for trimming to escape
+    // a size-budget breach) is now answered where it actually arises: Test-PackageContents.ps1 says
+    // so in the failure message. See docs/TRIMMING.md.
 
     [Fact]
     public void ReleaseWorkflow_PublishesOnlySelfContainedPortableArchive()
@@ -119,7 +108,13 @@ public sealed class PackageIdentityTests
         Assert.Contains("-p:SelfContained=true", workflow, StringComparison.Ordinal);
         Assert.Contains("-p:WindowsAppSDKSelfContained=true", workflow, StringComparison.Ordinal);
         Assert.Contains("-p:RunUnpackaged=true", workflow, StringComparison.Ordinal);
+        Assert.Contains("-p:PublishSingleFile=false", workflow, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Microsoft.WindowsAppRuntime.dll", workflow, StringComparison.Ordinal);
+        Assert.Contains("ConnectOnion.PortableLauncher/ConnectOnion.PortableLauncher.csproj", workflow, StringComparison.Ordinal);
+        Assert.Contains("-p:PublishAot=true", workflow, StringComparison.Ordinal);
+        Assert.Contains("$stagedApp = Join-Path $stagedRoot 'app'", workflow, StringComparison.Ordinal);
+        Assert.Contains("Compress-Archive -Path (Join-Path $stagedRoot '*')", workflow, StringComparison.Ordinal);
+        Assert.Contains("Smoke-test portable root launcher", workflow, StringComparison.Ordinal);
         Assert.Contains("-x64-portable.zip", workflow, StringComparison.Ordinal);
         Assert.Contains(
             "Test-PackageContents.ps1 -PackagePath '${{ steps.collect.outputs.portable }}'",
@@ -193,4 +188,25 @@ public sealed class PackageIdentityTests
         Assert.Contains("PackageDependency", audit, StringComparison.Ordinal);
         Assert.Contains("External MSIX framework dependency", audit, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void PackageAuditPinsTheNestedPortableLayout()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "global.json")))
+        {
+            directory = directory.Parent;
+        }
+        Assert.NotNull(directory);
+
+        var audit = File.ReadAllText(
+            Path.Combine(directory!.FullName, "scripts", "Test-PackageContents.ps1"));
+
+        Assert.Contains("Portable root contains only the launcher", audit, StringComparison.Ordinal);
+        Assert.Contains("DLLs must stay under app/", audit, StringComparison.Ordinal);
+        Assert.Contains("app/ConnectOnion.WinUIClient.exe", audit, StringComparison.Ordinal);
+        Assert.Contains("app/coreclr.dll", audit, StringComparison.Ordinal);
+        Assert.Contains("app/Microsoft.WindowsAppRuntime.dll", audit, StringComparison.Ordinal);
+    }
+
 }

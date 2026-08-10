@@ -78,6 +78,11 @@
                             <TextBlock x:Uid="RecoveryCopy" x:Name="CopyButtonText" Text="Copy" />
                 </StackPanel>
             </Button>
+            <TextBlock x:Uid="RecoveryPhraseClipboardNotice"
+                       Text="Copies stay off clipboard history and are cleared after 60 seconds."
+                       FontSize="{StaticResource ProductCaptionFontSize}"
+                       Foreground="{ThemeResource TextSecondaryBrush}"
+                       TextWrapping="Wrap" />
 
             <!-- Restoring to the wrong address is the failure this catches: the user can compare
                  what they wrote down against the address the phrase actually belongs to. -->

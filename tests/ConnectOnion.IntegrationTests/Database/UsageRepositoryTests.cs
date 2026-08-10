@@ -156,6 +156,28 @@ public sealed class UsageRepositoryTests
     }
 
     [Fact]
+    public async Task WindowedQueries_UseCreatedAtRangeIndexes()
+    {
+        await using var connection = await AppDatabase.OpenAsync();
+
+        await using var daily = connection.CreateCommand();
+        daily.CommandText = """
+            EXPLAIN QUERY PLAN
+            SELECT date(created_at / 1000, 'unixepoch')
+            FROM usage_events INDEXED BY ix_usage_created
+            WHERE created_at >= $since
+            GROUP BY 1;
+            """;
+        daily.Parameters.AddWithValue("$since", 1L);
+        await using var dailyReader = await daily.ExecuteReaderAsync();
+        var dailyPlan = new List<string>();
+        while (await dailyReader.ReadAsync()) dailyPlan.Add(dailyReader.GetString(3));
+        Assert.Contains(dailyPlan, detail =>
+            detail.Contains("ix_usage_created (created_at>?)", StringComparison.OrdinalIgnoreCase));
+
+    }
+
+    [Fact]
     public async Task GetDailyTotalsAsync_EmptyLedger_ReturnsEmptyNotNull()
     {
         await _usage.ClearAsync();

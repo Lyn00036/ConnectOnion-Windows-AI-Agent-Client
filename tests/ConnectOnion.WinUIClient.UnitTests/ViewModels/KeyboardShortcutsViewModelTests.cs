@@ -39,7 +39,10 @@ public sealed class KeyboardShortcutsViewModelTests
 
         var group = Assert.Single(viewModel.Groups, candidate => candidate.Title == "Chat");
         Assert.Equal("Chat", group.Title);
-        Assert.Equal(3, group.Shortcuts.Count);
+        // A title match shows the group whole, including the entries that do not match the query
+        // themselves — so this count tracks the Chat group in the catalog, not the search.
+        Assert.Equal(4, group.Shortcuts.Count);
+        Assert.Contains(group.Shortcuts, shortcut => shortcut.Name == "Go to pending decision");
     }
 
     [Fact]

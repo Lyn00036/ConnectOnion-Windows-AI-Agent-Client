@@ -21,6 +21,9 @@ namespace ConnectOnion.WinUIClient.ViewModels;
 public sealed partial class UsageViewModel : Common.ObservableObject
 {
     private readonly UsageRepository _usage;
+    private bool _invariantsLoaded;
+    private DateTimeOffset? _cachedFirstRecorded;
+    private IReadOnlyList<DailyUsageTotal> _cachedDaily = [];
 
     public UsageViewModel(UsageRepository usage)
     {
@@ -101,14 +104,25 @@ public sealed partial class UsageViewModel : Common.ObservableObject
         {
             // ConfigureAwait(true) throughout: everything after these awaits touches the
             // ObservableCollection and the bound properties, which must happen on the UI thread.
-            var summaries = await _usage.GetByModelAsync(Range.SinceUnixMs()).ConfigureAwait(true);
-            var first = await _usage.GetFirstRecordedAsync().ConfigureAwait(true);
-
             // Only the last 13 months are asked for, not the whole ledger: everything older is
             // discarded by the projection anyway, and the ledger grows without bound. The extra
             // month covers the partial week the grid pads backwards into.
             var heatmapSince = DateTimeOffset.Now.AddMonths(-13).ToUnixTimeMilliseconds();
-            var daily = await _usage.GetDailyTotalsAsync(heatmapSince).ConfigureAwait(true);
+            var summariesTask = _usage.GetByModelAsync(Range.SinceUnixMs());
+            var firstTask = _invariantsLoaded
+                ? Task.FromResult(_cachedFirstRecorded)
+                : _usage.GetFirstRecordedAsync();
+            var dailyTask = _invariantsLoaded
+                ? Task.FromResult(_cachedDaily)
+                : _usage.GetDailyTotalsAsync(heatmapSince);
+            await Task.WhenAll(summariesTask, firstTask, dailyTask).ConfigureAwait(true);
+
+            var summaries = await summariesTask.ConfigureAwait(true);
+            var first = await firstTask.ConfigureAwait(true);
+            var daily = await dailyTask.ConfigureAwait(true);
+            _cachedFirstRecorded = first;
+            _cachedDaily = daily;
+            _invariantsLoaded = true;
             Heatmap = UsageHeatmap.Build(daily, DateOnly.FromDateTime(DateTime.Now));
 
             Rows.Clear();
@@ -139,6 +153,9 @@ public sealed partial class UsageViewModel : Common.ObservableObject
     public async Task ClearAllAsync()
     {
         await _usage.ClearAsync().ConfigureAwait(true);
+        _invariantsLoaded = false;
+        _cachedFirstRecorded = null;
+        _cachedDaily = [];
         await LoadAsync().ConfigureAwait(true);
     }
 

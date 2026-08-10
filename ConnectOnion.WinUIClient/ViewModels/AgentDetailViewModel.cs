@@ -47,6 +47,7 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
         InfoJson = "";
         StatusText = "";
         EnterToSend = true;
+        CurrentMode = AgentModes.Safe;
     }
 
     /// <summary>The agent this page tracks for presence (base class reads this).</summary>
@@ -101,6 +102,20 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
         : LocalizedStrings.Format("ComposerAskNamedAgent", "Ask {0} anything", AgentDisplayName);
 
     public bool CanStartConversation => HasAgent && IsOnline;
+
+    /// <summary>The approval mode the first message will start its conversation under.
+    ///
+    /// <para>Held here rather than on a session because there is no session yet — this page is what
+    /// creates one. It rides across on <see cref="Controls.ComposerSubmission.Mode"/> and
+    /// <c>ChatPage</c> applies it to the conversation before the first send, so the picker on this
+    /// page means the same thing as the picker on the chat page.</para>
+    ///
+    /// <para>Not persisted per agent. Mode is conversation-owned state
+    /// (<c>sessions.mode</c>), and inferring a default for a conversation that does not exist yet
+    /// from an earlier, unrelated one would be a guess about intent — <c>Safe</c> is the honest
+    /// starting point, and it is one click away from the others.</para></summary>
+    [ObservableProperty]
+    public partial string CurrentMode { get; set; }
 
     /// <summary>Also refresh whether a conversation can be started (gated on online).</summary>
     protected override void OnPresenceRaised()
@@ -291,10 +306,9 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
             // sending here would race the page that is about to own the conversation.
             await _agents.SetSelectedAgentAsync(Agent.Id);
 
-            var sessionsState = await _sessions.LoadAsync();
-            var session = SessionSummary.NewConversation(Agent.Id, sessionsState.Sessions, Common.SessionTitles.PlaceholderFormat);
-            sessionsState.Sessions.Add(session);
-            sessionsState.ActiveSessionId = session.Id;
+            // The conversation number is all the index was read for; COUNT(*) answers it directly.
+            var existingCount = await _sessions.CountForAgentAsync(Agent.Id);
+            var session = SessionSummary.NewConversation(Agent.Id, existingCount, Common.SessionTitles.PlaceholderFormat);
             await _sessions.AppendSessionAsync(session);
             return true;
         }
@@ -323,14 +337,16 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
         // taking an early return for a missing agent or a fresh cache hit.
         IsLoading = false;
 
-        var prefs = await _preferences.LoadAsync();
+        var prefsTask = _preferences.LoadAsync();
+        var agentTask = _agents.GetSelectedAgentAsync();
+        await Task.WhenAll(prefsTask, agentTask);
+        var prefs = prefsTask.Result;
         if (generation != _loadGeneration) return;
         EnterToSend = prefs.EnterToSend;
 
-        var agents = await _agents.LoadAsync();
         if (generation != _loadGeneration) return;
 
-        var selected = agents.Agents.FirstOrDefault(a => a.Id == agents.SelectedAgentId);
+        var selected = agentTask.Result;
 
         Agent = selected;
         if (Agent is null) return;
@@ -344,7 +360,7 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
         if (!string.IsNullOrWhiteSpace(Agent.InfoJson))
         {
             PopulateFromCachedJson(Agent.InfoJson);
-        StatusText = LocalizedStrings.Format("AgentDetailCached", "Cached — {0}", LastUpdated);
+            StatusText = LocalizedStrings.Format("AgentDetailCached", "Cached — {0}", LastUpdated);
             if (AgentInfoService.IsCacheFresh(Agent)) return;
         }
 
@@ -388,19 +404,19 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
                     HasError = false;
                     PopulateFromCachedJson(freshJson);
                     OnPropertyChanged(nameof(LastUpdated));
-            StatusText = LocalizedStrings.Format("AgentDetailUpdated", "Updated - {0}", LastUpdated);
+                    StatusText = LocalizedStrings.Format("AgentDetailUpdated", "Updated - {0}", LastUpdated);
                 }
                 else if (hadCache)
                 {
                     HasError = false;
-            StatusText = LocalizedStrings.Format("AgentDetailCachedDash", "Cached - {0}", LastUpdated);
+                    StatusText = LocalizedStrings.Format("AgentDetailCachedDash", "Cached - {0}", LastUpdated);
                 }
                 else
                 {
                     InfoFields.Clear();
                     InfoJson = "";
                     HasError = true;
-            StatusText = LocalizedStrings.Get("AgentDetailLoadFailure", "Could not load agent info.");
+                    StatusText = LocalizedStrings.Get("AgentDetailLoadFailure", "Could not load agent info.");
                 }
             }
             finally
@@ -424,15 +440,16 @@ public sealed partial class AgentDetailViewModel : PresenceAwareViewModel
         {
             using var doc = JsonDocument.Parse(json);
             FlattenObject(doc.RootElement, "", InfoFields);
+            AcceptedInputs = EndpointResolver.ParseAcceptedInputs(doc.RootElement);
+            Skills = EndpointResolver.ParseSkills(doc.RootElement);
             RaiseProfileSummaryProperties();
         }
         catch
         {
             // Corrupt cache: leave fields empty, a refresh will fix it.
+            AcceptedInputs = null;
+            Skills = [];
         }
-
-        AcceptedInputs = EndpointResolver.ParseAcceptedInputsFromInfoJson(json);
-        Skills = EndpointResolver.ParseSkillsFromInfoJson(json);
     }
 
     /// <summary>

@@ -26,8 +26,19 @@ using Microsoft.Extensions.Logging;
 
 namespace ConnectOnion.WinUIClient.Controls;
 
-/// <summary>Text plus whatever attachments were ready to send at submit time.</summary>
-public sealed record ComposerSubmission(string Text, IReadOnlyList<PendingAttachment> Attachments);
+/// <summary>Text plus whatever attachments were ready to send at submit time, and the approval
+/// mode the composer was showing when the user pressed send.
+///
+/// <para><paramref name="Mode"/> exists for the one submission that crosses a page boundary: the
+/// first message to an agent is composed on <c>AgentDetailPage</c>, which has no conversation yet,
+/// and the conversation it creates would otherwise open at the default mode no matter what the
+/// picker said. Optional so the two callers that build a submission from a bare prompt keep
+/// compiling; <c>ChatPage</c>'s own composer already owns its mode through
+/// <c>ModeChangeRequested</c> and ignores this.</para></summary>
+public sealed record ComposerSubmission(
+    string Text,
+    IReadOnlyList<PendingAttachment> Attachments,
+    string Mode = AgentModes.Safe);
 
 /// <summary>A quick prompt's visible chip label and the fuller draft inserted when selected.</summary>
 internal sealed class ComposerSuggestion
@@ -70,6 +81,27 @@ public sealed partial class ChatComposer : UserControl, IDisposable
             typeof(bool),
             typeof(ChatComposer),
             new PropertyMetadata(true, OnCanSubmitChanged));
+
+    /// <summary>Sending is blocked, but composing is not.
+    ///
+    /// <para>Distinct from <see cref="CanSubmit"/> on purpose. <c>CanSubmit</c> means "this
+    /// composer is not usable" and disables the text box, the attachment picker and the mic;
+    /// this means "you may write, you just cannot send it right now" — which is the state while
+    /// the agent is parked on an interactive card, since the answer has to go through that card.
+    /// </para>
+    ///
+    /// <para>Routing that state through <c>CanSubmit</c> instead had a visible side effect worth
+    /// not repeating: disabling a focused <c>TextBox</c> makes WinUI move focus to the next
+    /// enabled sibling, which in this composer is the approval-mode button (it deliberately stays
+    /// enabled mid-turn). So every approval that arrived while the user's caret was in the box
+    /// drew a focus ring around "Safe" — a control nobody had touched appearing to be selected.
+    /// </para></summary>
+    public static readonly DependencyProperty IsSubmitBlockedProperty =
+        DependencyProperty.Register(
+            nameof(IsSubmitBlocked),
+            typeof(bool),
+            typeof(ChatComposer),
+            new PropertyMetadata(false, OnCanSubmitChanged));
 
     public static readonly DependencyProperty EnterToSubmitProperty =
         DependencyProperty.Register(
@@ -209,6 +241,14 @@ public sealed partial class ChatComposer : UserControl, IDisposable
     public ChatComposer()
     {
         InitializeComponent();
+        // TextBox's internal context-request handling can mark the routed event before an
+        // ordinary XAML handler sees it. handledEventsToo guarantees mouse right-click,
+        // Shift+F10, the Menu key, and touch long-press all reach the explicit edit menu.
+        InputBox.AddHandler(
+            UIElement.ContextRequestedEvent,
+            new Windows.Foundation.TypedEventHandler<UIElement, ContextRequestedEventArgs>(
+                InputBox_ContextRequested),
+            handledEventsToo: true);
         ApplyWaveformTheme();
         _waveformTimer.Tick += WaveformTimer_Tick;
         _recordingElapsedTimer.Tick += RecordingElapsedTimer_Tick;
@@ -240,6 +280,12 @@ public sealed partial class ChatComposer : UserControl, IDisposable
     {
         get => (bool)GetValue(CanSubmitProperty);
         set => SetValue(CanSubmitProperty, value);
+    }
+
+    public bool IsSubmitBlocked
+    {
+        get => (bool)GetValue(IsSubmitBlockedProperty);
+        set => SetValue(IsSubmitBlockedProperty, value);
     }
 
     public bool EnterToSubmit
@@ -373,6 +419,61 @@ public sealed partial class ChatComposer : UserControl, IDisposable
 
     public void FocusInput()
         => InputBox.Focus(FocusState.Programmatic);
+
+    /// <summary>
+    /// Moves focus to the draft when <paramref name="button"/> currently holds it and is about to
+    /// be collapsed.
+    ///
+    /// <para>Hiding the focused element does not leave focus nowhere — the framework relocates it,
+    /// and the nearest preceding tab stop in this composer is the approval-mode drop-down. That is
+    /// how sending a message ended up parking focus on a control that sends <c>mode_change</c>
+    /// frames to the agent when you press Enter on it.</para>
+    ///
+    /// <para>Called <i>before</i> the visibility is applied, on purpose: once the element is
+    /// collapsed the framework has already chosen a new focus target and putting it back would be
+    /// a second visible jump rather than a prevention.</para>
+    /// </summary>
+    private void ReturnFocusToDraftIfLeaving(Control button, bool willBeVisible)
+    {
+        if (willBeVisible || button.Visibility != Visibility.Visible) return;
+        if (XamlRoot is null) return;
+        if (!ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), button)) return;
+
+        InputBox.Focus(FocusState.Programmatic);
+    }
+
+    private void InputBox_ContextRequested(UIElement sender, ContextRequestedEventArgs e)
+    {
+        ComposerEditMenu.ShowAt(InputBox);
+        e.Handled = true;
+    }
+
+    private void ComposerEditMenu_Opening(object sender, object e)
+    {
+        var canEdit = InputBox.IsEnabled && !InputBox.IsReadOnly;
+        var hasSelection = InputBox.SelectionLength > 0;
+        ComposerUndoMenuItem.IsEnabled = canEdit && InputBox.CanUndo;
+        ComposerRedoMenuItem.IsEnabled = canEdit && InputBox.CanRedo;
+        ComposerCutMenuItem.IsEnabled = canEdit && hasSelection;
+        ComposerCopyMenuItem.IsEnabled = hasSelection;
+        ComposerPasteMenuItem.IsEnabled = canEdit && InputBox.CanPasteClipboardContent;
+        ComposerSelectAllMenuItem.IsEnabled = InputBox.Text.Length > 0;
+    }
+
+    private void ComposerUndo_Click(object sender, RoutedEventArgs e) => InputBox.Undo();
+
+    private void ComposerRedo_Click(object sender, RoutedEventArgs e) => InputBox.Redo();
+
+    private void ComposerCut_Click(object sender, RoutedEventArgs e)
+        => InputBox.CutSelectionToClipboard();
+
+    private void ComposerCopy_Click(object sender, RoutedEventArgs e)
+        => InputBox.CopySelectionToClipboard();
+
+    private void ComposerPaste_Click(object sender, RoutedEventArgs e)
+        => InputBox.PasteFromClipboard();
+
+    private void ComposerSelectAll_Click(object sender, RoutedEventArgs e) => InputBox.SelectAll();
 
     /// <summary>Replaces the current draft and focuses the editor without submitting it.</summary>
     public void SetDraft(string text)
@@ -526,6 +627,7 @@ public sealed partial class ChatComposer : UserControl, IDisposable
 
     private static IReadOnlyList<ComposerSuggestion> GenericSuggestions()
         =>
+        (ComposerSuggestion[])
         [
             new(
                 LocalizedStrings.Get(
@@ -573,20 +675,21 @@ public sealed partial class ChatComposer : UserControl, IDisposable
 
     private async void Send_Click(object sender, RoutedEventArgs e)
     {
-        if (IsRecordingActive)
-            await StopSpeechRecognitionAsync();
+        if (_recordingState == RecordingState.Recording)
+            await FinishVoiceInputAsync();
+        else if (IsVoiceInputActive)
+            return;
         SubmitCurrentText();
     }
 
-    private async void Composer_Unloaded(object sender, RoutedEventArgs e)
+    private void Composer_Unloaded(object sender, RoutedEventArgs e)
     {
-        // Cancel, don't Dispose: the page uses NavigationCacheMode.Required so this
-        // composer is reused on re-entry, and Dispose would destroy _lifetimeCts
-        // permanently — every operation using its Token (file picker, drag-drop,
-        // attachment encoding) would throw ObjectDisposedException and silently fail.
+        // Cancel the active work when the control leaves the tree. Full Dispose remains the
+        // explicit shutdown/teardown path; Loaded renews the lifetime token if this control is
+        // temporarily detached and reattached.
         _lifetimeCts.Cancel();
         _waveformTimer.Stop();
-        await StopSpeechRecognitionAsync();
+        CancelVoiceInput();
     }
 
     public void Dispose()
@@ -608,10 +711,8 @@ public sealed partial class ChatComposer : UserControl, IDisposable
         _recordingCts?.Dispose();
         _recordingCts = null;
 
-        DetachSpeechRecognizerEvents();
-        _speechRecognizer?.Dispose();
-        _speechRecognizer = null;
-        StopAudioMeter();
+        StopAudioMeter(discardAudio: true);
+        _voiceCapture.Dispose();
         WaveformCanvas.Children.Clear();
         _waveformBars.Clear();
     }
@@ -630,16 +731,16 @@ public sealed partial class ChatComposer : UserControl, IDisposable
     {
         if (_attachmentFlyout is null)
         {
-        _addImageItem = new MenuFlyoutItem
-        {
-            Text = Common.LocalizedStrings.Get("ComposerAddImage", "Add image...")
-        };
+            _addImageItem = new MenuFlyoutItem
+            {
+                Text = Common.LocalizedStrings.Get("ComposerAddImage", "Add image...")
+            };
             _addImageItem.Click += async (_, _) => await AddAttachmentsAsync(AttachmentKind.Image);
 
-        _addFileItem = new MenuFlyoutItem
-        {
-            Text = Common.LocalizedStrings.Get("ComposerAddFile", "Add file...")
-        };
+            _addFileItem = new MenuFlyoutItem
+            {
+                Text = Common.LocalizedStrings.Get("ComposerAddFile", "Add file...")
+            };
             _addFileItem.Click += async (_, _) => await AddAttachmentsAsync(AttachmentKind.File);
 
             _attachmentFlyout = new MenuFlyout();
@@ -713,18 +814,25 @@ public sealed partial class ChatComposer : UserControl, IDisposable
             var existingCount = PendingAttachments.Count(p => p.Kind == attachment.Kind);
             var error = AttachmentValidationService.Validate(attachment, AcceptedInputs, existingCount);
 
+            // Status is settled *before* the Add, which is the whole point. Adding first fires
+            // CollectionChanged — the only thing that recomputes the send button — while the
+            // status is still Pending (the enum's zero value), and nothing observes the item's
+            // own PropertyChanged afterwards. So an attachment added with an empty draft left
+            // `hasReadyAttachment` reading false and the send button disabled until the user
+            // typed a character. Enter still worked, because SubmitCurrentText re-reads the
+            // collection rather than trusting the button, which is what made it look like a
+            // rendering glitch rather than stale state.
+            attachment.Status = error is null ? AttachmentStatus.Ready : AttachmentStatus.Failed;
+            // Not logged: the rejection reason is already on the chip in front of the user.
+            attachment.Error = error;
+
             PendingAttachments.Add(attachment);
-
-            if (error is not null)
-            {
-                attachment.Status = AttachmentStatus.Failed;
-                // Not logged: the rejection reason is already on the chip in front of the user.
-                attachment.Error = error;
-                continue;
-            }
-
-            attachment.Status = AttachmentStatus.Ready;
         }
+
+        // Belt and braces, and deliberately not redundant: the line above keeps CollectionChanged
+        // truthful, this keeps the method correct even if a future edit reorders it. The restore
+        // path (RestoreSubmission) has always done both.
+        RefreshSendButtonState();
     }
 
     // ---- Drag and drop ----
@@ -775,7 +883,7 @@ public sealed partial class ChatComposer : UserControl, IDisposable
     /// user can't interrogate.
     /// </summary>
     private bool CanAcceptDrop(DataPackageView data)
-        => CanSubmit && !IsRecordingActive && AttachmentDropService.ContainsFiles(data);
+        => CanSubmit && !IsVoiceInputActive && AttachmentDropService.ContainsFiles(data);
 
     private async void Composer_Drop(object sender, DragEventArgs e)
     {
@@ -833,6 +941,29 @@ public sealed partial class ChatComposer : UserControl, IDisposable
 
     private void InputBox_GotFocus(object sender, RoutedEventArgs e)
         => Diagnostics.StartupTelemetry.Mark(Diagnostics.StartupPhases.FirstInteractive);
+
+    private async void Composer_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (!IsVoiceInputActive) return;
+
+        if (e.Key == VirtualKey.Escape)
+        {
+            e.Handled = true;
+            CancelVoiceInput();
+            return;
+        }
+
+        var isShiftDown = InputKeyboardSource
+            .GetKeyStateForCurrentThread(VirtualKey.Shift)
+            .HasFlag(CoreVirtualKeyStates.Down);
+        if (_recordingState == RecordingState.Recording
+            && e.Key == VirtualKey.Enter
+            && !isShiftDown)
+        {
+            e.Handled = true;
+            await FinishVoiceInputAsync();
+        }
+    }
 
     private void InputBox_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
@@ -948,11 +1079,13 @@ public sealed partial class ChatComposer : UserControl, IDisposable
 
     private void SubmitCurrentText()
     {
+        if (IsVoiceInputActive) return;
+
         var text = InputBox.Text.Trim();
         var isAttachmentsBusy = PendingAttachments.Any(a => a.IsBusy);
         var readyAttachments = PendingAttachments.Where(a => a.Status == AttachmentStatus.Ready).ToList();
 
-        if (!CanSubmit || isAttachmentsBusy) return;
+        if (!CanSubmit || IsSubmitBlocked || isAttachmentsBusy) return;
         if (text.Length == 0 && readyAttachments.Count == 0) return;
 
         InputBox.Text = "";
@@ -961,7 +1094,21 @@ public sealed partial class ChatComposer : UserControl, IDisposable
         // must never silently disappear or block the rest of the message.
         foreach (var attachment in readyAttachments) PendingAttachments.Remove(attachment);
         RefreshSendButtonState();
-        SubmitRequested?.Invoke(this, new ComposerSubmission(text, readyAttachments));
+
+        // Claim focus before anything can take it. A click leaves focus on the send button, and
+        // the turn that starts a moment later collapses that button — at which point the
+        // framework has to move focus somewhere and picks the nearest preceding tab stop, which
+        // is the approval-mode drop-down (column 2; send/stop/finish all share column 4). Focus
+        // was being *evicted* rather than assigned, which is why it landed somewhere nobody
+        // chose, and a reflexive Enter there opens the mode menu — a real mode_change to the
+        // agent. Returning the caret to the draft is also just what a chat composer should do.
+        //
+        // Ordered before SubmitRequested deliberately: this is synchronous, while IsBusy flips
+        // through the view model and back via the dispatcher, so by the time the button collapses
+        // focus already lives somewhere that is not going away.
+        FocusInput();
+
+        SubmitRequested?.Invoke(this, new ComposerSubmission(text, readyAttachments, Mode));
     }
 
 
@@ -969,38 +1116,49 @@ public sealed partial class ChatComposer : UserControl, IDisposable
     {
         var isStarting = _recordingState == RecordingState.Starting;
         var isRecording = _recordingState == RecordingState.Recording;
-        var isStopping = _recordingState == RecordingState.Stopping;
-        var isActive = IsRecordingActive;
+        var isTranscribing = _recordingState == RecordingState.Transcribing;
+        var isActive = IsVoiceInputActive;
 
         var isAttachmentsBusy = PendingAttachments.Any(a => a.IsBusy);
         var hasReadyAttachment = PendingAttachments.Any(a => a.Status == AttachmentStatus.Ready);
-        var canSend = CanSubmit && !isAttachmentsBusy
+        // IsSubmitBlocked gates only this — the draft stays editable, so the three lines below
+        // still read CanSubmit alone and a focused text box is never disabled out from under the
+        // caret. See the IsSubmitBlockedProperty remarks.
+        var canSend = CanSubmit && !IsSubmitBlocked && !isAttachmentsBusy
             && (!string.IsNullOrWhiteSpace(InputBox.Text) || hasReadyAttachment);
         // Match the web composer: typing and Enter remain available during a turn.
         // ChatViewModel routes that submission onto the existing socket as runtime INPUT.
         InputBox.IsEnabled = CanSubmit;
-        AddAttachmentButton.IsEnabled = CanSubmit;
+        AddAttachmentButton.IsEnabled = CanSubmit && !isActive;
         SpeechButton.IsEnabled = CanSubmit && !isActive;
 
         // Send and Stop share the slot: a turn is running or it isn't.
-        SendButton.Visibility = IsBusy || _showStopFeedback
-            ? Visibility.Collapsed
-            : Visibility.Visible;
-        SendButton.IsEnabled = canSend || isActive;
-        SendButton.Background = isActive || canSend
+        var showSend = !(isActive || IsBusy || _showStopFeedback);
+        var showStopButton = (CanStop || IsStopping || _showStopFeedback) && !isActive;
+
+        // Whichever of them is going away must not take the focus with it. Send is normally
+        // covered by SubmitCurrentText claiming the draft first, but Stop is not: clicking Stop
+        // leaves focus on the stop button, and the button disappears the moment the run settles.
+        // Both then dump focus on the approval-mode drop-down. See SubmitCurrentText.
+        ReturnFocusToDraftIfLeaving(SendButton, showSend);
+        ReturnFocusToDraftIfLeaving(StopButton, showStopButton);
+
+        SendButton.Visibility = showSend ? Visibility.Visible : Visibility.Collapsed;
+        SendButton.IsEnabled = canSend && !isActive;
+        SendButton.Background = canSend && !isActive
             ? Brush("ComposerPrimaryButtonBackgroundBrush")
             : Brush("ComposerDisabledButtonBackgroundBrush");
-        SendIcon.Foreground = isActive || canSend
+        SendIcon.Foreground = canSend && !isActive
             ? Brush("ComposerPrimaryButtonForegroundBrush")
             : Brush("ComposerDisabledButtonForegroundBrush");
 
         var showStop = CanStop || IsStopping || _showStopFeedback;
-        StopButton.Visibility = showStop ? Visibility.Visible : Visibility.Collapsed;
-        StopButton.IsEnabled = CanStop && !IsStopping && !_showStopFeedback;
+        StopButton.Visibility = showStopButton ? Visibility.Visible : Visibility.Collapsed;
+        StopButton.IsEnabled = CanStop && !IsStopping && !_showStopFeedback && !isActive;
         // Match the familiar ChatGPT stop affordance: the square remains a stable target and the
         // ring rotates only while Stop is actionable. Clicking immediately freezes the motion,
         // which acknowledges the request even before the host settles the run.
-        var animateStop = CanStop && !IsStopping && !_showStopFeedback;
+        var animateStop = CanStop && !IsStopping && !_showStopFeedback && !isActive;
         StopGlyph.Visibility = showStop ? Visibility.Visible : Visibility.Collapsed;
         StopRing.IsActive = animateStop;
         StopRing.Visibility = animateStop ? Visibility.Visible : Visibility.Collapsed;
@@ -1011,18 +1169,50 @@ public sealed partial class ChatComposer : UserControl, IDisposable
         AutomationProperties.SetName(StopButton, stopLabel);
 
         RefreshModeSelector();
+        if (isActive) ModeButton.Visibility = Visibility.Collapsed;
+
+        FooterMetadataPanel.Visibility = isActive ? Visibility.Collapsed : Visibility.Visible;
 
         SpeechIcon.Visibility = isActive ? Visibility.Collapsed : Visibility.Visible;
         SpeechRing.IsActive = isActive;
         SpeechRing.Visibility = isActive ? Visibility.Visible : Visibility.Collapsed;
 
         RecordingWaveformHost.Visibility = isActive ? Visibility.Visible : Visibility.Collapsed;
-        StopSpeechButton.Visibility = isActive ? Visibility.Visible : Visibility.Collapsed;
-        StopSpeechButton.IsEnabled = isActive && !isStopping;
+        CancelSpeechButton.Visibility = isActive ? Visibility.Visible : Visibility.Collapsed;
+        CancelSpeechButton.IsEnabled = isActive;
+        FinishSpeechButton.Visibility = isRecording ? Visibility.Visible : Visibility.Collapsed;
+        FinishSpeechButton.IsEnabled = isRecording;
         SpeechButton.Visibility = isActive ? Visibility.Collapsed : Visibility.Visible;
 
-        BufferSpinner.IsActive = isStarting || isStopping;
-        BufferSpinner.Visibility = (isStarting || isStopping) ? Visibility.Visible : Visibility.Collapsed;
+        BufferSpinner.IsActive = isStarting || isTranscribing;
+        BufferSpinner.Visibility = (isStarting || isTranscribing) ? Visibility.Visible : Visibility.Collapsed;
+        WaveformCanvas.Visibility = isRecording ? Visibility.Visible : Visibility.Collapsed;
+        WaveformTimerText.Visibility = isRecording ? Visibility.Visible : Visibility.Collapsed;
+        VoiceStatusText.Visibility = (isStarting || isTranscribing)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        VoiceStatusText.Text = isTranscribing
+            ? LocalizedStrings.Get("VoiceTranscribing", "Transcribing...")
+            : LocalizedStrings.Get("VoiceStarting", "Starting microphone...");
+
+        var voiceStatus = isRecording
+            ? LocalizedStrings.Get(
+                "VoiceRecordingInstructions",
+                "Recording. Press Enter to finish or Escape to discard.")
+            : VoiceStatusText.Text;
+        AutomationProperties.SetName(RecordingWaveformHost, voiceStatus);
+
+        var cancelLabel = isTranscribing
+            ? LocalizedStrings.Get("VoiceCancelTranscription", "Cancel transcription (Esc)")
+            : LocalizedStrings.Get(
+                "VoiceCancelInput", "Cancel and discard voice input (Esc)");
+        ToolTipService.SetToolTip(CancelSpeechButton, cancelLabel);
+        AutomationProperties.SetName(CancelSpeechButton, cancelLabel);
+
+        var finishLabel = LocalizedStrings.Get(
+            "VoiceFinishRecording", "Finish recording and transcribe (Enter)");
+        ToolTipService.SetToolTip(FinishSpeechButton, finishLabel);
+        AutomationProperties.SetName(FinishSpeechButton, finishLabel);
     }
 
     private static Brush Brush(string resourceKey)

@@ -13,9 +13,9 @@
          are set by the host on the <OfflineNoticeBar/> element itself. -->
     <Border CornerRadius="10"
             Padding="14,10"
-            Background="{ThemeResource SurfaceElevatedBrush}"
-            BorderBrush="{ThemeResource BorderDefaultBrush}"
-            BorderThickness="1">
+            Background="{ThemeResource AttentionSubtleBrush}"
+            BorderBrush="{ThemeResource AttentionBrush}"
+            BorderThickness="3,1,1,1">
         <Grid ColumnSpacing="12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
@@ -27,7 +27,7 @@
                            Icon="PlugDisconnected"
                            IconVariant="Regular"
                            IconSize="Size20"
-                           Foreground="{ThemeResource TextSecondaryBrush}"
+                           Foreground="{ThemeResource AttentionBrush}"
                            VerticalAlignment="Center" />
 
             <StackPanel Grid.Column="1"
@@ -36,7 +36,8 @@
                         Spacing="2">
                 <TextBlock x:Uid="OfflineTitle" Text="Agent is offline"
                            FontSize="{StaticResource ProductBodyFontSize}"
-                           FontWeight="SemiBold" />
+                           FontWeight="SemiBold"
+                           Foreground="{ThemeResource AttentionBrush}" />
                 <TextBlock Text="{x:Bind Detail, Mode=OneWay}"
                            FontSize="{StaticResource ProductCaptionFontSize}"
                            Foreground="{ThemeResource TextSecondaryBrush}"
@@ -53,10 +54,12 @@
             <Grid Grid.Column="2" VerticalAlignment="Center">
                 <ProgressRing Width="20"
                               Height="20"
+                              Foreground="{ThemeResource AttentionBrush}"
                               IsActive="{x:Bind IsChecking, Mode=OneWay}"
                               Visibility="{x:Bind IsChecking, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                 <Button MinWidth="0"
                         Padding="10,6"
+                        Style="{StaticResource AccentButtonStyle}"
                         IsEnabled="{x:Bind CanRecheck, Mode=OneWay}"
                         Click="Recheck_Click"
                         Visibility="{x:Bind IsChecking, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}">

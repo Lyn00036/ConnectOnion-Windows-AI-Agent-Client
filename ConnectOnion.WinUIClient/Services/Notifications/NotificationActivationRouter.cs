@@ -24,28 +24,37 @@ public sealed class NotificationActivationRouter
     /// Safe to call once at startup for both packaged and unpackaged apps.</summary>
     public void RegisterAndListen()
     {
+        if (!AppNotificationCapability.IsAvailable) return;
         if (System.Threading.Interlocked.CompareExchange(ref _registered, 1, 0) != 0) return;
-        var manager = AppNotificationManager.Default;
+        AppNotificationManager? manager = null;
         try
         {
+            // Default itself can throw when an unpackaged process has no permission to register
+            // with the notification platform. Notifications are optional; that environment must
+            // not prevent the chat window from starting.
+            manager = AppNotificationManager.Default;
             manager.NotificationInvoked += OnNotificationInvoked;
             manager.Register();
             NotificationLog.Info("RegisterAndListen: registered for notification activation");
         }
         catch (Exception ex)
         {
-            manager.NotificationInvoked -= OnNotificationInvoked;
+            if (manager is not null)
+                manager.NotificationInvoked -= OnNotificationInvoked;
             System.Threading.Interlocked.Exchange(ref _registered, 0);
-            NotificationLog.Warn("notification registration failed", ex);
+            AppNotificationCapability.MarkRuntimeUnavailable("registration", ex);
         }
     }
 
     public void Unregister()
     {
         if (System.Threading.Interlocked.Exchange(ref _registered, 0) == 0) return;
-        var manager = AppNotificationManager.Default;
-        manager.NotificationInvoked -= OnNotificationInvoked;
-        try { manager.Unregister(); }
+        try
+        {
+            var manager = AppNotificationManager.Default;
+            manager.NotificationInvoked -= OnNotificationInvoked;
+            manager.Unregister();
+        }
         catch (Exception ex) { NotificationLog.Warn("notification unregister failed", ex); }
     }
 

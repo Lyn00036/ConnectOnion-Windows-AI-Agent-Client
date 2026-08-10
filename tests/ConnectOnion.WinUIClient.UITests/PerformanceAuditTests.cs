@@ -6,7 +6,6 @@ using ConnectOnion.WinUIClient.Models;
 using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Definitions;
 using Microsoft.Data.Sqlite;
-using Xunit.Abstractions;
 
 namespace ConnectOnion.WinUIClient.UITests;
 
@@ -17,6 +16,15 @@ namespace ConnectOnion.WinUIClient.UITests;
 public sealed class PerformanceAuditTests(ITestOutputHelper output)
 {
     private const string OutputVariable = "CONNECTONION_UI_PERF_OUT";
+    // Deliberately looser than the ratified medians in PERFORMANCE_AUDIT_2026-07-25_EN.md.
+    // These are regression ceilings, not aspirational targets: ordinary machine noise must pass,
+    // while a lost virtualization boundary or accidental full-tree rebuild must fail loudly.
+    private const double MaxShellOperationMedianMs = 1_000;
+    private const double MaxConversationFirstOpenMs = 1_500;
+    private const double MaxConversationCachedReopenMedianMs = 1_000;
+    private const double MaxToolExpandMedianMs = 250;
+    private const int MaxRealizedTranscriptItems = 64;
+    private const double MaxLargeConversationPrivateBytesMb = 450;
     private static readonly JsonSerializerOptions ReportJsonOptions = new()
     {
         WriteIndented = true,
@@ -67,6 +75,54 @@ public sealed class PerformanceAuditTests(ITestOutputHelper output)
         var directory = Path.GetDirectoryName(Path.GetFullPath(outputPath));
         if (!string.IsNullOrWhiteSpace(directory)) Directory.CreateDirectory(directory);
         File.WriteAllText(outputPath, JsonSerializer.Serialize(result, ReportJsonOptions));
+        AssertPerformanceBudgets(result);
+    }
+
+    private void AssertPerformanceBudgets(AuditResult result)
+    {
+        foreach (var operation in result.Operations)
+        {
+            output.WriteLine($"{operation.Name}: {operation.MedianMs:N1} ms median");
+            Assert.True(
+                operation.MedianMs <= MaxShellOperationMedianMs,
+                $"{operation.Name} median {operation.MedianMs:N1} ms exceeded "
+                + $"the {MaxShellOperationMedianMs:N0} ms regression ceiling.");
+        }
+
+        foreach (var conversation in result.Conversations)
+        {
+            output.WriteLine(
+                $"{conversation.MessageCount} messages: first {conversation.FirstOpenMs:N1} ms, "
+                + $"cached {conversation.CachedReopen.MedianMs:N1} ms, "
+                + $"realized {conversation.RealizedListItems}, private {conversation.PrivateBytesMb:N1} MB");
+            Assert.True(
+                conversation.FirstOpenMs <= MaxConversationFirstOpenMs,
+                $"{conversation.MessageCount}-message first open exceeded "
+                + $"{MaxConversationFirstOpenMs:N0} ms.");
+            Assert.True(
+                conversation.CachedReopen.MedianMs <= MaxConversationCachedReopenMedianMs,
+                $"{conversation.MessageCount}-message cached reopen exceeded "
+                + $"{MaxConversationCachedReopenMedianMs:N0} ms.");
+            Assert.True(
+                conversation.RealizedListItems <= MaxRealizedTranscriptItems,
+                $"{conversation.MessageCount}-message transcript realized "
+                + $"{conversation.RealizedListItems} rows; virtualization ceiling is "
+                + $"{MaxRealizedTranscriptItems}.");
+            if (conversation.ToolActivityExpand is { } expansion)
+            {
+                Assert.True(
+                    expansion.MedianMs <= MaxToolExpandMedianMs,
+                    $"Tool Activity expansion median {expansion.MedianMs:N1} ms exceeded "
+                    + $"{MaxToolExpandMedianMs:N0} ms.");
+            }
+        }
+
+        var largest = result.Conversations.MaxBy(conversation => conversation.MessageCount);
+        Assert.NotNull(largest);
+        Assert.True(
+            largest.PrivateBytesMb <= MaxLargeConversationPrivateBytesMb,
+            $"{largest.MessageCount}-message private bytes {largest.PrivateBytesMb:N1} MB exceeded "
+            + $"the {MaxLargeConversationPrivateBytesMb:N0} MB regression ceiling.");
     }
 
     private void MeasureShellOperations(AuditResult result)

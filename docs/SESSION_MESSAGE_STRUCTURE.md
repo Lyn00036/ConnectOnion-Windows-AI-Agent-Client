@@ -6,20 +6,32 @@
 
 ## How to read this document (status)
 
-Sections **1–31 describe the wire protocol** — what the agent actually sends and expects. They remain
-the reference for anything touching `CONNECT` / `INPUT` / `OUTPUT`, streaming events, `session_id`,
-reconnect, and `last_msg_id`. Treat them as authoritative.
+Sections **1–31 describe the core wire protocol** — what the agent sends and expects for
+`CONNECT` / `INPUT` / `OUTPUT`, streaming, `session_id`, reconnect, and `last_msg_id`. They are
+authoritative for the frames they specify. The protocol has since gained extension frames that are
+implemented and tested but are not expanded into full standalone sections below; the current
+dispatch table in `ConnectOnion.Protocol/AgentConnectionService.cs` is authoritative for that
+supported set.
 
-Sections **32–39 were design *recommendations*** written before the client existed (suggested DTO
-layers, SQLite schema, client mapping, state machine). **The implementation has since diverged from
-them.** Where they disagree with the code, the code wins. Concretely:
+Current implemented frame coverage:
 
-| Recommendation here | What the code actually does |
+| Category | Frames handled by the client |
 |---|---|
-| §32–34 typed request/response DTO classes | `ConnectOnion.Protocol` uses `WireMessage` (a thin `JsonElement` wrapper) for inbound and plain `Dictionary<string, object?>` for outbound. **No attribute-based DTOs, no source-gen context.** Follow that convention for new message types. |
-| §35 recommended SQLite schema | The real schema lives in `AppDatabase.CreateSchemaAsync`, versioned by `PRAGMA user_version` via `Data/SchemaMigrator.cs`. Notably `messages` is **one row per rendered bubble**, not a session JSON blob, and `message_attachments` stores metadata + a local cache path only — **never a base64 payload**. |
-| §36 recommended client mapping | The single stream-event → bubble mapping is `Services/Runtime/ChatTurnProjection.cs`; the per-event-type dispatch table it drives is `ChatTurnProjection.Events.cs`, which is where a new event type is handled. Both are driven identically by the live view model and the headless persist path. Do not add event handling anywhere else. |
-| §37 recommended WinUI state machine | Connections and in-flight turns are owned app-level by `AgentSessionManager` + `ConversationRunRegistry`, **not by a page**. A turn survives page close, conversation switch, and tray minimize. |
+| Connection and terminal | `CONNECT`, `CONNECTED`, `OUTPUT`, `ERROR`, `PING`/`PONG` |
+| Input and control | `INPUT` (also used as runtime input while a turn is active), `INTERRUPT`, `mode_change`, `mode_changed`, `SESSION_STATUS`, `RUNTIME_INPUT_ACK` |
+| Interactive | `ask_user`, `approval_needed`, `plan_review` |
+| Onboarding | `ONBOARD_REQUIRED`, `ONBOARD_SUBMIT`, `ONBOARD_SUCCESS` |
+| Streamed activity | `thinking`, `llm_call`, `llm_result`, `tool_call`, `tool_result`, `assistant`, `intent`, `eval`, `compact`, `tool_blocked` |
+| Attachments and generated content | `agent_image`, `files_received`, `diff_preview` |
+| Reconnect/state synchronization | `session_sync`, `last_msg_id`, `session_id` |
+
+Unknown frame types are ignored rather than treated as terminal output. Adding a new supported
+frame therefore requires updating the dispatch table, protocol tests, the projection mapping when
+it is user-visible, and this coverage table.
+
+Pre-implementation recommendations for DTO layers, SQLite schema, client mapping, and page-owned
+connection state have been removed because the shipped architecture diverged from them. Use
+[`AGENTS.md`](../AGENTS.md) or [`CLAUDE.md`](../CLAUDE.md) for the current application architecture.
 
 Where the protocol is implemented in this repo:
 
@@ -1500,364 +1512,7 @@ Session Result DTOs
 
 ---
 
-## 32. Recommended C# DTO Layers
-
-### 32.1 Protocol Messages
-
-```csharp
-public abstract record WsMessage(string Type);
-```
-
-```csharp
-public sealed record ConnectMessage(
-    string Type,
-    string? SessionId,
-    string? LastMsgId,
-    AgentSessionState? Session,
-    AuthPayload Payload,
-    string From,
-    string Signature
-) : WsMessage(Type);
-```
-
-```csharp
-public sealed record InputMessage(
-    string Type,
-    string Prompt,
-    IReadOnlyList<string>? Images,
-    IReadOnlyList<InputFile>? Files
-) : WsMessage(Type);
-```
-
-```csharp
-public sealed record ConnectedMessage(
-    string Type,
-    string SessionId,
-    string Status,
-    bool? ServerNewer,
-    AgentSessionState? Session,
-    IReadOnlyList<object>? ChatItems
-) : WsMessage(Type);
-```
-
-```csharp
-public sealed record OutputMessage(
-    string Type,
-    string Result,
-    string SessionId,
-    double DurationMs,
-    AgentSessionState Session
-) : WsMessage(Type);
-```
-
----
-
-## 33. Recommended Session DTO
-
-```csharp
-public sealed record AgentSessionState(
-    string SessionId,
-    IReadOnlyList<AgentMessage> Messages,
-    IReadOnlyList<TraceEvent> Trace,
-    int Turn,
-    string? UserPrompt,
-    string? Intent,
-    int Iteration,
-    string? Result,
-    double? Updated
-);
-```
-
----
-
-## 34. Recommended Message DTOs
-
-Because messages are polymorphic, a typed hierarchy is useful:
-
-```csharp
-public abstract record AgentMessage(string Role);
-```
-
-```csharp
-public sealed record UserMessage(
-    string Role,
-    string Content
-) : AgentMessage(Role);
-```
-
-```csharp
-public sealed record AssistantTextMessage(
-    string Role,
-    string Content
-) : AgentMessage(Role);
-```
-
-```csharp
-public sealed record AssistantToolCallMessage(
-    string Role,
-    IReadOnlyList<ToolCall> ToolCalls
-) : AgentMessage(Role);
-```
-
-```csharp
-public sealed record ToolResultMessage(
-    string Role,
-    string Content,
-    string ToolCallId
-) : AgentMessage(Role);
-```
-
----
-
-## 35. Recommended SQLite Schema
-
-Do not use the ConnectOnion Session as the permanent local Conversation primary key.
-
-Recommended:
-
-```sql
-CREATE TABLE conversations (
-    id TEXT PRIMARY KEY,
-    agent_id TEXT NOT NULL,
-    remote_session_id TEXT NULL,
-    title TEXT,
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL
-);
-```
-
-```sql
-CREATE TABLE messages (
-    id TEXT PRIMARY KEY,
-    conversation_id TEXT NOT NULL,
-    role TEXT NOT NULL,
-    content TEXT,
-    tool_calls_json TEXT,
-    tool_call_id TEXT,
-    created_at INTEGER NOT NULL,
-    FOREIGN KEY (conversation_id)
-        REFERENCES conversations(id)
-);
-```
-
-Optional execution records:
-
-```sql
-CREATE TABLE executions (
-    id TEXT PRIMARY KEY,
-    conversation_id TEXT NOT NULL,
-    remote_session_id TEXT,
-    prompt TEXT NOT NULL,
-    result TEXT,
-    status TEXT NOT NULL,
-    duration_ms REAL,
-    created_at INTEGER NOT NULL,
-    FOREIGN KEY (conversation_id)
-        REFERENCES conversations(id)
-);
-```
-
-Optional trace storage:
-
-```sql
-CREATE TABLE trace_events (
-    id TEXT PRIMARY KEY,
-    conversation_id TEXT NOT NULL,
-    execution_id TEXT,
-    session_id TEXT,
-    type TEXT NOT NULL,
-    payload_json TEXT NOT NULL,
-    ts REAL,
-    FOREIGN KEY (conversation_id)
-        REFERENCES conversations(id)
-);
-```
-
----
-
-## 36. Recommended Client Mapping
-
-```text
-SQLite Conversation
-    │
-    ├── Local ID
-    │     e.g. conversation UUID
-    │
-    ├── Remote Session ID
-    │     e.g. a985fbf5-...
-    │
-    ├── Local Messages
-    │
-    ├── Local UI State
-    │
-    └── Executions
-```
-
-Relationship:
-
-```text
-Local Conversation
-        │
-        ├── 0..1 active remote session_id
-        │
-        └── many messages
-```
-
-Avoid:
-
-```text
-conversation.id = remote session_id
-```
-
-Prefer:
-
-```text
-conversation.id
-    = local UUID
-
-conversation.remote_session_id
-    = ConnectOnion session_id
-```
-
-Reasons:
-
-```text
-Remote Session may expire
-Remote Result may be deleted after retention period
-WebSocket may disconnect
-Server may restart
-
-But local chat history should remain durable
-```
-
----
-
-## 37. Recommended WinUI State Machine
-
-```text
-Disconnected
-    ↓ Connect()
-Connecting
-    ↓ CONNECTED(new/connected)
-Ready
-    ↓ INPUT
-Running
-    ├── thinking
-    ├── tool_call
-    ├── tool_result
-    ├── ask_user
-    ├── approval_needed
-    └── OUTPUT
-          ↓
-Ready
-```
-
-Reconnect path:
-
-```text
-Running
-   ↓ socket lost
-Reconnecting
-   ↓ CONNECT { session_id, last_msg_id, session }
-   ├── status=running
-   │      ↓
-   │   replay events
-   │      ↓
-   │   Running
-   │
-   ├── status=connected
-   │      ↓
-   │    Ready
-   │
-   └── status=new
-          ↓
-       Fresh remote Session
-       while local Conversation remains
-```
-
----
-
-## 38. Recommended Full Sequence Diagram
-
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant UI as WinUI Client
-    participant DB as SQLite
-    participant WS as WebSocket
-    participant S as ConnectOnion Server
-    participant A as Agent
-    participant T as Tool
-
-    U->>UI: Open conversation
-    UI->>DB: Load local conversation/messages
-    UI->>WS: Open connection
-    WS->>S: CONNECT(session_id?, last_msg_id?, session)
-    S-->>UI: CONNECTED(status, session_id)
-
-    UI->>DB: Save remote_session_id
-
-    U->>UI: Send prompt
-    UI->>DB: Save user message
-    UI->>S: INPUT(prompt)
-
-    S->>A: agent.input(prompt)
-    A-->>UI: thinking
-
-    A->>T: tool call
-    A-->>UI: tool_call
-    T-->>A: tool result
-    A-->>UI: tool_result
-
-    A-->>S: final result
-    S-->>UI: OUTPUT(result, session, duration_ms)
-
-    UI->>DB: Save assistant result
-    UI->>DB: Update conversation
-```
-
----
-
-## 39. Reconnect Sequence Diagram
-
-```mermaid
-sequenceDiagram
-    participant UI as WinUI Client
-    participant WS1 as WebSocket #1
-    participant S as Server Registry
-    participant A as Agent Thread
-    participant WS2 as WebSocket #2
-
-    UI->>WS1: INPUT
-    WS1->>S: Route to session abc-123
-    S->>A: Start execution
-
-    A-->>WS1: thinking
-    WS1-->>UI: thinking
-
-    WS1--xUI: Connection lost
-
-    Note over S,A: Session / thread / queues survive
-
-    UI->>WS2: New WebSocket
-    WS2->>S: CONNECT(session_id=abc-123, last_msg_id=...)
-    S->>S: registry.get(abc-123)
-
-    alt Session running
-        S-->>UI: CONNECTED(status=running)
-        S-->>UI: replay missed events
-        A-->>UI: live events
-        A-->>UI: OUTPUT
-    else Session idle
-        S-->>UI: CONNECTED(status=connected)
-    else Session missing
-        S-->>UI: CONNECTED(status=new)
-    end
-```
-
----
-
-## 40. Final Structural Summary
+## 32. Final Structural Summary
 
 The complete system can be viewed as:
 
@@ -1916,7 +1571,7 @@ In one sentence:
 
 ---
 
-## 41. Sources
+## 33. Sources
 
 - ConnectOnion WebSocket Protocol  
   https://docs.connectonion.com/websocket-protocol

@@ -61,4 +61,52 @@ public sealed class ChatAttachmentTests
         Assert.Equal(new Uri(image.LocalCachePath!).AbsoluteUri, image.PreviewUri);
         Assert.Null(file.PreviewUri);
     }
+
+    [Fact]
+    public void ImagePresentation_LocalPreviewNormalizesContradictoryFailedStatus()
+    {
+        var attachment = new ChatAttachment
+        {
+            Kind = AttachmentKind.Image,
+            Status = AttachmentStatus.Failed,
+            LocalCachePath = Path.GetFullPath("preview.png"),
+        };
+
+        Assert.Equal(AttachmentStatus.Sent, attachment.Status);
+        Assert.False(attachment.IsFailed);
+        Assert.Null(attachment.Error);
+
+        attachment.LocalCachePath = null;
+        attachment.Status = AttachmentStatus.Failed;
+
+        Assert.True(attachment.IsFailed);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ImagePresentation_NormalizesEitherPropertyAssignmentOrder(bool pathFirst)
+    {
+        var attachment = new ChatAttachment
+        {
+            Kind = AttachmentKind.Image,
+            Error = "stale failure",
+        };
+        var path = Path.GetFullPath("preview.png");
+
+        if (pathFirst)
+        {
+            attachment.LocalCachePath = path;
+            attachment.Status = AttachmentStatus.Failed;
+        }
+        else
+        {
+            attachment.Status = AttachmentStatus.Failed;
+            attachment.LocalCachePath = path;
+        }
+
+        Assert.Equal(AttachmentStatus.Sent, attachment.Status);
+        Assert.False(attachment.IsFailed);
+        Assert.Null(attachment.Error);
+    }
 }

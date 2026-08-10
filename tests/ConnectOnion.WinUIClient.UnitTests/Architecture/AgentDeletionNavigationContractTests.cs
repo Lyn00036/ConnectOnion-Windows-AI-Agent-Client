@@ -5,17 +5,8 @@ public sealed class AgentDeletionNavigationContractTests
     [Fact]
     public void DeletingTheCurrentAgent_ResetsToTheLibraryInsteadOfOpeningAnEmptyChat()
     {
-        var sidebar = ReadAppSource("Controls", "Shell", "ShellSidebar.Events.cs");
+        var deleteMethod = ReadDeleteMethod();
         var window = ReadAppSource("MainWindow.xaml.cs");
-        var deleteStart = sidebar.IndexOf(
-            "internal async System.Threading.Tasks.Task<bool> DeleteAgentAsync",
-            StringComparison.Ordinal);
-        var deleteEnd = sidebar.IndexOf(
-            "private async void Session_Click",
-            deleteStart,
-            StringComparison.Ordinal);
-        Assert.True(deleteStart >= 0 && deleteEnd > deleteStart);
-        var deleteMethod = sidebar[deleteStart..deleteEnd];
 
         Assert.Contains("var deletingCurrentSurface =", deleteMethod, StringComparison.Ordinal);
         Assert.Contains(
@@ -37,6 +28,35 @@ public sealed class AgentDeletionNavigationContractTests
             StringComparison.Ordinal);
         Assert.Contains("ContentFrame.BackStack.Clear()", window, StringComparison.Ordinal);
         Assert.Contains("ContentFrame.ForwardStack.Clear()", window, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DeletingAnAgentWhileHomeIsVisible_ReloadsTheAgentLibrary()
+    {
+        var deleteMethod = ReadDeleteMethod();
+
+        Assert.Contains(
+            "else if (_currentPageType == typeof(HomePage))",
+            deleteMethod,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "RequestNavigation(typeof(HomePage), forceReload: true)",
+            deleteMethod,
+            StringComparison.Ordinal);
+    }
+
+    private static string ReadDeleteMethod()
+    {
+        var sidebar = ReadAppSource("Controls", "Shell", "ShellSidebar.Events.cs");
+        var deleteStart = sidebar.IndexOf(
+            "internal async System.Threading.Tasks.Task<bool> DeleteAgentAsync",
+            StringComparison.Ordinal);
+        var deleteEnd = sidebar.IndexOf(
+            "private async void Session_Click",
+            deleteStart,
+            StringComparison.Ordinal);
+        Assert.True(deleteStart >= 0 && deleteEnd > deleteStart);
+        return sidebar[deleteStart..deleteEnd];
     }
 
     private static string ReadAppSource(params string[] relativeParts)

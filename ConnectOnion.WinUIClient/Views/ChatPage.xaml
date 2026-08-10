@@ -55,12 +55,12 @@
                                 HorizontalAlignment="Left"
                                 Background="{ThemeResource SurfaceSecondaryBrush}"
                                 BorderThickness="0"
-                                Visibility="{Binding IsFailed, Converter={StaticResource BoolToVis}, ConverterParameter=invert}"
+                                Visibility="{Binding IsFailed, Mode=OneWay, Converter={StaticResource BoolToVis}, ConverterParameter=invert}"
                                 Click="AttachmentOpen_Click"
                                 Tag="{Binding}"
                                 AutomationProperties.Name="Open image attachment"
                                 ToolTipService.ToolTip="Open image">
-                            <Image Source="{Binding LocalCachePath, Converter={StaticResource PathToImage}}"
+                            <Image Source="{Binding LocalCachePath, Mode=OneWay, Converter={StaticResource PathToImage}}"
                                    Stretch="Uniform"
                                    MaxWidth="280"
                                    MaxHeight="280" />
@@ -69,7 +69,7 @@
                                    FontSize="{StaticResource ProductCaptionFontSize}"
                                    FontStyle="Italic"
                                    Foreground="{ThemeResource TextSecondaryBrush}"
-                                   Visibility="{Binding IsFailed, Converter={StaticResource BoolToVis}}" />
+                                   Visibility="{Binding IsFailed, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                     </StackPanel>
 
                     <!-- Generic file: icon + name + size, tap to open, button to save a copy. -->
@@ -346,13 +346,53 @@
                          labelled the obvious. ChatMessage.AgentName is still populated and still
                          persisted — notifications title themselves with it, and the CONNECT
                          history import needs it — this only drops the label. -->
-                    <controls:MarkdownTextBlock Markdown="{x:Bind Content, Mode=OneWay}"
+                    <controls:MarkdownTextBlock x:Name="AgentResponseText"
+                                                Visibility="{x:Bind IsRegularAgentResponse, Mode=OneWay, Converter={StaticResource BoolToVis}}"
+                                                Markdown="{x:Bind Content, Mode=OneWay}"
+                                                AutomationProperties.Name="{x:Bind Content, Mode=OneWay}"
                                                 MaxWidth="{StaticResource ChatReadingWidth}"
                                                 HorizontalAlignment="Left"
                                                 SearchQuery="{x:Bind FindQuery, Mode=OneWay}"
                                                 ActiveMatchIndex="{x:Bind ActiveFindMatchIndex, Mode=OneWay}"
                                                 FontSize="{x:Bind MessageFontSize, Mode=OneWay}"
                                                 Foreground="{ThemeResource TextPrimaryBrush}" />
+                    <!-- A persisted transport failure is not an agent answer. Give it one compact,
+                         semantic status surface and hide the storage marker from the user. The
+                         danger wash distinguishes the failed turn from the amber, actionable
+                         reconnect notice beside the composer. -->
+                    <Border x:Name="AgentConnectionErrorCard"
+                            Visibility="{x:Bind IsConnectionError, Mode=OneWay, Converter={StaticResource BoolToVis}}"
+                            MaxWidth="{StaticResource ChatReadingWidth}"
+                            HorizontalAlignment="Left"
+                            Padding="12,10"
+                            CornerRadius="10"
+                            Background="{ThemeResource DangerSubtleBrush}"
+                            BorderBrush="{ThemeResource DangerBrush}"
+                            BorderThickness="3,1,1,1">
+                        <Grid ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <ic:FluentIcon Icon="ErrorCircle"
+                                           IconVariant="Regular"
+                                           IconSize="Size20"
+                                           Foreground="{ThemeResource DangerBrush}"
+                                           VerticalAlignment="Top" />
+                            <StackPanel Grid.Column="1" Spacing="3">
+                                <TextBlock x:Uid="ChatConnectionErrorTitle"
+                                           Text="Connection error"
+                                           FontSize="{StaticResource ProductBodyFontSize}"
+                                           FontWeight="SemiBold"
+                                           Foreground="{ThemeResource DangerBrush}" />
+                                <controls:HighlightedTextBlock Text="{x:Bind ConnectionErrorText, Mode=OneWay}"
+                                                               SearchQuery="{x:Bind FindQuery, Mode=OneWay}"
+                                                               ActiveMatchIndex="{x:Bind ActiveFindMatchIndex, Mode=OneWay}"
+                                                               FontSize="{x:Bind MessageFontSize, Mode=OneWay}"
+                                                               Foreground="{ThemeResource TextPrimaryBrush}" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
                     <StackPanel x:Name="AgentStopMeta"
                                 x:Load="{x:Bind HasEventMeta, Mode=OneWay}"
                                 Orientation="Horizontal"
@@ -523,20 +563,24 @@
                                     Spacing="6"
                                     Padding="0,4"
                                     Visibility="{x:Bind IsRunningProgressActivity, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                            <!-- Win2D starburst, not a ProgressRing: a spinner in a transcript
+                            <!-- Animated starburst, not a ProgressRing: a spinner in a transcript
                                  reads as a progress bar and invites "how far along is it?", which
                                  this state cannot answer. IsActive is the message's own running
                                  flag — no second state to keep in sync.
 
-                                 x:Load, not just Visibility, and this is the important part: the
-                                 surrounding panel is only *hidden* on a settled row, but XAML
-                                 still constructs everything inside it. That meant a
-                                 CanvasAnimatedControl — a swap chain and a render thread — built
-                                 for every activity row in every conversation the user opened, all
-                                 paused, none released. x:Load defers construction until the row is
-                                 actually thinking, and at most one row ever is (the projection
-                                 removes the indicator on llm_result), so the app holds one canvas
-                                 rather than one per row ever seen. -->
+                                 x:Load, not just Visibility: the surrounding panel is only
+                                 *hidden* on a settled row, but XAML still constructs everything
+                                 inside it, so every activity row in every conversation the user
+                                 opened would build an indicator it can never show.
+
+                                 This deferral is a saving, but do not mistake it for a lifetime
+                                 guarantee — an earlier version of this comment did, and that is
+                                 how the app came to leak ~55 threads and ~23 MB per turn. x:Load
+                                 going false does not dispose what it unloads, and the same row can
+                                 realize a new one each time it re-enters the running state or the
+                                 list recycles its container. So the indicator has to be cheap to
+                                 build and cheap to abandon, which is why it is plain XAML shapes
+                                 rather than a Win2D canvas. See ThinkingIndicator.xaml. -->
                             <!-- x:Name is required by x:Load; it is not referenced from code. -->
                             <controls:ThinkingIndicator x:Name="ThinkingMark"
                                                         x:Load="{x:Bind IsRunningProgressActivity, Mode=OneWay}"
@@ -750,15 +794,15 @@
                                            HorizontalAlignment="Stretch" />
             </DataTemplate>
 
-            <!-- Ask-user card. Not a bordered box on the transcript: the options are the only
-                 things that carry a frame, so the card reads as a list of choices rather than a
-                 dialog dropped into the conversation. Header (chevron | icon | title | status
-                 badge) over the question, then — while it waits — the option cards, a labelled
-                 divider, the custom answer box and a quiet way out; once answered, a single
-                 "Your answer" line. The status appears once as the badge word, not also as a dot.
+            <!-- Ask-user card. Header (chevron | icon | title | status badge) over the question,
+                 then — while it waits — the options, the custom answer box and a quiet way out;
+                 once answered it folds to the header and can be reopened to see what was asked.
+                 The status appears once as the badge word, not also as a dot.
 
-                 The option rows are hand-built Buttons, not RadioButton/CheckBox — see the
-                 comment on the ItemsControl below for why. -->
+                 The whole card lives in AskUserCard.xaml over the shared InteractiveCard chrome;
+                 this template only hands it the message and routes its two events. Option rows are
+                 stock RadioButton/CheckBox with the brand accent overridden inline — see the note
+                 on their DataTemplate for why that override is local. -->
 
 
 
@@ -766,6 +810,9 @@
                 <controls:AskUserCard Message="{x:Bind}"
                                       SubmitRequested="AskUserCard_SubmitRequested"
                                       SkipRequested="AskUserCard_SkipRequested" />
+            </DataTemplate>
+            <DataTemplate x:Key="ChatApprovalTemplate" x:DataType="models:ChatMessage">
+                <controls:ApprovalCard Message="{x:Bind}" />
             </DataTemplate>
             <DataTemplate x:Key="ChatPlanReviewTemplate" x:DataType="models:ChatMessage">
                 <controls:PlanReviewCard Message="{x:Bind}"
@@ -799,6 +846,7 @@
                                                 Activity="{StaticResource ChatActivityTemplate}"
                                                 ToolActivity="{StaticResource ChatToolActivityTemplate}"
                                                 AskUser="{StaticResource ChatAskUserTemplate}"
+                                                Approval="{StaticResource ChatApprovalTemplate}"
                                                 PlanReview="{StaticResource ChatPlanReviewTemplate}"
                                                 DiffPreview="{StaticResource ChatDiffPreviewTemplate}"
                                                 Empty="{StaticResource ChatEmptyTemplate}" />
@@ -941,6 +989,7 @@
                                    VerticalAlignment="Center"
                                    Foreground="{ThemeResource TextSecondaryBrush}" />
                         <Button Command="{x:Bind Vm.RetryCommand}"
+                                AutomationProperties.AutomationId="RetryTurnButton"
                                 Padding="12,5"
                                 CornerRadius="8">
                             <controls:IconText x:Uid="ChatRetry" Glyph="ArrowClockwise" IconSize="Size16" Spacing="6" FontSize="{StaticResource ProductCaptionFontSize}" Text="Retry" />
@@ -963,10 +1012,61 @@
                     </animations:Implicit.ShowAnimations>
                 </controls:OfflineNoticeBar>
 
+                <!-- The pending-decision bar. It sits in the composer stack rather than floating
+                     over the transcript because the point is that the composer is *not* the way to
+                     answer right now, and a bar directly above it says so in the place the user is
+                     about to type. Unlike the retry/offline bars this one is not mutually exclusive
+                     with them: an agent can be blocked on a decision while the socket is also in
+                     trouble, and suppressing either message would hide a real state.
+
+                     It carries the jump action because the card it points at can be anywhere — an
+                     approval renders inside the turn's one tool-activity card, anchored where the
+                     turn's first tool call landed, which by the eighth tool is well above the fold. -->
+                <Border x:Name="PendingDecisionBar"
+                        HorizontalAlignment="Center"
+                        Margin="24,0"
+                        MaxWidth="620"
+                        CornerRadius="10"
+                        Padding="14,8"
+                        Background="{ThemeResource SurfaceElevatedBrush}"
+                        BorderBrush="{ThemeResource AttentionBrush}"
+                        BorderThickness="1"
+                        AutomationProperties.AutomationId="PendingDecisionBar"
+                        AutomationProperties.LiveSetting="Assertive"
+                        AutomationProperties.Name="{x:Bind Vm.PendingInteractiveText, Mode=OneWay}"
+                        Visibility="{x:Bind Vm.IsAwaitingUserDecision, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                    <animations:Implicit.ShowAnimations>
+                        <animations:OpacityAnimation From="0" To="1" Duration="0:0:0.2" />
+                        <animations:TranslationAnimation From="0,8,0" To="0,0,0" Duration="0:0:0.2" />
+                    </animations:Implicit.ShowAnimations>
+                    <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                        <ic:FluentIcon Icon="Info"
+                                       IconVariant="Regular"
+                                       IconSize="Size16"
+                                       VerticalAlignment="Center"
+                                       Foreground="{ThemeResource AttentionBrush}"
+                                       AutomationProperties.AccessibilityView="Raw" />
+                        <TextBlock Text="{x:Bind Vm.PendingInteractiveText, Mode=OneWay}"
+                                   FontSize="{StaticResource ProductCaptionFontSize}"
+                                   TextWrapping="Wrap"
+                                   VerticalAlignment="Center"
+                                   Foreground="{ThemeResource TextPrimaryBrush}" />
+                        <Button x:Name="JumpToPendingButton"
+                                AutomationProperties.AutomationId="JumpToPendingButton"
+                                x:Uid="ChatJumpToDecision"
+                                Content="Go to it"
+                                VerticalAlignment="Center"
+                                Click="JumpToPending_Click"
+                                AutomationProperties.Name="Scroll to the decision the agent is waiting on" />
+                    </StackPanel>
+                </Border>
+
                 <!-- Transport progress lives in the transcript; the composer keeps the live
                      usage readout but does not duplicate Connecting/Working beneath it. -->
                 <controls:ChatComposer x:Name="Composer"
+                                       AutomationProperties.AutomationId="ComposerSurface"
                                        CanSubmit="{x:Bind Vm.CanSend, Mode=OneWay}"
+                                       IsSubmitBlocked="{x:Bind Vm.IsAwaitingUserDecision, Mode=OneWay}"
                                        EnterToSubmit="{x:Bind Vm.EnterToSend, Mode=OneWay}"
                                        IsBusy="{x:Bind Vm.IsComposerBusy, Mode=OneWay}"
                                        CanStop="{x:Bind Vm.CanStop, Mode=OneWay}"

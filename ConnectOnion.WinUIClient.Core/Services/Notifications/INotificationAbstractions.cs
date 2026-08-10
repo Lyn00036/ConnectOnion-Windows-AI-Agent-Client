@@ -39,3 +39,12 @@ public interface INotificationScheduler
 {
     IDisposable Schedule(TimeSpan delay, Action callback);
 }
+
+/// <summary>Persists conversation-level unread and approval attention state.</summary>
+public interface IConversationAttentionStore
+{
+    Task MarkUnreadAsync(
+        string conversationId,
+        bool requiresAttention,
+        CancellationToken cancellationToken = default);
+}

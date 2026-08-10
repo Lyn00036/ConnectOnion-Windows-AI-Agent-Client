@@ -110,8 +110,43 @@ public sealed partial class MainWindow : IChatWindow
             ActionId: null)));
 
     private void OnActivatedForPresence(object sender, WindowActivatedEventArgs e)
-        => _windowPresence?.SetActive(
-            this, e.WindowActivationState != WindowActivationState.Deactivated);
+    {
+        var active = e.WindowActivationState != WindowActivationState.Deactivated;
+        _windowPresence?.SetActive(this, active);
+        // Coming back to a chat that was already on screen is not a navigation, so nothing
+        // reloads the conversation and nothing would otherwise clear the badge it collected
+        // while the window was in the background. Ordered after SetActive: the check below asks
+        // presence what the user can see, and presence has to know the window is focused first.
+        if (active) ClearAttentionForVisibleConversation();
+    }
+
+    /// <summary>
+    /// Marks whatever conversation is genuinely on screen as read.
+    ///
+    /// <para>Attention is otherwise cleared only by <c>ChatViewModel</c>'s conversation load, which
+    /// covers opening or switching a chat but not the two ways a chat becomes visible again without
+    /// being reloaded: the window regaining focus, and a full-window modal closing over a page that
+    /// never unloaded. Both marked the conversation unread on the way out (the user could not see
+    /// it) and left the badge behind on the way back in.</para>
+    ///
+    /// <para>Safe to call on every activation: <c>ClearAttentionAsync</c>'s UPDATE is guarded on
+    /// the row actually having unread state, so the common case touches no rows and raises no
+    /// <c>SessionsChanged</c> — a focus change does not cost a sidebar rebuild.</para>
+    /// </summary>
+    private async void ClearAttentionForVisibleConversation()
+    {
+        if (_windowPresence?.VisibleConversationId is not { } conversationId) return;
+
+        try
+        {
+            await AppServices.Sessions.ClearAttentionAsync(conversationId);
+        }
+        catch (System.Exception ex)
+        {
+            // Best-effort: a failed badge clear must never take down the window's activation path.
+            NotificationLog.Warn("clearing conversation attention failed", ex);
+        }
+    }
 
     // ---- IChatWindow ----------------------------------------------------
 
@@ -121,9 +156,8 @@ public sealed partial class MainWindow : IChatWindow
     /// the chat. Fails safe (navigates Home) when the conversation was deleted.</summary>
     public async Task ShowConversationAsync(string agentId, string conversationId)
     {
-        var sessions = await AppServices.Sessions.LoadAsync();
-        var session = sessions.Sessions.FirstOrDefault(s => s.Id == conversationId && s.AgentId == agentId);
-        if (session is null)
+        var session = await AppServices.Sessions.GetSessionAsync(conversationId);
+        if (session is null || session.AgentId != agentId)
         {
             NotificationLog.Info($"ShowConversationAsync: no session matched agentId={agentId} conversationId={conversationId} — navigating Home");
             NavigateTo(typeof(HomePage), forceReload: true);
