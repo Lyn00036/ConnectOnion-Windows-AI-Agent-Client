@@ -175,6 +175,31 @@ public sealed class PackageIdentityTests
     }
 
     [Fact]
+    public void ReleaseWorkflow_MarkdownCodeSpansArePowerShellLiterals()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "global.json")))
+        {
+            directory = directory.Parent;
+        }
+        var workflow = File.ReadAllText(
+            Path.Combine(directory!.FullName, ".github", "workflows", "release.yml"));
+
+        // In a PowerShell double-quoted string, `a is the BEL control character. Release notes
+        // therefore keep Markdown code spans in single-quoted literals so `app` reaches GitHub
+        // verbatim instead of rendering as an unknown glyph.
+        Assert.Contains(
+            "'`ConnectOnion.WinUIClient.exe`. Keep its `app` folder beside it. The application'",
+            workflow,
+            StringComparison.Ordinal);
+        Assert.Contains("'Compare against `SHA256SUMS.txt`.'", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "\"`ConnectOnion.WinUIClient.exe`. Keep its `app` folder beside it. The application\"",
+            workflow,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void PackageAuditRejectsExternalFrameworkDependencies()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
