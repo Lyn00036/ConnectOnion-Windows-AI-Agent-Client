@@ -137,13 +137,13 @@ public sealed class MemoryLeakTests(ITestOutputHelper output)
             "settings" => () =>
             {
                 ShellSmokeTests.OpenSettings(window);
-                InvokeByName(window, "Close settings");
+                InvokeByAutomationId(window, "SettingsCloseButton");
             }
             ,
             "add-agent" => () =>
             {
                 InvokeByAutomationId(window, "AddAgentButton");
-                InvokeByName(window, "ConnectOnion home");
+                InvokeByName(window, "Cancel adding agent");
             }
             ,
             "agent-detail" => () =>
@@ -151,7 +151,7 @@ public sealed class MemoryLeakTests(ITestOutputHelper output)
                 var button = FindAgentButton(window);
                 Assert.NotNull(button);
                 Invoke(button);
-                InvokeByName(window, "ConnectOnion home");
+                ReturnToHome(window);
             }
             ,
             "conversation" => () =>
@@ -159,7 +159,7 @@ public sealed class MemoryLeakTests(ITestOutputHelper output)
                 var button = FindConversationButton(window);
                 Assert.NotNull(button);
                 Invoke(button);
-                InvokeByName(window, "ConnectOnion home");
+                ReturnToHome(window);
             }
             ,
             "conversation-alternating" => AlternatingConversationAction(window),
@@ -195,8 +195,18 @@ public sealed class MemoryLeakTests(ITestOutputHelper output)
             Assert.True(buttons.Length >= sessionCount,
                 $"{sessionCount} conversations were available at warmup but not after navigation.");
             Invoke(buttons[index++ % sessionCount]);
-            InvokeByName(window, "ConnectOnion home");
+            ReturnToHome(window);
         };
+    }
+
+    private static void ReturnToHome(Window window)
+    {
+        // The old memory harness searched for the removed accessible name "ConnectOnion home".
+        // The fixed Agent library navigation row is the product's current route back to Home and
+        // its AutomationId is locale-independent, so the diagnostic remains valid in zh-CN too.
+        InvokeByAutomationId(window, "AgentsNavigationButton");
+        var home = FindFirst(window, query => query.ByAutomationId("HomeAddAgentButton"), attempts: 100);
+        Assert.NotNull(home);
     }
 
     private void RunScenario(

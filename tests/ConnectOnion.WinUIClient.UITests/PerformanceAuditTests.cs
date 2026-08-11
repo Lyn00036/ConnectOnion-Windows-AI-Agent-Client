@@ -229,7 +229,8 @@ public sealed class PerformanceAuditTests(ITestOutputHelper output)
         var cached = new List<double>();
         for (var index = 0; index < 5; index++)
         {
-            Invoke(WaitForName(window, "ConnectOnion home"));
+            Invoke(WaitForAutomationId(window, "AgentsNavigationButton"));
+            Assert.True(WaitUntil(() => FindByAutomationId(window, "HomeAddAgentButton") is not null));
             cached.Add(MeasureOpenConversation(window, conversation.Title));
         }
 
@@ -308,6 +309,7 @@ public sealed class PerformanceAuditTests(ITestOutputHelper output)
         }
 
         var created = new List<PerformanceConversation>(sizes.Count);
+        var fixtures = new List<(string ConversationId, IReadOnlyList<ChatMessage> Messages)>(sizes.Count);
         foreach (var size in sizes)
         {
             var id = $"performance-{size}";
@@ -355,12 +357,28 @@ public sealed class PerformanceAuditTests(ITestOutputHelper output)
                 messages[^1] = CloneMessage(toolSource, size);
             }
 
-            await conversations.UpsertMessagesAsync(id, messages);
             created.Add(new PerformanceConversation(id, title, size));
+            fixtures.Add((id, messages));
         }
 
+        // messages.conversation_id references sessions.id. Persist every synthetic session before
+        // inserting its transcript; the previous one-pass form tried to write the messages while
+        // the new SessionSummary existed only in memory and failed immediately under foreign keys.
         state.ActiveSessionId = sourceSession.Id;
         await sessions.SaveAsync(state);
+        foreach (var fixture in fixtures)
+        {
+            await conversations.UpsertMessagesAsync(fixture.ConversationId, fixture.Messages);
+        }
+
+        // The tray timing loop sends WM_CLOSE directly. Make that operation deterministic for
+        // an isolated assessment profile: the product now asks on first close, so leaving the
+        // default here opens a modal dialog and the window correctly remains visible. Persisting
+        // the explicit tray choice exercises the intended hide/redirected-launch restore path.
+        var preferences = new PreferencesRepository();
+        var snapshot = await preferences.LoadAsync();
+        snapshot.CloseBehavior = WindowCloseBehavior.HideToTray;
+        await preferences.SaveAsync(snapshot);
         return created;
     }
 
