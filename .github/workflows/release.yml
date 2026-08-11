@@ -338,7 +338,7 @@ jobs:
             "",
             "### Changes",
             "",
-            $(if ($log) { $log } else { '- Initial release.' })
+            $(if ($log) { $log -join "`n" } else { '- Initial release.' })
           ) -join "`n"
 
           $notes | Out-File -FilePath release-notes.md -Encoding utf8

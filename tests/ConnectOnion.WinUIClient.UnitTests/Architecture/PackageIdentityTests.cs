@@ -200,6 +200,29 @@ public sealed class PackageIdentityTests
     }
 
     [Fact]
+    public void ReleaseWorkflow_ChangeLogLinesAreJoinedBeforeNotesAreJoined()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "global.json")))
+        {
+            directory = directory.Parent;
+        }
+        var workflow = File.ReadAllText(
+            Path.Combine(directory!.FullName, ".github", "workflows", "release.yml"));
+
+        // An array interpolated as one element becomes the literal "System.Object[]" in the
+        // GitHub Release body. Flatten the git-log lines before joining the complete notes array.
+        Assert.Contains(
+            "$(if ($log) { $log -join \"`n\" } else { '- Initial release.' })",
+            workflow,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "$(if ($log) { $log } else { '- Initial release.' })",
+            workflow,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void PackageAuditRejectsExternalFrameworkDependencies()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
